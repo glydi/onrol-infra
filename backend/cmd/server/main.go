@@ -1,0 +1,86 @@
+// Command server is the Onrol API entrypoint.
+package main
+
+import (
+	"context"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/joho/godotenv"
+
+	"github.com/onrol/lms-backend/internal/auth"
+	"github.com/onrol/lms-backend/internal/config"
+	"github.com/onrol/lms-backend/internal/database"
+	"github.com/onrol/lms-backend/internal/handlers"
+	"github.com/onrol/lms-backend/internal/middleware"
+	"github.com/onrol/lms-backend/internal/router"
+	"github.com/onrol/lms-backend/internal/zoho"
+)
+
+func main() {
+	// Best-effort local .env loading (no-op in Docker where env is injected).
+	for _, p := range []string{".env", "../.env"} {
+		_ = godotenv.Load(p)
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+
+	ctx := context.Background()
+	pool, err := database.Connect(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("database: %v", err)
+	}
+	defer pool.Close()
+	log.Printf("database connected, migrations applied")
+
+	jwtm := auth.NewManager(cfg.JWTSecret, cfg.JWTAccessTTL)
+
+	// TODO: replace the stub with a real Play Integrity / App Attest verifier.
+	attestor := middleware.NewStubAttestor()
+
+	// The Zoho client needs no secrets for the embed/web-form paths; per-webinar
+	// tokens live in the DB. Always available; /live 404s if no webinar row.
+	zClient := zoho.New(zoho.Config{WebinarBase: cfg.Zoho.WebinarBase})
+
+	h := handlers.New(cfg, pool, jwtm, attestor, zClient)
+
+	app := fiber.New(fiber.Config{
+		AppName:               "onrol-api",
+		ErrorHandler:          router.ErrorHandler,
+		DisableStartupMessage: cfg.IsProduction(),
+		ReadTimeout:           15 * time.Second,
+		WriteTimeout:          30 * time.Second,
+	})
+	app.Use(recover.New())
+	app.Use(logger.New())
+
+	router.Setup(app, h, jwtm, pool)
+
+	// Graceful shutdown.
+	go func() {
+		if err := app.Listen(":" + cfg.Port); err != nil {
+			log.Fatalf("listen: %v", err)
+		}
+	}()
+	log.Printf("listening on :%s (env=%s, attestation=%s)", cfg.Port, cfg.Env, cfg.AttestationMode)
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Printf("shutting down...")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := app.ShutdownWithContext(shutdownCtx); err != nil {
+		log.Printf("shutdown error: %v", err)
+	}
+}

@@ -1,0 +1,19 @@
+[Unit]
+Description=ONROL Learn API (Go/Fiber LMS)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=onrol
+WorkingDirectory=/opt/onrol
+EnvironmentFile=/opt/onrol/.env
+ExecStart=/opt/onrol/onrol-server
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

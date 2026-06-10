@@ -1,0 +1,29 @@
+name: onrol_app
+description: ONROL Learn — student client (live + VOD).
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+  flutter: ">=3.22.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.2                    # API calls
+  flutter_secure_storage: ^9.2.2 # JWT + device id at rest (Keystore/Keychain)
+  flutter_inappwebview: ^6.1.5    # Zoho live embed
+  device_info_plus: ^10.1.2       # device model/platform
+  uuid: ^4.5.1                    # stable per-install device id
+  google_fonts: ^6.2.1            # Inter (SF Pro substitute) for the Apple look
+  cupertino_icons: ^1.0.8         # SF Symbols-style icons
+  video_player: ^2.9.2            # streaming playback, custom controls (no download button)
+  url_launcher: ^6.3.1            # open link lessons in a new tab / external browser
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

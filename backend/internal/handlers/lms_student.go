@@ -1,0 +1,547 @@
+package handlers
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"strings"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/jackc/pgx/v5"
+)
+
+// ---- Profile & preferences -------------------------------------------------
+
+func (h *Handlers) GetMyProfile(c *fiber.Ctx) error {
+	var email, name, phone, role string
+	if err := h.Pool.QueryRow(c.Context(),
+		`SELECT email, full_name, COALESCE(phone,''), role FROM users WHERE id=$1`, callerID(c),
+	).Scan(&email, &name, &phone, &role); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "user not found")
+	}
+	return c.JSON(fiber.Map{"id": callerID(c), "email": email, "full_name": name, "phone": phone, "role": role})
+}
+
+func (h *Handlers) UpdateMyProfile(c *fiber.Ctx) error {
+	var req struct {
+		FullName *string `json:"full_name"`
+		Phone    *string `json:"phone"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+	_, err := h.Pool.Exec(c.Context(),
+		`UPDATE users SET full_name=COALESCE($2,full_name), phone=COALESCE($3,phone), updated_at=now() WHERE id=$1`,
+		callerID(c), req.FullName, req.Phone)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "update failed")
+	}
+	return c.JSON(fiber.Map{"updated": true})
+}
+
+func (h *Handlers) GetPreferences(c *fiber.Ctx) error {
+	var lang, tz string
+	var email, push bool
+	err := h.Pool.QueryRow(c.Context(),
+		`SELECT language, timezone, email_notifications, push_notifications FROM user_preferences WHERE user_id=$1`,
+		callerID(c)).Scan(&lang, &tz, &email, &push)
+	if err != nil {
+		// Defaults if not set yet.
+		return c.JSON(fiber.Map{"language": "en", "timezone": "Asia/Kolkata", "email_notifications": true, "push_notifications": true})
+	}
+	return c.JSON(fiber.Map{"language": lang, "timezone": tz, "email_notifications": email, "push_notifications": push})
+}
+
+func (h *Handlers) UpdatePreferences(c *fiber.Ctx) error {
+	var req struct {
+		Language           string `json:"language"`
+		Timezone           string `json:"timezone"`
+		EmailNotifications *bool  `json:"email_notifications"`
+		PushNotifications  *bool  `json:"push_notifications"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+	if req.Language == "" {
+		req.Language = "en"
+	}
+	if req.Timezone == "" {
+		req.Timezone = "Asia/Kolkata"
+	}
+	email := req.EmailNotifications == nil || *req.EmailNotifications
+	push := req.PushNotifications == nil || *req.PushNotifications
+	_, err := h.Pool.Exec(c.Context(), `
+		INSERT INTO user_preferences (user_id, language, timezone, email_notifications, push_notifications)
+		VALUES ($1,$2,$3,$4,$5)
+		ON CONFLICT (user_id) DO UPDATE SET language=EXCLUDED.language, timezone=EXCLUDED.timezone,
+			email_notifications=EXCLUDED.email_notifications, push_notifications=EXCLUDED.push_notifications, updated_at=now()`,
+		callerID(c), req.Language, req.Timezone, email, push)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "update failed")
+	}
+	return c.JSON(fiber.Map{"updated": true})
+}
+
+// ---- Catalog & enrollment --------------------------------------------------
+
+// Catalog lists published courses (browse before enrolling).
+func (h *Handlers) Catalog(c *fiber.Ctx) error {
+	// Only courses the student is NOT already enrolled in (and hasn't a pending
+	// request for) — so the catalog only offers courses they can newly join.
+	rows, err := h.Pool.Query(c.Context(), `
+		SELECT c.id, c.title, c.description, c.enroll_type, COALESCE(cc.name,'')
+		FROM courses c LEFT JOIN course_categories cc ON cc.id=c.category_id
+		WHERE c.status='published'
+		  AND NOT EXISTS (SELECT 1 FROM course_enrollments ce WHERE ce.course_id=c.id AND ce.user_id=$1)
+		  AND NOT EXISTS (SELECT 1 FROM enrollment_requests er WHERE er.course_id=c.id AND er.user_id=$1 AND er.status='pending')
+		ORDER BY c.created_at DESC LIMIT 500`, callerID(c))
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "catalog failed")
+	}
+	defer rows.Close()
+	out := []fiber.Map{}
+	for rows.Next() {
+		var id, title, desc, et, cat string
+		if err := rows.Scan(&id, &title, &desc, &et, &cat); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		out = append(out, fiber.Map{"id": id, "title": title, "description": desc, "enroll_type": et, "category": cat})
+	}
+	return c.JSON(fiber.Map{"catalog": out})
+}
+
+// SelfEnroll: for enroll_type='self' the student is enrolled immediately;
+// otherwise an enrollment request is created for manager approval.
+func (h *Handlers) SelfEnroll(c *fiber.Ctx) error {
+	courseID := c.Params("id")
+	var status, enrollType string
+	if err := h.Pool.QueryRow(c.Context(),
+		`SELECT status, enroll_type FROM courses WHERE id=$1`, courseID).Scan(&status, &enrollType); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "course not found")
+	}
+	if status != "published" {
+		return fiber.NewError(fiber.StatusForbidden, "course not open")
+	}
+	// Enforce prerequisites (must be completed).
+	var missing int
+	_ = h.Pool.QueryRow(c.Context(), `
+		SELECT count(*) FROM course_prerequisites p
+		WHERE p.course_id=$1 AND NOT EXISTS (
+			SELECT 1 FROM course_enrollments ce
+			WHERE ce.user_id=$2 AND ce.course_id=p.prereq_course_id AND ce.status='completed')`,
+		courseID, callerID(c)).Scan(&missing)
+	if missing > 0 {
+		return fiber.NewError(fiber.StatusForbidden, "unmet prerequisites")
+	}
+
+	if enrollType == "closed" {
+		return fiber.NewError(fiber.StatusForbidden, "enrollment is closed — the admin enrolls students for this course")
+	}
+	if enrollType == "self" {
+		if err := h.enrollUserInCourse(c, courseID, callerID(c), callerID(c)); err != nil {
+			return err
+		}
+		return c.JSON(fiber.Map{"course_id": courseID, "enrolled": true})
+	}
+	// Request approval (manual / cohort).
+	_, err := h.Pool.Exec(c.Context(),
+		`INSERT INTO enrollment_requests (course_id, user_id) VALUES ($1,$2)
+		 ON CONFLICT (course_id, user_id) DO NOTHING`, courseID, callerID(c))
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "request failed")
+	}
+	return c.JSON(fiber.Map{"course_id": courseID, "enrollment_requested": true})
+}
+
+// MyCourses: enrolled courses with completion percentage.
+func (h *Handlers) MyCourses(c *fiber.Ctx) error {
+	rows, err := h.Pool.Query(c.Context(), `
+		SELECT c.id, c.title, ce.status,
+		  (SELECT count(*) FROM lessons l JOIN modules m ON m.id=l.module_id WHERE m.course_id=c.id) AS total,
+		  (SELECT count(*) FROM lesson_progress lp JOIN lessons l ON l.id=lp.lesson_id
+		     JOIN modules m ON m.id=l.module_id WHERE m.course_id=c.id AND lp.user_id=$1) AS done
+		FROM course_enrollments ce JOIN courses c ON c.id=ce.course_id
+		WHERE ce.user_id=$1 ORDER BY ce.enrolled_at DESC`, callerID(c))
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
+	}
+	defer rows.Close()
+	out := []fiber.Map{}
+	for rows.Next() {
+		var id, title, status string
+		var total, done int
+		if err := rows.Scan(&id, &title, &status, &total, &done); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		pct := 0
+		if total > 0 {
+			pct = done * 100 / total
+		}
+		out = append(out, fiber.Map{"id": id, "title": title, "status": status, "percent": pct,
+			"lessons_done": done, "lessons_total": total})
+	}
+	return c.JSON(fiber.Map{"my_courses": out})
+}
+
+// CourseContent: modules + lessons, only if the caller is enrolled.
+func (h *Handlers) CourseContent(c *fiber.Ctx) error {
+	courseID := c.Params("id")
+	if !h.isEnrolled(c, courseID) {
+		return fiber.NewError(fiber.StatusForbidden, "not enrolled in this course")
+	}
+	rows, err := h.Pool.Query(c.Context(), `
+		SELECT m.id, m.title, m.position, l.id, l.title, l.type, COALESCE(l.body,''), l.position,
+		       EXISTS(SELECT 1 FROM lesson_progress lp WHERE lp.user_id=$2 AND lp.lesson_id=l.id)
+		FROM modules m LEFT JOIN lessons l ON l.module_id=m.id
+		WHERE m.course_id=$1 ORDER BY m.position, l.position`, courseID, callerID(c))
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "content failed")
+	}
+	defer rows.Close()
+	modules := map[string]fiber.Map{}
+	order := []string{}
+	for rows.Next() {
+		var mid, mtitle string
+		var mpos int
+		var lid, ltitle, ltype, lbody *string
+		var lpos *int
+		var done *bool
+		if err := rows.Scan(&mid, &mtitle, &mpos, &lid, &ltitle, &ltype, &lbody, &lpos, &done); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		if _, ok := modules[mid]; !ok {
+			modules[mid] = fiber.Map{"id": mid, "title": mtitle, "lessons": []fiber.Map{}}
+			order = append(order, mid)
+		}
+		if lid != nil {
+			m := modules[mid]
+			m["lessons"] = append(m["lessons"].([]fiber.Map), fiber.Map{
+				"id": *lid, "title": *ltitle, "type": *ltype,
+				"url": derefStr(lbody), "completed": done != nil && *done})
+		}
+	}
+	ordered := make([]fiber.Map, 0, len(order))
+	for _, id := range order {
+		ordered = append(ordered, modules[id])
+	}
+	return c.JSON(fiber.Map{"course_id": courseID, "modules": ordered})
+}
+
+// CompleteLesson marks a lesson done and, if it completes the course, issues a
+// certificate and flips the enrollment to 'completed'.
+func (h *Handlers) CompleteLesson(c *fiber.Ctx) error {
+	lessonID := c.Params("id")
+	var courseID string
+	if err := h.Pool.QueryRow(c.Context(),
+		`SELECT m.course_id FROM lessons l JOIN modules m ON m.id=l.module_id WHERE l.id=$1`,
+		lessonID).Scan(&courseID); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "lesson not found")
+	}
+	if !h.isEnrolled(c, courseID) {
+		return fiber.NewError(fiber.StatusForbidden, "not enrolled")
+	}
+	_, _ = h.Pool.Exec(c.Context(),
+		`INSERT INTO lesson_progress (user_id, lesson_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+		callerID(c), lessonID)
+
+	// Course complete? (all lessons done)
+	var total, done int
+	_ = h.Pool.QueryRow(c.Context(), `
+		SELECT (SELECT count(*) FROM lessons l JOIN modules m ON m.id=l.module_id WHERE m.course_id=$1),
+		       (SELECT count(*) FROM lesson_progress lp JOIN lessons l ON l.id=lp.lesson_id
+		          JOIN modules m ON m.id=l.module_id WHERE m.course_id=$1 AND lp.user_id=$2)`,
+		courseID, callerID(c)).Scan(&total, &done)
+	completed := total > 0 && done >= total
+	if completed {
+		_, _ = h.Pool.Exec(c.Context(),
+			`UPDATE course_enrollments SET status='completed', completed_at=now()
+			 WHERE course_id=$1 AND user_id=$2 AND status<>'completed'`, courseID, callerID(c))
+		h.issueCertificate(c, courseID)
+	}
+	return c.JSON(fiber.Map{"lesson_id": lessonID, "completed": true, "course_completed": completed})
+}
+
+// ---- Assessments (student) -------------------------------------------------
+
+// TakeAssessment returns the questions WITHOUT the correct answers.
+func (h *Handlers) TakeAssessment(c *fiber.Ctx) error {
+	assessID := c.Params("id")
+	var courseID string
+	var published bool
+	if err := h.Pool.QueryRow(c.Context(),
+		`SELECT course_id, is_published FROM assessments WHERE id=$1`, assessID).Scan(&courseID, &published); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "assessment not found")
+	}
+	if !published || !h.isEnrolled(c, courseID) {
+		return fiber.NewError(fiber.StatusForbidden, "not available")
+	}
+	rows, err := h.Pool.Query(c.Context(),
+		`SELECT id, prompt, type, options, points FROM questions WHERE assessment_id=$1 ORDER BY position`, assessID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "load failed")
+	}
+	defer rows.Close()
+	qs := []fiber.Map{}
+	for rows.Next() {
+		var id, prompt, qtype string
+		var optsRaw []byte
+		var points float64
+		if err := rows.Scan(&id, &prompt, &qtype, &optsRaw, &points); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		var opts []string
+		_ = json.Unmarshal(optsRaw, &opts)
+		qs = append(qs, fiber.Map{"id": id, "prompt": prompt, "type": qtype, "options": opts, "points": points})
+	}
+	return c.JSON(fiber.Map{"assessment_id": assessID, "questions": qs})
+}
+
+// SubmitAssessment stores answers, auto-grades objective questions, and leaves
+// essay/short answers for manual grading.
+func (h *Handlers) SubmitAssessment(c *fiber.Ctx) error {
+	assessID := c.Params("id")
+	var courseID string
+	var published bool
+	if err := h.Pool.QueryRow(c.Context(),
+		`SELECT course_id, is_published FROM assessments WHERE id=$1`, assessID).Scan(&courseID, &published); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "assessment not found")
+	}
+	if !published || !h.isEnrolled(c, courseID) {
+		return fiber.NewError(fiber.StatusForbidden, "not available")
+	}
+	var req struct {
+		Answers map[string]string `json:"answers"` // {question_id: answer}
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+
+	// Grade objective questions; detect if any need manual grading.
+	rows, err := h.Pool.Query(c.Context(),
+		`SELECT id, type, correct, points FROM questions WHERE assessment_id=$1`, assessID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "grade load failed")
+	}
+	defer rows.Close()
+	var autoScore float64
+	needsManual := false
+	for rows.Next() {
+		var id, qtype, correct string
+		var points float64
+		if err := rows.Scan(&id, &qtype, &correct, &points); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		switch qtype {
+		case "mcq", "truefalse":
+			if strings.EqualFold(strings.TrimSpace(req.Answers[id]), strings.TrimSpace(correct)) {
+				autoScore += points
+			}
+		default:
+			needsManual = true
+		}
+	}
+	answersJSON, _ := json.Marshal(req.Answers)
+	status := "graded"
+	var score any = autoScore
+	if needsManual {
+		status = "submitted"
+		score = nil // pending manual grading
+	}
+	_, err = h.Pool.Exec(c.Context(), `
+		INSERT INTO submissions (assessment_id, user_id, answers, score, status)
+		VALUES ($1,$2,$3,$4,$5)
+		ON CONFLICT (assessment_id, user_id)
+		DO UPDATE SET answers=EXCLUDED.answers, score=EXCLUDED.score, status=EXCLUDED.status, submitted_at=now()`,
+		assessID, callerID(c), string(answersJSON), score, status)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "submit failed")
+	}
+	return c.JSON(fiber.Map{"assessment_id": assessID, "status": status,
+		"auto_score": autoScore, "needs_manual_grading": needsManual})
+}
+
+// MyGrades: the caller's graded submissions.
+func (h *Handlers) MyGrades(c *fiber.Ctx) error {
+	rows, err := h.Pool.Query(c.Context(), `
+		SELECT a.title, c.title, s.score, a.max_score, s.status, s.feedback
+		FROM submissions s JOIN assessments a ON a.id=s.assessment_id JOIN courses c ON c.id=a.course_id
+		WHERE s.user_id=$1 ORDER BY s.submitted_at DESC`, callerID(c))
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "load failed")
+	}
+	defer rows.Close()
+	out := []fiber.Map{}
+	for rows.Next() {
+		var atitle, ctitle, status, feedback string
+		var score, max *float64
+		if err := rows.Scan(&atitle, &ctitle, &score, &max, &status, &feedback); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		out = append(out, fiber.Map{"assessment": atitle, "course": ctitle, "score": score,
+			"max_score": max, "status": status, "feedback": feedback})
+	}
+	return c.JSON(fiber.Map{"grades": out})
+}
+
+// MyTranscript: dashboard summary (counts + certificates).
+func (h *Handlers) MyTranscript(c *fiber.Ctx) error {
+	var enrolled, completed, certs int
+	_ = h.Pool.QueryRow(c.Context(), `
+		SELECT (SELECT count(*) FROM course_enrollments WHERE user_id=$1),
+		       (SELECT count(*) FROM course_enrollments WHERE user_id=$1 AND status='completed'),
+		       (SELECT count(*) FROM certificates WHERE user_id=$1)`, callerID(c)).Scan(&enrolled, &completed, &certs)
+	return c.JSON(fiber.Map{"enrolled": enrolled, "completed": completed, "certificates": certs})
+}
+
+func (h *Handlers) MyCertificates(c *fiber.Ctx) error {
+	rows, err := h.Pool.Query(c.Context(), `
+		SELECT cert.serial, c.title, cert.issued_at FROM certificates cert
+		JOIN courses c ON c.id=cert.course_id WHERE cert.user_id=$1 ORDER BY cert.issued_at DESC`, callerID(c))
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "load failed")
+	}
+	defer rows.Close()
+	out := []fiber.Map{}
+	for rows.Next() {
+		var serial, title string
+		var at any
+		if err := rows.Scan(&serial, &title, &at); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		out = append(out, fiber.Map{"serial": serial, "course": title, "issued_at": at})
+	}
+	return c.JSON(fiber.Map{"certificates": out})
+}
+
+// MyCalendar: upcoming sessions + assessment due dates for enrolled courses.
+func (h *Handlers) MyCalendar(c *fiber.Ctx) error {
+	rows, err := h.Pool.Query(c.Context(), `
+		SELECT 'session' AS kind, cs.title, cs.starts_at AS at, c.title AS course
+		FROM class_sessions cs JOIN courses c ON c.id=cs.course_id
+		JOIN course_enrollments ce ON ce.course_id=c.id AND ce.user_id=$1
+		WHERE cs.starts_at >= now()
+		UNION ALL
+		SELECT 'assessment_due', a.title, a.due_at, c.title
+		FROM assessments a JOIN courses c ON c.id=a.course_id
+		JOIN course_enrollments ce ON ce.course_id=c.id AND ce.user_id=$1
+		WHERE a.due_at IS NOT NULL AND a.due_at >= now() AND a.is_published
+		ORDER BY at`, callerID(c))
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "calendar failed")
+	}
+	defer rows.Close()
+	out := []fiber.Map{}
+	for rows.Next() {
+		var kind, title, course string
+		var at any
+		if err := rows.Scan(&kind, &title, &at, &course); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		out = append(out, fiber.Map{"kind": kind, "title": title, "at": at, "course": course})
+	}
+	return c.JSON(fiber.Map{"calendar": out})
+}
+
+// SendMessage: direct message to another user.
+func (h *Handlers) SendMessage(c *fiber.Ctx) error {
+	var req struct {
+		RecipientID string `json:"recipient_id"`
+		Body        string `json:"body"`
+	}
+	if err := c.BodyParser(&req); err != nil || req.RecipientID == "" || strings.TrimSpace(req.Body) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "recipient_id and body required")
+	}
+	var id string
+	if err := h.Pool.QueryRow(c.Context(),
+		`INSERT INTO messages (sender_id, recipient_id, body) VALUES ($1,$2,$3) RETURNING id`,
+		callerID(c), req.RecipientID, req.Body).Scan(&id); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "send failed")
+	}
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "sent": true})
+}
+
+// Inbox: messages received by the caller.
+func (h *Handlers) Inbox(c *fiber.Ctx) error {
+	rows, err := h.Pool.Query(c.Context(), `
+		SELECT m.id, u.full_name, m.body, m.read_at IS NOT NULL, m.created_at
+		FROM messages m JOIN users u ON u.id=m.sender_id
+		WHERE m.recipient_id=$1 ORDER BY m.created_at DESC LIMIT 200`, callerID(c))
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "load failed")
+	}
+	defer rows.Close()
+	out := []fiber.Map{}
+	for rows.Next() {
+		var id, from, body string
+		var read bool
+		var at any
+		if err := rows.Scan(&id, &from, &body, &read, &at); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		out = append(out, fiber.Map{"id": id, "from": from, "body": body, "read": read, "at": at})
+	}
+	return c.JSON(fiber.Map{"inbox": out})
+}
+
+// PostForum: create or append to a course forum thread (enrolled users).
+func (h *Handlers) PostForum(c *fiber.Ctx) error {
+	courseID := c.Params("id")
+	if !h.isEnrolled(c, courseID) && callerRole(c) == "student" {
+		return fiber.NewError(fiber.StatusForbidden, "not enrolled")
+	}
+	var req struct {
+		ThreadID string `json:"thread_id"`
+		Title    string `json:"title"`
+		Body     string `json:"body"`
+	}
+	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Body) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "body required")
+	}
+	threadID := req.ThreadID
+	if threadID == "" {
+		if strings.TrimSpace(req.Title) == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "title required for a new thread")
+		}
+		if err := h.Pool.QueryRow(c.Context(),
+			`INSERT INTO forum_threads (course_id, author_id, title) VALUES ($1,$2,$3) RETURNING id`,
+			courseID, callerID(c), req.Title).Scan(&threadID); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "thread failed")
+		}
+	}
+	var pid string
+	if err := h.Pool.QueryRow(c.Context(),
+		`INSERT INTO forum_posts (thread_id, author_id, body) VALUES ($1,$2,$3) RETURNING id`,
+		threadID, callerID(c), req.Body).Scan(&pid); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "post failed")
+	}
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"thread_id": threadID, "post_id": pid})
+}
+
+// ---- helpers ---------------------------------------------------------------
+
+func derefStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func (h *Handlers) isEnrolled(c *fiber.Ctx, courseID string) bool {
+	var ok bool
+	_ = h.Pool.QueryRow(c.Context(),
+		`SELECT EXISTS(SELECT 1 FROM course_enrollments WHERE course_id=$1 AND user_id=$2)`,
+		courseID, callerID(c)).Scan(&ok)
+	return ok
+}
+
+func (h *Handlers) issueCertificate(c *fiber.Ctx, courseID string) {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	serial := "ONROL-" + strings.ToUpper(hex.EncodeToString(b))
+	_, _ = h.Pool.Exec(c.Context(),
+		`INSERT INTO certificates (user_id, course_id, serial) VALUES ($1,$2,$3)
+		 ON CONFLICT (user_id, course_id) DO NOTHING`, callerID(c), courseID, serial)
+}
+
+// (unused import guard removed at build) — pgx kept for potential row helpers.
+var _ = pgx.ErrNoRows
