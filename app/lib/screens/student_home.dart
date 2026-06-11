@@ -1478,13 +1478,30 @@ class _StudentHomeState extends State<StudentHome> {
       default:
         return (CupertinoIcons.square_arrow_right, 'Log Out', 'See you soon!', [
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Column(children: [
-              const Icon(CupertinoIcons.square_arrow_right, size: 48, color: _orange),
-              const SizedBox(height: 12),
-              Text('Are you sure you want to log out, $_firstName? Your progress is saved and you can continue anytime.',
-                  textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 15, color: const Color(0xFF666666), height: 1.6)),
-              const SizedBox(height: 24),
+            padding: const EdgeInsets.symmetric(vertical: 18),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              // Soft gradient badge with a gentle pop-in.
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.7, end: 1),
+                duration: const Duration(milliseconds: 420),
+                curve: Curves.easeOutBack,
+                builder: (_, v, child) => Transform.scale(scale: v, child: child),
+                child: Container(
+                  width: 88, height: 88, alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                    shape: BoxShape.circle,
+                    boxShadow: [BoxShadow(color: _orange.withOpacity(0.35), blurRadius: 22, offset: const Offset(0, 10))],
+                  ),
+                  child: const Icon(CupertinoIcons.hand_raised_fill, size: 38, color: Colors.white),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text('Heading off, $_firstName?', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: _navy)),
+              const SizedBox(height: 6),
+              Text('Your progress is saved — jump back in anytime.',
+                  textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13.5, color: _grey, height: 1.5)),
+              const SizedBox(height: 26),
               Row(children: [
                 Expanded(child: _outlineButton('Stay', () => Navigator.of(context).pop())),
                 const SizedBox(width: 12),
