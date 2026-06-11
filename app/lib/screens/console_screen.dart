@@ -72,6 +72,63 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     }
   }
 
+  Future<void> _setCourseStatus(String courseId, String status) async {
+    try {
+      await widget.auth.apiPatch('/api/v1/manage/courses/$courseId', {'status': status});
+      _toast(status == 'archived' ? 'Course archived' : 'Course restored to draft');
+      _load();
+    } catch (_) {
+      _toast('Could not update');
+    }
+  }
+
+  Future<void> _deleteCourse(String courseId, String title) async {
+    final yes = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('Delete course'),
+        content: Text('Delete "$title" and all its content permanently? This cannot be undone. Consider archiving instead.'),
+        actions: [
+          CupertinoDialogAction(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          CupertinoDialogAction(isDestructiveAction: true, onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (yes != true) return;
+    try {
+      await widget.auth.apiDelete('/api/v1/manage/courses/$courseId');
+      _toast('Course deleted');
+      _load();
+    } catch (_) {
+      _toast('Could not delete');
+    }
+  }
+
+  // Archive / restore / delete a course via an action sheet.
+  void _courseMenu(Map<String, dynamic> c) {
+    final id = c['id'].toString();
+    final title = c['title']?.toString() ?? 'Course';
+    final archived = (c['status']?.toString() ?? '') == 'archived';
+    showCupertinoModalPopup<void>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text(title),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () { Navigator.pop(ctx); archived ? _setCourseStatus(id, 'draft') : _setCourseStatus(id, 'archived'); },
+            child: Text(archived ? 'Restore to draft' : 'Archive course'),
+          ),
+          CupertinoActionSheetAction(
+            isDestructiveAction: true,
+            onPressed: () { Navigator.pop(ctx); _deleteCourse(id, title); },
+            child: const Text('Delete course'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+      ),
+    );
+  }
+
   void _toast(String m) => ScaffoldMessenger.of(context)
       .showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
 
@@ -396,15 +453,24 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
             ]),
           ),
           // One-tap publish: students only see PUBLISHED courses in the catalog.
+          // (Archived courses can't be published until restored.)
           Column(mainAxisSize: MainAxisSize.min, children: [
             CupertinoSwitch(
               value: status == 'published',
               activeTrackColor: AppleColors.green,
-              onChanged: (v) => _togglePublish(c['id'].toString(), v),
+              onChanged: status == 'archived' ? null : (v) => _togglePublish(c['id'].toString(), v),
             ),
-            Text(status == 'published' ? 'Visible' : 'Hidden',
+            Text(status == 'archived' ? 'Archived' : status == 'published' ? 'Visible' : 'Hidden',
                 style: AppleTheme.footnote(context).copyWith(color: status == 'published' ? AppleColors.green : color)),
           ]),
+          // Archive / delete actions.
+          GestureDetector(
+            onTap: () => _courseMenu(c),
+            child: Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: Icon(CupertinoIcons.ellipsis_vertical, size: 20, color: Palette.of(context).secondary),
+            ),
+          ),
         ]),
       ),
     );
