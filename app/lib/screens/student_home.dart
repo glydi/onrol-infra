@@ -472,7 +472,10 @@ class _StudentHomeState extends State<StudentHome> {
           padding: EdgeInsets.only(right: c < 4 ? gap : 0, bottom: r < 4 ? gap : 0),
           child: tile == null
               ? SizedBox(width: cell, height: cell)
-              : _GridCell(tile: tile, size: cell, onTap: (c) => _openPanel(tile.panel, origin: c)),
+              : Hero(
+                  tag: 'panel-${tile.panel}',
+                  child: _GridCell(tile: tile, size: cell, onTap: (c) => _openPanel(tile.panel, origin: c)),
+                ),
         ));
       }
       rows.add(Row(mainAxisSize: MainAxisSize.min, children: cells));
@@ -721,7 +724,7 @@ class _StudentHomeState extends State<StudentHome> {
 
   void _openPanel(String key, {Offset? origin}) {
     final d = _panel(key);
-    _showPanel(d.$1, d.$2, d.$3, d.$4, origin: origin);
+    _showPanel(d.$1, d.$2, d.$3, d.$4, heroTag: 'panel-$key');
   }
 
   // Course content viewer — modules & lessons from /me/courses/:id/content.
@@ -1019,124 +1022,13 @@ class _StudentHomeState extends State<StudentHome> {
     ]);
   }
 
-  void _showPanel(IconData icon, String title, String sub, List<Widget> body, {Offset? origin}) {
-    final screen = MediaQuery.of(context).size;
-    // Scale-from-origin (macOS Launchpad style): the panel grows out of the
-    // tapped tile's location. Falls back to centre when there's no origin.
-    final align = origin == null
-        ? Alignment.center
-        : Alignment(
-            (origin.dx / screen.width * 2 - 1).clamp(-1.0, 1.0),
-            (origin.dy / screen.height * 2 - 1).clamp(-1.0, 1.0),
-          );
-    showGeneralDialog(
-      context: context,
-      barrierLabel: 'panel',
-      barrierDismissible: true,
-      barrierColor: const Color(0x401A1A2E),
-      transitionDuration: const Duration(milliseconds: 560),
-      transitionBuilder: (ctx, anim, sec, child) {
-        // Slow, neat expand: easeOutCubic settles gently; a gentle start scale
-        // keeps the heavy backdrop-blur smooth while it grows from the tile.
-        final c = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
-        return FadeTransition(
-          opacity: c,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.78, end: 1.0).animate(c),
-            alignment: align,
-            child: RepaintBoundary(child: child),
-          ),
-        );
-      },
-      pageBuilder: (ctx, anim, sec) {
-        // Rebuild the whole panel when the theme changes so every label and
-        // surface colour re-reads `_isDark`. Otherwise toggling Dark Mode from
-        // inside this popup leaves the text/surface in their old (light) colours,
-        // because `pageBuilder` runs only once when the panel opens.
-        return ValueListenableBuilder<ThemeMode>(
-          valueListenable: themeNotifier,
-          builder: (ctx, mode, _) {
-            _isDark = mode == ThemeMode.dark ||
-                (mode == ThemeMode.system && MediaQuery.platformBrightnessOf(ctx) == Brightness.dark);
-            final size = MediaQuery.of(ctx).size;
-            return Center(
-          // Material gives the text/inputs an ancestor (no yellow underlines).
-          child: Material(
-            type: MaterialType.transparency,
-            child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: size.width * 0.01, vertical: size.height * 0.01),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: BackdropFilter(
-                filter: ui.ImageFilter.blur(sigmaX: 26, sigmaY: 26),
-                child: Container(
-            width: size.width * 0.98,
-            height: size.height * 0.98,
-            padding: EdgeInsets.fromLTRB(20, MediaQuery.of(ctx).padding.top + 12, 20, 18),
-            // Frosted-glass sheet — a translucent gradient + bright highlight
-            // edge so the blurred dashboard glows through the panel.
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: _isDark
-                    ? [const Color(0xFF24262F).withOpacity(0.68), const Color(0xFF181A22).withOpacity(0.50)]
-                    : [Colors.white.withOpacity(0.66), Colors.white.withOpacity(0.44)],
-              ),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: _isDark ? Colors.white.withOpacity(0.14) : Colors.white.withOpacity(0.75), width: 1.2),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.35 : 0.10), blurRadius: 40, offset: const Offset(0, 18))],
-            ),
-            // Keyed on brightness so the re-used `body` widget instances (which
-            // Flutter would otherwise skip rebuilding) re-inflate and re-read the
-            // brightness-aware colours when Dark Mode is toggled.
-            child: KeyedSubtree(
-              key: ValueKey(_isDark),
-              child: SingleChildScrollView(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-                  // Back button (replaces the close ✕).
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: _Pressable(
-                      onTap: () => Navigator.of(ctx).pop(),
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          Icon(CupertinoIcons.chevron_back, size: 22, color: _orange),
-                          Text('Back', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: _orange)),
-                        ]),
-                      ),
-                    ),
-                  ),
-                  Row(children: [
-                    Container(
-                      width: 44, height: 44, alignment: Alignment.center,
-                      decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
-                      child: Icon(icon, size: 22, color: _orange),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(title, style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w700, color: _navy)),
-                        Text(sub, style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
-                      ]),
-                    ),
-                  ]),
-                  const SizedBox(height: 24),
-                  ...body,
-                ]),
-              ),
-            ),
-            ),
-            ),
-            ),
-            ),
-          ),
-        );
-          },
-        );
-      },
-    );
+  void _showPanel(IconData icon, String title, String sub, List<Widget> body, {Offset? origin, String? heroTag}) {
+    // iOS-style shared-element expansion: push a transparent route so the
+    // dashboard stays visible (blurred) behind, and let a Hero morph the tapped
+    // tile into the card. See [_PanelRoute] / [_HeroPanelModal].
+    Navigator.of(context).push(_PanelRoute(
+      child: _HeroPanelModal(icon: icon, title: title, sub: sub, body: body, heroTag: heroTag),
+    ));
   }
 
   // Returns (icon, title, subtitle, body widgets) for a panel key.
@@ -2194,6 +2086,144 @@ class _LiveDotState extends State<_LiveDot> with SingleTickerProviderStateMixin 
           ),
         );
       },
+    );
+  }
+}
+
+/// Transparent route for the popup card: keeps the dashboard visible behind so
+/// the Hero can morph the tile into the card, and lets us blur/dim the
+/// background inside the page (animated with the route).
+class _PanelRoute<T> extends PageRouteBuilder<T> {
+  _PanelRoute({required Widget child})
+      : super(
+          opaque: false,
+          barrierDismissible: false,
+          transitionDuration: const Duration(milliseconds: 460),
+          reverseTransitionDuration: const Duration(milliseconds: 360),
+          pageBuilder: (ctx, anim, sec) => child,
+          // Motion is handled by the Hero + the in-page animations.
+          transitionsBuilder: (ctx, anim, sec, c) => c,
+        );
+}
+
+/// iOS App-Store-style expanding card. A [Hero] morphs the tapped tile into the
+/// gradient header; the dashboard stays blurred/dimmed behind; the body fades
+/// in. Reverses smoothly on pop.
+class _HeroPanelModal extends StatelessWidget {
+  const _HeroPanelModal({required this.icon, required this.title, required this.sub, required this.body, this.heroTag});
+  final IconData icon;
+  final String title;
+  final String sub;
+  final List<Widget> body;
+  final String? heroTag;
+
+  @override
+  Widget build(BuildContext context) {
+    final anim = ModalRoute.of(context)!.animation!;
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (ctx, mode, _) {
+        _isDark = mode == ThemeMode.dark || (mode == ThemeMode.system && MediaQuery.platformBrightnessOf(ctx) == Brightness.dark);
+        final size = MediaQuery.of(ctx).size;
+        return Stack(children: [
+          // Blur + dim the dashboard behind (animated with the route). Tap to close.
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Navigator.of(ctx).maybePop(),
+              child: AnimatedBuilder(
+                animation: anim,
+                builder: (_, __) {
+                  final v = Curves.easeOut.transform(anim.value.clamp(0.0, 1.0));
+                  return BackdropFilter(
+                    filter: ui.ImageFilter.blur(sigmaX: 22 * v, sigmaY: 22 * v),
+                    child: Container(color: Colors.black.withOpacity(0.34 * v)),
+                  );
+                },
+              ),
+            ),
+          ),
+          Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: size.width < 680 ? 16 : 24, vertical: 36),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: 600, maxHeight: size.height * 0.86),
+                child: _card(ctx, anim),
+              ),
+            ),
+          ),
+        ]);
+      },
+    );
+  }
+
+  Widget _card(BuildContext ctx, Animation<double> anim) {
+    // The gradient header is the shared element that morphs from the tile.
+    final header = Material(
+      type: MaterialType.transparency,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 16, 18, 16),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Row(children: [
+          _Pressable(
+            onTap: () => Navigator.of(ctx).maybePop(),
+            child: Container(
+              width: 34, height: 34, alignment: Alignment.center,
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.22), borderRadius: BorderRadius.circular(10)),
+              child: const Icon(CupertinoIcons.chevron_back, size: 20, color: Colors.white),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Icon(icon, size: 26, color: Colors.white),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
+              Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12, color: Colors.white.withOpacity(0.9))),
+            ]),
+          ),
+        ]),
+      ),
+    );
+
+    return Material(
+      type: MaterialType.transparency,
+      child: KeyedSubtree(
+        key: ValueKey(_isDark),
+        child: Container(
+          width: double.infinity,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: _isDark ? const Color(0xFF1E2027) : Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.5 : 0.25), blurRadius: 48, offset: const Offset(0, 22))],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              heroTag != null ? Hero(tag: heroTag!, child: header) : header,
+              Flexible(
+                fit: FlexFit.loose,
+                child: FadeTransition(
+                  opacity: CurvedAnimation(parent: anim, curve: const Interval(0.35, 1.0, curve: Curves.easeOut)),
+                  child: SlideTransition(
+                    position: Tween<Offset>(begin: const Offset(0, 0.05), end: Offset.zero)
+                        .animate(CurvedAnimation(parent: anim, curve: const Interval(0.35, 1.0, curve: Curves.easeOutCubic))),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: body),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
