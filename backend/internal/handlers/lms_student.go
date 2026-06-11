@@ -178,7 +178,7 @@ func (h *Handlers) SelfEnroll(c *fiber.Ctx) error {
 // MyCourses: enrolled courses with completion percentage.
 func (h *Handlers) MyCourses(c *fiber.Ctx) error {
 	rows, err := h.Pool.Query(c.Context(), `
-		SELECT c.id, c.title, ce.status,
+		SELECT c.id, c.title, ce.status, COALESCE(c.image_url,''),
 		  (SELECT count(*) FROM lessons l JOIN modules m ON m.id=l.module_id WHERE m.course_id=c.id) AS total,
 		  (SELECT count(*) FROM lesson_progress lp JOIN lessons l ON l.id=lp.lesson_id
 		     JOIN modules m ON m.id=l.module_id WHERE m.course_id=c.id AND lp.user_id=$1) AS done
@@ -190,9 +190,9 @@ func (h *Handlers) MyCourses(c *fiber.Ctx) error {
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var id, title, status string
+		var id, title, status, img string
 		var total, done int
-		if err := rows.Scan(&id, &title, &status, &total, &done); err != nil {
+		if err := rows.Scan(&id, &title, &status, &img, &total, &done); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		pct := 0
@@ -200,7 +200,7 @@ func (h *Handlers) MyCourses(c *fiber.Ctx) error {
 			pct = done * 100 / total
 		}
 		out = append(out, fiber.Map{"id": id, "title": title, "status": status, "percent": pct,
-			"lessons_done": done, "lessons_total": total})
+			"image_url": img, "lessons_done": done, "lessons_total": total})
 	}
 	return c.JSON(fiber.Map{"my_courses": out})
 }

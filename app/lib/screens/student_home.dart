@@ -1210,6 +1210,7 @@ class _StudentHomeState extends State<StudentHome> {
                       done: done,
                       total: total,
                       percent: ((m['percent'] ?? 0) as num).toInt(),
+                      imageUrl: m['image_url']?.toString(),
                       onOpen: () => _openContent(m['id'].toString(), m['title']?.toString() ?? 'Course'),
                     ),
                   );
@@ -2982,13 +2983,14 @@ class _EntranceState extends State<_Entrance> with SingleTickerProviderStateMixi
 
 /// A rich course card: gradient cover, animated progress bar, hover lift.
 class _CourseCard extends StatefulWidget {
-  const _CourseCard({required this.index, required this.title, required this.done, required this.total, required this.percent, required this.onOpen});
+  const _CourseCard({required this.index, required this.title, required this.done, required this.total, required this.percent, required this.onOpen, this.imageUrl});
   final int index;
   final String title;
   final int done;
   final int total;
   final int percent;
   final VoidCallback onOpen;
+  final String? imageUrl; // admin-set cover (data URI or URL)
 
   @override
   State<_CourseCard> createState() => _CourseCardState();
@@ -3004,6 +3006,33 @@ class _CourseCardState extends State<_CourseCard> {
     [Color(0xFFF0653C), Color(0xFFFF9166)],
     [Color(0xFFE8542E), Color(0xFFFF7A4D)],
   ];
+
+  // The 58×58 cover: admin image if present, otherwise a gradient + book glyph.
+  Widget _cover(List<Color> cover) {
+    final url = widget.imageUrl;
+    Widget? im;
+    if (url != null && url.isNotEmpty) {
+      if (url.startsWith('data:')) {
+        try {
+          im = Image.memory(base64Decode(url.substring(url.indexOf(',') + 1)), width: 58, height: 58, fit: BoxFit.cover);
+        } catch (_) {}
+      } else if (url.startsWith('http')) {
+        im = Image.network(url, width: 58, height: 58, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _glyphCover(cover));
+      }
+    }
+    if (im != null) return ClipRRect(borderRadius: BorderRadius.circular(14), child: im);
+    return _glyphCover(cover);
+  }
+
+  Widget _glyphCover(List<Color> cover) => Container(
+        width: 58, height: 58, alignment: Alignment.center,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(colors: cover, begin: Alignment.topLeft, end: Alignment.bottomRight),
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [BoxShadow(color: cover.last.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 4))],
+        ),
+        child: const Icon(CupertinoIcons.book_fill, size: 24, color: Colors.white),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -3028,16 +3057,8 @@ class _CourseCardState extends State<_CourseCard> {
             boxShadow: [BoxShadow(color: _orange.withOpacity(_hover ? 0.22 : 0.07), blurRadius: _hover ? 22 : 12, offset: Offset(0, _hover ? 9 : 5))],
           ),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // Gradient cover with the book glyph + a faint completion ring.
-            Container(
-              width: 58, height: 58, alignment: Alignment.center,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(colors: cover, begin: Alignment.topLeft, end: Alignment.bottomRight),
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [BoxShadow(color: cover.last.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 4))],
-              ),
-              child: const Icon(CupertinoIcons.book_fill, size: 24, color: Colors.white),
-            ),
+            // Admin cover image if set, else a gradient cover with the book glyph.
+            _cover(cover),
             const SizedBox(width: 14),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

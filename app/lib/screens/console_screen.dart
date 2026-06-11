@@ -1,5 +1,10 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
+import 'package:image_picker/image_picker.dart';
 
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
@@ -435,6 +440,37 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     );
   }
 
+  // Pick a cover image and return it as a downscaled JPEG data URI (≤ ~900 KB),
+  // or null if cancelled/failed. Same approach as profile avatars.
+  Future<String?> _pickImageDataUri() async {
+    try {
+      final x = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 1280, maxHeight: 1280, imageQuality: 82);
+      if (x == null) return null;
+      final raw = await x.readAsBytes();
+      if (raw.isEmpty) return null;
+      Uint8List out;
+      String mime;
+      final decoded = img.decodeImage(raw);
+      if (decoded != null) {
+        // Cover ratio ~16:9, width 800.
+        final resized = img.copyResize(decoded, width: decoded.width > 800 ? 800 : decoded.width);
+        out = img.encodeJpg(resized, quality: 80);
+        mime = 'image/jpeg';
+      } else {
+        out = raw;
+        mime = x.mimeType ?? 'image/png';
+      }
+      if (out.lengthInBytes > 900000) {
+        _toast('Image too large — try a smaller one.');
+        return null;
+      }
+      return 'data:$mime;base64,${base64Encode(out)}';
+    } catch (_) {
+      _toast('Could not load that image.');
+      return null;
+    }
+  }
+
   Future<void> _newCourse() async {
     // Fetch instructors for the assignment dropdown.
     List<dynamic> instructors = [];
@@ -450,6 +486,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
 
     final title = TextEditingController();
     final desc = TextEditingController();
+    final imageUrl = TextEditingController();
+    String? imageData; // uploaded data URI (takes priority over the URL field)
     int enrollType = 0; // self, manual
     String instructorId = instructors.first['id'].toString();
 
@@ -460,6 +498,19 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         sheetField(title, 'Course title', CupertinoIcons.textformat),
         const SizedBox(height: 10),
         sheetField(desc, 'Description', CupertinoIcons.text_alignleft),
+        const SizedBox(height: 16),
+        _label(context, 'Cover image'),
+        const SizedBox(height: 6),
+        _CourseImagePicker(
+          dataUri: imageData,
+          urlController: imageUrl,
+          onUpload: () async {
+            final d = await _pickImageDataUri();
+            if (d != null) setS(() => imageData = d);
+          },
+          onClear: () => setS(() => imageData = null),
+          onUrlChanged: () => setS(() {}),
+        ),
         const SizedBox(height: 16),
         _label(context, 'Assign instructor'),
         const SizedBox(height: 6),
@@ -476,11 +527,13 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       onSubmit: () async {
         if (title.text.trim().isEmpty) return 'Title is required';
         try {
+          final image = imageData ?? (imageUrl.text.trim().isNotEmpty ? imageUrl.text.trim() : null);
           await widget.auth.apiPost('/api/v1/manage/courses', {
             'title': title.text.trim(),
             'description': desc.text.trim(),
             'enroll_type': enrollType == 0 ? 'self' : 'manual',
             'instructor_id': instructorId,
+            if (image != null) 'image_url': image,
           });
           return null;
         } on ApiException catch (e) {
@@ -497,6 +550,291 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
 
 Widget _label(BuildContext context, String t) =>
     Align(alignment: Alignment.centerLeft, child: Text(t, style: AppleTheme.footnote(context)));
+
+/// Proper quiz builder: list a quiz's questions (with the correct answer
+/// marked), add questions (MCQ with real options + pick-the-correct, true/false,
+/// short answer), and delete questions.
+class _QuizBuilder extends StatefulWidget {
+  const _QuizBuilder({required this.auth, required this.assessmentId, required this.title});
+  final AuthService auth;
+  final String assessmentId;
+  final String title;
+  @override
+  State<_QuizBuilder> createState() => _QuizBuilderState();
+}
+
+class _QuizBuilderState extends State<_QuizBuilder> {
+  List<dynamic> _questions = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final r = await widget.auth.apiGet('/api/v1/manage/assessments/${widget.assessmentId}/questions');
+      _questions = (ApiClient.decode(r)['questions'] as List?) ?? [];
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _delete(String id) async {
+    try {
+      await widget.auth.apiDelete('/api/v1/manage/questions/$id');
+      _load();
+    } catch (_) {}
+  }
+
+  Future<void> _add() async {
+    final prompt = TextEditingController();
+    final points = TextEditingController(text: '1');
+    final shortAns = TextEditingController();
+    final opts = <TextEditingController>[TextEditingController(), TextEditingController()];
+    int type = 0; // mcq, truefalse, short
+    int correctIdx = 0; // for mcq + truefalse
+    const types = ['mcq', 'truefalse', 'short'];
+
+    final ok = await showFormSheet(context, title: 'Add Question', builder: (setS) {
+      final rows = <Widget>[
+        sheetField(prompt, 'Question prompt', CupertinoIcons.text_quote),
+        const SizedBox(height: 10),
+        AppleSegmented(labels: const ['MCQ', 'True/False', 'Short'], selected: type, onChanged: (i) => setS(() {
+          type = i;
+          correctIdx = 0;
+        })),
+        const SizedBox(height: 12),
+      ];
+      if (type == 0) {
+        rows.add(_label(context, 'Options — tap the circle to mark the correct one'));
+        rows.add(const SizedBox(height: 6));
+        for (var i = 0; i < opts.length; i++) {
+          rows.add(Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(children: [
+              GestureDetector(
+                onTap: () => setS(() => correctIdx = i),
+                child: Icon(correctIdx == i ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle,
+                    color: correctIdx == i ? AppleColors.green : Palette.of(context).secondary, size: 24),
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: sheetField(opts[i], 'Option ${i + 1}', CupertinoIcons.circle_grid_hex)),
+              if (opts.length > 2) ...[
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: () => setS(() {
+                    opts.removeAt(i);
+                    if (correctIdx >= opts.length) correctIdx = opts.length - 1;
+                  }),
+                  child: const Icon(CupertinoIcons.minus_circle, size: 20, color: AppleColors.red),
+                ),
+              ],
+            ]),
+          ));
+        }
+        rows.add(Align(
+          alignment: Alignment.centerLeft,
+          child: GestureDetector(
+            onTap: () => setS(() => opts.add(TextEditingController())),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(CupertinoIcons.add_circled, size: 18, color: Palette.of(context).accent),
+              const SizedBox(width: 4),
+              Text('Add option', style: AppleTheme.footnote(context).copyWith(color: Palette.of(context).accent, fontWeight: FontWeight.w600)),
+            ]),
+          ),
+        ));
+      } else if (type == 1) {
+        rows.add(_label(context, 'Correct answer'));
+        rows.add(const SizedBox(height: 6));
+        rows.add(AppleSegmented(labels: const ['True', 'False'], selected: correctIdx, onChanged: (i) => setS(() => correctIdx = i)));
+      } else {
+        rows.add(sheetField(shortAns, 'Correct answer', CupertinoIcons.checkmark_alt_circle));
+      }
+      rows.add(const SizedBox(height: 12));
+      rows.add(sheetField(points, 'Points', CupertinoIcons.number, keyboard: TextInputType.number));
+      return rows;
+    }, onSubmit: () async {
+      if (prompt.text.trim().isEmpty) return 'Prompt required';
+      List<String> options;
+      String correct;
+      if (type == 0) {
+        options = opts.map((c) => c.text.trim()).where((s) => s.isNotEmpty).toList();
+        if (options.length < 2) return 'Add at least two options';
+        if (correctIdx >= options.length) return 'Pick the correct option';
+        correct = options[correctIdx];
+      } else if (type == 1) {
+        options = ['true', 'false'];
+        correct = correctIdx == 0 ? 'true' : 'false';
+      } else {
+        options = [];
+        correct = shortAns.text.trim();
+      }
+      try {
+        await widget.auth.apiPost('/api/v1/manage/assessments/${widget.assessmentId}/questions', {
+          'prompt': prompt.text.trim(),
+          'type': types[type],
+          'options': options,
+          'correct': correct,
+          'points': double.tryParse(points.text.trim()) ?? 1,
+        });
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final w = MediaQuery.of(context).size.width;
+    final hp = (w > 760 ? (w - 720) / 2 : 14.0).clamp(14, 400).toDouble();
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: p.bg,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: IconButton(icon: const Icon(CupertinoIcons.chevron_left), onPressed: () => Navigator.pop(context)),
+        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Quiz builder', style: AppleTheme.headline(context)),
+          Text(widget.title, style: AppleTheme.footnote(context)),
+        ]),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: p.accent,
+        onPressed: _add,
+        icon: const Icon(CupertinoIcons.add, color: Colors.white),
+        label: const Text('Add question', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+      ),
+      body: _loading
+          ? const Center(child: CupertinoActivityIndicator())
+          : ListView(
+              padding: EdgeInsets.fromLTRB(hp, 12, hp, 96),
+              children: [
+                if (_questions.isEmpty)
+                  AppleCard(child: Text('No questions yet. Tap “Add question” to build this quiz.', style: AppleTheme.footnote(context)))
+                else
+                  ..._questions.asMap().entries.map((e) => _questionCard(e.key + 1, e.value as Map<String, dynamic>)),
+              ],
+            ),
+    );
+  }
+
+  Widget _questionCard(int n, Map<String, dynamic> q) {
+    final options = (q['options'] as List?) ?? [];
+    final type = q['type']?.toString() ?? 'mcq';
+    final correct = q['correct']?.toString() ?? '';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: AppleCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: Text('$n. ${q['prompt'] ?? ''}', style: AppleTheme.body(context).copyWith(fontWeight: FontWeight.w700))),
+            Text('${q['points'] ?? 1} pt', style: AppleTheme.footnote(context)),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () => _delete(q['id'].toString()),
+              child: const Icon(CupertinoIcons.trash, size: 18, color: AppleColors.red),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          if (type == 'short')
+            Row(children: [
+              const Icon(CupertinoIcons.checkmark_alt_circle_fill, size: 16, color: AppleColors.green),
+              const SizedBox(width: 6),
+              Expanded(child: Text('Answer: $correct', style: AppleTheme.footnote(context))),
+            ])
+          else
+            ...options.map((o) {
+              final isCorrect = o.toString() == correct;
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(children: [
+                  Icon(isCorrect ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle,
+                      size: 16, color: isCorrect ? AppleColors.green : Palette.of(context).secondary),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(o.toString(),
+                      style: AppleTheme.body(context).copyWith(fontSize: 14,
+                          color: isCorrect ? AppleColors.green : Palette.of(context).label,
+                          fontWeight: isCorrect ? FontWeight.w700 : FontWeight.w400))),
+                ]),
+              );
+            }),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Course cover image control: a preview + Upload button + paste-URL field.
+/// Upload wins over the URL when both are set.
+class _CourseImagePicker extends StatelessWidget {
+  const _CourseImagePicker({
+    required this.dataUri,
+    required this.urlController,
+    required this.onUpload,
+    required this.onClear,
+    this.onUrlChanged,
+  });
+  final String? dataUri;
+  final TextEditingController urlController;
+  final VoidCallback onUpload;
+  final VoidCallback onClear;
+  final VoidCallback? onUrlChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final preview = dataUri ?? (urlController.text.trim().startsWith('http') ? urlController.text.trim() : null);
+    Widget? pic;
+    if (preview != null) {
+      if (preview.startsWith('data:')) {
+        try {
+          pic = Image.memory(base64Decode(preview.substring(preview.indexOf(',') + 1)),
+              height: 130, width: double.infinity, fit: BoxFit.cover);
+        } catch (_) {}
+      } else {
+        pic = Image.network(preview, height: 130, width: double.infinity, fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const SizedBox());
+      }
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (pic != null) ...[
+        ClipRRect(borderRadius: BorderRadius.circular(10), child: pic),
+        const SizedBox(height: 8),
+      ],
+      Row(children: [
+        Expanded(child: PrimaryButton(
+          label: dataUri == null ? 'Upload image' : 'Change image',
+          icon: CupertinoIcons.photo, square: true, onPressed: onUpload)),
+        if (dataUri != null) ...[
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: onClear,
+            child: Container(
+              padding: const EdgeInsets.all(13),
+              decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(8)),
+              child: const Icon(CupertinoIcons.trash, size: 18, color: AppleColors.red),
+            ),
+          ),
+        ],
+      ]),
+      const SizedBox(height: 8),
+      CupertinoTextField(
+        controller: urlController,
+        placeholder: 'or paste an image URL',
+        padding: const EdgeInsets.all(12),
+        style: TextStyle(color: p.label, fontSize: 14),
+        onChanged: (_) => onUrlChanged?.call(),
+        decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(8)),
+      ),
+    ]);
+  }
+}
 
 /// Friendly local time from an ISO-8601 string, e.g. "Jun 11, 5:30 PM".
 String _fmtTime(String? iso) {
@@ -934,53 +1272,18 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
               Text('${isQuiz ? 'Quiz' : 'Assignment'} · ${a['max_score'] ?? 100} pts${isQuiz ? ' · $qCount questions' : ''}', style: AppleTheme.footnote(context)),
             ]),
           ),
-          if (isQuiz) _smallButton('Question', CupertinoIcons.add, () => _addQuestion(a['id'].toString())),
+          if (isQuiz) _smallButton('Build', CupertinoIcons.slider_horizontal_3, () => _openQuizBuilder(a['id'].toString(), a['title']?.toString() ?? 'Quiz')),
         ]),
       ),
     );
   }
 
-  Future<void> _addQuestion(String assessmentId) async {
-    final prompt = TextEditingController();
-    final options = TextEditingController();
-    final correct = TextEditingController();
-    final points = TextEditingController(text: '1');
-    int type = 0; // mcq, truefalse, short
-    const types = ['mcq', 'truefalse', 'short'];
-    final ok = await showFormSheet(context, title: 'Add Question', builder: (setS) => [
-      sheetField(prompt, 'Question prompt', CupertinoIcons.text_quote),
-      const SizedBox(height: 10),
-      AppleSegmented(labels: const ['MCQ', 'True/False', 'Short'], selected: type, onChanged: (i) => setS(() => type = i)),
-      if (type == 0) ...[
-        const SizedBox(height: 10),
-        sheetField(options, 'Options (comma separated)', CupertinoIcons.list_bullet),
-      ],
-      const SizedBox(height: 10),
-      sheetField(correct, type == 1 ? 'Correct (true / false)' : 'Correct answer', CupertinoIcons.checkmark_alt_circle),
-      const SizedBox(height: 10),
-      sheetField(points, 'Points', CupertinoIcons.number),
-    ], onSubmit: () async {
-      if (prompt.text.trim().isEmpty) return 'Prompt required';
-      final opts = type == 0
-          ? options.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList()
-          : (type == 1 ? ['true', 'false'] : <String>[]);
-      try {
-        await widget.auth.apiPost('/api/v1/manage/assessments/$assessmentId/questions', {
-          'prompt': prompt.text.trim(),
-          'type': types[type],
-          'options': opts,
-          'correct': correct.text.trim(),
-          'points': double.tryParse(points.text.trim()) ?? 1,
-        });
-        return null;
-      } on ApiException catch (e) {
-        return e.message;
-      }
-    });
-    if (ok == true) {
-      _toast('Question added');
-      _load();
-    }
+  // Open the full quiz builder (list questions, add with real options + correct
+  // selection, delete). Reloads the course on return so question counts refresh.
+  Future<void> _openQuizBuilder(String assessmentId, String title) async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => _QuizBuilder(auth: widget.auth, assessmentId: assessmentId, title: title)));
+    _load();
   }
 
   Future<void> _addSession() async {
@@ -1075,7 +1378,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
             Icon(isQuiz ? CupertinoIcons.question_square_fill : CupertinoIcons.doc_text_fill, size: 16, color: isQuiz ? AppleColors.purple : AppleColors.blue),
             const SizedBox(width: 10),
             Expanded(child: Text('${m['title']}${(m['questions'] ?? 0) != 0 ? ' · ${m['questions']} Qs' : ''}', style: AppleTheme.body(context).copyWith(fontSize: 14))),
-            if (isQuiz) _smallButton('Question', CupertinoIcons.add, () => _addQuestion(m['id'].toString())),
+            if (isQuiz) _smallButton('Build', CupertinoIcons.slider_horizontal_3, () => _openQuizBuilder(m['id'].toString(), m['title']?.toString() ?? 'Quiz')),
             const SizedBox(width: 6),
             GestureDetector(
               onTap: () => _confirmDelete('Delete this ${isQuiz ? 'quiz' : 'assignment'}?', () => widget.auth.apiDelete('/api/v1/manage/assessments/${m['id']}')),

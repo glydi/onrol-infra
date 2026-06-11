@@ -56,6 +56,7 @@ func (h *Handlers) CreateCourse(c *fiber.Ctx) error {
 		CategoryID   string `json:"category_id"`
 		GroupID      string `json:"group_id"`
 		EnrollType   string `json:"enroll_type"`
+		ImageURL     string `json:"image_url"` // cover image (data URI or URL)
 		InstructorID string `json:"instructor_id"` // admin assigns the teaching instructor
 	}
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Title) == "" {
@@ -91,11 +92,15 @@ func (h *Handlers) CreateCourse(c *fiber.Ctx) error {
 	if req.GroupID != "" {
 		grp = req.GroupID
 	}
+	var img any
+	if strings.TrimSpace(req.ImageURL) != "" {
+		img = req.ImageURL
+	}
 	var id string
 	err := h.Pool.QueryRow(c.Context(),
-		`INSERT INTO courses (title, description, category_id, group_id, owner_id, enroll_type)
-		 VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-		req.Title, req.Description, cat, grp, owner, req.EnrollType,
+		`INSERT INTO courses (title, description, category_id, group_id, owner_id, enroll_type, image_url)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+		req.Title, req.Description, cat, grp, owner, req.EnrollType, img,
 	).Scan(&id)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
@@ -114,6 +119,7 @@ func (h *Handlers) UpdateCourse(c *fiber.Ctx) error {
 		Description *string `json:"description"`
 		Status      *string `json:"status"`
 		EnrollType  *string `json:"enroll_type"` // admin controls admission mode
+		ImageURL    *string `json:"image_url"`   // cover image (data URI or URL)
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
@@ -137,8 +143,9 @@ func (h *Handlers) UpdateCourse(c *fiber.Ctx) error {
 			title=COALESCE($2,title),
 			description=COALESCE($3,description),
 			status=COALESCE($4,status),
-			enroll_type=COALESCE($5,enroll_type)
-		WHERE id=$1`, id, req.Title, req.Description, req.Status, req.EnrollType)
+			enroll_type=COALESCE($5,enroll_type),
+			image_url=COALESCE($6,image_url)
+		WHERE id=$1`, id, req.Title, req.Description, req.Status, req.EnrollType, req.ImageURL)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "update failed")
 	}
@@ -147,7 +154,7 @@ func (h *Handlers) UpdateCourse(c *fiber.Ctx) error {
 
 func (h *Handlers) ListCourses(c *fiber.Ctx) error {
 	// Admin/manager + superadmin see ALL courses; an instructor sees only theirs.
-	q := `SELECT id, title, status, enroll_type, COALESCE(group_id::text,''), created_at FROM courses`
+	q := `SELECT id, title, status, enroll_type, COALESCE(group_id::text,''), COALESCE(image_url,''), created_at FROM courses`
 	args := []any{}
 	if callerRole(c) == "instructor" {
 		q += ` WHERE owner_id=$1`
@@ -161,13 +168,13 @@ func (h *Handlers) ListCourses(c *fiber.Ctx) error {
 	defer r.Close()
 	out := []fiber.Map{}
 	for r.Next() {
-		var id, title, status, et, grp string
+		var id, title, status, et, grp, img string
 		var created any
-		if err := r.Scan(&id, &title, &status, &et, &grp, &created); err != nil {
+		if err := r.Scan(&id, &title, &status, &et, &grp, &img, &created); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		out = append(out, fiber.Map{"id": id, "title": title, "status": status,
-			"enroll_type": et, "group_id": grp, "created_at": created})
+			"enroll_type": et, "group_id": grp, "image_url": img, "created_at": created})
 	}
 	return c.JSON(fiber.Map{"courses": out})
 }

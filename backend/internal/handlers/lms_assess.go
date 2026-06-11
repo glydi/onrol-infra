@@ -101,6 +101,58 @@ func (h *Handlers) DeleteAssessment(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"deleted": true})
 }
 
+// ListQuestions returns a quiz's questions WITH correct answers — the staff
+// quiz-builder view (students get them without answers via TakeAssessment).
+func (h *Handlers) ListQuestions(c *fiber.Ctx) error {
+	assessID := c.Params("id")
+	courseID, err := h.assessmentCourse(c, assessID)
+	if err != nil {
+		return err
+	}
+	if err := h.canManageCourse(c, courseID); err != nil {
+		return err
+	}
+	rows, err := h.Pool.Query(c.Context(),
+		`SELECT id, prompt, type, COALESCE(options::text,'[]'), COALESCE(correct,''), points, position
+		 FROM questions WHERE assessment_id=$1 ORDER BY position, created_at`, assessID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
+	}
+	defer rows.Close()
+	out := []fiber.Map{}
+	for rows.Next() {
+		var id, prompt, typ, optsJSON, correct string
+		var points float64
+		var pos int
+		if err := rows.Scan(&id, &prompt, &typ, &optsJSON, &correct, &points, &pos); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		var opts []string
+		_ = json.Unmarshal([]byte(optsJSON), &opts)
+		out = append(out, fiber.Map{"id": id, "prompt": prompt, "type": typ, "options": opts,
+			"correct": correct, "points": points, "position": pos})
+	}
+	return c.JSON(fiber.Map{"questions": out})
+}
+
+// DeleteQuestion removes a single question from a quiz.
+func (h *Handlers) DeleteQuestion(c *fiber.Ctx) error {
+	qid := c.Params("id")
+	var courseID string
+	if err := h.Pool.QueryRow(c.Context(),
+		`SELECT a.course_id FROM questions q JOIN assessments a ON a.id=q.assessment_id WHERE q.id=$1`,
+		qid).Scan(&courseID); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "question not found")
+	}
+	if err := h.canManageCourse(c, courseID); err != nil {
+		return err
+	}
+	if _, err := h.Pool.Exec(c.Context(), `DELETE FROM questions WHERE id=$1`, qid); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "delete failed")
+	}
+	return c.JSON(fiber.Map{"deleted": true})
+}
+
 // AddQuestion appends a question to an assessment.
 func (h *Handlers) AddQuestion(c *fiber.Ctx) error {
 	assessID := c.Params("id")

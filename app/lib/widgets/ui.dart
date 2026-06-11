@@ -405,6 +405,8 @@ Future<bool?> showFormSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
+    // Dim + fade the background as the sheet pops up.
+    barrierColor: Colors.black.withOpacity(0.45),
     builder: (ctx) {
       final p = Palette.of(ctx);
       bool busy = false;
