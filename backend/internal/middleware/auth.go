@@ -73,3 +73,21 @@ func RequireRole(min string) fiber.Handler {
 		return c.Next()
 	}
 }
+
+// RequireAnyRole allows the request if the caller holds one of the listed
+// (parallel, non-hierarchical) portal roles — OR is an admin (manager /
+// superadmin), who can access every portal. Used to gate the per-portal
+// self-service endpoints (Ambassador, Franchise Partner, …).
+func RequireAnyRole(roles ...string) fiber.Handler {
+	allowed := map[string]bool{"manager": true, "superadmin": true}
+	for _, r := range roles {
+		allowed[r] = true
+	}
+	return func(c *fiber.Ctx) error {
+		role, _ := c.Locals(LocalRole).(string)
+		if !allowed[role] {
+			return fiber.NewError(fiber.StatusForbidden, "not permitted for your role")
+		}
+		return c.Next()
+	}
+}

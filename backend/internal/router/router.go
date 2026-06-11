@@ -42,6 +42,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	// Role gates (each runs after RequireAuth, which loads the role).
 	mgr := middleware.RequireRole("manager")
 	inst := middleware.RequireRole("instructor")
+	ambassador := middleware.RequireAnyRole("ambassador")
 
 	// ---- Manager: user & group management --------------------------------
 	api.Get("/manage/users", auth, mgr, h.ListUsers)
@@ -161,6 +162,17 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Get("/manage/crm/affiliates/:id/commissions", auth, mgr, h.ListCommissions)
 	api.Post("/manage/crm/affiliates/:id/commissions", auth, mgr, h.AddCommission)
 	api.Post("/manage/crm/affiliates/:id/commissions/:cid/pay", auth, mgr, h.PayCommission)
+
+	// ---- Ambassador portal -----------------------------------------------
+	// Admin: manage ambassadors + all referrals.
+	api.Get("/manage/ambassadors", auth, mgr, h.ListAmbassadors)
+	api.Post("/manage/ambassadors", auth, mgr, h.CreateAmbassador)
+	api.Get("/manage/ambassadors/referrals", auth, mgr, h.AdminListReferrals)
+	api.Post("/manage/ambassadors/referrals/:id/status", auth, mgr, h.SetReferralStatus)
+	// Ambassador self (admins also allowed).
+	api.Get("/ambassador/me", auth, ambassador, h.MyAmbassador)
+	api.Get("/ambassador/referrals", auth, ambassador, h.MyReferrals)
+	api.Post("/ambassador/referrals", auth, ambassador, h.CreateReferral)
 
 	// ---- Student/self (any authenticated role) ---------------------------
 	// Discussion / doubts board (enrolled students + course staff).
