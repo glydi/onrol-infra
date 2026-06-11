@@ -35,6 +35,10 @@ Color get _line => _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0F0F0);
 // Frosted translucent fill + hairline highlight border + soft drop shadow.
 Color get _glassFill => _isDark ? Colors.white.withOpacity(0.07) : Colors.white.withOpacity(0.55);
 Color get _glassBorder => _isDark ? Colors.white.withOpacity(0.12) : Colors.white.withOpacity(0.65);
+// Opaque card surface for elements inside popups (white in light mode) so text
+// is crisp and clearly visible on top of the frosted panel.
+Color get _cardFill => _isDark ? const Color(0xFF262932) : Colors.white;
+Color get _cardBorder => _isDark ? Colors.white.withOpacity(0.07) : const Color(0xFFF0ECE9);
 
 /// Wraps [child] in a frosted-glass surface (backdrop blur + translucent fill).
 /// Use sparingly — each one is a real BackdropFilter.
@@ -1167,9 +1171,10 @@ class _StudentHomeState extends State<StudentHome> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_orange.withOpacity(0.14), _orange.withOpacity(0.04)]),
+                      color: _cardFill,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: _glassBorder),
+                      border: Border.all(color: _cardBorder),
+                      boxShadow: [BoxShadow(color: _orange.withOpacity(0.07), blurRadius: 16, offset: const Offset(0, 8))],
                     ),
                     child: Row(children: [
                       SizedBox(
@@ -1237,10 +1242,19 @@ class _StudentHomeState extends State<StudentHome> {
                     Text('Your Courses', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
                   ]),
                   const SizedBox(height: 8),
-                  ...courses.map((c) {
-                    final m = c as Map<String, dynamic>;
-                    return _progress(m['title']?.toString() ?? 'Course', ((m['percent'] ?? 0) as num) / 100);
-                  }),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _cardFill,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: _cardBorder),
+                      boxShadow: [BoxShadow(color: _orange.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))],
+                    ),
+                    child: Column(children: courses.map((c) {
+                      final m = c as Map<String, dynamic>;
+                      return _progress(m['title']?.toString() ?? 'Course', ((m['percent'] ?? 0) as num) / 100);
+                    }).toList()),
+                  ),
                 ],
               ]);
             },
@@ -2385,35 +2399,34 @@ class _StatCardState extends State<_StatCard> {
             curve: Curves.easeOutCubic,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: _hover
-                    ? [_orange.withOpacity(0.18), _orange.withOpacity(0.06)]
-                    : [_orange.withOpacity(0.10), _orange.withOpacity(0.03)],
-              ),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: _hover ? _orange.withOpacity(0.40) : _glassBorder, width: 1),
-              boxShadow: _hover ? [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 16, offset: const Offset(0, 6))] : const [],
+              color: _cardFill,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _hover ? _orange.withOpacity(0.45) : _cardBorder, width: 1),
+              boxShadow: [BoxShadow(color: _orange.withOpacity(_hover ? 0.22 : 0.06), blurRadius: _hover ? 20 : 10, offset: const Offset(0, 6))],
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                if (widget.icon != null) ...[Icon(widget.icon, size: 16, color: _orange), const SizedBox(width: 6)],
-                Expanded(
-                  child: TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0, end: target ?? 0),
-                    duration: const Duration(milliseconds: 800),
-                    curve: Curves.easeOutCubic,
-                    builder: (_, v, __) => Text(
-                      target != null ? v.round().toString() : widget.value,
-                      style: GoogleFonts.poppins(fontSize: 24, fontWeight: FontWeight.w700, color: _orange),
-                    ),
+                if (widget.icon != null)
+                  Container(
+                    width: 30, height: 30, alignment: Alignment.center,
+                    decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(9)),
+                    child: Icon(widget.icon, size: 16, color: _orange),
                   ),
-                ),
-                if (tappable) Icon(CupertinoIcons.chevron_right, size: 14, color: _orange.withOpacity(_hover ? 0.9 : 0.4)),
+                const Spacer(),
+                if (tappable) Icon(CupertinoIcons.chevron_right, size: 14, color: _orange.withOpacity(_hover ? 0.9 : 0.35)),
               ]),
+              const SizedBox(height: 12),
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: target ?? 0),
+                duration: const Duration(milliseconds: 800),
+                curve: Curves.easeOutCubic,
+                builder: (_, v, __) => Text(
+                  target != null ? v.round().toString() : widget.value,
+                  style: GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w800, color: _orange),
+                ),
+              ),
               const SizedBox(height: 2),
-              Text(widget.label, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+              Text(widget.label, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w500, color: _grey)),
             ]),
           ),
         ),
@@ -2453,15 +2466,10 @@ class _StudentHomeNotifState extends State<_StudentHomeNotif> {
           margin: const EdgeInsets.symmetric(vertical: 5),
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: active
-                  ? [_orange.withOpacity(0.14), _orange.withOpacity(0.05)]
-                  : (_isDark ? [Colors.white.withOpacity(0.06), Colors.white.withOpacity(0.02)] : [Colors.white.withOpacity(0.55), Colors.white.withOpacity(0.28)]),
-            ),
+            color: _cardFill,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: active ? _orange.withOpacity(0.35) : _glassBorder, width: 1),
+            border: Border.all(color: active ? _orange.withOpacity(0.45) : _cardBorder, width: 1),
+            boxShadow: [BoxShadow(color: _orange.withOpacity(active ? 0.16 : 0.05), blurRadius: active ? 16 : 8, offset: const Offset(0, 5))],
           ),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Container(width: 8, height: 8, margin: const EdgeInsets.only(top: 6, right: 12), decoration: BoxDecoration(color: widget.read ? _grey : _orange, shape: BoxShape.circle)),
