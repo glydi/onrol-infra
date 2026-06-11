@@ -178,8 +178,13 @@ class _StudentHomeState extends State<StudentHome> {
   String get _name => widget.auth.user?.fullName ?? 'Student';
   String get _firstName => _name.split(RegExp(r'[\s@]')).first;
 
-  // Day streak shown in the header (placeholder until a backend streak exists).
+  // Day streak shown in the profile card (placeholder until a backend streak
+  // exists). Tapping the chip opens the Achievements panel.
   final int _streak = 7;
+
+  // Which of the three dashboard sections is focused: 0 = menu (matrix),
+  // 1 = profile, 2 = live news. Drives the focus highlight.
+  int _focused = 0;
 
   // XP earned grows with progress: 10 XP per completed lesson.
   static int _xpFromCourses(List courses) => courses.fold<int>(
@@ -267,25 +272,47 @@ class _StudentHomeState extends State<StudentHome> {
 
   // Desktop / wide: matrix centered (no scroll) on the left, sidebar pinned
   // right. Only the sidebar (profile + AI news) scrolls.
+  // Wraps a dashboard section in a focus ring. The focused section (set on
+  // hover) gets a themed accent border + glow; the others stay neutral.
+  Widget _focusable(int index, {required Widget child, double radius = 26}) {
+    final on = _focused == index;
+    return MouseRegion(
+      onEnter: (_) {
+        if (_focused != index) setState(() => _focused = index);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.all(5),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(radius),
+          border: Border.all(color: on ? _orange.withOpacity(0.85) : Colors.transparent, width: 2),
+          boxShadow: on ? [BoxShadow(color: _orange.withOpacity(0.30), blurRadius: 26, spreadRadius: 1)] : const [],
+        ),
+        child: child,
+      ),
+    );
+  }
+
   Widget _wideLayout() => Padding(
         padding: const EdgeInsets.fromLTRB(40, 24, 36, 24),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(
             child: Center(
               child: LayoutBuilder(builder: (context, c) {
-                final side = (c.maxWidth < c.maxHeight ? c.maxWidth : c.maxHeight).clamp(280.0, 620.0).toDouble();
-                return _matrix(side);
+                final side = (c.maxWidth < c.maxHeight ? c.maxWidth : c.maxHeight).clamp(280.0, 600.0).toDouble();
+                return _focusable(0, radius: 14, child: _matrix(side));
               }),
             ),
           ),
-          const SizedBox(width: 36),
+          const SizedBox(width: 28),
           SizedBox(
-            width: 430,
+            width: 440,
             // Profile card stays pinned; only the AI-news list inside scrolls.
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              _profileCard(),
-              const SizedBox(height: 20),
-              Expanded(child: _AiNewsCard(auth: widget.auth, scrollable: true, onViewAll: () => _openPanel('announcements'))),
+              _focusable(1, child: _profileCard()),
+              const SizedBox(height: 12),
+              Expanded(child: _focusable(2, child: _AiNewsCard(auth: widget.auth, scrollable: true, onViewAll: () => _openPanel('announcements')))),
             ]),
           ),
         ]),
@@ -297,13 +324,13 @@ class _StudentHomeState extends State<StudentHome> {
         child: Column(children: [
           _topBar(),
           const SizedBox(height: 14),
-          _profileCard(),
-          const SizedBox(height: 20),
+          _focusable(1, child: _profileCard()),
+          const SizedBox(height: 14),
           LayoutBuilder(builder: (context, c) {
-            return _matrix(c.maxWidth.clamp(260.0, 460.0).toDouble());
+            return _focusable(0, radius: 14, child: _matrix(c.maxWidth.clamp(260.0, 440.0).toDouble()));
           }),
-          const SizedBox(height: 26),
-          _AiNewsCard(auth: widget.auth, scrollable: false, onViewAll: () => _openPanel('announcements')),
+          const SizedBox(height: 18),
+          _focusable(2, child: _AiNewsCard(auth: widget.auth, scrollable: false, onViewAll: () => _openPanel('announcements'))),
         ]),
       );
 
@@ -406,20 +433,38 @@ class _StudentHomeState extends State<StudentHome> {
             const SizedBox(height: 3),
             Text(_roleLabel, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _grey)),
             const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-              decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
-              child: Text('ONROL Learner', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
-            ),
-            const SizedBox(height: 12),
-            Text('Keep learning, keep growing.', style: GoogleFonts.poppins(fontSize: 13, color: _navy, height: 1.5)),
-            Text("You're closer than you think! ✨", style: GoogleFonts.poppins(fontSize: 13, color: _navy, height: 1.5)),
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
+                child: Text('ONROL Learner', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
+              ),
+              const SizedBox(width: 8),
+              _streakChip(),
+            ]),
           ]),
         ),
       ]),
     );
   }
 
+  // Themed day-streak chip (fire + count). Tap opens the Achievements panel.
+  Widget _streakChip() => GestureDetector(
+        onTap: () => _openPanel('achievements'),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [BoxShadow(color: _orange.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(CupertinoIcons.flame_fill, color: Colors.white, size: 14),
+            const SizedBox(width: 4),
+            Text('$_streak day streak', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+          ]),
+        ),
+      );
 
   // ---- Modal panels --------------------------------------------------------
 
