@@ -581,24 +581,47 @@ class _StudentHomeState extends State<StudentHome> {
     }
   }
 
-  // Pick a photo from the device, crop+resize it to a small 256px square JPEG
-  // (works on web + mobile regardless of the source size), save as a data URI.
+  void _toast(String msg) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating));
+  }
+
+  // Pick a photo and save it as a small square JPEG data URI. The picker first
+  // downscales (browser canvas on web / native on mobile); we then crop to a
+  // 256px square with the `image` package, falling back to the picker's bytes
+  // if Dart can't decode them (e.g. an unusual format).
   Future<void> _uploadAvatar(BuildContext dialogCtx) async {
     try {
-      final x = await ImagePicker().pickImage(source: ImageSource.gallery);
-      if (x == null) return;
+      final x = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 85,
+      );
+      if (x == null) return; // user cancelled
       final raw = await x.readAsBytes();
-      final decoded = img.decodeImage(raw);
-      if (decoded == null) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't read that image."), behavior: SnackBarBehavior.floating));
+      if (raw.isEmpty) {
+        _toast("That image was empty — try another.");
         return;
       }
-      final square = img.copyResizeCropSquare(decoded, size: 256);
-      final jpg = img.encodeJpg(square, quality: 82);
-      await _setAvatar('data:image/jpeg;base64,${base64Encode(jpg)}');
+      Uint8List out;
+      String mime;
+      final decoded = img.decodeImage(raw);
+      if (decoded != null) {
+        out = img.encodeJpg(img.copyResizeCropSquare(decoded, size: 256), quality: 82);
+        mime = 'image/jpeg';
+      } else {
+        out = raw; // already downscaled by the picker
+        mime = x.mimeType ?? 'image/png';
+      }
+      if (out.lengthInBytes > 900000) {
+        _toast('Image too large — try a smaller one.');
+        return;
+      }
+      await _setAvatar('data:$mime;base64,${base64Encode(out)}');
       if (dialogCtx.mounted) Navigator.of(dialogCtx).pop();
-    } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't load that image."), behavior: SnackBarBehavior.floating));
+      _toast('Profile picture updated');
+    } catch (e) {
+      _toast('Upload failed: $e');
     }
   }
 
