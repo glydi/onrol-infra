@@ -459,7 +459,7 @@ class _StudentHomeState extends State<StudentHome> {
           padding: EdgeInsets.only(right: c < 4 ? gap : 0, bottom: r < 4 ? gap : 0),
           child: tile == null
               ? SizedBox(width: cell, height: cell)
-              : _GridCell(tile: tile, size: cell, onTap: () => _openPanel(tile.panel)),
+              : _GridCell(tile: tile, size: cell, onTap: (c) => _openPanel(tile.panel, origin: c)),
         ));
       }
       rows.add(Row(mainAxisSize: MainAxisSize.min, children: cells));
@@ -683,9 +683,9 @@ class _StudentHomeState extends State<StudentHome> {
 
   // ---- Modal panels --------------------------------------------------------
 
-  void _openPanel(String key) {
+  void _openPanel(String key, {Offset? origin}) {
     final d = _panel(key);
-    _showPanel(d.$1, d.$2, d.$3, d.$4);
+    _showPanel(d.$1, d.$2, d.$3, d.$4, origin: origin);
   }
 
   // Course content viewer — modules & lessons from /me/courses/:id/content.
@@ -734,10 +734,10 @@ class _StudentHomeState extends State<StudentHome> {
       barrierDismissible: true,
       barrierLabel: 'sent',
       barrierColor: const Color(0x66000000),
-      transitionDuration: const Duration(milliseconds: 320),
+      transitionDuration: const Duration(milliseconds: 300),
       transitionBuilder: (ctx, anim, sec, child) {
-        final c = CurvedAnimation(parent: anim, curve: Curves.easeOutBack);
-        return Transform.scale(scale: 0.7 + 0.3 * c.value, child: Opacity(opacity: anim.value.clamp(0.0, 1.0), child: child));
+        final c = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
+        return FadeTransition(opacity: c, child: ScaleTransition(scale: Tween<double>(begin: 0.85, end: 1.0).animate(c), child: child));
       },
       pageBuilder: (ctx, anim, sec) {
         _isDark = Theme.of(ctx).brightness == Brightness.dark;
@@ -748,15 +748,16 @@ class _StudentHomeState extends State<StudentHome> {
         return Center(
           child: Material(
             type: MaterialType.transparency,
-            child: Container(
-              width: 280,
+            child: SizedBox(
+              width: 300,
+              child: _glass(
+              radius: 22,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 30),
-              decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(20)),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 TweenAnimationBuilder<double>(
                   tween: Tween(begin: 0, end: 1),
-                  duration: const Duration(milliseconds: 600),
-                  curve: Curves.elasticOut,
+                  duration: const Duration(milliseconds: 480),
+                  curve: Curves.easeOutBack,
                   builder: (_, v, __) => Transform.scale(
                     scale: v,
                     child: Container(
@@ -771,6 +772,7 @@ class _StudentHomeState extends State<StudentHome> {
                 const SizedBox(height: 6),
                 Text(sub, textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, color: _grey, height: 1.4)),
               ]),
+              ),
             ),
           ),
         );
@@ -909,21 +911,27 @@ class _StudentHomeState extends State<StudentHome> {
     ]);
   }
 
-  void _showPanel(IconData icon, String title, String sub, List<Widget> body) {
+  void _showPanel(IconData icon, String title, String sub, List<Widget> body, {Offset? origin}) {
+    final screen = MediaQuery.of(context).size;
+    // Scale-from-origin (macOS Launchpad style): the panel grows out of the
+    // tapped tile's location. Falls back to centre when there's no origin.
+    final align = origin == null
+        ? Alignment.center
+        : Alignment(
+            (origin.dx / screen.width * 2 - 1).clamp(-1.0, 1.0),
+            (origin.dy / screen.height * 2 - 1).clamp(-1.0, 1.0),
+          );
     showGeneralDialog(
       context: context,
       barrierLabel: 'panel',
       barrierDismissible: true,
       barrierColor: const Color(0x401A1A2E),
-      transitionDuration: const Duration(milliseconds: 300),
+      transitionDuration: const Duration(milliseconds: 340),
       transitionBuilder: (ctx, anim, sec, child) {
         final c = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
         return FadeTransition(
           opacity: c,
-          child: SlideTransition(
-            position: Tween<Offset>(begin: const Offset(0, 0.05), end: Offset.zero).animate(c),
-            child: ScaleTransition(scale: Tween<double>(begin: 0.97, end: 1.0).animate(c), child: child),
-          ),
+          child: ScaleTransition(scale: Tween<double>(begin: 0.45, end: 1.0).animate(c), alignment: align, child: child),
         );
       },
       pageBuilder: (ctx, anim, sec) {
@@ -1916,7 +1924,8 @@ class _GridCell extends StatefulWidget {
   const _GridCell({required this.tile, required this.size, required this.onTap});
   final _Tile tile;
   final double size;
-  final VoidCallback onTap;
+  // Reports the tile's global centre so the panel can grow from it (macOS-style).
+  final void Function(Offset center) onTap;
 
   @override
   State<_GridCell> createState() => _GridCellState();
@@ -1944,7 +1953,10 @@ class _GridCellState extends State<_GridCell> {
         onTapDown: (_) => setState(() => _down = true),
         onTapUp: (_) => setState(() => _down = false),
         onTapCancel: () => setState(() => _down = false),
-        onTap: widget.onTap,
+        onTap: () {
+          final box = context.findRenderObject() as RenderBox?;
+          widget.onTap(box != null ? box.localToGlobal(box.size.center(Offset.zero)) : Offset.zero);
+        },
         child: AnimatedScale(
           scale: scale,
           duration: const Duration(milliseconds: 240),
