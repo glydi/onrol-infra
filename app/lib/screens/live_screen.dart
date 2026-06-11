@@ -36,7 +36,7 @@ class _LiveScreenState extends State<LiveScreen> {
           icon: const Icon(CupertinoIcons.chevron_left, size: 22),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text('Live Class', style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 17)),
+        title: Text('Live Class', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 17)),
         bottom: _progress < 1
             ? PreferredSize(
                 preferredSize: const Size.fromHeight(2),
