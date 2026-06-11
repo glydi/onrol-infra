@@ -6,6 +6,7 @@ import '../services/auth_service.dart';
 import '../theme.dart';
 import '../widgets/ui.dart';
 import 'console_screen.dart';
+import 'crm_portal.dart';
 import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -33,7 +34,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       final staff = widget.auth.user?.isStaff ?? false;
       Navigator.of(context).pushReplacement(MaterialPageRoute(
-        builder: (_) => staff ? ConsoleScreen(auth: widget.auth) : HomeScreen(auth: widget.auth),
+        builder: (_) => isCrmHost()
+            ? CrmPortalScreen(auth: widget.auth)
+            : (staff ? ConsoleScreen(auth: widget.auth) : HomeScreen(auth: widget.auth)),
       ));
     } on ApiException catch (e) {
       setState(() => _error = e.status == 409
@@ -85,7 +88,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Column(
                     children: [
                       const SizedBox(height: 14),
-                      AppleField(controller: _email, hint: 'Email', icon: CupertinoIcons.mail, keyboard: TextInputType.emailAddress),
+                      AppleField(controller: _email, hint: 'Email or username', icon: CupertinoIcons.person, keyboard: TextInputType.text),
                       const SizedBox(height: 12),
                       Divider(height: 1, color: p.separator),
                       const SizedBox(height: 12),

@@ -1,0 +1,1285 @@
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../services/api_client.dart';
+import '../services/auth_service.dart';
+import '../theme_controller.dart';
+import 'login_screen.dart';
+import 'video_player_screen.dart';
+
+// Palette — red-orange accent.
+const _orange = Color(0xFFFF4F2B);
+const _green = Color(0xFF2D8A4E);
+const _greenBg = Color(0xFFEAFAF0);
+
+// Brightness-aware palette. `_isDark` is set at the start of each build / dialog.
+bool _isDark = false;
+Color get _navy => _isDark ? const Color(0xFFECEDF2) : const Color(0xFF1A1A2E);
+Color get _grey => _isDark ? const Color(0xFF9AA0AC) : const Color(0xFF888888);
+Color get _peach => _isDark ? const Color(0xFF2C231C) : const Color(0xFFFFF3EC);
+Color get _peachSoft => _isDark ? const Color(0xFF241D17) : const Color(0xFFFFF8F5);
+Color get _bg => _isDark ? const Color(0xFF131419) : Colors.white;
+Color get _surface => _isDark ? const Color(0xFF1E2027) : Colors.white;
+Color get _line => _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0F0F0);
+
+/// Student home — a 5×5 orange checkerboard of options; each tile opens a modal
+/// panel. Matches the ONROL "Learn. Grow. Succeed." mockup.
+class StudentHome extends StatefulWidget {
+  const StudentHome({super.key, required this.auth});
+  final AuthService auth;
+
+  @override
+  State<StudentHome> createState() => _StudentHomeState();
+}
+
+class _Tile {
+  const _Tile(this.icon, this.label, this.panel);
+  final IconData icon;
+  final String label;
+  final String panel;
+}
+
+class _StudentHomeState extends State<StudentHome> {
+  // 5×5 checkerboard: tiles sit on the (row+col)-odd cells, so the grid starts
+  // with a blank at top-left and alternates. These 12 fill the active cells.
+  static const List<_Tile> _tiles = [
+    _Tile(CupertinoIcons.square_grid_2x2_fill, 'Dashboard', 'dashboard'),
+    _Tile(CupertinoIcons.compass_fill, 'Explore', 'explore'),
+    _Tile(CupertinoIcons.book_fill, 'My Courses', 'courses'),
+    _Tile(CupertinoIcons.calendar, 'Schedule', 'schedule'),
+    _Tile(CupertinoIcons.chart_bar_fill, 'Progress', 'progress'),
+    _Tile(CupertinoIcons.doc_text_fill, 'Assignments', 'assignments'),
+    _Tile(CupertinoIcons.videocam_fill, 'Live Classes', 'live'),
+    _Tile(CupertinoIcons.rosette, 'Certificates', 'certificates'),
+    _Tile(CupertinoIcons.list_number, 'Leaderboard', 'leaderboard'),
+    _Tile(CupertinoIcons.person_fill, 'Profile', 'profile'),
+    _Tile(CupertinoIcons.gear_alt_fill, 'Settings', 'settings'),
+    _Tile(CupertinoIcons.square_arrow_right, 'Log Out', 'logout'),
+  ];
+
+  String get _name => widget.auth.user?.fullName ?? 'Student';
+  String get _firstName => _name.split(RegExp(r'[\s@]')).first;
+
+  // Day streak shown in the header (placeholder until a backend streak exists).
+  final int _streak = 7;
+
+  // XP earned grows with progress: 10 XP per completed lesson.
+  static int _xpFromCourses(List courses) => courses.fold<int>(
+      0, (sum, c) => sum + (((c as Map)['lessons_done'] ?? 0) as num).toInt() * 10);
+
+  Future<void> _logout() async {
+    await widget.auth.logout();
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => LoginScreen(auth: widget.auth)));
+  }
+
+  // ---- Backend helpers -----------------------------------------------------
+
+  Future<Map<String, dynamic>> _apiMap(String path) async =>
+      ApiClient.decode(await widget.auth.apiGet(path));
+
+  Future<List<dynamic>> _apiList(String path, String key) async =>
+      (ApiClient.decode(await widget.auth.apiGet(path))[key] as List?) ?? [];
+
+  /// Wraps a future in a panel-friendly loading / error / data flow.
+  Widget _future<T>(Future<T> future, Widget Function(T data) build) {
+    return FutureBuilder<T>(
+      future: future,
+      builder: (ctx, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const Padding(padding: EdgeInsets.symmetric(vertical: 34), child: Center(child: CircularProgressIndicator(color: _orange, strokeWidth: 2.5)));
+        }
+        if (snap.hasError || !snap.hasData) {
+          return _emptyText("Couldn't load — pull again later.");
+        }
+        return build(snap.data as T);
+      },
+    );
+  }
+
+  static Widget _emptyText(String t) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 22),
+        child: Text(t, textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 13, color: _grey)),
+      );
+
+  static String _fmtAt(String? iso) {
+    if (iso == null || iso.isEmpty) return '';
+    final dt = DateTime.tryParse(iso)?.toLocal();
+    if (dt == null) return iso;
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final ampm = dt.hour < 12 ? 'AM' : 'PM';
+    return '${months[dt.month - 1]} ${dt.day}, $h:${dt.minute.toString().padLeft(2, '0')} $ampm';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _isDark = Theme.of(context).brightness == Brightness.dark;
+    // One screen, no scrolling. The matrix is centered on the whole screen;
+    // the header floats over the top.
+    return Scaffold(
+      backgroundColor: _bg,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Positioned.fill(child: _bigGrid()),
+            Positioned(
+              left: 0, right: 0, top: 0,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                _topBar(),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                  child: Text('WELCOME, ${_firstName.toUpperCase()}',
+                      style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700, color: _navy, letterSpacing: 1)),
+                ),
+              ]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---- Top bar -------------------------------------------------------------
+
+  Widget _topBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Spacer(),
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            // Notification bell — opens announcements/notifications.
+            _Pressable(
+              onTap: () => _openPanel('notifications'),
+              child: Container(
+                width: 40, height: 40,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: _orange.withOpacity(0.12), shape: BoxShape.circle),
+                child: Icon(CupertinoIcons.bell_fill, size: 19, color: _orange),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Streak — fire, themed red-orange.
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [BoxShadow(color: _orange.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(CupertinoIcons.flame_fill, color: Colors.white, size: 16),
+                const SizedBox(width: 4),
+                Text('$_streak', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white)),
+              ]),
+            ),
+            const SizedBox(width: 12),
+            Text('ONROL', style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 1)),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  // ---- Checkerboard — fills the available space, no scrolling --------------
+
+  Widget _bigGrid() {
+    return LayoutBuilder(builder: (context, cns) {
+      // No gaps — flush tiles. Centered on the whole screen, but kept clear of
+      // the floating header by reserving ~110px of vertical margin each side.
+      final w = cns.maxWidth - 4;
+      final h = cns.maxHeight - 96;
+      final side = w < h ? w : h;
+      final cell = side / 5;
+      var idx = 0;
+      final rows = <Widget>[];
+      for (var r = 0; r < 5; r++) {
+        final cells = <Widget>[];
+        for (var c = 0; c < 5; c++) {
+          // Start blank at (0,0); tiles on the alternating (r+c)-odd cells.
+          final filled = (r + c).isOdd && idx < _tiles.length;
+          final tile = filled ? _tiles[idx++] : null;
+          cells.add(tile == null
+              ? SizedBox(width: cell, height: cell)
+              : _GridCell(tile: tile, size: cell, onTap: () => _openPanel(tile.panel)));
+        }
+        rows.add(Row(mainAxisSize: MainAxisSize.min, children: cells));
+      }
+      return Center(child: Column(mainAxisSize: MainAxisSize.min, children: rows));
+    });
+  }
+
+  // ---- Modal panels --------------------------------------------------------
+
+  void _openPanel(String key) {
+    final d = _panel(key);
+    _showPanel(d.$1, d.$2, d.$3, d.$4);
+  }
+
+  // Course content viewer — modules & lessons from /me/courses/:id/content.
+  void _openContent(String courseId, String title) {
+    _showPanel(CupertinoIcons.book_fill, title, 'Course content', [
+      _future(_apiMap('/api/v1/me/courses/$courseId/content'), (m) {
+        final modules = (m['modules'] as List?) ?? [];
+        if (modules.isEmpty) return _emptyText('No content in this course yet.');
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: modules.expand<Widget>((mod) {
+          final md = mod as Map<String, dynamic>;
+          final lessons = (md['lessons'] as List?) ?? [];
+          return [
+            Padding(
+              padding: const EdgeInsets.only(top: 10, bottom: 4),
+              child: Text(md['title']?.toString() ?? 'Module', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
+            ),
+            if (lessons.isEmpty) _emptyText('No lessons.') else ...lessons.map((l) => _lessonRow(l as Map<String, dynamic>)),
+          ];
+        }).toList());
+      }),
+    ]);
+  }
+
+  Future<void> _enrollCourse(String id, String title, bool self) async {
+    try {
+      await widget.auth.apiPost('/api/v1/me/courses/$id/enroll', {});
+      if (mounted) {
+        _showRequestSent(
+          self ? 'Enrolled!' : 'Request sent',
+          self ? "You're now enrolled in $title." : "Your request for $title was sent — you'll be notified when it's approved.",
+          self ? CupertinoIcons.checkmark_alt_circle_fill : CupertinoIcons.paperplane_fill,
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not enroll'), behavior: SnackBarBehavior.floating));
+      }
+    }
+  }
+
+  // Animated confirmation overlay (checkmark / paper-plane scales + fades in,
+  // then auto-dismisses).
+  void _showRequestSent(String title, String sub, IconData icon) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'sent',
+      barrierColor: const Color(0x66000000),
+      transitionDuration: const Duration(milliseconds: 320),
+      transitionBuilder: (ctx, anim, sec, child) {
+        final c = CurvedAnimation(parent: anim, curve: Curves.easeOutBack);
+        return Transform.scale(scale: 0.7 + 0.3 * c.value, child: Opacity(opacity: anim.value.clamp(0.0, 1.0), child: child));
+      },
+      pageBuilder: (ctx, anim, sec) {
+        _isDark = Theme.of(ctx).brightness == Brightness.dark;
+        // Auto-dismiss shortly after it appears.
+        Future.delayed(const Duration(milliseconds: 1500), () {
+          if (Navigator.of(ctx).canPop()) Navigator.of(ctx).pop();
+        });
+        return Center(
+          child: Material(
+            type: MaterialType.transparency,
+            child: Container(
+              width: 280,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 30),
+              decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(20)),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: 1),
+                  duration: const Duration(milliseconds: 600),
+                  curve: Curves.elasticOut,
+                  builder: (_, v, __) => Transform.scale(
+                    scale: v,
+                    child: Container(
+                      width: 72, height: 72, alignment: Alignment.center,
+                      decoration: BoxDecoration(color: _orange.withOpacity(0.12), shape: BoxShape.circle),
+                      child: Icon(icon, size: 40, color: _orange),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(title, textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700, color: _navy)),
+                const SizedBox(height: 6),
+                Text(sub, textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 13, color: _grey, height: 1.4)),
+              ]),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _lessonRow(Map<String, dynamic> l) {
+    final type = l['type']?.toString() ?? 'text';
+    final done = l['completed'] == true;
+    final icon = switch (type) {
+      'video' => CupertinoIcons.play_rectangle_fill,
+      'link' => CupertinoIcons.link,
+      'scorm' || 'xapi' => CupertinoIcons.cube_box_fill,
+      _ => CupertinoIcons.doc_text_fill,
+    };
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _openLesson(l),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: _line))),
+        child: Row(children: [
+          Icon(icon, size: 20, color: _orange),
+          const SizedBox(width: 12),
+          Expanded(child: Text(l['title']?.toString() ?? 'Lesson', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy))),
+          Icon(done ? CupertinoIcons.checkmark_alt_circle_fill : CupertinoIcons.chevron_right, size: done ? 20 : 16, color: done ? _green : _grey),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _openLesson(Map<String, dynamic> l) async {
+    final url = l['url']?.toString() ?? '';
+    final type = l['type']?.toString() ?? 'text';
+    if (type == 'video' && url.isNotEmpty) {
+      // Stream in-app (mp4 native, .m3u8 via hls.js) — not a download.
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => VideoPlayerScreen(
+          url: url,
+          watermark: widget.auth.user?.email ?? 'student',
+          title: l['title']?.toString() ?? 'Video',
+        ),
+      ));
+    } else if (type == 'link' && url.startsWith('http')) {
+      try {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      } catch (_) {}
+    } else if (url.isNotEmpty) {
+      // Text lesson: show the body.
+      _showPanel(CupertinoIcons.doc_text_fill, l['title']?.toString() ?? 'Lesson', 'Lesson', [
+        Text(url, style: GoogleFonts.inter(fontSize: 14, color: _navy, height: 1.6)),
+      ]);
+    }
+    // Mark complete (best-effort).
+    try {
+      await widget.auth.apiPost('/api/v1/me/lessons/${l['id']}/complete', {});
+    } catch (_) {}
+  }
+
+  // Opens a quiz: loads its questions, collects answers, and submits them.
+  Future<void> _openAssessment(Map<String, dynamic> a) async {
+    final id = a['id'].toString();
+    final answers = <String, String>{};
+    _showPanel(CupertinoIcons.question_square_fill, a['title']?.toString() ?? 'Quiz',
+        a['course']?.toString() ?? 'Quiz', [
+      _future(_apiMap('/api/v1/me/assessments/$id'), (m) {
+        final qs = (m['questions'] as List?) ?? [];
+        if (qs.isEmpty) return _emptyText('This quiz has no questions yet.');
+        return StatefulBuilder(builder: (ctx, setS) {
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ...qs.asMap().entries.map((e) {
+              final q = e.value as Map<String, dynamic>;
+              final qid = q['id'].toString();
+              final type = q['type']?.toString() ?? 'short';
+              final opts = type == 'truefalse'
+                  ? const ['true', 'false']
+                  : ((q['options'] as List?)?.map((o) => o.toString()).toList() ?? const <String>[]);
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 18),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${e.key + 1}. ${q['prompt'] ?? ''}',
+                      style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: _navy)),
+                  const SizedBox(height: 8),
+                  if (opts.isNotEmpty)
+                    ...opts.map((o) => _Pressable(
+                          onTap: () => setS(() => answers[qid] = o),
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: answers[qid] == o ? _orange.withOpacity(0.12) : _bg,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: answers[qid] == o ? _orange : _line),
+                            ),
+                            child: Row(children: [
+                              Icon(answers[qid] == o ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle,
+                                  size: 18, color: answers[qid] == o ? _orange : _grey),
+                              const SizedBox(width: 10),
+                              Expanded(child: Text(o, style: GoogleFonts.inter(fontSize: 14, color: _navy))),
+                            ]),
+                          ),
+                        ))
+                  else
+                    CupertinoTextField(
+                      placeholder: 'Your answer',
+                      onChanged: (v) => answers[qid] = v,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(8), border: Border.all(color: _line)),
+                    ),
+                ]),
+              );
+            }),
+            const SizedBox(height: 8),
+            _Pressable(
+              onTap: () async {
+                try {
+                  await widget.auth.apiPost('/api/v1/me/assessments/$id/submit', {'answers': answers});
+                  if (!mounted) return;
+                  Navigator.of(ctx).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Submitted ✓')));
+                } catch (_) {
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't submit — try again.")));
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: _orange, borderRadius: BorderRadius.circular(10)),
+                child: Text('Submit', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
+              ),
+            ),
+          ]);
+        });
+      }),
+    ]);
+  }
+
+  void _showPanel(IconData icon, String title, String sub, List<Widget> body) {
+    showGeneralDialog(
+      context: context,
+      barrierLabel: 'panel',
+      barrierDismissible: true,
+      barrierColor: const Color(0x731A1A2E),
+      transitionDuration: const Duration(milliseconds: 300),
+      transitionBuilder: (ctx, anim, sec, child) {
+        final c = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
+        return FadeTransition(
+          opacity: c,
+          child: SlideTransition(
+            position: Tween<Offset>(begin: const Offset(0, 0.05), end: Offset.zero).animate(c),
+            child: ScaleTransition(scale: Tween<double>(begin: 0.97, end: 1.0).animate(c), child: child),
+          ),
+        );
+      },
+      pageBuilder: (ctx, anim, sec) {
+        _isDark = Theme.of(ctx).brightness == Brightness.dark;
+        final size = MediaQuery.of(ctx).size;
+        return Center(
+          // Material gives the text/inputs an ancestor (no yellow underlines).
+          child: Material(
+            type: MaterialType.transparency,
+            child: Container(
+            width: size.width * 0.98,
+            height: size.height * 0.98,
+            margin: EdgeInsets.symmetric(horizontal: size.width * 0.01, vertical: size.height * 0.01),
+            padding: EdgeInsets.fromLTRB(20, MediaQuery.of(ctx).padding.top + 12, 20, 18),
+            decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(10)),
+            child: SingleChildScrollView(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+                  // Back button (replaces the close ✕).
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: _Pressable(
+                      onTap: () => Navigator.of(ctx).pop(),
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(CupertinoIcons.chevron_back, size: 22, color: _orange),
+                          Text('Back', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600, color: _orange)),
+                        ]),
+                      ),
+                    ),
+                  ),
+                  Row(children: [
+                    Container(
+                      width: 44, height: 44, alignment: Alignment.center,
+                      decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
+                      child: Icon(icon, size: 22, color: _orange),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(title, style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w700, color: _navy)),
+                        Text(sub, style: GoogleFonts.inter(fontSize: 13, color: _grey)),
+                      ]),
+                    ),
+                  ]),
+                  const SizedBox(height: 24),
+                  ...body,
+                ]),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Returns (icon, title, subtitle, body widgets) for a panel key.
+  (IconData, String, String, List<Widget>) _panel(String key) {
+    switch (key) {
+      case 'dashboard':
+        return (CupertinoIcons.square_grid_2x2_fill, 'Dashboard', 'Your learning overview', [
+          _future(
+            Future.wait([
+              _apiMap('/api/v1/me/transcript'),
+              _apiList('/api/v1/me/courses', 'my_courses'),
+              _apiList('/api/v1/me/announcements', 'announcements'),
+              _apiList('/api/v1/me/notifications', 'notifications'),
+            ]),
+            (List d) {
+              final t = d[0] as Map<String, dynamic>;
+              final courses = d[1] as List;
+              // Merge personal notifications + announcements, newest first.
+              final notes = [...(d[3] as List), ...(d[2] as List)]
+                ..sort((a, b) => ((b as Map)['at']?.toString() ?? '').compareTo((a as Map)['at']?.toString() ?? ''));
+              return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Row(children: [
+                  Expanded(child: _statCard('${t['enrolled'] ?? 0}', 'Enrolled')),
+                  const SizedBox(width: 14),
+                  Expanded(child: _statCard('${t['completed'] ?? 0}', 'Completed')),
+                ]),
+                const SizedBox(height: 14),
+                Row(children: [
+                  Expanded(child: _statCard('${_xpFromCourses(courses)}', 'XP earned')),
+                  const SizedBox(width: 14),
+                  Expanded(child: _statCard('${t['certificates'] ?? 0}', 'Certificates')),
+                ]),
+                // Notifications — recent announcements.
+                if (notes.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  Row(children: [
+                    Icon(CupertinoIcons.bell_fill, size: 16, color: _orange),
+                    const SizedBox(width: 6),
+                    Text('Notifications', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
+                  ]),
+                  const SizedBox(height: 8),
+                  ...notes.take(3).map((e) {
+                    final m = e as Map<String, dynamic>;
+                    final course = m['course']?.toString() ?? '';
+                    final body = m['body']?.toString() ?? '';
+                    final text = [if (course.isNotEmpty) '[$course]', m['title'] ?? '', if (body.isNotEmpty) '— $body'].join(' ');
+                    return _notif(text, _fmtAt(m['at']?.toString()));
+                  }),
+                ],
+                const SizedBox(height: 20),
+                if (courses.isEmpty)
+                  _emptyText('No courses yet — browse the catalog to enroll.')
+                else
+                  ...courses.map((c) {
+                    final m = c as Map<String, dynamic>;
+                    return _progress(m['title']?.toString() ?? 'Course', ((m['percent'] ?? 0) as num) / 100);
+                  }),
+              ]);
+            },
+          ),
+        ]);
+      case 'notifications':
+        return (CupertinoIcons.bell_fill, 'Notifications', 'Updates & announcements', [
+          _future(
+            Future.wait([
+              _apiList('/api/v1/me/notifications', 'notifications'),
+              _apiList('/api/v1/me/announcements', 'announcements'),
+            ]),
+            (List d) {
+              // Mark personal notifications read (best-effort) once viewed.
+              widget.auth.apiPost('/api/v1/me/notifications/read', {}).ignore();
+              final entries = <Map<String, dynamic>>[];
+              for (final n in (d[0] as List)) {
+                final m = n as Map<String, dynamic>;
+                final body = m['body']?.toString() ?? '';
+                entries.add({'text': [m['title'] ?? '', if (body.isNotEmpty) '— $body'].join(' '), 'at': m['at'], 'read': m['read'] == true});
+              }
+              for (final a in (d[1] as List)) {
+                final m = a as Map<String, dynamic>;
+                final body = m['body']?.toString() ?? '';
+                final course = m['course']?.toString() ?? '';
+                entries.add({'text': [if (course.isNotEmpty) '[$course]', m['title'] ?? '', if (body.isNotEmpty) '— $body'].join(' '), 'at': m['at'], 'read': true});
+              }
+              entries.sort((a, b) => (b['at']?.toString() ?? '').compareTo(a['at']?.toString() ?? ''));
+              if (entries.isEmpty) return _emptyText('No notifications yet.');
+              return Column(children: entries.map((e) => _notif(e['text'] as String, _fmtAt(e['at']?.toString()), read: e['read'] == true)).toList());
+            },
+          ),
+        ]);
+      case 'courses':
+        return (CupertinoIcons.book_fill, 'My Courses', 'Tap a course to open its content', [
+          _future(_apiList('/api/v1/me/courses', 'my_courses'), (List courses) {
+            if (courses.isEmpty) return _emptyText('No courses yet.');
+            return Column(children: courses.map((c) {
+              final m = c as Map<String, dynamic>;
+              final done = m['lessons_done'] ?? 0, total = m['lessons_total'] ?? 0;
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _openContent(m['id'].toString(), m['title']?.toString() ?? 'Course'),
+                child: _row(CupertinoIcons.book_fill, m['title']?.toString() ?? 'Course', '$done/$total lessons', '${m['percent'] ?? 0}%'),
+              );
+            }).toList());
+          }),
+        ]);
+      case 'profile':
+        return (CupertinoIcons.person_fill, 'My Profile', 'Manage your details', [
+          _ProfilePanel(auth: widget.auth),
+        ]);
+      case 'settings':
+        return (CupertinoIcons.gear_alt_fill, 'Settings', 'Customize your experience', [
+          _SettingRow('Push Notifications', 'Get alerts for classes & assignments', true),
+          _SettingRow('Email Digest', 'Weekly progress summary', true),
+          const _DarkModeRow(),
+          _SettingRow('Study Reminders', 'Daily nudge to keep learning', true),
+          _SettingRow('Show Leaderboard', 'Let others see your rank', true),
+          _SettingRow('Auto-play Next Lesson', 'Continuous learning flow', false),
+        ]);
+      case 'leaderboard':
+        return (CupertinoIcons.list_number, 'Leaderboard', "This week's top learners", [
+          _leader('1', 'Aryan Patel', '200 lessons', '1,240 XP'),
+          _leader('2', 'Meera Iyer', '180 lessons', '1,100 XP'),
+          _leader('3', '$_firstName (you)', '160 lessons', '980 XP', highlight: true),
+          _leader('4', 'Ravi Kumar', '145 lessons', '870 XP'),
+          _leader('5', 'Ananya Singh', '130 lessons', '760 XP'),
+        ]);
+      case 'schedule':
+        return (CupertinoIcons.clock_fill, 'Schedule', 'Upcoming events', [
+          _future(_apiList('/api/v1/me/calendar', 'calendar'), (List items) {
+            if (items.isEmpty) return _emptyText('Nothing scheduled.');
+            return Column(children: items.map((e) {
+              final m = e as Map<String, dynamic>;
+              return _sched(_fmtAt(m['at']?.toString()), m['title']?.toString() ?? 'Event', m['course']?.toString() ?? '', (m['kind']?.toString() ?? 'event'));
+            }).toList());
+          }),
+        ]);
+      case 'progress':
+        return (CupertinoIcons.chart_bar_fill, 'My Progress', 'Completion per course', [
+          _future(_apiList('/api/v1/me/courses', 'my_courses'), (List courses) {
+            if (courses.isEmpty) return _emptyText('No courses to track yet.');
+            return Column(children: courses.map((c) {
+              final m = c as Map<String, dynamic>;
+              return _progress(m['title']?.toString() ?? 'Course', ((m['percent'] ?? 0) as num) / 100);
+            }).toList());
+          }),
+        ]);
+      case 'messages':
+        return (CupertinoIcons.chat_bubble_2_fill, 'Messages', 'Your inbox', [
+          _future(_apiList('/api/v1/me/messages', 'inbox'), (List inbox) {
+            if (inbox.isEmpty) return _emptyText('No messages.');
+            return Column(children: inbox.map((e) {
+              final m = e as Map<String, dynamic>;
+              final from = m['from']?.toString() ?? '';
+              return _notif(from.isEmpty ? (m['body']?.toString() ?? '') : '$from: ${m['body'] ?? ''}', _fmtAt(m['at']?.toString()), read: m['read'] == true);
+            }).toList());
+          }),
+        ]);
+      case 'assignments':
+        return (CupertinoIcons.doc_text_fill, 'Assignments', 'Quizzes & assignments by day', [
+          _future(_apiList('/api/v1/me/assessments', 'assessments'), (List items) {
+            if (items.isEmpty) return _emptyText('Nothing assigned yet.');
+            // Group by day_number; day-less items fall under "Unscheduled".
+            final groups = <int?, List<Map<String, dynamic>>>{};
+            for (final a in items) {
+              final m = a as Map<String, dynamic>;
+              final d = (m['day_number'] as num?)?.toInt();
+              groups.putIfAbsent(d, () => []).add(m);
+            }
+            final keys = groups.keys.toList()
+              ..sort((x, y) {
+                if (x == null) return 1;
+                if (y == null) return -1;
+                return x.compareTo(y);
+              });
+            final children = <Widget>[];
+            for (final k in keys) {
+              children.add(Padding(
+                padding: const EdgeInsets.only(top: 16, bottom: 4),
+                child: Text(k == null ? 'Unscheduled' : 'Day $k',
+                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: _orange)),
+              ));
+              for (final m in groups[k]!) {
+                final isQuiz = m['type'] == 'quiz';
+                final submitted = m['submitted'] == true;
+                final course = m['course']?.toString() ?? '';
+                children.add(GestureDetector(
+                  onTap: isQuiz && !submitted ? () => _openAssessment(m) : null,
+                  child: _row(
+                    isQuiz ? CupertinoIcons.question_square_fill : CupertinoIcons.doc_text_fill,
+                    m['title']?.toString() ?? 'Assessment',
+                    '$course · ${isQuiz ? 'Quiz' : 'Assignment'} · ${m['max_score'] ?? 100} pts',
+                    submitted ? 'Submitted' : (isQuiz ? 'Start' : 'Pending'),
+                    badgeBg: submitted ? _greenBg : null,
+                    badgeFg: submitted ? _green : null,
+                  ),
+                ));
+              }
+            }
+            return Column(children: children);
+          }),
+        ]);
+      case 'resources':
+        return (CupertinoIcons.bookmark_fill, 'Resources', 'Study materials', [
+          _row(CupertinoIcons.doc_fill, 'HTML Cheat Sheet', 'PDF · 2.3 MB', 'Download'),
+          _row(CupertinoIcons.play_rectangle_fill, 'CSS Flexbox Tutorial', 'Video · 45 min', 'Watch'),
+          _row(CupertinoIcons.book_fill, 'Figma Handbook', 'PDF · 5.1 MB', 'Download'),
+        ]);
+      case 'certificates':
+        return (CupertinoIcons.rosette, 'Certificates', 'Your achievements', [
+          _future(_apiList('/api/v1/me/certificates', 'certificates'), (List certs) {
+            if (certs.isEmpty) return _emptyText('No certificates yet — complete a course to earn one.');
+            return Column(children: certs.map((c) {
+              final m = c as Map<String, dynamic>;
+              return _row(CupertinoIcons.rosette, m['course']?.toString() ?? 'Certificate', 'Issued ${_fmtAt(m['issued_at']?.toString())}', 'View');
+            }).toList());
+          }),
+        ]);
+      case 'live':
+        return (CupertinoIcons.videocam_fill, 'Live Classes', 'Upcoming sessions', [
+          _future(_apiList('/api/v1/me/live', 'live'), (List live) {
+            if (live.isEmpty) return _emptyText('No live classes scheduled.');
+            return Column(children: live.map((s) {
+              final m = s as Map<String, dynamic>;
+              final meta = [m['course']?.toString() ?? '', _fmtAt(m['starts_at']?.toString())].where((x) => x.isNotEmpty).join(' · ');
+              return _row(CupertinoIcons.dot_radiowaves_left_right, m['title']?.toString() ?? 'Live class', meta, 'Join');
+            }).toList());
+          }),
+        ]);
+      case 'help':
+        return (CupertinoIcons.question_circle_fill, 'Help Center', "We're here for you", [
+          _help('How do I download my certificate?', 'Go to Certificates → View → Download PDF'),
+          _help('How do I join a live class?', 'Go to Schedule → tap Join 5 min before'),
+          _help('How to track progress?', 'Dashboard shows completion % per course'),
+          const SizedBox(height: 16),
+          _orangeButton('Chat with Support', () => Navigator.of(context).pop()),
+        ]);
+      case 'payments':
+        return (CupertinoIcons.creditcard_fill, 'Payments', 'Billing & subscriptions', [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: _peachSoft, borderRadius: BorderRadius.circular(12), border: const Border(left: BorderSide(color: _orange, width: 4))),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Current Plan', style: GoogleFonts.inter(fontSize: 13, color: _grey)),
+              const SizedBox(height: 4),
+              Text('ONROL Pro', style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w700, color: _orange)),
+              Text('Renews July 10, 2026', style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFFAAAAAA))),
+            ]),
+          ),
+          const SizedBox(height: 14),
+          _row(CupertinoIcons.doc_text, 'June 2026 — ₹999', 'Pro Plan · Paid', 'Paid', badgeBg: _greenBg, badgeFg: _green),
+          _row(CupertinoIcons.doc_text, 'May 2026 — ₹999', 'Pro Plan · Paid', 'Paid', badgeBg: _greenBg, badgeFg: _green),
+        ]);
+      case 'notes':
+        return (CupertinoIcons.pencil, 'My Notes', 'Quick study notes', [
+          _notif('CSS Flexbox: justify-content aligns on main axis; align-items on cross axis.', 'Web Dev · Saved yesterday'),
+          _notif('Figma: Auto Layout = CSS Flexbox for designers!', 'UI/UX · Saved 2 days ago'),
+          const SizedBox(height: 16),
+          _orangeButton('+ Add New Note', () => Navigator.of(context).pop()),
+        ]);
+      case 'quizzes':
+        return (CupertinoIcons.lightbulb_fill, 'Quizzes', 'Test your knowledge', [
+          _row(CupertinoIcons.bolt_fill, 'JavaScript Basics Quiz', '30 Qs · 45 min · Due today 4:30 PM', 'Start', badgeBg: const Color(0xFFFFF0EC), badgeFg: const Color(0xFFE05A2A)),
+          _row(CupertinoIcons.paintbrush_fill, 'UI Principles Quiz', '20 Qs · 30 min', 'Start'),
+          _row(CupertinoIcons.chart_bar_fill, 'Data Types Quiz', '15 Qs · 20 min · Completed', '90%', badgeBg: _greenBg, badgeFg: _green),
+        ]);
+      case 'calendar':
+        return (CupertinoIcons.calendar, 'Calendar', 'Your events', [
+          _future(_apiList('/api/v1/me/calendar', 'calendar'), (List items) {
+            if (items.isEmpty) return _emptyText('No events.');
+            return Column(children: items.map((e) {
+              final m = e as Map<String, dynamic>;
+              return _sched(_fmtAt(m['at']?.toString()), m['title']?.toString() ?? 'Event', m['course']?.toString() ?? '', (m['kind']?.toString() ?? 'event'));
+            }).toList());
+          }),
+        ]);
+      case 'announcements':
+        return (CupertinoIcons.speaker_2_fill, 'Announcements', 'Latest from ONROL', [
+          _notif('New course launched: Advanced React Patterns — enroll now!', '1 day ago'),
+          _notif('Scheduled maintenance Sunday 2 AM–4 AM IST.', '2 days ago', read: true),
+          _notif('Win prizes in the June coding challenge.', '3 days ago', read: true),
+        ]);
+      case 'forum':
+        return (CupertinoIcons.bubble_left_bubble_right_fill, 'Discussion Forum', 'Join the conversation', [
+          _row(CupertinoIcons.chat_bubble_2_fill, 'How do I center a div?', 'Web Development · 24 replies', 'Hot', badgeBg: const Color(0xFFFFF0EC), badgeFg: const Color(0xFFE05A2A)),
+          _row(CupertinoIcons.paintbrush_fill, 'Best Figma plugins in 2026?', 'UI/UX Design · 12 replies', 'Open'),
+          _row(CupertinoIcons.chart_bar_fill, 'Pandas vs NumPy — when?', 'Data Science · 8 replies', 'Open'),
+        ]);
+      case 'search':
+        return (CupertinoIcons.search, 'Search', 'Find courses & lessons', [
+          _field('SEARCH', ''),
+          const SizedBox(height: 8),
+          Text('Popular searches', style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFFAAAAAA), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+          const SizedBox(height: 6),
+          _row(CupertinoIcons.device_laptop, 'JavaScript Basics', 'Course · 4.8 rating', 'Open'),
+          _row(CupertinoIcons.paintbrush_fill, 'Figma Crash Course', 'Course · 4.9 rating', 'Open'),
+          _row(CupertinoIcons.cube_box_fill, 'Intro to Machine Learning', 'Course · 4.7 rating', 'Open'),
+        ]);
+      case 'bookmarks':
+        return (CupertinoIcons.star_fill, 'Bookmarks', 'Saved for later', [
+          _row(CupertinoIcons.device_laptop, 'Responsive Design Guide', 'Web Dev · Article', 'Read'),
+          _row(CupertinoIcons.play_rectangle_fill, 'CSS Grid Masterclass', 'Video · 32 min', 'Watch'),
+          _row(CupertinoIcons.doc_fill, 'Figma Shortcuts PDF', 'UI/UX · PDF', 'Open'),
+        ]);
+      case 'achievements':
+        return (CupertinoIcons.flame_fill, 'Achievements', "Badges you've earned", [
+          _row(CupertinoIcons.flame_fill, '7-Day Streak', 'Kept learning all week', 'Earned', badgeBg: _greenBg, badgeFg: _green),
+          _row(CupertinoIcons.scope, 'First Course Done', 'Completed HTML Fundamentals', 'Earned', badgeBg: _greenBg, badgeFg: _green),
+          _row(CupertinoIcons.star_fill, 'Top 3 This Week', 'Leaderboard rank #3', 'Earned', badgeBg: _greenBg, badgeFg: _green),
+          _row(CupertinoIcons.rocket_fill, 'Quick Learner', '5 lessons in a single day', 'Locked'),
+        ]);
+      case 'explore':
+        return (CupertinoIcons.compass_fill, 'Explore Courses', 'Browse all courses, batch-wise', [
+          _future(_apiList('/api/v1/catalog', 'catalog'), (List cat) {
+            if (cat.isEmpty) return _emptyText('No courses available right now.');
+            // Group batch-wise (by category — the catalog's grouping field).
+            final groups = <String, List>{};
+            for (final c in cat) {
+              final k = ((c as Map)['category']?.toString() ?? '').trim();
+              groups.putIfAbsent(k.isEmpty ? 'General' : k, () => []).add(c);
+            }
+            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: groups.entries.expand<Widget>((e) => [
+              Padding(
+                padding: const EdgeInsets.only(top: 10, bottom: 4),
+                child: Text(e.key, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
+              ),
+              ...e.value.map((c) {
+                final m = c as Map<String, dynamic>;
+                final self = m['enroll_type'] == 'self';
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _enrollCourse(m['id'].toString(), m['title']?.toString() ?? 'Course', self),
+                  child: _row(CupertinoIcons.book_fill, m['title']?.toString() ?? 'Course', m['category']?.toString() ?? '', self ? 'Enroll' : 'Request'),
+                );
+              }),
+            ]).toList());
+          }),
+        ]);
+      case 'logout':
+      default:
+        return (CupertinoIcons.square_arrow_right, 'Log Out', 'See you soon!', [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Column(children: [
+              const Icon(CupertinoIcons.square_arrow_right, size: 48, color: _orange),
+              const SizedBox(height: 12),
+              Text('Are you sure you want to log out, $_firstName? Your progress is saved and you can continue anytime.',
+                  textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 15, color: const Color(0xFF666666), height: 1.6)),
+              const SizedBox(height: 24),
+              Row(children: [
+                Expanded(child: _outlineButton('Stay', () => Navigator.of(context).pop())),
+                const SizedBox(width: 12),
+                Expanded(child: _orangeButton('Log Out', () { Navigator.of(context).pop(); _logout(); })),
+              ]),
+            ]),
+          ),
+        ]);
+    }
+  }
+}
+
+// ---- Reusable panel components ---------------------------------------------
+
+Widget _statCard(String num, String label) => Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      decoration: BoxDecoration(color: _peachSoft, borderRadius: BorderRadius.circular(12), border: const Border(left: BorderSide(color: _orange, width: 4))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(num, style: GoogleFonts.inter(fontSize: 26, fontWeight: FontWeight.w700, color: _orange)),
+        const SizedBox(height: 2),
+        Text(label, style: GoogleFonts.inter(fontSize: 12, color: _grey)),
+      ]),
+    );
+
+Widget _progress(String label, double pct) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Column(children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text(label, style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF555555))),
+          Text('${(pct * 100).round()}%', style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF555555))),
+        ]),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: LinearProgressIndicator(value: pct, minHeight: 8, backgroundColor: const Color(0xFFF0EBE8), valueColor: const AlwaysStoppedAnimation(_orange)),
+        ),
+      ]),
+    );
+
+Widget _notif(String text, String time, {bool read = false}) => _StudentHomeNotif(text: text, time: time, read: read);
+
+Widget _row(IconData icon, String name, String meta, String badge, {Color? badgeBg, Color? badgeFg}) => Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: _line))),
+      child: Row(children: [
+        Container(width: 44, height: 44, alignment: Alignment.center, decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(8)), child: Icon(icon, size: 20, color: _orange)),
+        const SizedBox(width: 14),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(name, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
+          Text(meta, style: GoogleFonts.inter(fontSize: 12, color: _grey)),
+        ])),
+        const SizedBox(width: 8),
+        Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: badgeBg ?? _peach, borderRadius: BorderRadius.circular(20)),
+            child: Text(badge, style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: badgeFg ?? _orange))),
+      ]),
+    );
+
+Widget _leader(String rank, String name, String sub, String pts, {bool highlight = false}) => Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      decoration: BoxDecoration(color: highlight ? _peachSoft : null, borderRadius: BorderRadius.circular(8)),
+      child: Row(children: [
+        SizedBox(width: 28, child: Text('#$rank', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: _orange))),
+        const SizedBox(width: 12),
+        Container(width: 36, height: 36, alignment: Alignment.center, decoration: BoxDecoration(color: _orange.withOpacity(0.12), shape: BoxShape.circle), child: const Icon(CupertinoIcons.person_fill, size: 18, color: _orange)),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(name, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
+          Text(sub, style: GoogleFonts.inter(fontSize: 12, color: _grey)),
+        ])),
+        Text(pts, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: _orange)),
+      ]),
+    );
+
+Widget _sched(String time, String title, String sub, String tag) => Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(width: 56, child: Text(time, textAlign: TextAlign.right, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: _orange))),
+        const SizedBox(width: 14),
+        Container(width: 2, height: 56, color: const Color(0xFFF0EBE8)),
+        const SizedBox(width: 14),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
+          Text(sub, style: GoogleFonts.inter(fontSize: 12, color: _grey)),
+          const SizedBox(height: 5),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: _peach, borderRadius: BorderRadius.circular(20)),
+              child: Text(tag, style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: _orange))),
+        ])),
+      ]),
+    );
+
+Widget _help(String q, String a) => Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF0F0F0)))),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(width: 10, height: 10, margin: const EdgeInsets.only(top: 5, right: 14), decoration: BoxDecoration(color: _navy, shape: BoxShape.circle)),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(q, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
+          const SizedBox(height: 3),
+          Text(a, style: GoogleFonts.inter(fontSize: 12, color: _grey, height: 1.4)),
+        ])),
+      ]),
+    );
+
+Widget _field(String label, String value) => Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFFAAAAAA), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+        const SizedBox(height: 5),
+        TextFormField(
+          initialValue: value,
+          style: GoogleFonts.inter(fontSize: 14, color: _navy),
+          decoration: InputDecoration(
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFEEEEEE), width: 1.5)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: _orange, width: 1.5)),
+          ),
+        ),
+      ]),
+    );
+
+Widget _orangeButton(String label, VoidCallback onTap) => _Pressable(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity, height: 46, alignment: Alignment.center,
+        decoration: BoxDecoration(color: _orange, borderRadius: BorderRadius.circular(10)),
+        child: Text(label, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+      ),
+    );
+
+Widget _outlineButton(String label, VoidCallback onTap) => _Pressable(
+      onTap: onTap,
+      child: Container(
+        height: 46, alignment: Alignment.center,
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: _orange, width: 2)),
+        child: Text(label, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _orange)),
+      ),
+    );
+
+/// Profile panel — loads the caller's profile from the API and saves edits.
+class _ProfilePanel extends StatefulWidget {
+  const _ProfilePanel({required this.auth});
+  final AuthService auth;
+
+  @override
+  State<_ProfilePanel> createState() => _ProfilePanelState();
+}
+
+class _ProfilePanelState extends State<_ProfilePanel> {
+  final _name = TextEditingController();
+  final _phone = TextEditingController();
+  String _email = '';
+  String _role = 'student';
+  bool _loading = true;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _phone.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final m = ApiClient.decode(await widget.auth.apiGet('/api/v1/me/profile'));
+      _name.text = m['full_name']?.toString() ?? '';
+      _phone.text = m['phone']?.toString() ?? '';
+      _email = m['email']?.toString() ?? '';
+      _role = m['role']?.toString() ?? 'student';
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await widget.auth.apiPatch('/api/v1/me/profile', {
+        'full_name': _name.text.trim(),
+        if (_phone.text.trim().isNotEmpty) 'phone': _phone.text.trim(),
+      });
+      await widget.auth.refreshProfile();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile saved'), behavior: SnackBarBehavior.floating));
+        Navigator.of(context).pop();
+      }
+    } catch (_) {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Widget _ctlField(String label, TextEditingController c, {bool enabled = true}) => Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFFAAAAAA), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+          const SizedBox(height: 5),
+          TextField(
+            controller: c,
+            enabled: enabled,
+            style: GoogleFonts.inter(fontSize: 14, color: _navy),
+            decoration: InputDecoration(
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFEEEEEE), width: 1.5)),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: _orange, width: 1.5)),
+              disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFF0F0F0), width: 1.5)),
+            ),
+          ),
+        ]),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Padding(padding: EdgeInsets.symmetric(vertical: 34), child: Center(child: CircularProgressIndicator(color: _orange, strokeWidth: 2.5)));
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Center(
+        child: Container(
+          width: 80, height: 80, alignment: Alignment.center,
+          decoration: BoxDecoration(color: _orange.withOpacity(0.12), shape: BoxShape.circle, border: Border.all(color: _orange, width: 3)),
+          child: const Icon(CupertinoIcons.person_fill, size: 36, color: _orange),
+        ),
+      ),
+      const SizedBox(height: 16),
+      Center(child: Text(_name.text, style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700, color: _navy))),
+      Center(child: Text('${_role[0].toUpperCase()}${_role.substring(1)} · ONROL', style: GoogleFonts.inter(fontSize: 13, color: _orange))),
+      const SizedBox(height: 20),
+      _ctlField('FULL NAME', _name),
+      _ctlField('EMAIL', TextEditingController(text: _email), enabled: false),
+      _ctlField('PHONE', _phone),
+      const SizedBox(height: 8),
+      _Pressable(
+        onTap: _saving ? () {} : _save,
+        child: Container(
+          width: double.infinity, height: 46, alignment: Alignment.center,
+          decoration: BoxDecoration(color: _orange, borderRadius: BorderRadius.circular(10)),
+          child: _saving
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
+              : Text('Save Changes', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+        ),
+      ),
+    ]);
+  }
+}
+
+// ---- Small interactive widgets ---------------------------------------------
+
+/// One square option tile: a colored graphic (emoji) plus the option name.
+/// No rounded corners. Scales slightly on hover/press.
+class _GridCell extends StatefulWidget {
+  const _GridCell({required this.tile, required this.size, required this.onTap});
+  final _Tile tile;
+  final double size;
+  final VoidCallback onTap;
+
+  @override
+  State<_GridCell> createState() => _GridCellState();
+}
+
+class _GridCellState extends State<_GridCell> {
+  bool _hover = false;
+  bool _down = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = widget.tile;
+    final s = widget.size;
+    final scale = _down ? 0.96 : (_hover ? 1.05 : 1.0);
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTapDown: (_) => setState(() => _down = true),
+        onTapUp: (_) => setState(() => _down = false),
+        onTapCancel: () => setState(() => _down = false),
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: scale,
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOut,
+          child: Container(
+            width: s, height: s,
+            // Solid square option (no roundness); icon + name inside it.
+            color: _hover ? Color.alphaBlend(Colors.black.withOpacity(0.10), _orange) : _orange,
+            alignment: Alignment.center,
+            padding: EdgeInsets.all(s * 0.08),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(t.icon, color: Colors.white, size: 30),
+                  const SizedBox(height: 8),
+                  Text(t.label,
+                      maxLines: 1,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A settings row with an animated toggle.
+class _SettingRow extends StatefulWidget {
+  const _SettingRow(this.label, this.sub, this.initial);
+  final String label;
+  final String sub;
+  final bool initial;
+
+  @override
+  State<_SettingRow> createState() => _SettingRowState();
+}
+
+class _SettingRowState extends State<_SettingRow> {
+  late bool _on = widget.initial;
+
+  @override
+  Widget build(BuildContext context) =>
+      _toggleRowView(widget.label, widget.sub, _on, () => setState(() => _on = !_on));
+}
+
+/// Shared visual for a labelled toggle row.
+Widget _toggleRowView(String label, String sub, bool on, VoidCallback onTap) => Container(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: _line))),
+      child: Row(children: [
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: GoogleFonts.inter(fontSize: 14, color: _navy)),
+          Text(sub, style: GoogleFonts.inter(fontSize: 12, color: _grey)),
+        ])),
+        GestureDetector(
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 44, height: 24,
+            decoration: BoxDecoration(color: on ? _orange : _line, borderRadius: BorderRadius.circular(12)),
+            child: AnimatedAlign(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              alignment: on ? Alignment.centerRight : Alignment.centerLeft,
+              child: Container(width: 18, height: 18, margin: const EdgeInsets.symmetric(horizontal: 3), decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+            ),
+          ),
+        ),
+      ]),
+    );
+
+/// Dark Mode toggle — switches the app theme via [setTheme].
+class _DarkModeRow extends StatelessWidget {
+  const _DarkModeRow();
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (ctx, mode, _) {
+        final on = mode == ThemeMode.dark ||
+            (mode == ThemeMode.system && MediaQuery.platformBrightnessOf(ctx) == Brightness.dark);
+        return _toggleRowView('Dark Mode', 'Easy on the eyes at night', on,
+            () => setTheme(on ? ThemeMode.light : ThemeMode.dark));
+      },
+    );
+  }
+}
+
+class _StudentHomeNotif extends StatelessWidget {
+  const _StudentHomeNotif({required this.text, required this.time, this.read = false});
+  final String text;
+  final String time;
+  final bool read;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF0F0F0)))),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(width: 10, height: 10, margin: const EdgeInsets.only(top: 5, right: 14), decoration: BoxDecoration(color: read ? const Color(0xFFDDDDDD) : _orange, shape: BoxShape.circle)),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(text, style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF333333), height: 1.5)),
+          const SizedBox(height: 3),
+          Text(time, style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFFAAAAAA))),
+        ])),
+      ]),
+    );
+  }
+}
+
+/// Generic press-scale wrapper.
+class _Pressable extends StatefulWidget {
+  const _Pressable({required this.child, required this.onTap});
+  final Widget child;
+  final VoidCallback onTap;
+
+  @override
+  State<_Pressable> createState() => _PressableState();
+}
+
+class _PressableState extends State<_Pressable> {
+  double _scale = 1;
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTapDown: (_) => setState(() => _scale = 0.96),
+        onTapUp: (_) => setState(() => _scale = 1),
+        onTapCancel: () => setState(() => _scale = 1),
+        onTap: widget.onTap,
+        child: AnimatedScale(scale: _scale, duration: const Duration(milliseconds: 90), child: widget.child),
+      ),
+    );
+  }
+}

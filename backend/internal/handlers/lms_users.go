@@ -14,7 +14,7 @@ import (
 func (h *Handlers) ListUsers(c *fiber.Ctx) error {
 	// Route is manager+ only; admins/managers manage everyone, so list all.
 	rows, err := h.Pool.Query(c.Context(),
-		`SELECT id, email, full_name, role, is_active, created_at FROM users ORDER BY created_at DESC LIMIT 1000`)
+		`SELECT id, email, full_name, role, is_active, created_at, batch, username FROM users ORDER BY created_at DESC LIMIT 1000`)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
 	}
@@ -24,11 +24,13 @@ func (h *Handlers) ListUsers(c *fiber.Ctx) error {
 		var id, email, name, role string
 		var active bool
 		var created any
-		if err := rows.Scan(&id, &email, &name, &role, &active, &created); err != nil {
+		var batch *int
+		var username *string
+		if err := rows.Scan(&id, &email, &name, &role, &active, &created, &batch, &username); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		out = append(out, fiber.Map{"id": id, "email": email, "full_name": name,
-			"role": role, "is_active": active, "created_at": created})
+			"role": role, "is_active": active, "created_at": created, "batch": batch, "username": username})
 	}
 	return c.JSON(fiber.Map{"users": out})
 }
@@ -58,6 +60,7 @@ func (h *Handlers) ListInstructors(c *fiber.Ctx) error {
 func (h *Handlers) CreateManagedUser(c *fiber.Ctx) error {
 	var req struct {
 		Email    string `json:"email"`
+		Username string `json:"username"`
 		FullName string `json:"full_name"`
 		Phone    string `json:"phone"`
 		Password string `json:"password"`
@@ -68,6 +71,7 @@ func (h *Handlers) CreateManagedUser(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
 	}
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	req.Username = strings.ToLower(strings.TrimSpace(req.Username))
 	if req.Email == "" || req.FullName == "" || req.Password == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "email, full_name, password required")
 	}
@@ -94,14 +98,21 @@ func (h *Handlers) CreateManagedUser(c *fiber.Ctx) error {
 	}
 	defer tx.Rollback(c.Context())
 	var id string
+	var uname any
+	if req.Username != "" {
+		uname = req.Username
+	}
 	err = tx.QueryRow(c.Context(),
-		`INSERT INTO users (email, phone, full_name, password_hash, role, max_devices)
-		 VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-		req.Email, req.Phone, req.FullName, string(hash), req.Role, h.Cfg.MaxDevices,
+		`INSERT INTO users (email, username, phone, full_name, password_hash, role, max_devices)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+		req.Email, uname, req.Phone, req.FullName, string(hash), req.Role, h.Cfg.MaxDevices,
 	).Scan(&id)
 	if err != nil {
 		if strings.Contains(err.Error(), "users_email_key") {
 			return fiber.NewError(fiber.StatusConflict, "email already registered")
+		}
+		if strings.Contains(err.Error(), "idx_users_username") {
+			return fiber.NewError(fiber.StatusConflict, "username already taken")
 		}
 		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
 	}
@@ -191,6 +202,35 @@ func (h *Handlers) DeactivateUser(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, "user not found")
 	}
 	return c.JSON(fiber.Map{"id": target, "deactivated": true})
+}
+
+// SetUserBatch assigns (or clears) a student's batch number. Pass batch: null
+// or 0 to clear. Manager/admin only (route-gated).
+func (h *Handlers) SetUserBatch(c *fiber.Ctx) error {
+	target := c.Params("id")
+	var req struct {
+		Batch *int `json:"batch"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+	if callerRole(c) != "superadmin" {
+		if err := h.requireUserInScope(c, target); err != nil {
+			return err
+		}
+	}
+	var batch any
+	if req.Batch != nil && *req.Batch > 0 {
+		batch = *req.Batch
+	}
+	tag, err := h.Pool.Exec(c.Context(), `UPDATE users SET batch=$2, updated_at=now() WHERE id=$1`, target, batch)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "update failed")
+	}
+	if tag.RowsAffected() == 0 {
+		return fiber.NewError(fiber.StatusNotFound, "user not found")
+	}
+	return c.JSON(fiber.Map{"id": target, "batch": batch})
 }
 
 // requireUserInScope: superadmin and manager (the LMS admin) manage any user.

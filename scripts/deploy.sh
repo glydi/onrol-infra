@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# =============================================================================
+# Push local edits to the live VPS — backend binary + Flutter web, in one shot.
+#
+#   bash scripts/deploy.sh            # build + ship both, verify
+#   bash scripts/deploy.sh backend    # only the Go API
+#   bash scripts/deploy.sh web        # only the Flutter web app
+#
+# The machine running this is expected to already have SSH access to the VPS
+# (key accepted) — no password prompts.
+#
+# Override the target if needed:
+#   HOST=root@1.2.3.4 WEB_ROOT=/var/www/onrol bash scripts/deploy.sh
+# =============================================================================
+set -euo pipefail
+
+HOST="${HOST:-root@187.127.178.100}"
+APP_DIR="${APP_DIR:-/opt/onrol}"
+WEB_ROOT="${WEB_ROOT:-/var/www/onrol}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WHAT="${1:-all}"
+
+# Make flutter visible if it's only on PATH via a local SDK checkout.
+command -v flutter >/dev/null || export PATH="$PATH:$HOME/flutter/bin:/opt/flutter/bin"
+
+log() { printf '\n\033[1;36m==>\033[0m \033[1m%s\033[0m\n' "$*"; }
+
+deploy_backend() {
+  log "Building API (linux/amd64)"
+  ( cd "$ROOT/backend" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+      go build -trimpath -ldflags="-s -w" -o /tmp/onrol-server-linux ./cmd/server )
+  log "Shipping API → $HOST"
+  scp -o ConnectTimeout=10 /tmp/onrol-server-linux "$HOST:$APP_DIR/onrol-server.new"
+  ssh "$HOST" "set -e
+    mv $APP_DIR/onrol-server.new $APP_DIR/onrol-server
+    chmod +x $APP_DIR/onrol-server
+    chown onrol:onrol $APP_DIR/onrol-server
+    systemctl restart onrol.service
+    sleep 2
+    printf 'healthz: '; curl -fsS http://127.0.0.1:8080/healthz; echo"
+}
+
+deploy_web() {
+  log "Building web app"
+  ( cd "$ROOT/app" && flutter build web --release --no-tree-shake-icons >/dev/null )
+  log "Publishing web → $HOST:$WEB_ROOT (with timestamped backup)"
+  ssh "$HOST" "cp -a $WEB_ROOT $WEB_ROOT.bak-\$(date +%Y%m%d-%H%M%S) 2>/dev/null || true"
+  rsync -az --delete -e ssh "$ROOT/app/build/web/" "$HOST:$WEB_ROOT/"
+  local L R
+  L="$(md5sum "$ROOT/app/build/web/main.dart.js" | awk '{print $1}')"
+  R="$(ssh "$HOST" "md5sum $WEB_ROOT/main.dart.js | awk '{print \$1}'")"
+  if [ "$L" = "$R" ]; then echo "web md5 MATCH ✓ ($L)"; else echo "web md5 MISMATCH ✗  local=$L remote=$R"; exit 1; fi
+}
+
+case "$WHAT" in
+  all)     deploy_backend; deploy_web ;;
+  backend) deploy_backend ;;
+  web)     deploy_web ;;
+  *) echo "usage: deploy.sh [all|backend|web]" >&2; exit 1 ;;
+esac
+
+log "Deployed. (hard-refresh / incognito to clear the service-worker cache)"

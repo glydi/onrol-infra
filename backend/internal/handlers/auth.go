@@ -93,13 +93,14 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
 	}
+	// The identifier may be an email or a username (both lower-cased).
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 
 	// 1. Verify credentials.
 	var user models.User
 	err := h.Pool.QueryRow(c.Context(),
 		`SELECT id, email, full_name, role, password_hash, max_devices, is_active
-		 FROM users WHERE email=$1`, req.Email,
+		 FROM users WHERE email=$1 OR lower(username)=$1`, req.Email,
 	).Scan(&user.ID, &user.Email, &user.FullName, &user.Role, &user.PasswordHash, &user.MaxDevices, &user.IsActive)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fiber.NewError(fiber.StatusUnauthorized, "invalid credentials")
@@ -196,18 +197,23 @@ func (h *Handlers) bindDevice(ctx context.Context, user models.User, deviceID, p
 		return err
 	}
 
-	// New device: enforce the limit. The user-row lock above already serializes
-	// concurrent logins, so a plain count is race-free here.
-	var activeCount int
-	if err := tx.QueryRow(ctx,
-		`SELECT count(*) FROM devices WHERE user_id=$1 AND is_active`,
-		user.ID,
-	).Scan(&activeCount); err != nil {
-		return err
-	}
-	if activeCount >= user.MaxDevices {
-		devices, _ := listActiveDevices(ctx, tx, user.ID)
-		return deviceLimitError{devices: devices}
+	// New device: enforce the limit — except for admins (manager/superadmin),
+	// who are exempt and may sign in from any number of devices. The user-row
+	// lock above already serializes concurrent logins, so a plain count is
+	// race-free here.
+	adminExempt := user.Role == "manager" || user.Role == "superadmin"
+	if !adminExempt {
+		var activeCount int
+		if err := tx.QueryRow(ctx,
+			`SELECT count(*) FROM devices WHERE user_id=$1 AND is_active`,
+			user.ID,
+		).Scan(&activeCount); err != nil {
+			return err
+		}
+		if activeCount >= user.MaxDevices {
+			devices, _ := listActiveDevices(ctx, tx, user.ID)
+			return deviceLimitError{devices: devices}
+		}
 	}
 
 	_, err = tx.Exec(ctx,

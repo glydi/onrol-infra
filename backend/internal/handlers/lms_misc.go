@@ -111,28 +111,57 @@ func (h *Handlers) AttendanceReport(c *fiber.Ctx) error {
 
 func (h *Handlers) CreateAnnouncement(c *fiber.Ctx) error {
 	var req struct {
-		CourseID string `json:"course_id"`
-		Title    string `json:"title"`
-		Body     string `json:"body"`
+		CourseID    string `json:"course_id"`
+		Title       string `json:"title"`
+		Body        string `json:"body"`
+		Audience    string `json:"audience"`     // all | batch | role (used when no course_id)
+		BatchNumber *int   `json:"batch_number"` // for audience=batch
+		Role        string `json:"role"`         // for audience=role
 	}
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Title) == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "title required")
 	}
+	// Course-scoped announcement: gated to that course's staff.
 	if req.CourseID != "" {
 		if err := h.canManageCourse(c, req.CourseID); err != nil {
 			return err
 		}
-	} else if callerRole(c) != "superadmin" {
-		return fiber.NewError(fiber.StatusForbidden, "only superadmin can post global announcements")
+		var id string
+		if err := h.Pool.QueryRow(c.Context(),
+			`INSERT INTO announcements (course_id, author_id, title, body, audience) VALUES ($1,$2,$3,$4,'all') RETURNING id`,
+			req.CourseID, callerID(c), req.Title, req.Body).Scan(&id); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "create failed")
+		}
+		return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": req.Title})
 	}
-	var course any
-	if req.CourseID != "" {
-		course = req.CourseID
+	// Targeted broadcast (all / batch / role).
+	switch req.Audience {
+	case "", "all":
+		req.Audience = "all"
+		req.BatchNumber = nil
+		req.Role = ""
+	case "batch":
+		if req.BatchNumber == nil {
+			return fiber.NewError(fiber.StatusBadRequest, "batch_number required for batch audience")
+		}
+		req.Role = ""
+	case "role":
+		if req.Role == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "role required for role audience")
+		}
+		req.BatchNumber = nil
+	default:
+		return fiber.NewError(fiber.StatusBadRequest, "audience must be all, batch, or role")
+	}
+	var roleVal any
+	if req.Role != "" {
+		roleVal = req.Role
 	}
 	var id string
 	if err := h.Pool.QueryRow(c.Context(),
-		`INSERT INTO announcements (course_id, author_id, title, body) VALUES ($1,$2,$3,$4) RETURNING id`,
-		course, callerID(c), req.Title, req.Body).Scan(&id); err != nil {
+		`INSERT INTO announcements (author_id, title, body, audience, batch_number, role)
+		 VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+		callerID(c), req.Title, req.Body, req.Audience, req.BatchNumber, roleVal).Scan(&id); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": req.Title})
@@ -172,6 +201,41 @@ func (h *Handlers) CreateSession(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": req.Title})
+}
+
+// UpdateSession edits a live session — primarily to update/replace the live
+// video (join) link, but title and start time can be changed too.
+func (h *Handlers) UpdateSession(c *fiber.Ctx) error {
+	sessionID := c.Params("id")
+	var courseID string
+	if err := h.Pool.QueryRow(c.Context(), `SELECT course_id FROM class_sessions WHERE id=$1`, sessionID).Scan(&courseID); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "session not found")
+	}
+	if err := h.canManageCourse(c, courseID); err != nil {
+		return err
+	}
+	var req struct {
+		Title    *string `json:"title"`
+		JoinURL  *string `json:"join_url"`
+		StartsAt *string `json:"starts_at"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+	// COALESCE keeps existing values for any field omitted from the request.
+	var starts any
+	if req.StartsAt != nil && *req.StartsAt != "" {
+		starts = *req.StartsAt
+	}
+	if _, err := h.Pool.Exec(c.Context(), `
+		UPDATE class_sessions
+		SET title    = COALESCE($2, title),
+		    join_url = COALESCE($3, join_url),
+		    starts_at = COALESCE($4, starts_at)
+		WHERE id=$1`, sessionID, req.Title, req.JoinURL, starts); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "update failed")
+	}
+	return c.JSON(fiber.Map{"id": sessionID, "updated": true})
 }
 
 // ListCourseSessions returns a course's live sessions for staff (console).

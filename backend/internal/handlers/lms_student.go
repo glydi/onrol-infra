@@ -442,6 +442,40 @@ func (h *Handlers) MyCalendar(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"calendar": out})
 }
 
+// MyAssessments lists the published quizzes/assignments across the student's
+// enrolled courses, ordered by course day so the app can show a day-by-day plan
+// (Day 1, Day 2, …). Items without a day_number sort last.
+func (h *Handlers) MyAssessments(c *fiber.Ctx) error {
+	rows, err := h.Pool.Query(c.Context(), `
+		SELECT a.id, a.title, a.type, a.max_score, a.day_number,
+		       COALESCE(a.due_at::text,''), c.title AS course,
+		       (SELECT count(*) FROM questions q WHERE q.assessment_id=a.id) AS qcount,
+		       EXISTS (SELECT 1 FROM submissions s WHERE s.assessment_id=a.id AND s.user_id=$1) AS submitted
+		FROM assessments a
+		JOIN courses c ON c.id=a.course_id
+		JOIN course_enrollments ce ON ce.course_id=c.id AND ce.user_id=$1
+		WHERE a.is_published
+		ORDER BY a.day_number NULLS LAST, c.title, a.created_at`, callerID(c))
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "load failed")
+	}
+	defer rows.Close()
+	out := []fiber.Map{}
+	for rows.Next() {
+		var id, title, typ, due, course string
+		var maxScore float64
+		var day *int
+		var qc int
+		var submitted bool
+		if err := rows.Scan(&id, &title, &typ, &maxScore, &day, &due, &course, &qc, &submitted); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		out = append(out, fiber.Map{"id": id, "title": title, "type": typ, "max_score": maxScore,
+			"day_number": day, "due_at": due, "course": course, "questions": qc, "submitted": submitted})
+	}
+	return c.JSON(fiber.Map{"assessments": out})
+}
+
 // SendMessage: direct message to another user.
 func (h *Handlers) SendMessage(c *fiber.Ctx) error {
 	var req struct {

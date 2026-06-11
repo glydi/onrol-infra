@@ -7,6 +7,38 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+// ListCourseAssessments returns a course's quizzes & assignments (with a
+// question count) so the console can show and manage them.
+func (h *Handlers) ListCourseAssessments(c *fiber.Ctx) error {
+	courseID := c.Params("id")
+	if err := h.canManageCourse(c, courseID); err != nil {
+		return err
+	}
+	rows, err := h.Pool.Query(c.Context(),
+		`SELECT a.id, a.title, a.type, a.max_score, COALESCE(a.due_at::text,''), a.is_published, a.day_number,
+		        (SELECT count(*) FROM questions q WHERE q.assessment_id=a.id) AS qcount
+		 FROM assessments a WHERE a.course_id=$1
+		 ORDER BY a.day_number NULLS LAST, a.created_at DESC`, courseID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
+	}
+	defer rows.Close()
+	out := []fiber.Map{}
+	for rows.Next() {
+		var id, title, typ, due string
+		var maxScore float64
+		var pub bool
+		var day *int
+		var qc int
+		if err := rows.Scan(&id, &title, &typ, &maxScore, &due, &pub, &day, &qc); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		out = append(out, fiber.Map{"id": id, "title": title, "type": typ, "max_score": maxScore,
+			"due_at": due, "is_published": pub, "day_number": day, "questions": qc})
+	}
+	return c.JSON(fiber.Map{"assessments": out})
+}
+
 // CreateAssessment adds a quiz/assignment to a course.
 func (h *Handlers) CreateAssessment(c *fiber.Ctx) error {
 	courseID := c.Params("id")
@@ -18,6 +50,7 @@ func (h *Handlers) CreateAssessment(c *fiber.Ctx) error {
 		Type        string  `json:"type"`
 		MaxScore    float64 `json:"max_score"`
 		DueAt       string  `json:"due_at"`
+		DayNumber   *int    `json:"day_number"`
 		IsPublished bool    `json:"is_published"`
 	}
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Title) == "" {
@@ -35,9 +68,9 @@ func (h *Handlers) CreateAssessment(c *fiber.Ctx) error {
 	}
 	var id string
 	if err := h.Pool.QueryRow(c.Context(),
-		`INSERT INTO assessments (course_id, title, type, max_score, due_at, is_published, created_by)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-		courseID, req.Title, req.Type, req.MaxScore, due, req.IsPublished, callerID(c)).Scan(&id); err != nil {
+		`INSERT INTO assessments (course_id, title, type, max_score, due_at, day_number, is_published, created_by)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+		courseID, req.Title, req.Type, req.MaxScore, due, req.DayNumber, req.IsPublished, callerID(c)).Scan(&id); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": req.Title, "type": req.Type})

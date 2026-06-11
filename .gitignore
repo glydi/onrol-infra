@@ -19,3 +19,6 @@ backups/
 .DS_Store
 .idea/
 .vscode/
+
+# Separate CRM source app (its own git repo)
+onrol-crm/

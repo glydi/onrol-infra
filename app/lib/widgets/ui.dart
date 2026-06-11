@@ -74,11 +74,12 @@ class AppleCard extends StatelessWidget {
 
 /// Full-width filled blue CTA with a press-scale animation.
 class PrimaryButton extends StatefulWidget {
-  const PrimaryButton({super.key, required this.label, required this.onPressed, this.busy = false, this.icon});
+  const PrimaryButton({super.key, required this.label, required this.onPressed, this.busy = false, this.icon, this.square = false});
   final String label;
   final VoidCallback? onPressed;
   final bool busy;
   final IconData? icon;
+  final bool square; // admin panels use squared corners (no round buttons)
 
   @override
   State<PrimaryButton> createState() => _PrimaryButtonState();
@@ -109,7 +110,7 @@ class _PrimaryButtonState extends State<PrimaryButton> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(widget.square ? 6 : 18),
             boxShadow: enabled
                 ? [BoxShadow(color: p.accent.withOpacity(0.38), offset: const Offset(0, 9), blurRadius: 20, spreadRadius: -3)]
                 : null,
@@ -374,4 +375,72 @@ class AppleSegmented extends StatelessWidget {
       ),
     );
   }
+}
+
+// ---- shared form-sheet helpers (used by console + CRM) ---------------------
+
+Widget sheetField(TextEditingController c, String hint, IconData icon, {TextInputType? keyboard}) {
+  return Builder(builder: (context) {
+    final p = Palette.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(12)),
+      child: AppleField(controller: c, hint: hint, icon: icon, keyboard: keyboard),
+    );
+  });
+}
+
+/// A reusable modal form sheet. onSubmit returns an error string or null on success.
+Future<bool?> showFormSheet(
+  BuildContext context, {
+  required String title,
+  required List<Widget> Function(void Function(void Function())) builder,
+  required Future<String?> Function() onSubmit,
+}) {
+  return showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) {
+      final p = Palette.of(ctx);
+      bool busy = false;
+      String? err;
+      return StatefulBuilder(builder: (ctx, setS) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: Container(
+            margin: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(16)),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Center(child: Text(title, style: AppleTheme.title2(ctx))),
+              const SizedBox(height: 16),
+              ...builder(setS),
+              if (err != null) ...[
+                const SizedBox(height: 12),
+                Text(err!, style: AppleTheme.footnote(ctx).copyWith(color: AppleColors.red)),
+              ],
+              const SizedBox(height: 18),
+              PrimaryButton(
+                label: 'Save',
+                busy: busy,
+                square: true,
+                onPressed: () async {
+                  setS(() { busy = true; err = null; });
+                  final e = await onSubmit();
+                  if (e == null) {
+                    if (ctx.mounted) Navigator.pop(ctx, true);
+                  } else {
+                    setS(() { busy = false; err = e; });
+                  }
+                },
+              ),
+              const SizedBox(height: 6),
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: TextStyle(color: p.secondary))),
+            ]),
+          ),
+        );
+      });
+    },
+  );
 }

@@ -281,6 +281,13 @@ func (h *Handlers) ManualEnroll(c *fiber.Ctx) error {
 	if err := h.enrollUserInCourse(c, courseID, req.UserID, callerID(c)); err != nil {
 		return err
 	}
+	// Notify the student that a course was added for them.
+	var courseTitle string
+	_ = h.Pool.QueryRow(c.Context(), `SELECT title FROM courses WHERE id=$1`, courseID).Scan(&courseTitle)
+	if courseTitle == "" {
+		courseTitle = "a course"
+	}
+	h.notify(c, req.UserID, "New course added", "You've been enrolled in "+courseTitle+".", "enrollment")
 	return c.JSON(fiber.Map{"course_id": courseID, "user_id": req.UserID, "enrolled": true})
 }
 

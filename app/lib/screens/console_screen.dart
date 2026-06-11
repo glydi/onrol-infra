@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
@@ -7,6 +8,7 @@ import '../theme.dart';
 import '../widgets/app_shell.dart';
 import '../widgets/profile_view.dart';
 import '../widgets/ui.dart';
+import 'crm_portal.dart';
 import 'discussion_screen.dart';
 import 'login_screen.dart';
 
@@ -92,7 +94,10 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     return AppShell(
       auth: widget.auth,
       onSignOut: _logout,
-      trailing: _isAdmin ? _newCourseButton() : null,
+      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        _openCrmButton(),
+        if (_isAdmin) ...[const SizedBox(width: 10), _newCourseButton()],
+      ]),
       destinations: dests,
       pages: pages,
     );
@@ -110,20 +115,42 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         Text('Create and manage accounts', style: AppleTheme.subhead(context)),
         const SizedBox(height: 16),
         Row(children: [
-          Expanded(child: PrimaryButton(label: 'Add Instructor', icon: CupertinoIcons.person_badge_plus, onPressed: () => _addPerson('instructor'))),
+          Expanded(child: PrimaryButton(label: 'Add Instructor', icon: CupertinoIcons.person_badge_plus, square: true, onPressed: () => _addPerson('instructor'))),
           const SizedBox(width: 12),
-          Expanded(child: PrimaryButton(label: 'Add Student', icon: CupertinoIcons.person_add, onPressed: () => _addPerson('student'))),
+          Expanded(child: PrimaryButton(label: 'Add Student', icon: CupertinoIcons.person_add, square: true, onPressed: () => _addPerson('student'))),
         ]),
+        const SizedBox(height: 12),
+        PrimaryButton(label: 'Send Announcement', icon: CupertinoIcons.speaker_2_fill, square: true, onPressed: _sendAnnouncement),
         const SizedBox(height: 22),
         if (others.isNotEmpty) ...[_peopleGroup('Admins', others), const SizedBox(height: 18)],
         _peopleGroup('Instructors (${instructors.length})', instructors),
         const SizedBox(height: 18),
-        _peopleGroup('Students (${students.length})', students),
+        // Students divided by batch number.
+        ..._studentsByBatch(students),
       ],
     );
   }
 
-  Widget _peopleGroup(String title, List<dynamic> people) {
+  // Groups students into "Batch N" sections (and "Unassigned"), sorted.
+  List<Widget> _studentsByBatch(List<dynamic> students) {
+    final byBatch = <int?, List<dynamic>>{};
+    for (final s in students) {
+      final b = (s['batch'] is int) ? s['batch'] as int : int.tryParse('${s['batch'] ?? ''}');
+      byBatch.putIfAbsent(b, () => []).add(s);
+    }
+    final keys = byBatch.keys.toList()
+      ..sort((a, b) => (a ?? 1 << 30).compareTo(b ?? 1 << 30));
+    final out = <Widget>[];
+    for (final k in keys) {
+      final list = byBatch[k]!;
+      out.add(_peopleGroup(k == null ? 'Students · Unassigned (${list.length})' : 'Students · Batch $k (${list.length})', list, batch: true));
+      out.add(const SizedBox(height: 18));
+    }
+    if (out.isEmpty) out.add(_peopleGroup('Students (0)', const [], batch: true));
+    return out;
+  }
+
+  Widget _peopleGroup(String title, List<dynamic> people, {bool batch = false}) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       SectionHeader(title),
       if (people.isEmpty)
@@ -139,12 +166,27 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
                 leading: Avatar(name: u['full_name']?.toString() ?? '?', size: 36),
                 title: Text(u['full_name']?.toString() ?? '', style: AppleTheme.body(context)),
                 subtitle: Text(u['email']?.toString() ?? '', style: AppleTheme.footnote(context)),
-                onTap: () => _manageDevices(u['id'].toString(), u['full_name']?.toString() ?? 'User'),
+                onTap: () => _manageDevices(u['id'].toString(), u['full_name']?.toString() ?? 'User', u['email']?.toString() ?? ''),
                 trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                   if (u['is_active'] == false) const Padding(
                     padding: EdgeInsets.only(right: 8),
                     child: Icon(CupertinoIcons.nosign, color: AppleColors.red, size: 18),
                   ),
+                  if (batch) ...[
+                    GestureDetector(
+                      onTap: () => _setBatch(u['id'].toString(), u['full_name']?.toString() ?? 'Student', (u['batch'] is int) ? u['batch'] as int : int.tryParse('${u['batch'] ?? ''}')),
+                      behavior: HitTestBehavior.opaque,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(color: Palette.of(context).accent.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
+                        child: Text(
+                          u['batch'] == null ? 'Set batch' : 'Batch ${u['batch']}',
+                          style: TextStyle(color: Palette.of(context).accent, fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
                   Icon(CupertinoIcons.device_phone_portrait, color: Palette.of(context).accent, size: 20),
                 ]),
               ),
@@ -154,26 +196,96 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     ]);
   }
 
-  // Device control: view a user's bound devices, revoke one, or reset all.
-  Future<void> _manageDevices(String userId, String name) async {
+  // Assign a student to a batch number (blank/0 clears it).
+  Future<void> _setBatch(String userId, String name, int? current) async {
+    final ctrl = TextEditingController(text: current?.toString() ?? '');
+    final ok = await showFormSheet(context, title: 'Set Batch — $name',
+        builder: (_) => [sheetField(ctrl, 'Batch number (blank to clear)', CupertinoIcons.number)],
+        onSubmit: () async {
+      final n = int.tryParse(ctrl.text.trim());
+      try {
+        await widget.auth.apiPost('/api/v1/manage/users/$userId/batch', {'batch': n});
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) {
+      _toast('Batch updated');
+      _load();
+    }
+  }
+
+  // Broadcast an announcement to everyone, a batch, or a role.
+  Future<void> _sendAnnouncement() async {
+    final title = TextEditingController();
+    final body = TextEditingController();
+    final batch = TextEditingController();
+    int audience = 0; // 0=all, 1=batch, 2=role
+    int role = 0; // student, instructor, manager
+    const roles = ['student', 'instructor', 'manager'];
+    final ok = await showFormSheet(context, title: 'Send Announcement', builder: (setS) => [
+      sheetField(title, 'Title', CupertinoIcons.textformat),
+      const SizedBox(height: 10),
+      sheetField(body, 'Message', CupertinoIcons.text_alignleft),
+      const SizedBox(height: 12),
+      Text('Audience', style: AppleTheme.footnote(context)),
+      const SizedBox(height: 6),
+      AppleSegmented(labels: const ['Everyone', 'Batch', 'Role'], selected: audience, onChanged: (i) => setS(() => audience = i)),
+      if (audience == 1) ...[
+        const SizedBox(height: 10),
+        sheetField(batch, 'Batch number', CupertinoIcons.number, keyboard: TextInputType.number),
+      ],
+      if (audience == 2) ...[
+        const SizedBox(height: 10),
+        AppleSegmented(labels: const ['Students', 'Instructors', 'Managers'], selected: role, onChanged: (i) => setS(() => role = i)),
+      ],
+    ], onSubmit: () async {
+      if (title.text.trim().isEmpty) return 'Title required';
+      final payload = <String, dynamic>{
+        'title': title.text.trim(),
+        'body': body.text.trim(),
+        'audience': audience == 0 ? 'all' : (audience == 1 ? 'batch' : 'role'),
+      };
+      if (audience == 1) {
+        final n = int.tryParse(batch.text.trim());
+        if (n == null) return 'Enter a batch number';
+        payload['batch_number'] = n;
+      }
+      if (audience == 2) payload['role'] = roles[role];
+      try {
+        await widget.auth.apiPost('/api/v1/manage/announcements', payload);
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) _toast('Announcement sent');
+  }
+
+  // Manage a student: devices + assign to a course.
+  Future<void> _manageDevices(String userId, String name, String email) async {
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _DeviceSheet(auth: widget.auth, userId: userId, name: name),
+      builder: (_) => _DeviceSheet(auth: widget.auth, userId: userId, name: name, email: email),
     );
   }
 
   Future<void> _addPerson(String role) async {
     final email = TextEditingController();
+    final username = TextEditingController();
     final name = TextEditingController();
     final pass = TextEditingController();
     final ok = await showFormSheet(context, title: role == 'instructor' ? 'Add Instructor' : 'Add Student', builder: (_) => [
-      _sheetField(name, 'Full name', CupertinoIcons.person),
+      sheetField(name, 'Full name', CupertinoIcons.person),
       const SizedBox(height: 10),
-      _sheetField(email, 'Email', CupertinoIcons.mail),
+      sheetField(email, 'Email', CupertinoIcons.mail),
       const SizedBox(height: 10),
-      _sheetField(pass, 'Temporary password (min 8)', CupertinoIcons.lock),
+      sheetField(username, 'Username (optional — for sign-in)', CupertinoIcons.at),
+      const SizedBox(height: 10),
+      sheetField(pass, 'Temporary password (min 8)', CupertinoIcons.lock),
     ], onSubmit: () async {
       if (name.text.trim().isEmpty || email.text.trim().isEmpty) return 'Name and email required';
       if (pass.text.trim().length < 8) return 'Password must be at least 8 characters';
@@ -181,6 +293,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         await widget.auth.apiPost('/api/v1/manage/users', {
           'full_name': name.text.trim(),
           'email': email.text.trim(),
+          if (username.text.trim().isNotEmpty) 'username': username.text.trim(),
           'password': pass.text.trim(),
           'role': role,
         });
@@ -203,13 +316,35 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: p.accent,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [BoxShadow(color: p.accent.withOpacity(0.35), offset: const Offset(0, 6), blurRadius: 14, spreadRadius: -3)],
+          borderRadius: BorderRadius.circular(6),
         ),
         child: const Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(CupertinoIcons.add, color: Colors.white, size: 18),
           SizedBox(width: 6),
           Text('New Course', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+        ]),
+      ),
+    );
+  }
+
+  // Opens the separate CRM portal (crm.* subdomain) in a new browser tab.
+  Widget _openCrmButton() {
+    final p = Palette.of(context);
+    return GestureDetector(
+      onTap: () => launchUrl(Uri.parse(crmUrl()), webOnlyWindowName: '_blank', mode: LaunchMode.externalApplication),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: p.card2,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: p.separator),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(CupertinoIcons.person_crop_circle_badge_checkmark, color: p.label, size: 18),
+          const SizedBox(width: 6),
+          Text('Open CRM', style: TextStyle(color: p.label, fontWeight: FontWeight.w600)),
+          const SizedBox(width: 4),
+          Icon(CupertinoIcons.arrow_up_right, color: p.secondary, size: 13),
         ]),
       ),
     );
@@ -350,9 +485,9 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       context,
       title: 'New Course',
       builder: (setS) => [
-        _sheetField(title, 'Course title', CupertinoIcons.textformat),
+        sheetField(title, 'Course title', CupertinoIcons.textformat),
         const SizedBox(height: 10),
-        _sheetField(desc, 'Description', CupertinoIcons.text_alignleft),
+        sheetField(desc, 'Description', CupertinoIcons.text_alignleft),
         const SizedBox(height: 16),
         _label(context, 'Assign instructor'),
         const SizedBox(height: 6),
@@ -509,6 +644,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   Map<String, dynamic>? _course;
   List<dynamic> _sessions = [];
   List<dynamic> _students = [];
+  List<dynamic> _assessments = [];
   bool _loading = true;
 
   @override
@@ -525,6 +661,8 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       _sessions = (ApiClient.decode(s)['sessions'] as List?) ?? [];
       final st = await widget.auth.apiGet('/api/v1/manage/courses/${widget.courseId}/students');
       _students = (ApiClient.decode(st)['students'] as List?) ?? [];
+      final a = await widget.auth.apiGet('/api/v1/manage/courses/${widget.courseId}/assessments');
+      _assessments = (ApiClient.decode(a)['assessments'] as List?) ?? [];
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
   }
@@ -636,9 +774,20 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                   ..._sessions.map((s) => _sessionCard(s as Map<String, dynamic>)),
 
                 const SizedBox(height: 22),
+                Row(children: [
+                  Expanded(child: SectionHeader('Quizzes & Assignments (${_assessments.length})')),
+                  _smallButton('Add', CupertinoIcons.doc_text_fill, _addAssignment),
+                ]),
+                if (_assessments.isEmpty)
+                  AppleCard(child: Text('None yet. Add a quiz or assignment — students submit and you grade.', style: AppleTheme.footnote(context)))
+                else
+                  ..._assessmentsByDay(),
+
+                const SizedBox(height: 22),
                 PrimaryButton(
                   label: 'Doubts & Discussion',
                   icon: CupertinoIcons.chat_bubble_2_fill,
+                  square: true,
                   onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => DiscussionScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title))),
                 ),
@@ -675,25 +824,190 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     final hasLink = (s['join_url']?.toString() ?? '').isNotEmpty;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
+      child: GestureDetector(
+        onTap: () => _editSession(s),
+        behavior: HitTestBehavior.opaque,
+        child: AppleCard(
+          child: Row(children: [
+            Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(color: AppleColors.red.withOpacity(0.12), borderRadius: BorderRadius.circular(11)),
+              child: const Icon(CupertinoIcons.videocam_fill, color: AppleColors.red, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(s['title']?.toString() ?? 'Live class', style: AppleTheme.headline(context)),
+                Text(hasLink ? _fmtTime(s['starts_at']?.toString()) : '${_fmtTime(s['starts_at']?.toString())} · No link — tap to add',
+                    style: AppleTheme.footnote(context)),
+              ]),
+            ),
+            _smallButton('Edit link', CupertinoIcons.link, () => _editSession(s)),
+            const SizedBox(width: 6),
+            Icon(hasLink ? CupertinoIcons.link : CupertinoIcons.exclamationmark_circle,
+                size: 18, color: hasLink ? p.secondary : AppleColors.orange),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  // Update a live session's video (join) link — and optionally its title.
+  Future<void> _editSession(Map<String, dynamic> s) async {
+    final title = TextEditingController(text: s['title']?.toString() ?? '');
+    final url = TextEditingController(text: s['join_url']?.toString() ?? '');
+    final ok = await showFormSheet(context, title: 'Update Live Link', builder: (setS) => [
+      sheetField(title, 'Title', CupertinoIcons.textformat),
+      const SizedBox(height: 10),
+      sheetField(url, 'Live link (Zoho / Meet / Jitsi URL)', CupertinoIcons.link),
+    ], onSubmit: () async {
+      if (url.text.trim().isEmpty) return 'Live link required';
+      try {
+        await widget.auth.apiPatch('/api/v1/manage/sessions/${s['id']}', {
+          'title': title.text.trim(),
+          'join_url': url.text.trim(),
+        });
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) {
+      _toast('Live link updated');
+      _load();
+    }
+  }
+
+  Future<void> _addAssignment() async {
+    final title = TextEditingController();
+    final maxScore = TextEditingController(text: '100');
+    final day = TextEditingController();
+    int type = 0; // assignment, quiz
+    DateTime due = DateTime.now().add(const Duration(days: 7));
+    final ok = await showFormSheet(context, title: 'Add Assignment', builder: (setS) => [
+      sheetField(title, 'Title (e.g. Assignment 1)', CupertinoIcons.doc_text),
+      const SizedBox(height: 10),
+      AppleSegmented(labels: const ['Assignment', 'Quiz'], selected: type, onChanged: (i) => setS(() => type = i)),
+      const SizedBox(height: 10),
+      sheetField(day, 'Day number (e.g. 1, 2, 3 — optional)', CupertinoIcons.calendar, keyboard: TextInputType.number),
+      const SizedBox(height: 10),
+      sheetField(maxScore, 'Max score', CupertinoIcons.number),
+      const SizedBox(height: 12),
+      _DateTimeRow(value: due, onPick: (d) => setS(() => due = d)),
+    ], onSubmit: () async {
+      if (title.text.trim().isEmpty) return 'Title required';
+      try {
+        await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/assessments', {
+          'title': title.text.trim(),
+          'type': type == 0 ? 'assignment' : 'quiz',
+          'max_score': double.tryParse(maxScore.text.trim()) ?? 100,
+          'day_number': int.tryParse(day.text.trim()),
+          'due_at': due.toUtc().toIso8601String(),
+          'is_published': true,
+        });
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) {
+      _toast('Added');
+      _load();
+    }
+  }
+
+  // Group assessments under "Day N" headers (day-less ones fall under "Unscheduled").
+  List<Widget> _assessmentsByDay() {
+    final groups = <int?, List<Map<String, dynamic>>>{};
+    for (final a in _assessments) {
+      final m = a as Map<String, dynamic>;
+      final d = (m['day_number'] as num?)?.toInt();
+      groups.putIfAbsent(d, () => []).add(m);
+    }
+    final keys = groups.keys.toList()
+      ..sort((x, y) {
+        if (x == null) return 1;
+        if (y == null) return -1;
+        return x.compareTo(y);
+      });
+    final out = <Widget>[];
+    for (final k in keys) {
+      out.add(Padding(
+        padding: const EdgeInsets.only(bottom: 8, top: 4),
+        child: Text(k == null ? 'Unscheduled' : 'Day $k',
+            style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700)),
+      ));
+      out.addAll(groups[k]!.map(_assessmentCard));
+    }
+    return out;
+  }
+
+  Widget _assessmentCard(Map<String, dynamic> a) {
+    final isQuiz = a['type'] == 'quiz';
+    final qCount = a['questions'] ?? 0;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
       child: AppleCard(
         child: Row(children: [
           Container(
             width: 40, height: 40,
-            decoration: BoxDecoration(color: AppleColors.red.withOpacity(0.12), borderRadius: BorderRadius.circular(11)),
-            child: const Icon(CupertinoIcons.videocam_fill, color: AppleColors.red, size: 20),
+            decoration: BoxDecoration(color: (isQuiz ? AppleColors.purple : AppleColors.blue).withOpacity(0.12), borderRadius: BorderRadius.circular(11)),
+            child: Icon(isQuiz ? CupertinoIcons.question_square_fill : CupertinoIcons.doc_text_fill, color: isQuiz ? AppleColors.purple : AppleColors.blue, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(s['title']?.toString() ?? 'Live class', style: AppleTheme.headline(context)),
-              Text(_fmtTime(s['starts_at']?.toString()), style: AppleTheme.footnote(context)),
+              Text(a['title']?.toString() ?? 'Assessment', style: AppleTheme.headline(context)),
+              Text('${isQuiz ? 'Quiz' : 'Assignment'} · ${a['max_score'] ?? 100} pts${isQuiz ? ' · $qCount questions' : ''}', style: AppleTheme.footnote(context)),
             ]),
           ),
-          Icon(hasLink ? CupertinoIcons.link : CupertinoIcons.exclamationmark_circle,
-              size: 18, color: hasLink ? p.secondary : AppleColors.orange),
+          if (isQuiz) _smallButton('Question', CupertinoIcons.add, () => _addQuestion(a['id'].toString())),
         ]),
       ),
     );
+  }
+
+  Future<void> _addQuestion(String assessmentId) async {
+    final prompt = TextEditingController();
+    final options = TextEditingController();
+    final correct = TextEditingController();
+    final points = TextEditingController(text: '1');
+    int type = 0; // mcq, truefalse, short
+    const types = ['mcq', 'truefalse', 'short'];
+    final ok = await showFormSheet(context, title: 'Add Question', builder: (setS) => [
+      sheetField(prompt, 'Question prompt', CupertinoIcons.text_quote),
+      const SizedBox(height: 10),
+      AppleSegmented(labels: const ['MCQ', 'True/False', 'Short'], selected: type, onChanged: (i) => setS(() => type = i)),
+      if (type == 0) ...[
+        const SizedBox(height: 10),
+        sheetField(options, 'Options (comma separated)', CupertinoIcons.list_bullet),
+      ],
+      const SizedBox(height: 10),
+      sheetField(correct, type == 1 ? 'Correct (true / false)' : 'Correct answer', CupertinoIcons.checkmark_alt_circle),
+      const SizedBox(height: 10),
+      sheetField(points, 'Points', CupertinoIcons.number),
+    ], onSubmit: () async {
+      if (prompt.text.trim().isEmpty) return 'Prompt required';
+      final opts = type == 0
+          ? options.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList()
+          : (type == 1 ? ['true', 'false'] : <String>[]);
+      try {
+        await widget.auth.apiPost('/api/v1/manage/assessments/$assessmentId/questions', {
+          'prompt': prompt.text.trim(),
+          'type': types[type],
+          'options': opts,
+          'correct': correct.text.trim(),
+          'points': double.tryParse(points.text.trim()) ?? 1,
+        });
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) {
+      _toast('Question added');
+      _load();
+    }
   }
 
   Future<void> _addSession() async {
@@ -701,9 +1015,9 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     final url = TextEditingController();
     DateTime when = DateTime.now().add(const Duration(hours: 1));
     final ok = await showFormSheet(context, title: 'Add Live Class', builder: (setS) => [
-      _sheetField(title, 'Title (e.g. Lecture 1)', CupertinoIcons.textformat),
+      sheetField(title, 'Title (e.g. Lecture 1)', CupertinoIcons.textformat),
       const SizedBox(height: 10),
-      _sheetField(url, 'Live link (Zoho / Meet / Jitsi URL)', CupertinoIcons.link),
+      sheetField(url, 'Live link (Zoho / Meet / Jitsi URL)', CupertinoIcons.link),
       const SizedBox(height: 12),
       _DateTimeRow(value: when, onPick: (d) => setS(() => when = d)),
     ], onSubmit: () async {
@@ -801,7 +1115,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(color: p.accent.withOpacity(0.12), borderRadius: BorderRadius.circular(13)),
+        decoration: BoxDecoration(color: p.accent.withOpacity(0.12), borderRadius: BorderRadius.circular(6)),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, size: 15, color: p.accent),
           const SizedBox(width: 4),
@@ -814,7 +1128,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   Future<void> _addModule() async {
     final title = TextEditingController();
     final ok = await showFormSheet(context, title: 'Add Module',
-        builder: (_) => [_sheetField(title, 'Module title', CupertinoIcons.folder)],
+        builder: (_) => [sheetField(title, 'Module title', CupertinoIcons.folder)],
         onSubmit: () async {
       if (title.text.trim().isEmpty) return 'Title required';
       await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/modules', {'title': title.text.trim()});
@@ -829,7 +1143,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     int type = 0; // text, video, link
     int vsrc = 0; // 0 = R2 (MP4), 1 = HLS (.m3u8)
     final ok = await showFormSheet(context, title: 'Add Lesson', builder: (setS) => [
-      _sheetField(title, 'Lesson title', CupertinoIcons.doc_text),
+      sheetField(title, 'Lesson title', CupertinoIcons.doc_text),
       const SizedBox(height: 10),
       AppleSegmented(labels: const ['Text', 'Video', 'Link'], selected: type, onChanged: (i) => setS(() => type = i)),
       if (type == 1) ...[
@@ -839,7 +1153,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         AppleSegmented(labels: const ['R2 (MP4)', 'HLS (.m3u8)'], selected: vsrc, onChanged: (i) => setS(() => vsrc = i)),
       ],
       const SizedBox(height: 10),
-      _sheetField(
+      sheetField(
         body,
         type == 0
             ? 'Content'
@@ -870,7 +1184,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   Future<void> _enroll() async {
     final email = TextEditingController();
     final ok = await showFormSheet(context, title: 'Enroll Student',
-        builder: (_) => [_sheetField(email, 'Student email', CupertinoIcons.mail)],
+        builder: (_) => [sheetField(email, 'Student email', CupertinoIcons.mail)],
         onSubmit: () async {
       if (email.text.trim().isEmpty) return 'Email required';
       try {
@@ -887,10 +1201,11 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
 /// Admin device control — lists a user's active devices with per-device revoke
 /// and a "reset all" action (frees device slots when someone changes phones).
 class _DeviceSheet extends StatefulWidget {
-  const _DeviceSheet({required this.auth, required this.userId, required this.name});
+  const _DeviceSheet({required this.auth, required this.userId, required this.name, required this.email});
   final AuthService auth;
   final String userId;
   final String name;
+  final String email;
 
   @override
   State<_DeviceSheet> createState() => _DeviceSheetState();
@@ -1005,10 +1320,20 @@ class _DeviceSheetState extends State<_DeviceSheet> {
               );
             }),
           const SizedBox(height: 8),
+          if (widget.email.isNotEmpty)
+            PrimaryButton(
+              label: 'Assign to a course',
+              icon: CupertinoIcons.book_fill,
+              busy: _busy,
+              square: true,
+              onPressed: _assignCourse,
+            ),
+          const SizedBox(height: 10),
           PrimaryButton(
             label: 'Reset all devices',
             icon: CupertinoIcons.arrow_counterclockwise,
             busy: _busy,
+            square: true,
             onPressed: _devices.isEmpty ? null : _resetAll,
           ),
           const SizedBox(height: 6),
@@ -1017,71 +1342,49 @@ class _DeviceSheetState extends State<_DeviceSheet> {
       ),
     );
   }
-}
 
-// ---- shared sheet helpers --------------------------------------------------
-
-Widget _sheetField(TextEditingController c, String hint, IconData icon) {
-  return Builder(builder: (context) {
+  // Fetch the course list and enroll this student in the picked course.
+  Future<void> _assignCourse() async {
+    List<dynamic> courses = [];
+    try {
+      courses = (ApiClient.decode(await widget.auth.apiGet('/api/v1/manage/courses'))['courses'] as List?) ?? [];
+    } catch (_) {}
+    if (!mounted) return;
+    if (courses.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No courses to assign'), behavior: SnackBarBehavior.floating));
+      return;
+    }
     final p = Palette.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-      decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(12)),
-      child: AppleField(controller: c, hint: hint, icon: icon),
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        margin: const EdgeInsets.all(10),
+        decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(14)),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(padding: const EdgeInsets.all(16), child: Text('Assign ${widget.name} to…', style: AppleTheme.headline(context))),
+          ...courses.map((c) {
+            final m = c as Map<String, dynamic>;
+            return ListTile(
+              leading: const Icon(CupertinoIcons.book, color: AppleColors.blue),
+              title: Text(m['title']?.toString() ?? 'Course', style: AppleTheme.body(context)),
+              onTap: () async {
+                Navigator.pop(ctx);
+                try {
+                  await widget.auth.apiPost('/api/v1/manage/courses/${m['id']}/enroll', {'email': widget.email});
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Assigned to ${m['title']}'), behavior: SnackBarBehavior.floating));
+                } on ApiException catch (e) {
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message), behavior: SnackBarBehavior.floating));
+                } catch (_) {
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not assign'), behavior: SnackBarBehavior.floating));
+                }
+              },
+            );
+          }),
+          const SizedBox(height: 8),
+        ]),
+      ),
     );
-  });
+  }
 }
 
-/// A reusable modal form sheet. onSubmit returns an error string or null on success.
-Future<bool?> showFormSheet(
-  BuildContext context, {
-  required String title,
-  required List<Widget> Function(void Function(void Function())) builder,
-  required Future<String?> Function() onSubmit,
-}) {
-  return showModalBottomSheet<bool>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (ctx) {
-      final p = Palette.of(ctx);
-      bool busy = false;
-      String? err;
-      return StatefulBuilder(builder: (ctx, setS) {
-        return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-          child: Container(
-            margin: const EdgeInsets.all(10),
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(16)),
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Center(child: Text(title, style: AppleTheme.title2(ctx))),
-              const SizedBox(height: 16),
-              ...builder(setS),
-              if (err != null) ...[
-                const SizedBox(height: 12),
-                Text(err!, style: AppleTheme.footnote(ctx).copyWith(color: AppleColors.red)),
-              ],
-              const SizedBox(height: 18),
-              PrimaryButton(
-                label: 'Save',
-                busy: busy,
-                onPressed: () async {
-                  setS(() { busy = true; err = null; });
-                  final e = await onSubmit();
-                  if (e == null) {
-                    if (ctx.mounted) Navigator.pop(ctx, true);
-                  } else {
-                    setS(() { busy = false; err = e; });
-                  }
-                },
-              ),
-              const SizedBox(height: 6),
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: TextStyle(color: p.secondary))),
-            ]),
-          ),
-        );
-      });
-    },
-  );
-}

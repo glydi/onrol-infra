@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
-import '../theme.dart';
 import '../widgets/watermark_overlay.dart';
 import '../widgets/web_video_stub.dart' if (dart.library.html) '../widgets/web_video_web.dart';
 
@@ -63,21 +62,54 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
   }
 
+  static const _accent = Color(0xFFFF4F2B);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        elevation: 0,
-        leading: IconButton(icon: const Icon(CupertinoIcons.chevron_left, color: Colors.white), onPressed: () => Navigator.pop(context)),
-        title: Text(widget.title, style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600)),
-      ),
-      body: Center(
-        child: WatermarkOverlay(
-          label: widget.watermark,
-          child: kIsWeb ? _webPlayer() : _mobilePlayer(),
-        ),
+      backgroundColor: const Color(0xFF0B0B0D),
+      body: Stack(
+        children: [
+          // Centered, rounded video with a sensible max width on large screens.
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1100),
+                child: WatermarkOverlay(
+                  label: widget.watermark,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: kIsWeb ? _webPlayer() : _mobilePlayer(),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // Floating top bar (gradient, not a boxy app bar).
+          Positioned(
+            top: 0, left: 0, right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(6, 6, 16, 24),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xB3000000), Color(0x00000000)]),
+                ),
+                child: Row(children: [
+                  IconButton(
+                    icon: const Icon(CupertinoIcons.chevron_back, color: Colors.white, size: 26),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  Expanded(
+                    child: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600)),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -114,9 +146,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           child: GestureDetector(
             onTap: _togglePlay,
             child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: Colors.black.withOpacity(0.45), shape: BoxShape.circle),
-              child: Icon(c.value.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill, color: Colors.white, size: 34),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: _accent.withOpacity(0.92), shape: BoxShape.circle, boxShadow: [BoxShadow(color: _accent.withOpacity(0.5), blurRadius: 18)]),
+              child: Icon(c.value.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill, color: Colors.white, size: 32),
             ),
           ),
         ),
@@ -128,7 +160,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               VideoProgressIndicator(
                 c,
                 allowScrubbing: true,
-                colors: const VideoProgressColors(playedColor: AppleColors.blue, bufferedColor: Colors.white30, backgroundColor: Colors.white12),
+                colors: const VideoProgressColors(playedColor: _accent, bufferedColor: Colors.white30, backgroundColor: Colors.white12),
                 padding: const EdgeInsets.symmetric(vertical: 8),
               ),
               Row(

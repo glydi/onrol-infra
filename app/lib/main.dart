@@ -5,6 +5,7 @@ import 'services/api_client.dart';
 import 'services/auth_service.dart';
 import 'services/device_service.dart';
 import 'screens/console_screen.dart';
+import 'screens/crm_portal.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'theme.dart';
@@ -47,6 +48,8 @@ class _OnrolAppState extends State<OnrolApp> {
             }
             final hasSession = snap.data == true && _auth.user != null;
             if (!hasSession) return LoginScreen(auth: _auth);
+            // The CRM subdomain (crm.*) is its own portal.
+            if (isCrmHost()) return CrmPortalScreen(auth: _auth);
             return _auth.user!.isStaff ? ConsoleScreen(auth: _auth) : HomeScreen(auth: _auth);
           },
         ),

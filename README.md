@@ -1,5 +1,11 @@
 # Onrol Infra
 
+> ⚠️ **Always `git pull --rebase origin main` before editing**, and **deploy
+> your edits with `bash scripts/deploy.sh`** when done (the repo machine's SSH
+> key is accepted by the VPS). Multiple developers and AI agents work here —
+> start from the latest tree and keep the live server in sync. See
+> [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md) for the full working guide.
+
 Lean backend + infra for an EdTech live-streaming and VOD platform, sized for
 **100–300 concurrent users** on Indian networks.
 
