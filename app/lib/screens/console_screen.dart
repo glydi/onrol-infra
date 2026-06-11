@@ -850,13 +850,13 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     }
   }
 
-  Future<void> _addAssignment() async {
+  Future<void> _addAssignment({String? moduleId, String? moduleTitle}) async {
     final title = TextEditingController();
     final maxScore = TextEditingController(text: '100');
     final day = TextEditingController();
     int type = 0; // assignment, quiz
     DateTime due = DateTime.now().add(const Duration(days: 7));
-    final ok = await showFormSheet(context, title: 'Add Assignment', builder: (setS) => [
+    final ok = await showFormSheet(context, title: moduleId == null ? 'Add Assignment' : 'Add to "${moduleTitle ?? 'Module'}"', builder: (setS) => [
       sheetField(title, 'Title (e.g. Assignment 1)', CupertinoIcons.doc_text),
       const SizedBox(height: 10),
       AppleSegmented(labels: const ['Assignment', 'Quiz'], selected: type, onChanged: (i) => setS(() => type = i)),
@@ -874,6 +874,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
           'type': type == 0 ? 'assignment' : 'quiz',
           'max_score': double.tryParse(maxScore.text.trim()) ?? 100,
           'day_number': int.tryParse(day.text.trim()),
+          if (moduleId != null) 'module_id': moduleId,
           'due_at': due.toUtc().toIso8601String(),
           'is_published': true,
         });
@@ -1022,6 +1023,8 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
             Expanded(child: Text(m['title']?.toString() ?? 'Module', style: AppleTheme.headline(context))),
             _smallButton('Lesson', CupertinoIcons.add, () => _addLesson(m['id'].toString())),
             const SizedBox(width: 6),
+            _smallButton('Quiz', CupertinoIcons.doc_text_fill, () => _addAssignment(moduleId: m['id'].toString(), moduleTitle: m['title']?.toString())),
+            const SizedBox(width: 6),
             GestureDetector(
               onTap: () => _confirmDelete('Delete this module and its lessons?', () =>
                   widget.auth.apiDelete('/api/v1/manage/modules/${m['id']}')),
@@ -1047,9 +1050,41 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
               );
             }),
           ],
+          // Quizzes & assignments scoped to this module.
+          ..._moduleAssessments(m['id'].toString()),
         ]),
       ),
     );
+  }
+
+  // Quizzes/assignments attached to a specific module (shown inside its card).
+  List<Widget> _moduleAssessments(String moduleId) {
+    final items = _assessments.where((a) => (a as Map)['module_id']?.toString() == moduleId).toList();
+    if (items.isEmpty) return [];
+    return [
+      Padding(
+        padding: const EdgeInsets.only(top: 10, bottom: 2),
+        child: Text('Quizzes & assignments', style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700)),
+      ),
+      ...items.map((a) {
+        final m = a as Map<String, dynamic>;
+        final isQuiz = m['type'] == 'quiz';
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(children: [
+            Icon(isQuiz ? CupertinoIcons.question_square_fill : CupertinoIcons.doc_text_fill, size: 16, color: isQuiz ? AppleColors.purple : AppleColors.blue),
+            const SizedBox(width: 10),
+            Expanded(child: Text('${m['title']}${(m['questions'] ?? 0) != 0 ? ' · ${m['questions']} Qs' : ''}', style: AppleTheme.body(context).copyWith(fontSize: 14))),
+            if (isQuiz) _smallButton('Question', CupertinoIcons.add, () => _addQuestion(m['id'].toString())),
+            const SizedBox(width: 6),
+            GestureDetector(
+              onTap: () => _confirmDelete('Delete this ${isQuiz ? 'quiz' : 'assignment'}?', () => widget.auth.apiDelete('/api/v1/manage/assessments/${m['id']}')),
+              child: Icon(CupertinoIcons.minus_circle, size: 16, color: AppleColors.red.withOpacity(0.8)),
+            ),
+          ]),
+        );
+      }),
+    ];
   }
 
   Future<void> _confirmDelete(String message, Future<dynamic> Function() action) async {
@@ -1078,6 +1113,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         'video' => CupertinoIcons.play_rectangle,
         'scorm' || 'xapi' => CupertinoIcons.cube_box,
         'link' => CupertinoIcons.link,
+        'file' => CupertinoIcons.doc_richtext,
         _ => CupertinoIcons.doc_text,
       };
 
@@ -1117,7 +1153,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     final ok = await showFormSheet(context, title: 'Add Lesson', builder: (setS) => [
       sheetField(title, 'Lesson title', CupertinoIcons.doc_text),
       const SizedBox(height: 10),
-      AppleSegmented(labels: const ['Text', 'Video', 'Link'], selected: type, onChanged: (i) => setS(() => type = i)),
+      AppleSegmented(labels: const ['Text', 'Video', 'Link', 'Document'], selected: type, onChanged: (i) => setS(() => type = i)),
       if (type == 1) ...[
         const SizedBox(height: 12),
         _label(context, 'Video source'),
@@ -1131,9 +1167,19 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
             ? 'Content'
             : type == 1
                 ? (vsrc == 0 ? 'R2 video URL (…/video.mp4)' : 'HLS playlist URL (…/index.m3u8)')
-                : 'URL',
-        type == 1 ? (vsrc == 0 ? CupertinoIcons.play_rectangle : CupertinoIcons.antenna_radiowaves_left_right) : CupertinoIcons.link,
+                : type == 3
+                    ? 'Document URL (PDF / Word / PPT …)'
+                    : 'URL',
+        type == 1
+            ? (vsrc == 0 ? CupertinoIcons.play_rectangle : CupertinoIcons.antenna_radiowaves_left_right)
+            : type == 3
+                ? CupertinoIcons.doc_richtext
+                : CupertinoIcons.link,
       ),
+      if (type == 3) ...[
+        const SizedBox(height: 6),
+        _label(context, 'Link a PDF / Word / PowerPoint or any document URL. Students open it from the lesson.'),
+      ],
       if (type == 1) ...[
         const SizedBox(height: 6),
         _label(context, vsrc == 0
@@ -1142,10 +1188,10 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       ],
     ], onSubmit: () async {
       if (title.text.trim().isEmpty) return 'Title required';
-      if (type != 0 && body.text.trim().isEmpty) return type == 1 ? 'Video URL required' : 'URL required';
+      if (type != 0 && body.text.trim().isEmpty) return type == 1 ? 'Video URL required' : (type == 3 ? 'Document URL required' : 'URL required');
       await widget.auth.apiPost('/api/v1/manage/modules/$moduleId/lessons', {
         'title': title.text.trim(),
-        'type': ['text', 'video', 'link'][type],
+        'type': ['text', 'video', 'link', 'file'][type],
         'body': body.text.trim(),
       });
       return null;

@@ -80,6 +80,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Get("/manage/courses/:id/assessments", auth, inst, h.ListCourseAssessments)
 	api.Post("/manage/courses/:id/assessments", auth, inst, h.CreateAssessment)
 	api.Post("/manage/assessments/:id/questions", auth, inst, h.AddQuestion)
+	api.Delete("/manage/assessments/:id", auth, inst, h.DeleteAssessment)
 	api.Get("/manage/assessments/:id/submissions", auth, inst, h.ListSubmissions)
 	api.Post("/manage/submissions/:id/grade", auth, inst, h.GradeSubmission)
 	api.Get("/manage/courses/:id/report/completion", auth, inst, h.CompletionReport)

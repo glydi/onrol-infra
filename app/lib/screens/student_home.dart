@@ -840,9 +840,10 @@ class _StudentHomeState extends State<StudentHome> {
           title: l['title']?.toString() ?? 'Video',
         ),
       ));
-    } else if (type == 'link' && url.startsWith('http')) {
+    } else if ((type == 'link' || type == 'file') && url.startsWith('http')) {
+      // Open the link / document (PDF, Word, …) — browser renders or downloads it.
       try {
-        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
       } catch (_) {}
     } else if (url.isNotEmpty) {
       // Text lesson: show the body.
@@ -1877,7 +1878,7 @@ class _AiNewsCardState extends State<_AiNewsCard> {
     if ((items == null || items.isEmpty)) return _statusBox(loading: false);
 
     final rows = <Widget>[
-      for (var i = 0; i < items!.length; i++) _newsRow(items[i], last: i == items.length - 1),
+      for (var i = 0; i < items.length; i++) _newsRow(items[i], last: i == items.length - 1),
     ];
     if (widget.scrollable) {
       return ListView(padding: EdgeInsets.zero, children: rows);

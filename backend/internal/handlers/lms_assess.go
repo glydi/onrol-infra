@@ -16,8 +16,10 @@ func (h *Handlers) ListCourseAssessments(c *fiber.Ctx) error {
 	}
 	rows, err := h.Pool.Query(c.Context(),
 		`SELECT a.id, a.title, a.type, a.max_score, COALESCE(a.due_at::text,''), a.is_published, a.day_number,
+		        a.module_id, COALESCE(m.title,''),
 		        (SELECT count(*) FROM questions q WHERE q.assessment_id=a.id) AS qcount
-		 FROM assessments a WHERE a.course_id=$1
+		 FROM assessments a LEFT JOIN modules m ON m.id=a.module_id
+		 WHERE a.course_id=$1
 		 ORDER BY a.day_number NULLS LAST, a.created_at DESC`, courseID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
@@ -25,16 +27,18 @@ func (h *Handlers) ListCourseAssessments(c *fiber.Ctx) error {
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var id, title, typ, due string
+		var id, title, typ, due, moduleTitle string
 		var maxScore float64
 		var pub bool
 		var day *int
+		var moduleID *string
 		var qc int
-		if err := rows.Scan(&id, &title, &typ, &maxScore, &due, &pub, &day, &qc); err != nil {
+		if err := rows.Scan(&id, &title, &typ, &maxScore, &due, &pub, &day, &moduleID, &moduleTitle, &qc); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		out = append(out, fiber.Map{"id": id, "title": title, "type": typ, "max_score": maxScore,
-			"due_at": due, "is_published": pub, "day_number": day, "questions": qc})
+			"due_at": due, "is_published": pub, "day_number": day, "module_id": moduleID,
+			"module": moduleTitle, "questions": qc})
 	}
 	return c.JSON(fiber.Map{"assessments": out})
 }
@@ -51,6 +55,7 @@ func (h *Handlers) CreateAssessment(c *fiber.Ctx) error {
 		MaxScore    float64 `json:"max_score"`
 		DueAt       string  `json:"due_at"`
 		DayNumber   *int    `json:"day_number"`
+		ModuleID    string  `json:"module_id"`
 		IsPublished bool    `json:"is_published"`
 	}
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Title) == "" {
@@ -66,14 +71,34 @@ func (h *Handlers) CreateAssessment(c *fiber.Ctx) error {
 	if req.DueAt != "" {
 		due = req.DueAt
 	}
+	var module any
+	if req.ModuleID != "" {
+		module = req.ModuleID
+	}
 	var id string
 	if err := h.Pool.QueryRow(c.Context(),
-		`INSERT INTO assessments (course_id, title, type, max_score, due_at, day_number, is_published, created_by)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-		courseID, req.Title, req.Type, req.MaxScore, due, req.DayNumber, req.IsPublished, callerID(c)).Scan(&id); err != nil {
+		`INSERT INTO assessments (course_id, module_id, title, type, max_score, due_at, day_number, is_published, created_by)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+		courseID, module, req.Title, req.Type, req.MaxScore, due, req.DayNumber, req.IsPublished, callerID(c)).Scan(&id); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": req.Title, "type": req.Type})
+}
+
+// DeleteAssessment removes a quiz/assignment (and its questions).
+func (h *Handlers) DeleteAssessment(c *fiber.Ctx) error {
+	assessID := c.Params("id")
+	courseID, err := h.assessmentCourse(c, assessID)
+	if err != nil {
+		return err
+	}
+	if err := h.canManageCourse(c, courseID); err != nil {
+		return err
+	}
+	if _, err := h.Pool.Exec(c.Context(), `DELETE FROM assessments WHERE id=$1`, assessID); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "delete failed")
+	}
+	return c.JSON(fiber.Map{"deleted": true})
 }
 
 // AddQuestion appends a question to an assessment.
