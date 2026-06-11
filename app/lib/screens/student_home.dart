@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -580,18 +581,21 @@ class _StudentHomeState extends State<StudentHome> {
     }
   }
 
-  // Pick + upload a custom picture (downscaled), save it as a data URI.
+  // Pick a photo from the device, crop+resize it to a small 256px square JPEG
+  // (works on web + mobile regardless of the source size), save as a data URI.
   Future<void> _uploadAvatar(BuildContext dialogCtx) async {
     try {
-      final x = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 400, maxHeight: 400, imageQuality: 80);
+      final x = await ImagePicker().pickImage(source: ImageSource.gallery);
       if (x == null) return;
-      final bytes = await x.readAsBytes();
-      if (bytes.lengthInBytes > 1000000) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Image too large — pick a smaller one.'), behavior: SnackBarBehavior.floating));
+      final raw = await x.readAsBytes();
+      final decoded = img.decodeImage(raw);
+      if (decoded == null) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't read that image."), behavior: SnackBarBehavior.floating));
         return;
       }
-      final mime = x.mimeType ?? 'image/jpeg';
-      await _setAvatar('data:$mime;base64,${base64Encode(bytes)}');
+      final square = img.copyResizeCropSquare(decoded, size: 256);
+      final jpg = img.encodeJpg(square, quality: 82);
+      await _setAvatar('data:image/jpeg;base64,${base64Encode(jpg)}');
       if (dialogCtx.mounted) Navigator.of(dialogCtx).pop();
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't load that image."), behavior: SnackBarBehavior.floating));
