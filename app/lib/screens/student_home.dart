@@ -1502,10 +1502,38 @@ class _StudentHomeState extends State<StudentHome> {
               Text('Your progress is saved — jump back in anytime.',
                   textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13.5, color: _grey, height: 1.5)),
               const SizedBox(height: 26),
-              Row(children: [
-                Expanded(child: _outlineButton('Stay', () => Navigator.of(context).pop())),
+              Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
+                // Compact "Stay" pill — subtle tinted.
+                _Pressable(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: _orange.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(color: _orange.withOpacity(0.28)),
+                    ),
+                    child: Text('Stay', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _orange)),
+                  ),
+                ),
                 const SizedBox(width: 12),
-                Expanded(child: _orangeButton('Log Out', () { Navigator.of(context).pop(); _logout(); })),
+                // Compact "Log Out" gradient pill with icon + glow.
+                _Pressable(
+                  onTap: () { Navigator.of(context).pop(); _logout(); },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                      borderRadius: BorderRadius.circular(30),
+                      boxShadow: [BoxShadow(color: _orange.withOpacity(0.40), blurRadius: 14, offset: const Offset(0, 6))],
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(CupertinoIcons.square_arrow_right, size: 16, color: Colors.white),
+                      const SizedBox(width: 7),
+                      Text('Log Out', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
+                    ]),
+                  ),
+                ),
               ]),
             ]),
           ),
