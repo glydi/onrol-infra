@@ -188,6 +188,17 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Get("/accounts/expenses", auth, employee, h.MyExpenses)
 	api.Post("/accounts/expenses", auth, employee, h.SubmitExpense)
 
+	// ---- College Partner portal (admin + employee) -----------------------
+	api.Get("/college/summary", auth, employee, h.CollegeSummary)
+	api.Get("/college/colleges", auth, employee, h.ListColleges)
+	api.Post("/college/colleges", auth, employee, h.CreateCollege)
+	api.Patch("/college/colleges/:id", auth, employee, h.UpdateCollege)
+	api.Delete("/college/colleges/:id", auth, employee, h.DeleteCollege)
+	api.Get("/college/colleges/:id/cohorts", auth, employee, h.ListCohorts)
+	api.Post("/college/colleges/:id/cohorts", auth, employee, h.AddCohort)
+	api.Patch("/college/cohorts/:id", auth, employee, h.UpdateCohort)
+	api.Delete("/college/cohorts/:id", auth, employee, h.DeleteCohort)
+
 	// ---- Student/self (any authenticated role) ---------------------------
 	// Discussion / doubts board (enrolled students + course staff).
 	api.Get("/courses/:id/discussion", auth, h.ListDiscussion)
