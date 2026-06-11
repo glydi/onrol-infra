@@ -300,8 +300,15 @@ class _StudentHomeState extends State<StudentHome> {
           Expanded(
             child: Center(
               child: LayoutBuilder(builder: (context, c) {
-                final side = (c.maxWidth < c.maxHeight ? c.maxWidth : c.maxHeight).clamp(280.0, 600.0).toDouble();
-                return _focusable(0, radius: 14, child: _matrix(side));
+                final side = (c.maxWidth < c.maxHeight ? c.maxWidth : c.maxHeight).clamp(280.0, 620.0).toDouble();
+                // No focus ring / boundary on the options — hovering just clears
+                // the highlight on the other sections.
+                return MouseRegion(
+                  onEnter: (_) {
+                    if (_focused != 0) setState(() => _focused = 0);
+                  },
+                  child: _matrix(side),
+                );
               }),
             ),
           ),
@@ -327,7 +334,12 @@ class _StudentHomeState extends State<StudentHome> {
           _focusable(1, child: _profileCard()),
           const SizedBox(height: 14),
           LayoutBuilder(builder: (context, c) {
-            return _focusable(0, radius: 14, child: _matrix(c.maxWidth.clamp(260.0, 440.0).toDouble()));
+            return MouseRegion(
+              onEnter: (_) {
+                if (_focused != 0) setState(() => _focused = 0);
+              },
+              child: _matrix(c.maxWidth.clamp(260.0, 460.0).toDouble()),
+            );
           }),
           const SizedBox(height: 18),
           _focusable(2, child: _AiNewsCard(auth: widget.auth, scrollable: false, onViewAll: () => _openPanel('announcements'))),
@@ -1637,7 +1649,6 @@ class _GridCellState extends State<_GridCell> {
                     ? [const Color(0xFFFF7A4D).withOpacity(0.94), _orange.withOpacity(0.84)]
                     : [_orange.withOpacity(0.92), const Color(0xFFE8421F).withOpacity(0.82)],
               ),
-              border: Border.all(color: Colors.white.withOpacity(0.20), width: 1),
               boxShadow: [
                 BoxShadow(
                   color: _orange.withOpacity(active ? 0.55 : 0.20),
