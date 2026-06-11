@@ -1218,15 +1218,25 @@ class _StudentHomeState extends State<StudentHome> {
         return (CupertinoIcons.book_fill, 'My Courses', 'Tap a course to open its content', [
           _future(_apiList('/api/v1/me/courses', 'my_courses'), (List courses) {
             if (courses.isEmpty) return _emptyText('No courses yet.');
-            return Column(children: courses.map((c) {
-              final m = c as Map<String, dynamic>;
-              final done = m['lessons_done'] ?? 0, total = m['lessons_total'] ?? 0;
-              return GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _openContent(m['id'].toString(), m['title']?.toString() ?? 'Course'),
-                child: _row(CupertinoIcons.book_fill, m['title']?.toString() ?? 'Course', '$done/$total lessons', '${m['percent'] ?? 0}%'),
-              );
-            }).toList());
+            return Column(children: [
+              for (var i = 0; i < courses.length; i++)
+                Builder(builder: (_) {
+                  final m = courses[i] as Map<String, dynamic>;
+                  final done = ((m['lessons_done'] ?? 0) as num).toInt();
+                  final total = ((m['lessons_total'] ?? 0) as num).toInt();
+                  return _Entrance(
+                    index: i,
+                    child: _CourseCard(
+                      index: i,
+                      title: m['title']?.toString() ?? 'Course',
+                      done: done,
+                      total: total,
+                      percent: ((m['percent'] ?? 0) as num).toInt(),
+                      onOpen: () => _openContent(m['id'].toString(), m['title']?.toString() ?? 'Course'),
+                    ),
+                  );
+                }),
+            ]);
           }),
         ]);
       case 'profile':
@@ -2373,6 +2383,140 @@ class _HeroPanelModal extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Staggered fade + slide entrance for list items.
+class _Entrance extends StatefulWidget {
+  const _Entrance({required this.index, required this.child});
+  final int index;
+  final Widget child;
+
+  @override
+  State<_Entrance> createState() => _EntranceState();
+}
+
+class _EntranceState extends State<_Entrance> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 440));
+  late final Animation<double> _fade = CurvedAnimation(parent: _c, curve: Curves.easeOut);
+  late final Animation<Offset> _slide = Tween<Offset>(begin: const Offset(0, 0.10), end: Offset.zero).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(Duration(milliseconds: 70 * widget.index), () {
+      if (mounted) _c.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(opacity: _fade, child: SlideTransition(position: _slide, child: widget.child));
+}
+
+/// A rich course card: gradient cover, animated progress bar, hover lift.
+class _CourseCard extends StatefulWidget {
+  const _CourseCard({required this.index, required this.title, required this.done, required this.total, required this.percent, required this.onOpen});
+  final int index;
+  final String title;
+  final int done;
+  final int total;
+  final int percent;
+  final VoidCallback onOpen;
+
+  @override
+  State<_CourseCard> createState() => _CourseCardState();
+}
+
+class _CourseCardState extends State<_CourseCard> {
+  bool _hover = false;
+
+  // A subtle per-card cover gradient (warm hues that stay on-theme).
+  static const _covers = [
+    [_orange, Color(0xFFFF7A4D)],
+    [Color(0xFFFF7A4D), Color(0xFFFFB347)],
+    [Color(0xFFF0653C), Color(0xFFFF9166)],
+    [Color(0xFFE8542E), Color(0xFFFF7A4D)],
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final cover = _covers[widget.index % _covers.length];
+    final pct = (widget.percent / 100).clamp(0.0, 1.0);
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onOpen,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          margin: const EdgeInsets.symmetric(vertical: 6),
+          padding: const EdgeInsets.all(14),
+          transform: Matrix4.translationValues(0, _hover ? -2 : 0, 0),
+          decoration: BoxDecoration(
+            color: _cardFill,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: _hover ? _orange.withOpacity(0.40) : _cardBorder, width: 1),
+            boxShadow: [BoxShadow(color: _orange.withOpacity(_hover ? 0.22 : 0.07), blurRadius: _hover ? 22 : 12, offset: Offset(0, _hover ? 9 : 5))],
+          ),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // Gradient cover with the book glyph + a faint completion ring.
+            Container(
+              width: 58, height: 58, alignment: Alignment.center,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: cover, begin: Alignment.topLeft, end: Alignment.bottomRight),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [BoxShadow(color: cover.last.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 4))],
+              ),
+              child: const Icon(CupertinoIcons.book_fill, size: 24, color: Colors.white),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(child: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _navy))),
+                  AnimatedSlide(
+                    offset: Offset(_hover ? 0.2 : 0, 0),
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(CupertinoIcons.chevron_right, size: 15, color: _orange.withOpacity(_hover ? 0.9 : 0.35)),
+                  ),
+                ]),
+                const SizedBox(height: 7),
+                Row(children: [
+                  Icon(CupertinoIcons.book, size: 13, color: _grey),
+                  const SizedBox(width: 4),
+                  Text('${widget.done}/${widget.total} lessons', style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+                  const Spacer(),
+                  Text('${widget.percent}%', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: _orange)),
+                ]),
+                const SizedBox(height: 9),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: pct),
+                    duration: const Duration(milliseconds: 800),
+                    curve: Curves.easeOutCubic,
+                    builder: (_, v, __) => LinearProgressIndicator(
+                      value: v,
+                      minHeight: 7,
+                      backgroundColor: _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0EBE8),
+                      valueColor: const AlwaysStoppedAnimation(_orange),
+                    ),
+                  ),
+                ),
+              ]),
+            ),
+          ]),
         ),
       ),
     );
