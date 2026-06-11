@@ -1777,33 +1777,83 @@ class _CalendarViewState extends State<_CalendarView> {
         _month = DateTime(_month.year, _month.month + delta);
       });
 
+  static const _amber = Color(0xFFE0A12A);
+  static const _blue = Color(0xFF2D7DF6);
+
   @override
   Widget build(BuildContext context) {
+    // Visible-month tallies for the summary chips.
+    int cls = 0, dl = 0, act = 0;
+    _byDay.forEach((key, evs) {
+      final p = key.split('-');
+      if (int.parse(p[0]) == _month.year && int.parse(p[1]) == _month.month) {
+        for (final m in evs) {
+          final kind = m['kind']?.toString() ?? 'event';
+          if (kind == 'session') {
+            cls++;
+          } else if (kind == 'assessment_due') {
+            dl++;
+          } else {
+            act++;
+          }
+        }
+      }
+    });
+    final now = DateTime.now();
+    final atToday = _month.year == now.year && _month.month == now.month && _selected.year == now.year && _selected.month == now.month && _selected.day == now.day;
+    final selEvs = [...(_byDay[_k(_selected)] ?? const <Map<String, dynamic>>[])]..sort((a, b) => (a['_dt'] as DateTime).compareTo(b['_dt'] as DateTime));
+
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Row(children: [
         _navBtn(CupertinoIcons.chevron_left, () => _shift(-1)),
-        Expanded(child: Center(child: Text('${_monthNames[_month.month - 1]} ${_month.year}', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: _navy)))),
+        Expanded(child: Center(child: Text('${_monthNames[_month.month - 1]} ${_month.year}', style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w800, color: _navy)))),
         _navBtn(CupertinoIcons.chevron_right, () => _shift(1)),
       ]),
-      const SizedBox(height: 12),
+      const SizedBox(height: 14),
+      Row(children: [
+        Expanded(child: _sumChip('Classes', cls, _orange, CupertinoIcons.videocam_fill)),
+        const SizedBox(width: 10),
+        Expanded(child: _sumChip('Deadlines', dl, _amber, CupertinoIcons.doc_text_fill)),
+        const SizedBox(width: 10),
+        Expanded(child: _sumChip('Activities', act, _blue, CupertinoIcons.bell_fill)),
+      ]),
+      const SizedBox(height: 16),
       Row(children: _weekdayNames.map((w) => Expanded(child: Center(child: Text(w, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: _grey))))).toList()),
       const SizedBox(height: 6),
       ClipRect(
         child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
+          duration: const Duration(milliseconds: 320),
           switchInCurve: Curves.easeOutCubic,
           switchOutCurve: Curves.easeInCubic,
           transitionBuilder: (child, a) => FadeTransition(
             opacity: a,
-            child: SlideTransition(position: Tween<Offset>(begin: Offset(0.10 * _dir, 0), end: Offset.zero).animate(a), child: child),
+            child: SlideTransition(position: Tween<Offset>(begin: Offset(0.12 * _dir, 0), end: Offset.zero).animate(a), child: child),
           ),
           child: KeyedSubtree(key: ValueKey('${_month.year}-${_month.month}'), child: _grid()),
         ),
       ),
-      const SizedBox(height: 16),
+      AnimatedSize(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        child: atToday
+            ? const SizedBox(height: 14)
+            : Padding(padding: const EdgeInsets.only(top: 10, bottom: 6), child: Center(child: _todayBtn(now))),
+      ),
+      Divider(color: _cardBorder, height: 1),
+      const SizedBox(height: 14),
+      Row(children: [
+        Expanded(child: Text('${_weekdayNames[(_selected.weekday - 1) % 7]}, ${_monthNames[_selected.month - 1]} ${_selected.day}', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy))),
+        if (selEvs.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+            decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
+            child: Text('${selEvs.length} ${selEvs.length == 1 ? 'event' : 'events'}', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700, color: _orange)),
+          ),
+      ]),
+      const SizedBox(height: 12),
       AnimatedSwitcher(
-        duration: const Duration(milliseconds: 240),
-        child: KeyedSubtree(key: ValueKey(_k(_selected)), child: _agenda()),
+        duration: const Duration(milliseconds: 260),
+        child: KeyedSubtree(key: ValueKey(_k(_selected)), child: _agenda(selEvs)),
       ),
     ]);
   }
@@ -1811,9 +1861,45 @@ class _CalendarViewState extends State<_CalendarView> {
   Widget _navBtn(IconData ic, VoidCallback onTap) => _Pressable(
         onTap: onTap,
         child: Container(
-          width: 36, height: 36, alignment: Alignment.center,
-          decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(10)),
+          width: 38, height: 38, alignment: Alignment.center,
+          decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(12)),
           child: Icon(ic, size: 18, color: _orange),
+        ),
+      );
+
+  Widget _sumChip(String label, int n, Color color, IconData icon) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(color: color.withOpacity(0.10), borderRadius: BorderRadius.circular(16), border: Border.all(color: color.withOpacity(0.22))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 5),
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: n.toDouble()),
+              duration: const Duration(milliseconds: 700),
+              curve: Curves.easeOutCubic,
+              builder: (_, v, __) => Text('${v.round()}', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: color)),
+            ),
+          ]),
+          const SizedBox(height: 2),
+          Text(label, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w500, color: _grey)),
+        ]),
+      );
+
+  Widget _todayBtn(DateTime now) => _Pressable(
+        onTap: () => setState(() {
+          _dir = _month.isBefore(DateTime(now.year, now.month)) ? 1 : -1;
+          _month = DateTime(now.year, now.month);
+          _selected = DateTime(now.year, now.month, now.day);
+        }),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(CupertinoIcons.calendar_today, size: 14, color: _orange),
+            const SizedBox(width: 6),
+            Text('Today', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: _orange)),
+          ]),
         ),
       );
 
@@ -1833,7 +1919,7 @@ class _CalendarViewState extends State<_CalendarView> {
   }
 
   Widget _cell(DateTime? d) {
-    if (d == null) return const SizedBox(height: 46);
+    if (d == null) return const SizedBox(height: 48);
     final now = DateTime.now();
     final isToday = d.year == now.year && d.month == now.month && d.day == now.day;
     final isSel = d == _selected;
@@ -1841,64 +1927,93 @@ class _CalendarViewState extends State<_CalendarView> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => setState(() => _selected = d),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
-        height: 46,
-        margin: const EdgeInsets.all(3),
-        decoration: BoxDecoration(
-          color: isSel ? _orange : (isToday ? _orange.withOpacity(0.12) : Colors.transparent),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Text('${d.day}', style: GoogleFonts.poppins(fontSize: 13, fontWeight: isSel || isToday ? FontWeight.w700 : FontWeight.w500, color: isSel ? Colors.white : _navy)),
-          const SizedBox(height: 3),
-          SizedBox(
-            height: 5,
-            child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
-              for (final m in evs.take(3))
-                Container(width: 5, height: 5, margin: const EdgeInsets.symmetric(horizontal: 1), decoration: BoxDecoration(color: isSel ? Colors.white : _calKind(m['kind']?.toString() ?? 'event').color, shape: BoxShape.circle)),
-            ]),
+      child: AnimatedScale(
+        scale: isSel ? 1.06 : 1.0,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutBack,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          height: 48,
+          margin: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            gradient: isSel ? const LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight) : null,
+            color: isSel ? null : (isToday ? _orange.withOpacity(0.12) : Colors.transparent),
+            borderRadius: BorderRadius.circular(13),
+            border: isToday && !isSel ? Border.all(color: _orange.withOpacity(0.6), width: 1.4) : null,
+            boxShadow: isSel ? [BoxShadow(color: _orange.withOpacity(0.40), blurRadius: 12, offset: const Offset(0, 5))] : const [],
           ),
-        ]),
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Text('${d.day}', style: GoogleFonts.poppins(fontSize: 13, fontWeight: isSel || isToday ? FontWeight.w700 : FontWeight.w500, color: isSel ? Colors.white : _navy)),
+            const SizedBox(height: 3),
+            SizedBox(
+              height: 5,
+              child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
+                for (final m in evs.take(3))
+                  Container(width: 5, height: 5, margin: const EdgeInsets.symmetric(horizontal: 1), decoration: BoxDecoration(color: isSel ? Colors.white : _calKind(m['kind']?.toString() ?? 'event').color, shape: BoxShape.circle)),
+              ]),
+            ),
+          ]),
+        ),
       ),
     );
   }
 
-  Widget _agenda() {
-    final evs = [...(_byDay[_k(_selected)] ?? const <Map<String, dynamic>>[])]..sort((a, b) => (a['_dt'] as DateTime).compareTo(b['_dt'] as DateTime));
+  Widget _agenda(List<Map<String, dynamic>> evs) {
+    if (evs.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Column(children: [
+          Icon(CupertinoIcons.calendar, size: 30, color: _grey.withOpacity(0.7)),
+          const SizedBox(height: 8),
+          Text('Nothing scheduled', style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w600, color: _navy)),
+          const SizedBox(height: 2),
+          Text('Enjoy the free time, or browse the catalog.', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+        ]),
+      );
+    }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text('${_weekdayNames[(_selected.weekday - 1) % 7]}, ${_monthNames[_selected.month - 1]} ${_selected.day}', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
-      const SizedBox(height: 10),
-      if (evs.isEmpty)
-        Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('No classes, deadlines or activities.', style: GoogleFonts.poppins(fontSize: 13, color: _grey)))
-      else
-        ...evs.map((m) {
-          final k = _calKind(m['kind']?.toString() ?? 'event');
-          final dt = m['_dt'] as DateTime;
-          final course = m['course']?.toString() ?? '';
-          return Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: _cardFill, borderRadius: BorderRadius.circular(14), border: Border.all(color: _cardBorder), boxShadow: [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.0 : 0.04), blurRadius: 8, offset: const Offset(0, 3))]),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: k.color.withOpacity(0.14), borderRadius: BorderRadius.circular(10)), child: Icon(k.icon, size: 19, color: k.color)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(m['title']?.toString() ?? 'Event', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
-                  const SizedBox(height: 3),
-                  Row(children: [
-                    Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: k.color.withOpacity(0.12), borderRadius: BorderRadius.circular(20)), child: Text(k.label, style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w700, color: k.color))),
-                    if (course.isNotEmpty) ...[const SizedBox(width: 6), Flexible(child: Text(course, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12, color: _grey)))],
-                  ]),
+      for (var i = 0; i < evs.length; i++)
+        _Entrance(
+          index: i,
+          child: Builder(builder: (_) {
+            final m = evs[i];
+            final k = _calKind(m['kind']?.toString() ?? 'event');
+            final dt = m['_dt'] as DateTime;
+            final course = m['course']?.toString() ?? '';
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(color: _cardFill, borderRadius: BorderRadius.circular(14), border: Border.all(color: _cardBorder), boxShadow: [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.0 : 0.04), blurRadius: 8, offset: const Offset(0, 3))]),
+              child: IntrinsicHeight(
+                child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Container(width: 4, color: k.color),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: k.color.withOpacity(0.14), borderRadius: BorderRadius.circular(10)), child: Icon(k.icon, size: 19, color: k.color)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(m['title']?.toString() ?? 'Event', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
+                            const SizedBox(height: 3),
+                            Row(children: [
+                              Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: k.color.withOpacity(0.12), borderRadius: BorderRadius.circular(20)), child: Text(k.label, style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w700, color: k.color))),
+                              if (course.isNotEmpty) ...[const SizedBox(width: 6), Flexible(child: Text(course, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12, color: _grey)))],
+                            ]),
+                          ]),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(_timeLabel(dt), style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: _grey)),
+                      ]),
+                    ),
+                  ),
                 ]),
               ),
-              const SizedBox(width: 8),
-              Text(_timeLabel(dt), style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: _grey)),
-            ]),
-          );
-        }),
+            );
+          }),
+        ),
     ]);
   }
 }
