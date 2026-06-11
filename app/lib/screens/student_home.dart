@@ -12,28 +12,18 @@ import '../theme_controller.dart';
 import 'login_screen.dart';
 import 'video_player_screen.dart';
 
-// Palette — gold accent. `_orange` keeps its name to limit churn but is now the
-// metallic-gold accent used for icons, text, borders and badges.
-const _orange = Color(0xFFC9A227);
+// Palette — red-orange accent.
+const _orange = Color(0xFFFF4F2B);
 const _green = Color(0xFF2D8A4E);
 const _greenBg = Color(0xFFEAFAF0);
-
-// Gold gradient ramp for filled surfaces (tiles, avatar, buttons, chips).
-const _goldLight = Color(0xFFF4D77E);
-const _goldDeep = Color(0xFFA87C18);
-const _goldGradient = LinearGradient(
-  begin: Alignment.topLeft,
-  end: Alignment.bottomRight,
-  colors: [_goldLight, _orange, _goldDeep],
-);
 
 // Brightness-aware palette. `_isDark` is set at the start of each build / dialog.
 bool _isDark = false;
 Color get _navy => _isDark ? const Color(0xFFECEDF2) : const Color(0xFF1A1A2E);
 Color get _grey => _isDark ? const Color(0xFF9AA0AC) : const Color(0xFF888888);
-Color get _peach => _isDark ? const Color(0xFF2A2410) : const Color(0xFFFBF3D8);
-Color get _peachSoft => _isDark ? const Color(0xFF221E12) : const Color(0xFFFDF8E6);
-Color get _bg => _isDark ? const Color(0xFF0E0F14) : const Color(0xFFFFFBF0);
+Color get _peach => _isDark ? const Color(0xFF2C231C) : const Color(0xFFFFF3EC);
+Color get _peachSoft => _isDark ? const Color(0xFF241D17) : const Color(0xFFFFF8F5);
+Color get _bg => _isDark ? const Color(0xFF0E0F14) : const Color(0xFFFFF6F1);
 Color get _surface => _isDark ? const Color(0xFF1E2027) : Colors.white;
 Color get _line => _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0F0F0);
 
@@ -94,8 +84,8 @@ class _GlassBackdrop extends StatelessWidget {
       ),
       child: Stack(children: [
         Positioned(top: -120, left: -100, child: circle(_orange.withOpacity(_isDark ? 0.22 : 0.30), 380)),
-        Positioned(top: 80, right: -140, child: circle(_goldLight.withOpacity(_isDark ? 0.20 : 0.32), 420)),
-        Positioned(bottom: -160, left: 120, child: circle(const Color(0xFFE8C66B).withOpacity(_isDark ? 0.16 : 0.22), 460)),
+        Positioned(top: 80, right: -140, child: circle(const Color(0xFFFF7A4D).withOpacity(_isDark ? 0.18 : 0.28), 420)),
+        Positioned(bottom: -160, left: 120, child: circle(const Color(0xFF7C5CFF).withOpacity(_isDark ? 0.16 : 0.18), 460)),
       ]),
     );
   }
@@ -227,7 +217,7 @@ class _StudentHomeState extends State<StudentHome> {
 
   static Widget _emptyText(String t) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 22),
-        child: Text(t, textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
+        child: Text(t, textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 13, color: _grey)),
       );
 
   static String _fmtAt(String? iso) {
@@ -342,18 +332,18 @@ class _StudentHomeState extends State<StudentHome> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
               decoration: BoxDecoration(
-                gradient: _goldGradient,
+                gradient: const LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight),
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [BoxShadow(color: _orange.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 const Icon(CupertinoIcons.flame_fill, color: Colors.white, size: 16),
                 const SizedBox(width: 4),
-                Text('$_streak', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white)),
+                Text('$_streak', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white)),
               ]),
             ),
             const SizedBox(width: 12),
-            Text('ONROL', style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 1)),
+            Text('ONROL', style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 1)),
           ]),
         ],
       ),
@@ -398,32 +388,32 @@ class _StudentHomeState extends State<StudentHome> {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            gradient: _goldGradient,
+            gradient: const LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight),
             border: Border.all(color: Colors.white, width: 3),
             boxShadow: [BoxShadow(color: _orange.withOpacity(0.3), blurRadius: 14, offset: const Offset(0, 6))],
           ),
-          child: Text(initials, style: GoogleFonts.poppins(fontSize: 36, fontWeight: FontWeight.w800, color: Colors.white)),
+          child: Text(initials, style: GoogleFonts.inter(fontSize: 36, fontWeight: FontWeight.w800, color: Colors.white)),
         ),
         const SizedBox(width: 18),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             RichText(
               text: TextSpan(children: [
-                TextSpan(text: 'Hi, ', style: GoogleFonts.poppins(fontSize: 25, fontWeight: FontWeight.w800, color: _navy)),
-                TextSpan(text: _firstName, style: GoogleFonts.poppins(fontSize: 25, fontWeight: FontWeight.w800, color: _orange)),
+                TextSpan(text: 'Hi, ', style: GoogleFonts.inter(fontSize: 25, fontWeight: FontWeight.w800, color: _navy)),
+                TextSpan(text: _firstName, style: GoogleFonts.inter(fontSize: 25, fontWeight: FontWeight.w800, color: _orange)),
               ]),
             ),
             const SizedBox(height: 3),
-            Text(_roleLabel, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _grey)),
+            Text(_roleLabel, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _grey)),
             const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
               decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
-              child: Text('ONROL Learner', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
+              child: Text('ONROL Learner', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
             ),
             const SizedBox(height: 12),
-            Text('Keep learning, keep growing.', style: GoogleFonts.poppins(fontSize: 13, color: _navy, height: 1.5)),
-            Text("You're closer than you think! ✨", style: GoogleFonts.poppins(fontSize: 13, color: _navy, height: 1.5)),
+            Text('Keep learning, keep growing.', style: GoogleFonts.inter(fontSize: 13, color: _navy, height: 1.5)),
+            Text("You're closer than you think! ✨", style: GoogleFonts.inter(fontSize: 13, color: _navy, height: 1.5)),
           ]),
         ),
       ]),
@@ -450,7 +440,7 @@ class _StudentHomeState extends State<StudentHome> {
           return [
             Padding(
               padding: const EdgeInsets.only(top: 10, bottom: 4),
-              child: Text(md['title']?.toString() ?? 'Module', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
+              child: Text(md['title']?.toString() ?? 'Module', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
             ),
             if (lessons.isEmpty) _emptyText('No lessons.') else ...lessons.map((l) => _lessonRow(l as Map<String, dynamic>)),
           ];
@@ -517,9 +507,9 @@ class _StudentHomeState extends State<StudentHome> {
                   ),
                 ),
                 const SizedBox(height: 18),
-                Text(title, textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: _navy)),
+                Text(title, textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700, color: _navy)),
                 const SizedBox(height: 6),
-                Text(sub, textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, color: _grey, height: 1.4)),
+                Text(sub, textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 13, color: _grey, height: 1.4)),
               ]),
             ),
           ),
@@ -546,7 +536,7 @@ class _StudentHomeState extends State<StudentHome> {
         child: Row(children: [
           Icon(icon, size: 20, color: _orange),
           const SizedBox(width: 12),
-          Expanded(child: Text(l['title']?.toString() ?? 'Lesson', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _navy))),
+          Expanded(child: Text(l['title']?.toString() ?? 'Lesson', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy))),
           Icon(done ? CupertinoIcons.checkmark_alt_circle_fill : CupertinoIcons.chevron_right, size: done ? 20 : 16, color: done ? _green : _grey),
         ]),
       ),
@@ -572,7 +562,7 @@ class _StudentHomeState extends State<StudentHome> {
     } else if (url.isNotEmpty) {
       // Text lesson: show the body.
       _showPanel(CupertinoIcons.doc_text_fill, l['title']?.toString() ?? 'Lesson', 'Lesson', [
-        Text(url, style: GoogleFonts.poppins(fontSize: 14, color: _navy, height: 1.6)),
+        Text(url, style: GoogleFonts.inter(fontSize: 14, color: _navy, height: 1.6)),
       ]);
     }
     // Mark complete (best-effort).
@@ -603,7 +593,7 @@ class _StudentHomeState extends State<StudentHome> {
                 padding: const EdgeInsets.only(bottom: 18),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('${e.key + 1}. ${q['prompt'] ?? ''}',
-                      style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: _navy)),
+                      style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: _navy)),
                   const SizedBox(height: 8),
                   if (opts.isNotEmpty)
                     ...opts.map((o) => _Pressable(
@@ -620,7 +610,7 @@ class _StudentHomeState extends State<StudentHome> {
                               Icon(answers[qid] == o ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle,
                                   size: 18, color: answers[qid] == o ? _orange : _grey),
                               const SizedBox(width: 10),
-                              Expanded(child: Text(o, style: GoogleFonts.poppins(fontSize: 14, color: _navy))),
+                              Expanded(child: Text(o, style: GoogleFonts.inter(fontSize: 14, color: _navy))),
                             ]),
                           ),
                         ))
@@ -649,8 +639,8 @@ class _StudentHomeState extends State<StudentHome> {
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 alignment: Alignment.center,
-                decoration: BoxDecoration(gradient: _goldGradient, borderRadius: BorderRadius.circular(10)),
-                child: Text('Submit', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
+                decoration: BoxDecoration(color: _orange, borderRadius: BorderRadius.circular(10)),
+                child: Text('Submit', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
               ),
             ),
           ]);
@@ -723,7 +713,7 @@ class _StudentHomeState extends State<StudentHome> {
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
                           Icon(CupertinoIcons.chevron_back, size: 22, color: _orange),
-                          Text('Back', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: _orange)),
+                          Text('Back', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600, color: _orange)),
                         ]),
                       ),
                     ),
@@ -737,8 +727,8 @@ class _StudentHomeState extends State<StudentHome> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(title, style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w700, color: _navy)),
-                        Text(sub, style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
+                        Text(title, style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w700, color: _navy)),
+                        Text(sub, style: GoogleFonts.inter(fontSize: 13, color: _grey)),
                       ]),
                     ),
                   ]),
@@ -795,7 +785,7 @@ class _StudentHomeState extends State<StudentHome> {
                   Row(children: [
                     Icon(CupertinoIcons.bell_fill, size: 16, color: _orange),
                     const SizedBox(width: 6),
-                    Text('Notifications', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
+                    Text('Notifications', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
                   ]),
                   const SizedBox(height: 8),
                   ...notes.take(3).map((e) {
@@ -935,7 +925,7 @@ class _StudentHomeState extends State<StudentHome> {
               children.add(Padding(
                 padding: const EdgeInsets.only(top: 16, bottom: 4),
                 child: Text(k == null ? 'Unscheduled' : 'Day $k',
-                    style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _orange)),
+                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: _orange)),
               ));
               for (final m in groups[k]!) {
                 final isQuiz = m['type'] == 'quiz';
@@ -998,10 +988,10 @@ class _StudentHomeState extends State<StudentHome> {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(color: _peachSoft, borderRadius: BorderRadius.circular(12), border: const Border(left: BorderSide(color: _orange, width: 4))),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Current Plan', style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
+              Text('Current Plan', style: GoogleFonts.inter(fontSize: 13, color: _grey)),
               const SizedBox(height: 4),
-              Text('ONROL Pro', style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w700, color: _orange)),
-              Text('Renews July 10, 2026', style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFFAAAAAA))),
+              Text('ONROL Pro', style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w700, color: _orange)),
+              Text('Renews July 10, 2026', style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFFAAAAAA))),
             ]),
           ),
           const SizedBox(height: 14),
@@ -1017,7 +1007,7 @@ class _StudentHomeState extends State<StudentHome> {
         ]);
       case 'quizzes':
         return (CupertinoIcons.lightbulb_fill, 'Quizzes', 'Test your knowledge', [
-          _row(CupertinoIcons.bolt_fill, 'JavaScript Basics Quiz', '30 Qs · 45 min · Due today 4:30 PM', 'Start', badgeBg: const Color(0xFFFBF1D5), badgeFg: _goldDeep),
+          _row(CupertinoIcons.bolt_fill, 'JavaScript Basics Quiz', '30 Qs · 45 min · Due today 4:30 PM', 'Start', badgeBg: const Color(0xFFFFF0EC), badgeFg: const Color(0xFFE05A2A)),
           _row(CupertinoIcons.paintbrush_fill, 'UI Principles Quiz', '20 Qs · 30 min', 'Start'),
           _row(CupertinoIcons.chart_bar_fill, 'Data Types Quiz', '15 Qs · 20 min · Completed', '90%', badgeBg: _greenBg, badgeFg: _green),
         ]);
@@ -1039,7 +1029,7 @@ class _StudentHomeState extends State<StudentHome> {
         ]);
       case 'forum':
         return (CupertinoIcons.bubble_left_bubble_right_fill, 'Discussion Forum', 'Join the conversation', [
-          _row(CupertinoIcons.chat_bubble_2_fill, 'How do I center a div?', 'Web Development · 24 replies', 'Hot', badgeBg: const Color(0xFFFBF1D5), badgeFg: _goldDeep),
+          _row(CupertinoIcons.chat_bubble_2_fill, 'How do I center a div?', 'Web Development · 24 replies', 'Hot', badgeBg: const Color(0xFFFFF0EC), badgeFg: const Color(0xFFE05A2A)),
           _row(CupertinoIcons.paintbrush_fill, 'Best Figma plugins in 2026?', 'UI/UX Design · 12 replies', 'Open'),
           _row(CupertinoIcons.chart_bar_fill, 'Pandas vs NumPy — when?', 'Data Science · 8 replies', 'Open'),
         ]);
@@ -1047,7 +1037,7 @@ class _StudentHomeState extends State<StudentHome> {
         return (CupertinoIcons.search, 'Search', 'Find courses & lessons', [
           _field('SEARCH', ''),
           const SizedBox(height: 8),
-          Text('Popular searches', style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFFAAAAAA), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+          Text('Popular searches', style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFFAAAAAA), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
           const SizedBox(height: 6),
           _row(CupertinoIcons.device_laptop, 'JavaScript Basics', 'Course · 4.8 rating', 'Open'),
           _row(CupertinoIcons.paintbrush_fill, 'Figma Crash Course', 'Course · 4.9 rating', 'Open'),
@@ -1079,7 +1069,7 @@ class _StudentHomeState extends State<StudentHome> {
             return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: groups.entries.expand<Widget>((e) => [
               Padding(
                 padding: const EdgeInsets.only(top: 10, bottom: 4),
-                child: Text(e.key, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
+                child: Text(e.key, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
               ),
               ...e.value.map((c) {
                 final m = c as Map<String, dynamic>;
@@ -1102,7 +1092,7 @@ class _StudentHomeState extends State<StudentHome> {
               const Icon(CupertinoIcons.square_arrow_right, size: 48, color: _orange),
               const SizedBox(height: 12),
               Text('Are you sure you want to log out, $_firstName? Your progress is saved and you can continue anytime.',
-                  textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 15, color: const Color(0xFF666666), height: 1.6)),
+                  textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 15, color: const Color(0xFF666666), height: 1.6)),
               const SizedBox(height: 24),
               Row(children: [
                 Expanded(child: _outlineButton('Stay', () => Navigator.of(context).pop())),
@@ -1122,9 +1112,9 @@ Widget _statCard(String num, String label) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       decoration: BoxDecoration(color: _peachSoft, borderRadius: BorderRadius.circular(12), border: const Border(left: BorderSide(color: _orange, width: 4))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(num, style: GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w700, color: _orange)),
+        Text(num, style: GoogleFonts.inter(fontSize: 26, fontWeight: FontWeight.w700, color: _orange)),
         const SizedBox(height: 2),
-        Text(label, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+        Text(label, style: GoogleFonts.inter(fontSize: 12, color: _grey)),
       ]),
     );
 
@@ -1132,8 +1122,8 @@ Widget _progress(String label, double pct) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 7),
       child: Column(children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(label, style: GoogleFonts.poppins(fontSize: 13, color: const Color(0xFF555555))),
-          Text('${(pct * 100).round()}%', style: GoogleFonts.poppins(fontSize: 13, color: const Color(0xFF555555))),
+          Text(label, style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF555555))),
+          Text('${(pct * 100).round()}%', style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF555555))),
         ]),
         const SizedBox(height: 6),
         ClipRRect(
@@ -1152,12 +1142,12 @@ Widget _row(IconData icon, String name, String meta, String badge, {Color? badge
         Container(width: 44, height: 44, alignment: Alignment.center, decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(8)), child: Icon(icon, size: 20, color: _orange)),
         const SizedBox(width: 14),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(name, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
-          Text(meta, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+          Text(name, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
+          Text(meta, style: GoogleFonts.inter(fontSize: 12, color: _grey)),
         ])),
         const SizedBox(width: 8),
         Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: badgeBg ?? _peach, borderRadius: BorderRadius.circular(20)),
-            child: Text(badge, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: badgeFg ?? _orange))),
+            child: Text(badge, style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: badgeFg ?? _orange))),
       ]),
     );
 
@@ -1165,31 +1155,31 @@ Widget _leader(String rank, String name, String sub, String pts, {bool highlight
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
       decoration: BoxDecoration(color: highlight ? _peachSoft : null, borderRadius: BorderRadius.circular(8)),
       child: Row(children: [
-        SizedBox(width: 28, child: Text('#$rank', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _orange))),
+        SizedBox(width: 28, child: Text('#$rank', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: _orange))),
         const SizedBox(width: 12),
         Container(width: 36, height: 36, alignment: Alignment.center, decoration: BoxDecoration(color: _orange.withOpacity(0.12), shape: BoxShape.circle), child: const Icon(CupertinoIcons.person_fill, size: 18, color: _orange)),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(name, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
-          Text(sub, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+          Text(name, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
+          Text(sub, style: GoogleFonts.inter(fontSize: 12, color: _grey)),
         ])),
-        Text(pts, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _orange)),
+        Text(pts, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: _orange)),
       ]),
     );
 
 Widget _sched(String time, String title, String sub, String tag) => Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        SizedBox(width: 56, child: Text(time, textAlign: TextAlign.right, style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: _orange))),
+        SizedBox(width: 56, child: Text(time, textAlign: TextAlign.right, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: _orange))),
         const SizedBox(width: 14),
         Container(width: 2, height: 56, color: const Color(0xFFF0EBE8)),
         const SizedBox(width: 14),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
-          Text(sub, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+          Text(title, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
+          Text(sub, style: GoogleFonts.inter(fontSize: 12, color: _grey)),
           const SizedBox(height: 5),
           Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: _peach, borderRadius: BorderRadius.circular(20)),
-              child: Text(tag, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: _orange))),
+              child: Text(tag, style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: _orange))),
         ])),
       ]),
     );
@@ -1200,9 +1190,9 @@ Widget _help(String q, String a) => Container(
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(width: 10, height: 10, margin: const EdgeInsets.only(top: 5, right: 14), decoration: BoxDecoration(color: _navy, shape: BoxShape.circle)),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(q, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
+          Text(q, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
           const SizedBox(height: 3),
-          Text(a, style: GoogleFonts.poppins(fontSize: 12, color: _grey, height: 1.4)),
+          Text(a, style: GoogleFonts.inter(fontSize: 12, color: _grey, height: 1.4)),
         ])),
       ]),
     );
@@ -1210,11 +1200,11 @@ Widget _help(String q, String a) => Container(
 Widget _field(String label, String value) => Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFFAAAAAA), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+        Text(label, style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFFAAAAAA), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
         const SizedBox(height: 5),
         TextFormField(
           initialValue: value,
-          style: GoogleFonts.poppins(fontSize: 14, color: _navy),
+          style: GoogleFonts.inter(fontSize: 14, color: _navy),
           decoration: InputDecoration(
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1229,8 +1219,8 @@ Widget _orangeButton(String label, VoidCallback onTap) => _Pressable(
       onTap: onTap,
       child: Container(
         width: double.infinity, height: 46, alignment: Alignment.center,
-        decoration: BoxDecoration(gradient: _goldGradient, borderRadius: BorderRadius.circular(10)),
-        child: Text(label, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+        decoration: BoxDecoration(color: _orange, borderRadius: BorderRadius.circular(10)),
+        child: Text(label, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
       ),
     );
 
@@ -1239,7 +1229,7 @@ Widget _outlineButton(String label, VoidCallback onTap) => _Pressable(
       child: Container(
         height: 46, alignment: Alignment.center,
         decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: _orange, width: 2)),
-        child: Text(label, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _orange)),
+        child: Text(label, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _orange)),
       ),
     );
 
@@ -1304,12 +1294,12 @@ class _ProfilePanelState extends State<_ProfilePanel> {
   Widget _ctlField(String label, TextEditingController c, {bool enabled = true}) => Padding(
         padding: const EdgeInsets.only(bottom: 14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFFAAAAAA), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+          Text(label, style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFFAAAAAA), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
           const SizedBox(height: 5),
           TextField(
             controller: c,
             enabled: enabled,
-            style: GoogleFonts.poppins(fontSize: 14, color: _navy),
+            style: GoogleFonts.inter(fontSize: 14, color: _navy),
             decoration: InputDecoration(
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1335,8 +1325,8 @@ class _ProfilePanelState extends State<_ProfilePanel> {
         ),
       ),
       const SizedBox(height: 16),
-      Center(child: Text(_name.text, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: _navy))),
-      Center(child: Text('${_role[0].toUpperCase()}${_role.substring(1)} · ONROL', style: GoogleFonts.poppins(fontSize: 13, color: _orange))),
+      Center(child: Text(_name.text, style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700, color: _navy))),
+      Center(child: Text('${_role[0].toUpperCase()}${_role.substring(1)} · ONROL', style: GoogleFonts.inter(fontSize: 13, color: _orange))),
       const SizedBox(height: 20),
       _ctlField('FULL NAME', _name),
       _ctlField('EMAIL', TextEditingController(text: _email), enabled: false),
@@ -1346,10 +1336,10 @@ class _ProfilePanelState extends State<_ProfilePanel> {
         onTap: _saving ? () {} : _save,
         child: Container(
           width: double.infinity, height: 46, alignment: Alignment.center,
-          decoration: BoxDecoration(gradient: _goldGradient, borderRadius: BorderRadius.circular(10)),
+          decoration: BoxDecoration(color: _orange, borderRadius: BorderRadius.circular(10)),
           child: _saving
               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
-              : Text('Save Changes', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+              : Text('Save Changes', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
         ),
       ),
     ]);
@@ -1432,8 +1422,8 @@ class _AiNewsCardState extends State<_AiNewsCard> {
           Row(children: [
             Icon(CupertinoIcons.sparkles, size: 18, color: _orange),
             const SizedBox(width: 8),
-            Text('UPDATE ', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: _navy)),
-            Text('LIVE AI NEWS', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: _orange)),
+            Text('UPDATE ', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800, color: _navy)),
+            Text('LIVE AI NEWS', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800, color: _orange)),
             const Spacer(),
             _livePill(),
           ]),
@@ -1446,7 +1436,7 @@ class _AiNewsCardState extends State<_AiNewsCard> {
               height: 46, alignment: Alignment.center,
               decoration: BoxDecoration(color: _peach, borderRadius: BorderRadius.circular(12)),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Text('View All AI News', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _orange)),
+                Text('View All AI News', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: _orange)),
                 const SizedBox(width: 6),
                 Icon(CupertinoIcons.arrow_right, size: 16, color: _orange),
               ]),
@@ -1483,9 +1473,9 @@ class _AiNewsCardState extends State<_AiNewsCard> {
             child: Column(children: [
               Icon(CupertinoIcons.wifi_slash, size: 28, color: _grey),
               const SizedBox(height: 8),
-              Text('Live news unavailable', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _navy)),
+              Text('Live news unavailable', textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: _navy)),
               const SizedBox(height: 2),
-              Text('Pull again in a moment.', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+              Text('Pull again in a moment.', textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 12, color: _grey)),
             ]),
           );
     // Keep a consistent height in the scrollable (wide) layout.
@@ -1498,7 +1488,7 @@ class _AiNewsCardState extends State<_AiNewsCard> {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Container(width: 7, height: 7, decoration: const BoxDecoration(color: _orange, shape: BoxShape.circle)),
           const SizedBox(width: 5),
-          Text('LIVE', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
+          Text('LIVE', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
         ]),
       );
 
@@ -1523,16 +1513,16 @@ class _AiNewsCardState extends State<_AiNewsCard> {
                 Row(mainAxisSize: MainAxisSize.min, children: [
                   Container(width: 6, height: 6, decoration: const BoxDecoration(color: _orange, shape: BoxShape.circle)),
                   const SizedBox(width: 5),
-                  Text('LIVE', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
+                  Text('LIVE', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
                 ])
               else
-                Text(n.source.toUpperCase(), style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
+                Text(n.source.toUpperCase(), style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
               const SizedBox(height: 4),
-              Text(n.title, maxLines: 3, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: _navy, height: 1.3)),
+              Text(n.title, maxLines: 3, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 13.5, fontWeight: FontWeight.w700, color: _navy, height: 1.3)),
               const SizedBox(height: 4),
               Text(
                 [n.source, if (n.ago.isNotEmpty) n.ago].join(' · '),
-                style: GoogleFonts.poppins(fontSize: 11.5, color: _grey),
+                style: GoogleFonts.inter(fontSize: 11.5, color: _grey),
               ),
             ]),
           ),
@@ -1599,8 +1589,8 @@ class _GridCellState extends State<_GridCell> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: _hover
-                    ? [_goldLight.withOpacity(0.96), _orange.withOpacity(0.88)]
-                    : [_orange.withOpacity(0.94), _goldDeep.withOpacity(0.88)],
+                    ? [const Color(0xFFFF7A4D).withOpacity(0.94), _orange.withOpacity(0.84)]
+                    : [_orange.withOpacity(0.92), const Color(0xFFE8421F).withOpacity(0.82)],
               ),
               border: Border.all(color: Colors.white.withOpacity(0.20), width: 1),
               boxShadow: [
@@ -1642,7 +1632,7 @@ class _GridCellState extends State<_GridCell> {
                   Text(t.label,
                       maxLines: 1,
                       textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+                      style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
                 ],
               ),
             ),
@@ -1678,8 +1668,8 @@ Widget _toggleRowView(String label, String sub, bool on, VoidCallback onTap) => 
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: _line))),
       child: Row(children: [
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: GoogleFonts.poppins(fontSize: 14, color: _navy)),
-          Text(sub, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+          Text(label, style: GoogleFonts.inter(fontSize: 14, color: _navy)),
+          Text(sub, style: GoogleFonts.inter(fontSize: 12, color: _grey)),
         ])),
         GestureDetector(
           onTap: onTap,
@@ -1729,9 +1719,9 @@ class _StudentHomeNotif extends StatelessWidget {
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(width: 10, height: 10, margin: const EdgeInsets.only(top: 5, right: 14), decoration: BoxDecoration(color: read ? const Color(0xFFDDDDDD) : _orange, shape: BoxShape.circle)),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(text, style: GoogleFonts.poppins(fontSize: 13, color: const Color(0xFF333333), height: 1.5)),
+          Text(text, style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF333333), height: 1.5)),
           const SizedBox(height: 3),
-          Text(time, style: GoogleFonts.poppins(fontSize: 11, color: const Color(0xFFAAAAAA))),
+          Text(time, style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFFAAAAAA))),
         ])),
       ]),
     );
