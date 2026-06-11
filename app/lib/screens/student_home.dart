@@ -496,12 +496,10 @@ class _StudentHomeState extends State<StudentHome> {
         child: _glass(
       padding: const EdgeInsets.all(22),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        GestureDetector(
-          onTap: _pickAvatar,
-          child: ValueListenableBuilder<String>(
-            valueListenable: avatarNotifier,
-            builder: (ctx, av, _) => _avatarBox(av, 88, initials, editable: true),
-          ),
+        // Display-only here; the picture is edited inside the Profile popup.
+        ValueListenableBuilder<String>(
+          valueListenable: avatarNotifier,
+          builder: (ctx, av, _) => _avatarBox(av, 88, initials),
         ),
         const SizedBox(width: 18),
         Expanded(
@@ -554,59 +552,6 @@ class _StudentHomeState extends State<StudentHome> {
 
   // A square (rounded) profile picture. [avatar] is '' / 'p:N' (preset) or a
   // 'data:' URI (uploaded photo). Shows a camera badge when [editable].
-  Widget _avatarBox(String avatar, double size, String initials, {bool editable = false}) {
-    final radius = size * 0.26;
-    final bytes = avatar.startsWith('data:') ? _decodeDataUri(avatar) : null;
-    Widget face;
-    if (bytes != null) {
-      face = Container(
-        width: size, height: size,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(radius),
-          border: Border.all(color: Colors.white, width: 3),
-          image: DecorationImage(image: MemoryImage(bytes), fit: BoxFit.cover),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.22), blurRadius: 14, offset: const Offset(0, 6))],
-        ),
-      );
-    } else {
-      final idx = avatar.startsWith('p:') ? (int.tryParse(avatar.substring(2)) ?? 0) : 0;
-      final a = _avatars[idx.clamp(0, _avatars.length - 1)];
-      face = Container(
-        width: size, height: size,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(colors: a.colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
-          borderRadius: BorderRadius.circular(radius),
-          border: Border.all(color: Colors.white, width: 3),
-          boxShadow: [BoxShadow(color: a.colors.last.withOpacity(0.35), blurRadius: 14, offset: const Offset(0, 6))],
-        ),
-        child: a.emoji.isEmpty
-            ? Text(initials, style: GoogleFonts.poppins(fontSize: size * 0.40, fontWeight: FontWeight.w800, color: Colors.white))
-            : Text(a.emoji, style: TextStyle(fontSize: size * 0.52)),
-      );
-    }
-    return Stack(clipBehavior: Clip.none, children: [
-      face,
-      if (editable)
-        Positioned(
-          right: -3, bottom: -3,
-          child: Container(
-            width: 26, height: 26, alignment: Alignment.center,
-            decoration: BoxDecoration(color: _orange, shape: BoxShape.circle, border: Border.all(color: _surface, width: 2)),
-            child: const Icon(CupertinoIcons.camera_fill, size: 12, color: Colors.white),
-          ),
-        ),
-    ]);
-  }
-
-  Uint8List? _decodeDataUri(String d) {
-    try {
-      return base64Decode(d.substring(d.indexOf(',') + 1));
-    } catch (_) {
-      return null;
-    }
-  }
-
   void _toast(String msg) {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating));
   }
@@ -1251,7 +1196,7 @@ class _StudentHomeState extends State<StudentHome> {
         ]);
       case 'profile':
         return (CupertinoIcons.person_fill, 'My Profile', 'Manage your details & settings', [
-          _ProfilePanel(auth: widget.auth),
+          _ProfilePanel(auth: widget.auth, onEditAvatar: _pickAvatar),
           const SizedBox(height: 22),
           Text('Settings', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: _navy)),
           const SizedBox(height: 8),
@@ -1260,7 +1205,10 @@ class _StudentHomeState extends State<StudentHome> {
           const _DarkModeRow(),
           _SettingRow('Study Reminders', 'Daily nudge to keep learning', true),
           _SettingRow('Show Leaderboard', 'Let others see your rank', true),
+          _SettingRow('Show Online Status', 'Let classmates see when you\'re active', true),
+          _SettingRow('Sound Effects', 'Play sounds for actions & rewards', true),
           _SettingRow('Auto-play Next Lesson', 'Continuous learning flow', false),
+          _SettingRow('Reduce Motion', 'Minimise animations', false),
         ]);
       case 'settings':
         return (CupertinoIcons.gear_alt_fill, 'Settings', 'Customize your experience', [
@@ -2079,8 +2027,9 @@ Widget _outlineButton(String label, VoidCallback onTap) => _Pressable(
 
 /// Profile panel — loads the caller's profile from the API and saves edits.
 class _ProfilePanel extends StatefulWidget {
-  const _ProfilePanel({required this.auth});
+  const _ProfilePanel({required this.auth, required this.onEditAvatar});
   final AuthService auth;
+  final VoidCallback onEditAvatar;
 
   @override
   State<_ProfilePanel> createState() => _ProfilePanelState();
@@ -2160,15 +2109,21 @@ class _ProfilePanelState extends State<_ProfilePanel> {
     if (_loading) {
       return const Padding(padding: EdgeInsets.symmetric(vertical: 34), child: Center(child: CircularProgressIndicator(color: _orange, strokeWidth: 2.5)));
     }
+    final initials = _name.text.trim().isNotEmpty ? _name.text.trim()[0].toUpperCase() : 'S';
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // Editable profile picture — tap to choose a default or upload your own.
       Center(
-        child: Container(
-          width: 80, height: 80, alignment: Alignment.center,
-          decoration: BoxDecoration(color: _orange.withOpacity(0.12), shape: BoxShape.circle, border: Border.all(color: _orange, width: 3)),
-          child: const Icon(CupertinoIcons.person_fill, size: 36, color: _orange),
+        child: GestureDetector(
+          onTap: widget.onEditAvatar,
+          child: ValueListenableBuilder<String>(
+            valueListenable: avatarNotifier,
+            builder: (ctx, av, _) => _avatarBox(av, 88, initials, editable: true),
+          ),
         ),
       ),
-      const SizedBox(height: 16),
+      const SizedBox(height: 8),
+      Center(child: Text('Tap to change picture', style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: _grey))),
+      const SizedBox(height: 12),
       Center(child: Text(_name.text, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: _navy))),
       Center(child: Text('${_role[0].toUpperCase()}${_role.substring(1)} · ONROL', style: GoogleFonts.poppins(fontSize: 13, color: _orange))),
       const SizedBox(height: 20),
@@ -2588,6 +2543,61 @@ class _HeroPanelModal extends StatelessWidget {
       ),
     );
   }
+}
+
+Uint8List? _decodeDataUri(String d) {
+  try {
+    return base64Decode(d.substring(d.indexOf(',') + 1));
+  } catch (_) {
+    return null;
+  }
+}
+
+/// A square (rounded) profile picture. [avatar] is '' / 'p:N' (preset) or a
+/// 'data:' URI (uploaded photo). Shows a camera badge when [editable].
+Widget _avatarBox(String avatar, double size, String initials, {bool editable = false}) {
+  final radius = size * 0.26;
+  final bytes = avatar.startsWith('data:') ? _decodeDataUri(avatar) : null;
+  Widget face;
+  if (bytes != null) {
+    face = Container(
+      width: size, height: size,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: Colors.white, width: 3),
+        image: DecorationImage(image: MemoryImage(bytes), fit: BoxFit.cover),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.22), blurRadius: 14, offset: const Offset(0, 6))],
+      ),
+    );
+  } else {
+    final idx = avatar.startsWith('p:') ? (int.tryParse(avatar.substring(2)) ?? 0) : 0;
+    final a = _avatars[idx.clamp(0, _avatars.length - 1)];
+    face = Container(
+      width: size, height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: a.colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: Colors.white, width: 3),
+        boxShadow: [BoxShadow(color: a.colors.last.withOpacity(0.35), blurRadius: 14, offset: const Offset(0, 6))],
+      ),
+      child: a.emoji.isEmpty
+          ? Text(initials, style: GoogleFonts.poppins(fontSize: size * 0.40, fontWeight: FontWeight.w800, color: Colors.white))
+          : Text(a.emoji, style: TextStyle(fontSize: size * 0.52)),
+    );
+  }
+  return Stack(clipBehavior: Clip.none, children: [
+    face,
+    if (editable)
+      Positioned(
+        right: -3, bottom: -3,
+        child: Container(
+          width: 26, height: 26, alignment: Alignment.center,
+          decoration: BoxDecoration(color: _orange, shape: BoxShape.circle, border: Border.all(color: _surface, width: 2)),
+          child: const Icon(CupertinoIcons.camera_fill, size: 12, color: Colors.white),
+        ),
+      ),
+  ]);
 }
 
 /// Staggered fade + slide entrance for list items.
