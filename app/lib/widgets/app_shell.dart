@@ -164,8 +164,7 @@ class _Sidebar extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           decoration: BoxDecoration(
             color: on ? p.accent : Colors.transparent,
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: on ? [BoxShadow(color: p.accent.withOpacity(0.35), offset: const Offset(0, 6), blurRadius: 14, spreadRadius: -3)] : null,
+            borderRadius: BorderRadius.circular(8),
           ),
           child: Row(children: [
             Icon(d.icon, size: 20, color: on ? Colors.white : p.secondary),

@@ -62,8 +62,8 @@ class AppleCard extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         color: p.card,
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: p.clay,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: p.separator),
       ),
       child: child,
     );
@@ -100,18 +100,22 @@ class _PrimaryButtonState extends State<PrimaryButton> {
         scale: _scale,
         duration: const Duration(milliseconds: 90),
         child: Container(
-          height: 52,
+          height: widget.square ? 46 : 52,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: enabled
-                  ? [p.accent, p.accent.withOpacity(0.82)]
-                  : [p.secondary.withOpacity(0.4), p.secondary.withOpacity(0.4)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            // Admin (square): flat solid fill — sharp & standard. Else: gradient CTA.
+            color: widget.square ? (enabled ? p.accent : p.secondary.withOpacity(0.35)) : null,
+            gradient: widget.square
+                ? null
+                : LinearGradient(
+                    colors: enabled
+                        ? [p.accent, p.accent.withOpacity(0.82)]
+                        : [p.secondary.withOpacity(0.4), p.secondary.withOpacity(0.4)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
             borderRadius: BorderRadius.circular(widget.square ? 6 : 18),
-            boxShadow: enabled
+            boxShadow: (!widget.square && enabled)
                 ? [BoxShadow(color: p.accent.withOpacity(0.38), offset: const Offset(0, 9), blurRadius: 20, spreadRadius: -3)]
                 : null,
           ),
@@ -342,7 +346,7 @@ class AppleSegmented extends StatelessWidget {
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: p.dark ? AppleColors.darkCard2 : const Color(0xFFE9E9EB),
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         children: List.generate(labels.length, (i) {
@@ -358,7 +362,7 @@ class AppleSegmented extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: on ? p.card : Colors.transparent,
-                  borderRadius: BorderRadius.circular(7),
+                  borderRadius: BorderRadius.circular(6),
                   boxShadow: on && !p.dark
                       ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 6, offset: const Offset(0, 2))]
                       : null,
@@ -384,7 +388,7 @@ Widget sheetField(TextEditingController c, String hint, IconData icon, {TextInpu
     final p = Palette.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-      decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(8)),
       child: AppleField(controller: c, hint: hint, icon: icon, keyboard: keyboard),
     );
   });
@@ -411,7 +415,7 @@ Future<bool?> showFormSheet(
           child: Container(
             margin: const EdgeInsets.all(10),
             padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(16)),
+            decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(12)),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Center(child: Text(title, style: AppleTheme.title2(ctx))),
               const SizedBox(height: 16),
