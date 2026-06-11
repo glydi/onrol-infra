@@ -213,11 +213,12 @@ func (h *Handlers) AddLesson(c *fiber.Ctx) error {
 		return err
 	}
 	var req struct {
-		Title    string `json:"title"`
-		Type     string `json:"type"`
-		VideoID  string `json:"video_id"`
-		Body     string `json:"body"`
-		Position int    `json:"position"`
+		Title        string `json:"title"`
+		Type         string `json:"type"`
+		VideoID      string `json:"video_id"`
+		Body         string `json:"body"`
+		Position     int    `json:"position"`
+		Downloadable *bool  `json:"downloadable"` // file lessons: may learners download it?
 	}
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Title) == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "title required")
@@ -229,11 +230,15 @@ func (h *Handlers) AddLesson(c *fiber.Ctx) error {
 	if req.VideoID != "" {
 		vid = req.VideoID
 	}
+	downloadable := true
+	if req.Downloadable != nil {
+		downloadable = *req.Downloadable
+	}
 	var id string
 	if err := h.Pool.QueryRow(c.Context(),
-		`INSERT INTO lessons (module_id, title, type, video_id, body, position)
-		 VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-		moduleID, req.Title, req.Type, vid, req.Body, req.Position).Scan(&id); err != nil {
+		`INSERT INTO lessons (module_id, title, type, video_id, body, position, downloadable)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+		moduleID, req.Title, req.Type, vid, req.Body, req.Position, downloadable).Scan(&id); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": req.Title, "type": req.Type})
@@ -305,7 +310,7 @@ func (h *Handlers) ListCourseStudents(c *fiber.Ctx) error {
 		return err
 	}
 	rows, err := h.Pool.Query(c.Context(), `
-		SELECT u.id, u.full_name, u.email, ce.status,
+		SELECT u.id, u.full_name, u.email, ce.status, u.batch,
 		       (SELECT count(*) FROM lesson_progress lp JOIN lessons l ON l.id=lp.lesson_id
 		          JOIN modules m ON m.id=l.module_id WHERE m.course_id=$1 AND lp.user_id=u.id) AS done,
 		       (SELECT count(*) FROM lessons l JOIN modules m ON m.id=l.module_id WHERE m.course_id=$1) AS total
@@ -318,15 +323,16 @@ func (h *Handlers) ListCourseStudents(c *fiber.Ctx) error {
 	out := []fiber.Map{}
 	for rows.Next() {
 		var id, name, email, status string
+		var batch *int
 		var done, total int
-		if err := rows.Scan(&id, &name, &email, &status, &done, &total); err != nil {
+		if err := rows.Scan(&id, &name, &email, &status, &batch, &done, &total); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		pct := 0
 		if total > 0 {
 			pct = done * 100 / total
 		}
-		out = append(out, fiber.Map{"id": id, "name": name, "email": email, "status": status, "percent": pct})
+		out = append(out, fiber.Map{"id": id, "name": name, "email": email, "status": status, "percent": pct, "batch": batch})
 	}
 	return c.JSON(fiber.Map{"students": out})
 }

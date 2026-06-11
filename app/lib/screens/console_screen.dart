@@ -617,6 +617,165 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
 Widget _label(BuildContext context, String t) =>
     Align(alignment: Alignment.centerLeft, child: Text(t, style: AppleTheme.footnote(context)));
 
+/// Issue certificates to learners — pick individuals, a whole batch, or everyone
+/// enrolled. Shows who already holds one. Re-issuing is a no-op (skipped).
+class _IssueCertificates extends StatefulWidget {
+  const _IssueCertificates({required this.auth, required this.courseId, required this.title});
+  final AuthService auth;
+  final String courseId;
+  final String title;
+  @override
+  State<_IssueCertificates> createState() => _IssueCertificatesState();
+}
+
+class _IssueCertificatesState extends State<_IssueCertificates> {
+  List<dynamic> _students = [];
+  final Set<String> _issued = {}; // user_ids who already have a certificate
+  final Set<String> _selected = {};
+  bool _loading = true;
+  bool _working = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final s = await widget.auth.apiGet('/api/v1/manage/courses/${widget.courseId}/students');
+      _students = (ApiClient.decode(s)['students'] as List?) ?? [];
+      final c = await widget.auth.apiGet('/api/v1/manage/courses/${widget.courseId}/certificates');
+      _issued
+        ..clear()
+        ..addAll(((ApiClient.decode(c)['certificates'] as List?) ?? []).map((e) => (e as Map)['user_id'].toString()));
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _issue(Map<String, dynamic> body, String what) async {
+    setState(() => _working = true);
+    try {
+      final r = await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/certificates', body);
+      final n = (ApiClient.decode(r)['issued'] ?? 0);
+      _selected.clear();
+      await _load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Issued $n certificate${n == 1 ? '' : 's'} ($what)'), behavior: SnackBarBehavior.floating));
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not issue')));
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
+  Future<void> _issueByBatch() async {
+    final batch = TextEditingController();
+    final ok = await showFormSheet(context, title: 'Issue by batch',
+        builder: (_) => [sheetField(batch, 'Batch number (e.g. 1)', CupertinoIcons.number, keyboard: TextInputType.number)],
+        onSubmit: () async {
+      final n = int.tryParse(batch.text.trim());
+      if (n == null) return 'Enter a batch number';
+      return null;
+    });
+    if (ok == true) {
+      final n = int.tryParse(batch.text.trim());
+      if (n != null) _issue({'batch': n}, 'batch $n');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final w = MediaQuery.of(context).size.width;
+    final hp = (w > 760 ? (w - 720) / 2 : 14.0).clamp(14, 400).toDouble();
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: p.bg,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: IconButton(icon: const Icon(CupertinoIcons.chevron_left), onPressed: () => Navigator.pop(context)),
+        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Issue Certificates', style: AppleTheme.headline(context)),
+          Text(widget.title, style: AppleTheme.footnote(context)),
+        ]),
+      ),
+      body: _loading
+          ? const Center(child: CupertinoActivityIndicator())
+          : ListView(
+              padding: EdgeInsets.fromLTRB(hp, 12, hp, 24),
+              children: [
+                Row(children: [
+                  Expanded(child: PrimaryButton(label: 'Whole course', icon: CupertinoIcons.group, square: true, busy: _working, onPressed: () => _issue({'all': true}, 'all enrolled'))),
+                  const SizedBox(width: 10),
+                  Expanded(child: PrimaryButton(label: 'By batch', icon: CupertinoIcons.number_square, square: true, onPressed: _issueByBatch)),
+                ]),
+                const SizedBox(height: 18),
+                Row(children: [
+                  Expanded(child: SectionHeader('Students (${_students.length})')),
+                  if (_selected.isNotEmpty)
+                    GestureDetector(
+                      onTap: () => _issue({'user_ids': _selected.toList()}, '${_selected.length} selected'),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(color: p.accent, borderRadius: BorderRadius.circular(8)),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          const Icon(CupertinoIcons.rosette, size: 15, color: Colors.white),
+                          const SizedBox(width: 6),
+                          Text('Issue ${_selected.length}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13)),
+                        ]),
+                      ),
+                    ),
+                ]),
+                const SizedBox(height: 4),
+                if (_students.isEmpty)
+                  AppleCard(child: Text('No students enrolled yet.', style: AppleTheme.footnote(context)))
+                else
+                  ..._students.map((s) => _studentRow(s as Map<String, dynamic>)),
+              ],
+            ),
+    );
+  }
+
+  Widget _studentRow(Map<String, dynamic> s) {
+    final id = s['id'].toString();
+    final has = _issued.contains(id);
+    final sel = _selected.contains(id);
+    final batch = s['batch'];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: AppleCard(
+        onTap: has ? null : () => setState(() => sel ? _selected.remove(id) : _selected.add(id)),
+        child: Row(children: [
+          Icon(
+            has ? CupertinoIcons.checkmark_seal_fill : (sel ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle),
+            color: has ? AppleColors.green : (sel ? Palette.of(context).accent : Palette.of(context).secondary), size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(s['name']?.toString() ?? 'Student', style: AppleTheme.headline(context)),
+              Text([
+                if (batch != null) 'Batch $batch',
+                '${s['percent'] ?? 0}% complete',
+              ].join(' · '), style: AppleTheme.footnote(context)),
+            ]),
+          ),
+          if (has)
+            GestureDetector(
+              onTap: () async {
+                await widget.auth.apiDelete('/api/v1/manage/courses/${widget.courseId}/certificates/$id');
+                _load();
+              },
+              child: Text('Revoke', style: AppleTheme.footnote(context).copyWith(color: AppleColors.red, fontWeight: FontWeight.w600)),
+            )
+          else
+            Text(sel ? 'Selected' : 'Tap to select', style: AppleTheme.footnote(context)),
+        ]),
+      ),
+    );
+  }
+}
+
 /// Proper quiz builder: list a quiz's questions (with the correct answer
 /// marked), add questions (MCQ with real options + pick-the-correct, true/false,
 /// short answer), and delete questions.
@@ -1167,6 +1326,14 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                   onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => DiscussionScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title))),
                 ),
+                const SizedBox(height: 12),
+                PrimaryButton(
+                  label: 'Issue Certificates',
+                  icon: CupertinoIcons.rosette,
+                  square: true,
+                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => _IssueCertificates(auth: widget.auth, courseId: widget.courseId, title: widget.title))),
+                ),
                 const SizedBox(height: 22),
                 Row(children: [
                   Expanded(child: SectionHeader('Students (${_students.length})')),
@@ -1519,6 +1686,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     final body = TextEditingController();
     int type = 0; // text, video, link
     int vsrc = 0; // 0 = R2 (MP4), 1 = HLS (.m3u8)
+    bool downloadable = true; // documents: may learners download it?
     final ok = await showFormSheet(context, title: 'Add Lesson', builder: (setS) => [
       sheetField(title, 'Lesson title', CupertinoIcons.doc_text),
       const SizedBox(height: 10),
@@ -1548,6 +1716,11 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       if (type == 3) ...[
         const SizedBox(height: 6),
         _label(context, 'Link a PDF / Word / PowerPoint or any document URL. Students open it from the lesson.'),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(child: _label(context, 'Allow learners to download this document')),
+          CupertinoSwitch(value: downloadable, activeTrackColor: AppleColors.green, onChanged: (v) => setS(() => downloadable = v)),
+        ]),
       ],
       if (type == 1) ...[
         const SizedBox(height: 6),
@@ -1562,6 +1735,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         'title': title.text.trim(),
         'type': ['text', 'video', 'link', 'file'][type],
         'body': body.text.trim(),
+        if (type == 3) 'downloadable': downloadable,
       });
       return null;
     });

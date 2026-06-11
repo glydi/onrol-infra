@@ -707,8 +707,26 @@ class _StudentHomeState extends State<StudentHome> {
   }
 
   // Course content viewer — modules & lessons from /me/courses/:id/content.
-  void _openContent(String courseId, String title) {
+  // A wide course thumbnail/banner shown atop the content view.
+  Widget _courseBanner(String url) {
+    Widget? pic;
+    if (url.startsWith('data:')) {
+      try {
+        pic = Image.memory(base64Decode(url.substring(url.indexOf(',') + 1)), height: 150, width: double.infinity, fit: BoxFit.cover);
+      } catch (_) {}
+    } else if (url.startsWith('http')) {
+      pic = Image.network(url, height: 150, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox());
+    }
+    if (pic == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: ClipRRect(borderRadius: BorderRadius.circular(14), child: pic),
+    );
+  }
+
+  void _openContent(String courseId, String title, {String? imageUrl}) {
     _showPanel(CupertinoIcons.book_fill, title, 'Course content', [
+      if (imageUrl != null && imageUrl.isNotEmpty) _courseBanner(imageUrl),
       _future(_apiMap('/api/v1/me/courses/$courseId/content'), (m) {
         final modules = (m['modules'] as List?) ?? [];
         if (modules.isEmpty) return _emptyText('No content in this course yet.');
@@ -888,6 +906,10 @@ class _StudentHomeState extends State<StudentHome> {
           Icon(icon, size: 20, color: _orange),
           const SizedBox(width: 12),
           Expanded(child: Text(l['title']?.toString() ?? 'Lesson', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _navy))),
+          if (type == 'file') ...[
+            Icon(l['downloadable'] == true ? CupertinoIcons.cloud_download_fill : CupertinoIcons.eye_fill, size: 15, color: _grey),
+            const SizedBox(width: 8),
+          ],
           Icon(done ? CupertinoIcons.checkmark_alt_circle_fill : CupertinoIcons.chevron_right, size: done ? 20 : 16, color: done ? _green : _grey),
         ]),
       ),
@@ -1212,7 +1234,7 @@ class _StudentHomeState extends State<StudentHome> {
                       total: total,
                       percent: ((m['percent'] ?? 0) as num).toInt(),
                       imageUrl: m['image_url']?.toString(),
-                      onOpen: () => _openContent(m['id'].toString(), m['title']?.toString() ?? 'Course'),
+                      onOpen: () => _openContent(m['id'].toString(), m['title']?.toString() ?? 'Course', imageUrl: m['image_url']?.toString()),
                     ),
                   );
                 }),
