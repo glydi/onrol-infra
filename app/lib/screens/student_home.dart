@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api_client.dart';
@@ -210,6 +213,33 @@ class _StudentHomeState extends State<StudentHome> {
   // XP earned grows with progress: 10 XP per completed lesson.
   static int _xpFromCourses(List courses) => courses.fold<int>(
       0, (sum, c) => sum + (((c as Map)['lessons_done'] ?? 0) as num).toInt() * 10);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAvatarFromServer();
+  }
+
+  // Pull the saved profile picture from the backend (source of truth) and cache
+  // it so the avatar is correct across devices.
+  Future<void> _loadAvatarFromServer() async {
+    try {
+      final m = ApiClient.decode(await widget.auth.apiGet('/api/v1/me/profile'));
+      await cacheAvatar(m['avatar']?.toString() ?? '');
+    } catch (_) {}
+  }
+
+  // Persist a new avatar: cache + notifier immediately, then save to the DB.
+  Future<void> _setAvatar(String v) async {
+    await cacheAvatar(v);
+    try {
+      await widget.auth.apiPatch('/api/v1/me/profile', {'avatar': v});
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't save picture — try again."), behavior: SnackBarBehavior.floating));
+      }
+    }
+  }
 
   Future<void> _logout() async {
     await widget.auth.logout();
@@ -445,9 +475,9 @@ class _StudentHomeState extends State<StudentHome> {
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         GestureDetector(
           onTap: _pickAvatar,
-          child: ValueListenableBuilder<int>(
+          child: ValueListenableBuilder<String>(
             valueListenable: avatarNotifier,
-            builder: (ctx, idx, _) => _avatarBox(idx, 88, initials, editable: true),
+            builder: (ctx, av, _) => _avatarBox(av, 88, initials, editable: true),
           ),
         ),
         const SizedBox(width: 18),
@@ -495,24 +525,41 @@ class _StudentHomeState extends State<StudentHome> {
         ),
       );
 
-  // A square (rounded) profile picture — emoji or the user's initials on a
-  // gradient. Shows a camera badge when [editable].
-  Widget _avatarBox(int idx, double size, String initials, {bool editable = false}) {
-    final a = _avatars[idx.clamp(0, _avatars.length - 1)];
-    return Stack(clipBehavior: Clip.none, children: [
-      Container(
+  // A square (rounded) profile picture. [avatar] is '' / 'p:N' (preset) or a
+  // 'data:' URI (uploaded photo). Shows a camera badge when [editable].
+  Widget _avatarBox(String avatar, double size, String initials, {bool editable = false}) {
+    final radius = size * 0.26;
+    final bytes = avatar.startsWith('data:') ? _decodeDataUri(avatar) : null;
+    Widget face;
+    if (bytes != null) {
+      face = Container(
+        width: size, height: size,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(radius),
+          border: Border.all(color: Colors.white, width: 3),
+          image: DecorationImage(image: MemoryImage(bytes), fit: BoxFit.cover),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.22), blurRadius: 14, offset: const Offset(0, 6))],
+        ),
+      );
+    } else {
+      final idx = avatar.startsWith('p:') ? (int.tryParse(avatar.substring(2)) ?? 0) : 0;
+      final a = _avatars[idx.clamp(0, _avatars.length - 1)];
+      face = Container(
         width: size, height: size,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           gradient: LinearGradient(colors: a.colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
-          borderRadius: BorderRadius.circular(size * 0.26),
+          borderRadius: BorderRadius.circular(radius),
           border: Border.all(color: Colors.white, width: 3),
           boxShadow: [BoxShadow(color: a.colors.last.withOpacity(0.35), blurRadius: 14, offset: const Offset(0, 6))],
         ),
         child: a.emoji.isEmpty
             ? Text(initials, style: GoogleFonts.poppins(fontSize: size * 0.40, fontWeight: FontWeight.w800, color: Colors.white))
             : Text(a.emoji, style: TextStyle(fontSize: size * 0.52)),
-      ),
+      );
+    }
+    return Stack(clipBehavior: Clip.none, children: [
+      face,
       if (editable)
         Positioned(
           right: -3, bottom: -3,
@@ -525,7 +572,33 @@ class _StudentHomeState extends State<StudentHome> {
     ]);
   }
 
-  // Default-picture picker.
+  Uint8List? _decodeDataUri(String d) {
+    try {
+      return base64Decode(d.substring(d.indexOf(',') + 1));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Pick + upload a custom picture (downscaled), save it as a data URI.
+  Future<void> _uploadAvatar(BuildContext dialogCtx) async {
+    try {
+      final x = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 400, maxHeight: 400, imageQuality: 80);
+      if (x == null) return;
+      final bytes = await x.readAsBytes();
+      if (bytes.lengthInBytes > 1000000) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Image too large — pick a smaller one.'), behavior: SnackBarBehavior.floating));
+        return;
+      }
+      final mime = x.mimeType ?? 'image/jpeg';
+      await _setAvatar('data:$mime;base64,${base64Encode(bytes)}');
+      if (dialogCtx.mounted) Navigator.of(dialogCtx).pop();
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't load that image."), behavior: SnackBarBehavior.floating));
+    }
+  }
+
+  // Default-picture picker + "upload your own".
   void _pickAvatar() {
     final initials = _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S';
     showDialog(
@@ -542,9 +615,9 @@ class _StudentHomeState extends State<StudentHome> {
               child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Choose a picture', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: _navy)),
                 const SizedBox(height: 3),
-                Text('Pick one of the default avatars', style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
+                Text('Pick a default or upload your own', style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
                 const SizedBox(height: 18),
-                ValueListenableBuilder<int>(
+                ValueListenableBuilder<String>(
                   valueListenable: avatarNotifier,
                   builder: (c, sel, _) => Wrap(
                     spacing: 12, runSpacing: 12,
@@ -552,7 +625,7 @@ class _StudentHomeState extends State<StudentHome> {
                       for (var i = 0; i < _avatars.length; i++)
                         GestureDetector(
                           onTap: () {
-                            setAvatar(i);
+                            _setAvatar('p:$i');
                             Navigator.of(ctx).pop();
                           },
                           child: AnimatedContainer(
@@ -560,11 +633,28 @@ class _StudentHomeState extends State<StudentHome> {
                             padding: const EdgeInsets.all(3),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: sel == i ? _orange : Colors.transparent, width: 3),
+                              border: Border.all(color: sel == 'p:$i' || (sel.isEmpty && i == 0) ? _orange : Colors.transparent, width: 3),
                             ),
-                            child: _avatarBox(i, 58, initials),
+                            child: _avatarBox('p:$i', 58, initials),
                           ),
                         ),
+                      // Upload-your-own tile.
+                      GestureDetector(
+                        onTap: () => _uploadAvatar(ctx),
+                        child: Container(
+                          width: 64, height: 64, alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            color: _orange.withOpacity(0.10),
+                            border: Border.all(color: _orange.withOpacity(0.5), width: 1.5),
+                          ),
+                          child: Column(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(CupertinoIcons.cloud_upload_fill, size: 22, color: _orange),
+                            const SizedBox(height: 2),
+                            Text('Upload', style: GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w700, color: _orange)),
+                          ]),
+                        ),
+                      ),
                     ],
                   ),
                 ),

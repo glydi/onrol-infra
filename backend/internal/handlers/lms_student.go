@@ -13,26 +13,33 @@ import (
 // ---- Profile & preferences -------------------------------------------------
 
 func (h *Handlers) GetMyProfile(c *fiber.Ctx) error {
-	var email, name, phone, role string
+	var email, name, phone, role, avatar string
 	if err := h.Pool.QueryRow(c.Context(),
-		`SELECT email, full_name, COALESCE(phone,''), role FROM users WHERE id=$1`, callerID(c),
-	).Scan(&email, &name, &phone, &role); err != nil {
+		`SELECT email, full_name, COALESCE(phone,''), role, COALESCE(avatar,'') FROM users WHERE id=$1`, callerID(c),
+	).Scan(&email, &name, &phone, &role, &avatar); err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "user not found")
 	}
-	return c.JSON(fiber.Map{"id": callerID(c), "email": email, "full_name": name, "phone": phone, "role": role})
+	return c.JSON(fiber.Map{"id": callerID(c), "email": email, "full_name": name, "phone": phone, "role": role, "avatar": avatar})
 }
+
+// Max inline avatar payload (~1 MB of base64) — keeps the users row small.
+const maxAvatarLen = 1_400_000
 
 func (h *Handlers) UpdateMyProfile(c *fiber.Ctx) error {
 	var req struct {
 		FullName *string `json:"full_name"`
 		Phone    *string `json:"phone"`
+		Avatar   *string `json:"avatar"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
 	}
+	if req.Avatar != nil && len(*req.Avatar) > maxAvatarLen {
+		return fiber.NewError(fiber.StatusRequestEntityTooLarge, "image too large")
+	}
 	_, err := h.Pool.Exec(c.Context(),
-		`UPDATE users SET full_name=COALESCE($2,full_name), phone=COALESCE($3,phone), updated_at=now() WHERE id=$1`,
-		callerID(c), req.FullName, req.Phone)
+		`UPDATE users SET full_name=COALESCE($2,full_name), phone=COALESCE($3,phone), avatar=COALESCE($4,avatar), updated_at=now() WHERE id=$1`,
+		callerID(c), req.FullName, req.Phone, req.Avatar)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "update failed")
 	}

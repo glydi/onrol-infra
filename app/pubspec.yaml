@@ -19,6 +19,7 @@ dependencies:
   cupertino_icons: ^1.0.8         # SF Symbols-style icons
   video_player: ^2.9.2            # streaming playback, custom controls (no download button)
   url_launcher: ^6.3.1            # open link lessons in a new tab / external browser
+  image_picker: ^1.1.2            # upload a custom profile picture (web + mobile)
 
 dev_dependencies:
   flutter_lints: ^4.0.0

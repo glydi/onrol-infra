@@ -30,20 +30,23 @@ Future<void> setTheme(ThemeMode m) async {
   } catch (_) {}
 }
 
-/// Selected profile-picture index (0 = letter avatar), persisted locally.
-final ValueNotifier<int> avatarNotifier = ValueNotifier(0);
+/// The user's profile picture: a preset id ("p:3") or a data URI for an
+/// uploaded photo; '' = the default letter avatar. The source of truth is the
+/// backend (users.avatar); this is also cached locally for instant first paint.
+final ValueNotifier<String> avatarNotifier = ValueNotifier('');
 const _avatarKey = 'onrol_avatar';
 
 Future<void> loadAvatar() async {
   try {
-    final v = await _storage.read(key: _avatarKey);
-    if (v != null) avatarNotifier.value = int.tryParse(v) ?? 0;
+    avatarNotifier.value = await _storage.read(key: _avatarKey) ?? '';
   } catch (_) {}
 }
 
-Future<void> setAvatar(int i) async {
-  avatarNotifier.value = i;
+/// Updates the local cache + notifier (the API call is made by the caller, who
+/// has the auth client).
+Future<void> cacheAvatar(String v) async {
+  avatarNotifier.value = v;
   try {
-    await _storage.write(key: _avatarKey, value: '$i');
+    await _storage.write(key: _avatarKey, value: v);
   } catch (_) {}
 }
