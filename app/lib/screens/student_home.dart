@@ -281,8 +281,8 @@ class _StudentHomeState extends State<StudentHome> {
         if (_focused != index) setState(() => _focused = index);
       },
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
         padding: const EdgeInsets.all(5),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(radius),
@@ -1425,23 +1425,33 @@ class _AiNewsCard extends StatefulWidget {
 class _AiNewsCardState extends State<_AiNewsCard> {
   List<_News>? _items; // null until the first load resolves
   bool _failed = false;
-  Timer? _refresh;
+  bool _refreshing = false;
+  Timer? _poll; // refetches fresh headlines
+  Timer? _ticker; // ticks the "x min ago" labels + LIVE windows
 
   @override
   void initState() {
     super.initState();
     _load();
-    // Auto-refresh in real time without a page reload.
-    _refresh = Timer.periodic(const Duration(minutes: 3), (_) => _load());
+    // Pull fresh headlines every 90s (backend is cached, so this is cheap)…
+    _poll = Timer.periodic(const Duration(seconds: 90), (_) => _load());
+    // …and re-render every 30s so the relative times & LIVE badges stay live
+    // even between fetches.
+    _ticker = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
   void dispose() {
-    _refresh?.cancel();
+    _poll?.cancel();
+    _ticker?.cancel();
     super.dispose();
   }
 
   Future<void> _load() async {
+    if (_refreshing) return;
+    if (mounted) setState(() => _refreshing = true);
     try {
       final res = await widget.auth.apiGet('/api/v1/news?category=ai');
       final data = ApiClient.decode(res);
@@ -1453,11 +1463,15 @@ class _AiNewsCardState extends State<_AiNewsCard> {
       setState(() {
         _items = list;
         _failed = false;
+        _refreshing = false;
       });
     } catch (_) {
       if (!mounted) return;
       // Keep any previously-loaded items; only flag failure when we have none.
-      setState(() => _failed = true);
+      setState(() {
+        _failed = true;
+        _refreshing = false;
+      });
     }
   }
 
@@ -1539,14 +1553,21 @@ class _AiNewsCardState extends State<_AiNewsCard> {
     return widget.scrollable ? Center(child: child) : child;
   }
 
-  Widget _livePill() => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Container(width: 7, height: 7, decoration: const BoxDecoration(color: _orange, shape: BoxShape.circle)),
-          const SizedBox(width: 5),
-          Text('LIVE', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
-        ]),
+  // Pulsing, tappable LIVE pill — tap to refresh now; shows a spinner while
+  // fetching.
+  Widget _livePill() => GestureDetector(
+        onTap: _load,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            _refreshing
+                ? const SizedBox(width: 9, height: 9, child: CircularProgressIndicator(strokeWidth: 1.6, color: _orange))
+                : const _LiveDot(),
+            const SizedBox(width: 5),
+            Text('LIVE', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
+          ]),
+        ),
       );
 
   Widget _newsRow(_News n, {required bool last}) {
@@ -1594,6 +1615,42 @@ class _AiNewsCardState extends State<_AiNewsCard> {
   }
 }
 
+/// A softly pulsing dot for the LIVE badge — signals the feed is live.
+class _LiveDot extends StatefulWidget {
+  const _LiveDot();
+  @override
+  State<_LiveDot> createState() => _LiveDotState();
+}
+
+class _LiveDotState extends State<_LiveDot> with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 850))..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, __) {
+        final t = _c.value;
+        return Container(
+          width: 8, height: 8,
+          decoration: BoxDecoration(
+            color: Color.lerp(_orange.withOpacity(0.45), _orange, t),
+            shape: BoxShape.circle,
+            boxShadow: [BoxShadow(color: _orange.withOpacity(0.55 * t), blurRadius: 6 * t, spreadRadius: 1.5 * t)],
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// One square option tile: a colored graphic (emoji) plus the option name.
 /// No rounded corners. Scales slightly on hover/press.
 class _GridCell extends StatefulWidget {
@@ -1615,8 +1672,8 @@ class _GridCellState extends State<_GridCell> {
     final t = widget.tile;
     final s = widget.size;
     final active = _hover || _down;
-    // Springy pop on hover, slight squash on press.
-    final scale = _down ? 0.95 : (_hover ? 1.08 : 1.0);
+    // Smooth lift on hover, gentle squash on press (no overshoot/bounce).
+    final scale = _down ? 0.96 : (_hover ? 1.06 : 1.0);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -1631,11 +1688,11 @@ class _GridCellState extends State<_GridCell> {
         onTap: widget.onTap,
         child: AnimatedScale(
           scale: scale,
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutBack,
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOut,
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
             width: s, height: s,
             alignment: Alignment.center,
             padding: EdgeInsets.all(s * 0.08),
@@ -1674,13 +1731,13 @@ class _GridCellState extends State<_GridCell> {
                 children: [
                   // Icon nudges up and grows a touch on hover.
                   AnimatedSlide(
-                    offset: _hover ? const Offset(0, -0.06) : Offset.zero,
-                    duration: const Duration(milliseconds: 180),
-                    curve: Curves.easeOut,
+                    offset: _hover ? const Offset(0, -0.05) : Offset.zero,
+                    duration: const Duration(milliseconds: 240),
+                    curve: Curves.easeOutCubic,
                     child: AnimatedScale(
-                      scale: _hover ? 1.14 : 1.0,
-                      duration: const Duration(milliseconds: 180),
-                      curve: Curves.easeOut,
+                      scale: _hover ? 1.12 : 1.0,
+                      duration: const Duration(milliseconds: 240),
+                      curve: Curves.easeOutCubic,
                       child: Icon(t.icon, color: Colors.white, size: 30),
                     ),
                   ),
