@@ -5,6 +5,7 @@ import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../theme.dart';
 import '../widgets/ui.dart';
+import 'accounts_portal.dart';
 import 'ambassador_portal.dart';
 import 'console_screen.dart';
 import 'crm_portal.dart';
@@ -39,7 +40,9 @@ class _LoginScreenState extends State<LoginScreen> {
             ? CrmPortalScreen(auth: widget.auth)
             : isAmbassadorHost()
                 ? AmbassadorPortalScreen(auth: widget.auth)
-                : (staff ? ConsoleScreen(auth: widget.auth) : HomeScreen(auth: widget.auth)),
+                : isAccountsHost()
+                    ? AccountsPortalScreen(auth: widget.auth)
+                    : (staff ? ConsoleScreen(auth: widget.auth) : HomeScreen(auth: widget.auth)),
       ));
     } on ApiException catch (e) {
       setState(() => _error = e.status == 409

@@ -43,6 +43,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	mgr := middleware.RequireRole("manager")
 	inst := middleware.RequireRole("instructor")
 	ambassador := middleware.RequireAnyRole("ambassador")
+	employee := middleware.RequireAnyRole("employee")
 
 	// ---- Manager: user & group management --------------------------------
 	api.Get("/manage/users", auth, mgr, h.ListUsers)
@@ -173,6 +174,19 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Get("/ambassador/me", auth, ambassador, h.MyAmbassador)
 	api.Get("/ambassador/referrals", auth, ambassador, h.MyReferrals)
 	api.Post("/ambassador/referrals", auth, ambassador, h.CreateReferral)
+
+	// ---- Accounts & Administration portal --------------------------------
+	// Admin: cash ledger, expense approval, staff.
+	api.Get("/manage/accounts/ledger", auth, mgr, h.ListLedger)
+	api.Post("/manage/accounts/ledger", auth, mgr, h.CreateLedgerEntry)
+	api.Delete("/manage/accounts/ledger/:id", auth, mgr, h.DeleteLedgerEntry)
+	api.Get("/manage/accounts/expenses", auth, mgr, h.ListAllExpenses)
+	api.Post("/manage/accounts/expenses/:id/status", auth, mgr, h.SetExpenseStatus)
+	api.Get("/manage/accounts/staff", auth, mgr, h.ListEmployees)
+	api.Post("/manage/accounts/staff", auth, mgr, h.CreateEmployee)
+	// Employee self (admins also allowed).
+	api.Get("/accounts/expenses", auth, employee, h.MyExpenses)
+	api.Post("/accounts/expenses", auth, employee, h.SubmitExpense)
 
 	// ---- Student/self (any authenticated role) ---------------------------
 	// Discussion / doubts board (enrolled students + course staff).
