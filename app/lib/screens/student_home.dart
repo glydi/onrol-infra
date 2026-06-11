@@ -2399,10 +2399,11 @@ class _StatCardState extends State<_StatCard> {
             curve: Curves.easeOutCubic,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             decoration: BoxDecoration(
-              color: _cardFill,
+              // Highlights with a soft orange wash + glow on hover.
+              color: _hover ? Color.alphaBlend(_orange.withOpacity(0.10), _cardFill) : _cardFill,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: _hover ? _orange.withOpacity(0.45) : _cardBorder, width: 1),
-              boxShadow: [BoxShadow(color: _orange.withOpacity(_hover ? 0.22 : 0.06), blurRadius: _hover ? 20 : 10, offset: const Offset(0, 6))],
+              border: Border.all(color: _hover ? _orange.withOpacity(0.55) : _cardBorder, width: _hover ? 1.5 : 1),
+              boxShadow: [BoxShadow(color: _orange.withOpacity(_hover ? 0.24 : 0.06), blurRadius: _hover ? 22 : 10, offset: const Offset(0, 6))],
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
@@ -2463,13 +2464,15 @@ class _StudentHomeNotifState extends State<_StudentHomeNotif> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOutCubic,
-          margin: const EdgeInsets.symmetric(vertical: 5),
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
+          // Softer than the stat cards: flat when idle, gentle highlight on
+          // hover/expand.
           decoration: BoxDecoration(
-            color: _cardFill,
+            color: active ? Color.alphaBlend(_orange.withOpacity(0.06), _cardFill) : _cardFill,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: active ? _orange.withOpacity(0.45) : _cardBorder, width: 1),
-            boxShadow: [BoxShadow(color: _orange.withOpacity(active ? 0.16 : 0.05), blurRadius: active ? 16 : 8, offset: const Offset(0, 5))],
+            border: Border.all(color: active ? _orange.withOpacity(0.30) : _cardBorder, width: 1),
+            boxShadow: active ? [BoxShadow(color: _orange.withOpacity(0.10), blurRadius: 12, offset: const Offset(0, 4))] : const [],
           ),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Container(width: 8, height: 8, margin: const EdgeInsets.only(top: 6, right: 12), decoration: BoxDecoration(color: widget.read ? _grey : _orange, shape: BoxShape.circle)),
