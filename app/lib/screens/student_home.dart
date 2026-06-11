@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -22,9 +23,73 @@ Color get _navy => _isDark ? const Color(0xFFECEDF2) : const Color(0xFF1A1A2E);
 Color get _grey => _isDark ? const Color(0xFF9AA0AC) : const Color(0xFF888888);
 Color get _peach => _isDark ? const Color(0xFF2C231C) : const Color(0xFFFFF3EC);
 Color get _peachSoft => _isDark ? const Color(0xFF241D17) : const Color(0xFFFFF8F5);
-Color get _bg => _isDark ? const Color(0xFF131419) : Colors.white;
+Color get _bg => _isDark ? const Color(0xFF0E0F14) : const Color(0xFFFFF6F1);
 Color get _surface => _isDark ? const Color(0xFF1E2027) : Colors.white;
 Color get _line => _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0F0F0);
+
+// ---- Glassmorphism --------------------------------------------------------
+// Frosted translucent fill + hairline highlight border + soft drop shadow.
+Color get _glassFill => _isDark ? Colors.white.withOpacity(0.07) : Colors.white.withOpacity(0.55);
+Color get _glassBorder => _isDark ? Colors.white.withOpacity(0.12) : Colors.white.withOpacity(0.65);
+
+/// Wraps [child] in a frosted-glass surface (backdrop blur + translucent fill).
+/// Use sparingly — each one is a real BackdropFilter.
+Widget _glass({
+  required Widget child,
+  double radius = 22,
+  EdgeInsetsGeometry? padding,
+  double blur = 18,
+  Color? tint,
+}) {
+  final r = BorderRadius.circular(radius);
+  return ClipRRect(
+    borderRadius: r,
+    child: BackdropFilter(
+      filter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+      child: Container(
+        padding: padding,
+        decoration: BoxDecoration(
+          color: tint ?? _glassFill,
+          borderRadius: r,
+          border: Border.all(color: _glassBorder, width: 1),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.30 : 0.07), blurRadius: 30, offset: const Offset(0, 14))],
+        ),
+        child: child,
+      ),
+    ),
+  );
+}
+
+/// Full-bleed backdrop: a base gradient plus a few large, heavily-blurred
+/// colour blobs so the glass panels have something rich to refract.
+class _GlassBackdrop extends StatelessWidget {
+  const _GlassBackdrop();
+
+  @override
+  Widget build(BuildContext context) {
+    final blob = ui.ImageFilter.blur(sigmaX: 90, sigmaY: 90);
+    Widget circle(Color c, double d) => ImageFiltered(
+          imageFilter: blob,
+          child: Container(width: d, height: d, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+        );
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: _isDark
+              ? const [Color(0xFF0E0F14), Color(0xFF14161F)]
+              : const [Color(0xFFFFF1EA), Color(0xFFFDEAF6)],
+        ),
+      ),
+      child: Stack(children: [
+        Positioned(top: -120, left: -100, child: circle(_orange.withOpacity(_isDark ? 0.22 : 0.30), 380)),
+        Positioned(top: 80, right: -140, child: circle(const Color(0xFFFF7A4D).withOpacity(_isDark ? 0.18 : 0.28), 420)),
+        Positioned(bottom: -160, left: 120, child: circle(const Color(0xFF7C5CFF).withOpacity(_isDark ? 0.16 : 0.18), 460)),
+      ]),
+    );
+  }
+}
 
 /// Student home — a 5×5 orange checkerboard of options; each tile opens a modal
 /// panel. Matches the ONROL "Learn. Grow. Succeed." mockup.
@@ -186,10 +251,16 @@ class _StudentHomeState extends State<StudentHome> {
     // viewport is too narrow for the side panel (phones / small windows).
     return Scaffold(
       backgroundColor: _bg,
-      body: SafeArea(
-        child: LayoutBuilder(builder: (context, cns) {
-          return cns.maxWidth >= 1000 ? _wideLayout() : _narrowLayout();
-        }),
+      body: Stack(
+        children: [
+          // Soft, colourful backdrop the frosted-glass panels refract.
+          const Positioned.fill(child: _GlassBackdrop()),
+          SafeArea(
+            child: LayoutBuilder(builder: (context, cns) {
+              return cns.maxWidth >= 1000 ? _wideLayout() : _narrowLayout();
+            }),
+          ),
+        ],
       ),
     );
   }
@@ -309,14 +380,8 @@ class _StudentHomeState extends State<StudentHome> {
 
   Widget _profileCard() {
     final initials = _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S';
-    return Container(
+    return _glass(
       padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: _isDark ? _surface : _peachSoft,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: _isDark ? _line : const Color(0xFFFFE3D5)),
-        boxShadow: [BoxShadow(color: _orange.withOpacity(_isDark ? 0.0 : 0.06), blurRadius: 24, offset: const Offset(0, 10))],
-      ),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
           width: 88, height: 88,
@@ -616,12 +681,22 @@ class _StudentHomeState extends State<StudentHome> {
           // Material gives the text/inputs an ancestor (no yellow underlines).
           child: Material(
             type: MaterialType.transparency,
-            child: Container(
+            child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: size.width * 0.01, vertical: size.height * 0.01),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                child: Container(
             width: size.width * 0.98,
             height: size.height * 0.98,
-            margin: EdgeInsets.symmetric(horizontal: size.width * 0.01, vertical: size.height * 0.01),
             padding: EdgeInsets.fromLTRB(20, MediaQuery.of(ctx).padding.top + 12, 20, 18),
-            decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(10)),
+            // Frosted-glass sheet.
+            decoration: BoxDecoration(
+              color: _isDark ? const Color(0xFF1E2027).withOpacity(0.90) : Colors.white.withOpacity(0.82),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _glassBorder, width: 1),
+            ),
             // Keyed on brightness so the re-used `body` widget instances (which
             // Flutter would otherwise skip rebuilding) re-inflate and re-read the
             // brightness-aware colours when Dark Mode is toggled.
@@ -661,6 +736,9 @@ class _StudentHomeState extends State<StudentHome> {
                   ...body,
                 ]),
               ),
+            ),
+            ),
+            ),
             ),
             ),
           ),
@@ -1335,14 +1413,8 @@ class _AiNewsCardState extends State<_AiNewsCard> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return _glass(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-      decoration: BoxDecoration(
-        color: _surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: _line),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.0 : 0.04), blurRadius: 24, offset: const Offset(0, 10))],
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: widget.scrollable ? MainAxisSize.max : MainAxisSize.min,
@@ -1510,22 +1582,34 @@ class _GridCellState extends State<_GridCell> {
             width: s, height: s,
             alignment: Alignment.center,
             padding: EdgeInsets.all(s * 0.08),
-            // Flush square tile; on hover a gradient sheen + orange glow lift it
-            // above its neighbours.
+            // Tinted-glass tile: translucent orange so the backdrop glows
+            // through, a hairline highlight edge, and an orange lift on hover.
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: _hover ? const [Color(0xFFFF7A4D), _orange] : const [_orange, _orange],
+                colors: _hover
+                    ? [const Color(0xFFFF7A4D).withOpacity(0.94), _orange.withOpacity(0.84)]
+                    : [_orange.withOpacity(0.92), const Color(0xFFE8421F).withOpacity(0.82)],
               ),
+              border: Border.all(color: Colors.white.withOpacity(0.20), width: 1),
               boxShadow: [
                 BoxShadow(
-                  color: _orange.withOpacity(active ? 0.55 : 0.0),
-                  blurRadius: 26,
-                  spreadRadius: 1,
-                  offset: const Offset(0, 12),
+                  color: _orange.withOpacity(active ? 0.55 : 0.20),
+                  blurRadius: active ? 28 : 14,
+                  spreadRadius: active ? 1 : 0,
+                  offset: Offset(0, active ? 12 : 6),
                 ),
               ],
+            ),
+            // Glossy top sheen.
+            foregroundDecoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.white.withOpacity(0.16), Colors.white.withOpacity(0.0)],
+                stops: const [0.0, 0.55],
+              ),
             ),
             child: FittedBox(
               fit: BoxFit.scaleDown,
