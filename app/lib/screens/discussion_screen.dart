@@ -20,11 +20,18 @@ class DiscussionScreen extends StatefulWidget {
 
 class _DiscussionScreenState extends State<DiscussionScreen> {
   List<dynamic> _posts = [];
+  List<dynamic> _moduleDoubts = []; // per-module comments/doubts (staff view)
   bool _loading = true;
   bool _sending = false;
   String? _replyTo;
   String? _replyToName;
+  String? _replyModuleId; // when set, the composer posts into a module thread
   final _input = TextEditingController();
+
+  bool get _isStaff {
+    final r = widget.auth.user?.role;
+    return r == 'instructor' || r == 'manager' || r == 'superadmin';
+  }
 
   @override
   void initState() {
@@ -37,6 +44,13 @@ class _DiscussionScreenState extends State<DiscussionScreen> {
       final r = await widget.auth.apiGet('/api/v1/courses/${widget.courseId}/discussion');
       _posts = (ApiClient.decode(r)['discussion'] as List?) ?? [];
     } catch (_) {}
+    // Staff also see the doubts students raise inside each module.
+    if (_isStaff) {
+      try {
+        final r = await widget.auth.apiGet('/api/v1/manage/courses/${widget.courseId}/comments');
+        _moduleDoubts = (ApiClient.decode(r)['comments'] as List?) ?? [];
+      } catch (_) {}
+    }
     if (mounted) setState(() => _loading = false);
   }
 
@@ -45,13 +59,18 @@ class _DiscussionScreenState extends State<DiscussionScreen> {
     if (body.isEmpty) return;
     setState(() => _sending = true);
     try {
-      await widget.auth.apiPost('/api/v1/courses/${widget.courseId}/discussion', {
-        'body': body,
-        if (_replyTo != null) 'parent_id': _replyTo,
-      });
+      if (_replyModuleId != null) {
+        await widget.auth.apiPost('/api/v1/modules/$_replyModuleId/comments', {'body': body});
+      } else {
+        await widget.auth.apiPost('/api/v1/courses/${widget.courseId}/discussion', {
+          'body': body,
+          if (_replyTo != null) 'parent_id': _replyTo,
+        });
+      }
       _input.clear();
       _replyTo = null;
       _replyToName = null;
+      _replyModuleId = null;
       await _load();
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not post')));
@@ -82,7 +101,7 @@ class _DiscussionScreenState extends State<DiscussionScreen> {
           Expanded(
             child: _loading
                 ? const Center(child: CupertinoActivityIndicator())
-                : _posts.isEmpty
+                : (_posts.isEmpty && _moduleDoubts.isEmpty)
                     ? Center(child: Padding(padding: EdgeInsets.symmetric(horizontal: hp), child: Column(mainAxisSize: MainAxisSize.min, children: [
                         const Icon(CupertinoIcons.chat_bubble_2_fill, size: 38, color: AppleColors.blue),
                         const SizedBox(height: 10),
@@ -95,7 +114,17 @@ class _DiscussionScreenState extends State<DiscussionScreen> {
                         onRefresh: _load,
                         child: ListView(
                           padding: EdgeInsets.fromLTRB(hp, 12, hp, 16),
-                          children: _posts.map((e) => _postCard(e as Map<String, dynamic>)).toList(),
+                          children: [
+                            if (_moduleDoubts.isNotEmpty) ...[
+                              SectionHeader('Module doubts & comments (${_moduleDoubts.length})'),
+                              const SizedBox(height: 8),
+                              ..._moduleDoubts.map((e) => _moduleDoubtCard(e as Map<String, dynamic>)),
+                              const SizedBox(height: 18),
+                              if (_posts.isNotEmpty) SectionHeader('Course discussion'),
+                              const SizedBox(height: 8),
+                            ],
+                            ..._posts.map((e) => _postCard(e as Map<String, dynamic>)),
+                          ],
                         ),
                       ),
           ),
@@ -131,6 +160,48 @@ class _DiscussionScreenState extends State<DiscussionScreen> {
               Icon(CupertinoIcons.arrowshape_turn_up_left, size: 14, color: Palette.of(context).accent),
               const SizedBox(width: 4),
               Text('Reply', style: AppleTheme.footnote(context).copyWith(color: Palette.of(context).accent, fontWeight: FontWeight.w600)),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _moduleDoubtCard(Map<String, dynamic> m) {
+    final isDoubt = m['is_doubt'] == true;
+    final isStaff = m['staff'] == true;
+    final module = m['module']?.toString() ?? 'Module';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: AppleCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(isDoubt ? CupertinoIcons.question_circle_fill : CupertinoIcons.chat_bubble_2_fill,
+                size: 16, color: isDoubt ? AppleColors.orange : AppleColors.blue),
+            const SizedBox(width: 6),
+            Flexible(child: Text(module, style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700))),
+            if (isDoubt) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(color: AppleColors.orange.withOpacity(0.15), borderRadius: BorderRadius.circular(5)),
+                child: const Text('DOUBT', style: TextStyle(color: AppleColors.orange, fontSize: 9, fontWeight: FontWeight.w800)),
+              ),
+            ],
+          ]),
+          const SizedBox(height: 10),
+          _msgRow({'author': m['author'], 'body': m['body'], 'is_staff': isStaff, 'role': isStaff ? 'instructor' : 'student'}),
+          const SizedBox(height: 6),
+          GestureDetector(
+            onTap: () => setState(() {
+              _replyModuleId = m['module_id']?.toString();
+              _replyTo = null;
+              _replyToName = '$module · ${m['author'] ?? 'student'}';
+            }),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(CupertinoIcons.arrowshape_turn_up_left, size: 14, color: Palette.of(context).accent),
+              const SizedBox(width: 4),
+              Text('Answer', style: AppleTheme.footnote(context).copyWith(color: Palette.of(context).accent, fontWeight: FontWeight.w600)),
             ]),
           ),
         ]),
@@ -180,7 +251,7 @@ class _DiscussionScreenState extends State<DiscussionScreen> {
                 const SizedBox(width: 4),
                 Text('Replying to $_replyToName', style: AppleTheme.footnote(context)),
                 const Spacer(),
-                GestureDetector(onTap: () => setState(() { _replyTo = null; _replyToName = null; }), child: Icon(CupertinoIcons.xmark, size: 14, color: p.secondary)),
+                GestureDetector(onTap: () => setState(() { _replyTo = null; _replyToName = null; _replyModuleId = null; }), child: Icon(CupertinoIcons.xmark, size: 14, color: p.secondary)),
               ]),
             ),
           Row(children: [
@@ -188,7 +259,7 @@ class _DiscussionScreenState extends State<DiscussionScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                 decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(20), boxShadow: p.clay),
-                child: AppleField(controller: _input, hint: _replyTo == null ? 'Ask a doubt or comment…' : 'Write a reply…'),
+                child: AppleField(controller: _input, hint: (_replyTo == null && _replyModuleId == null) ? 'Ask a doubt or comment…' : 'Write a reply…'),
               ),
             ),
             const SizedBox(width: 8),

@@ -71,6 +71,41 @@ func (h *Handlers) ListModuleComments(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"comments": out})
 }
 
+// ListCourseComments returns every module comment/doubt across a course, for
+// course staff (the admin/instructor "Doubts & Discussion" view). Doubts first,
+// then newest. Each row carries its module so staff know where it was asked.
+func (h *Handlers) ListCourseComments(c *fiber.Ctx) error {
+	courseID := c.Params("id")
+	if err := h.canManageCourse(c, courseID); err != nil {
+		return err
+	}
+	rows, err := h.Pool.Query(c.Context(), `
+		SELECT mc.id, mc.module_id, COALESCE(m.title,''), mc.body, mc.is_doubt, mc.created_at,
+		       COALESCE(u.full_name,'Someone'), COALESCE(u.role,'student')
+		FROM module_comments mc
+		JOIN modules m ON m.id=mc.module_id
+		LEFT JOIN users u ON u.id=mc.user_id
+		WHERE m.course_id=$1
+		ORDER BY mc.is_doubt DESC, mc.created_at DESC`, courseID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
+	}
+	defer rows.Close()
+	out := []fiber.Map{}
+	for rows.Next() {
+		var id, moduleID, module, body, author, role string
+		var isDoubt bool
+		var at any
+		if err := rows.Scan(&id, &moduleID, &module, &body, &isDoubt, &at, &author, &role); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		staff := role == "instructor" || role == "manager" || role == "superadmin"
+		out = append(out, fiber.Map{"id": id, "module_id": moduleID, "module": module,
+			"body": body, "is_doubt": isDoubt, "at": at, "author": author, "staff": staff})
+	}
+	return c.JSON(fiber.Map{"comments": out})
+}
+
 // PostModuleComment adds a comment (or doubt) to a module thread.
 func (h *Handlers) PostModuleComment(c *fiber.Ctx) error {
 	moduleID := c.Params("id")
