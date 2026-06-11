@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -39,6 +41,55 @@ class _Tile {
   final IconData icon;
   final String label;
   final String panel;
+}
+
+/// A headline in the "Live AI News" sidebar feed (static showcase content).
+/// A live headline from the backend RSS aggregator (`/api/v1/news`).
+class _News {
+  _News({required this.title, required this.source, required this.url, this.publishedAt});
+  final String title;
+  final String source;
+  final String url;
+  final DateTime? publishedAt;
+
+  factory _News.fromJson(Map<String, dynamic> j) => _News(
+        title: j['title']?.toString() ?? '',
+        source: j['source']?.toString() ?? '',
+        url: j['url']?.toString() ?? '',
+        publishedAt: DateTime.tryParse(j['published_at']?.toString() ?? '')?.toLocal(),
+      );
+
+  /// Recent enough (≤ 90 min) to carry the LIVE badge.
+  bool get isLive {
+    final p = publishedAt;
+    return p != null && DateTime.now().difference(p) < const Duration(minutes: 90);
+  }
+
+  /// Relative "x min/hr/day ago" label.
+  String get ago {
+    final p = publishedAt;
+    if (p == null) return '';
+    final d = DateTime.now().difference(p);
+    if (d.inMinutes < 1) return 'just now';
+    if (d.inMinutes < 60) return '${d.inMinutes} min ago';
+    if (d.inHours < 24) return '${d.inHours} hr${d.inHours == 1 ? '' : 's'} ago';
+    return '${d.inDays} day${d.inDays == 1 ? '' : 's'} ago';
+  }
+
+  IconData get icon => _sourceIcon(source);
+}
+
+/// Per-source thumbnail glyph (keeps the existing icon-tile look).
+IconData _sourceIcon(String source) {
+  final s = source.toLowerCase();
+  if (s.contains('openai')) return CupertinoIcons.sparkles;
+  if (s.contains('nvidia')) return CupertinoIcons.bolt_fill;
+  if (s.contains('meta')) return CupertinoIcons.layers_fill;
+  if (s.contains('google') || s.contains('deepmind')) return CupertinoIcons.cube_box_fill;
+  if (s.contains('microsoft')) return CupertinoIcons.square_grid_2x2_fill;
+  if (s.contains('aws') || s.contains('amazon')) return CupertinoIcons.cloud_fill;
+  if (s.contains('verge') || s.contains('techcrunch') || s.contains('venturebeat')) return CupertinoIcons.news_solid;
+  return CupertinoIcons.wand_stars;
 }
 
 class _StudentHomeState extends State<StudentHome> {
@@ -114,33 +165,76 @@ class _StudentHomeState extends State<StudentHome> {
     return '${months[dt.month - 1]} ${dt.day}, $h:${dt.minute.toString().padLeft(2, '0')} $ampm';
   }
 
+  String get _roleLabel {
+    switch (widget.auth.user?.role) {
+      case 'instructor':
+        return 'ONROL Instructor';
+      case 'manager':
+        return 'ONROL Manager';
+      case 'superadmin':
+        return 'ONROL Admin';
+      default:
+        return 'ONROL Student';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     _isDark = Theme.of(context).brightness == Brightness.dark;
-    // One screen, no scrolling. The matrix is centered on the whole screen;
-    // the header floats over the top.
+    // Two-column dashboard: the checkerboard + branding on the left, a profile
+    // card and the live AI-news feed on the right. Stacks to one column when the
+    // viewport is too narrow for the side panel (phones / small windows).
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
-        child: Stack(
-          children: [
-            Positioned.fill(child: _bigGrid()),
-            Positioned(
-              left: 0, right: 0, top: 0,
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                _topBar(),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-                  child: Text('WELCOME, ${_firstName.toUpperCase()}',
-                      style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700, color: _navy, letterSpacing: 1)),
-                ),
-              ]),
-            ),
-          ],
-        ),
+        child: LayoutBuilder(builder: (context, cns) {
+          return cns.maxWidth >= 1000 ? _wideLayout() : _narrowLayout();
+        }),
       ),
     );
   }
+
+  // Desktop / wide: matrix centered (no scroll) on the left, sidebar pinned
+  // right. Only the sidebar (profile + AI news) scrolls.
+  Widget _wideLayout() => Padding(
+        padding: const EdgeInsets.fromLTRB(40, 24, 36, 24),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child: Center(
+              child: LayoutBuilder(builder: (context, c) {
+                final side = (c.maxWidth < c.maxHeight ? c.maxWidth : c.maxHeight).clamp(280.0, 620.0).toDouble();
+                return _matrix(side);
+              }),
+            ),
+          ),
+          const SizedBox(width: 36),
+          SizedBox(
+            width: 430,
+            // Profile card stays pinned; only the AI-news list inside scrolls.
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              _profileCard(),
+              const SizedBox(height: 20),
+              Expanded(child: _AiNewsCard(auth: widget.auth, scrollable: true, onViewAll: () => _openPanel('announcements'))),
+            ]),
+          ),
+        ]),
+      );
+
+  // Phone / narrow: a single scrolling column.
+  Widget _narrowLayout() => SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
+        child: Column(children: [
+          _topBar(),
+          const SizedBox(height: 14),
+          _profileCard(),
+          const SizedBox(height: 20),
+          LayoutBuilder(builder: (context, c) {
+            return _matrix(c.maxWidth.clamp(260.0, 460.0).toDouble());
+          }),
+          const SizedBox(height: 26),
+          _AiNewsCard(auth: widget.auth, scrollable: false, onViewAll: () => _openPanel('announcements')),
+        ]),
+      );
 
   // ---- Top bar -------------------------------------------------------------
 
@@ -185,33 +279,82 @@ class _StudentHomeState extends State<StudentHome> {
     );
   }
 
-  // ---- Checkerboard — fills the available space, no scrolling --------------
+  // ---- Checkerboard — flush square tiles, sized to fit `side` --------------
 
-  Widget _bigGrid() {
-    return LayoutBuilder(builder: (context, cns) {
-      // No gaps — flush tiles. Centered on the whole screen, but kept clear of
-      // the floating header by reserving ~110px of vertical margin each side.
-      final w = cns.maxWidth - 4;
-      final h = cns.maxHeight - 96;
-      final side = w < h ? w : h;
-      final cell = side / 5;
-      var idx = 0;
-      final rows = <Widget>[];
-      for (var r = 0; r < 5; r++) {
-        final cells = <Widget>[];
-        for (var c = 0; c < 5; c++) {
-          // Start blank at (0,0); tiles on the alternating (r+c)-odd cells.
-          final filled = (r + c).isOdd && idx < _tiles.length;
-          final tile = filled ? _tiles[idx++] : null;
-          cells.add(tile == null
+  Widget _matrix(double side) {
+    const gap = 0.0;
+    // 5 cells + 4 gaps span `side`.
+    final cell = (side - gap * 4) / 5;
+    var idx = 0;
+    final rows = <Widget>[];
+    for (var r = 0; r < 5; r++) {
+      final cells = <Widget>[];
+      for (var c = 0; c < 5; c++) {
+        // Start blank at (0,0); tiles on the alternating (r+c)-odd cells.
+        final filled = (r + c).isOdd && idx < _tiles.length;
+        final tile = filled ? _tiles[idx++] : null;
+        cells.add(Padding(
+          padding: EdgeInsets.only(right: c < 4 ? gap : 0, bottom: r < 4 ? gap : 0),
+          child: tile == null
               ? SizedBox(width: cell, height: cell)
-              : _GridCell(tile: tile, size: cell, onTap: () => _openPanel(tile.panel)));
-        }
-        rows.add(Row(mainAxisSize: MainAxisSize.min, children: cells));
+              : _GridCell(tile: tile, size: cell, onTap: () => _openPanel(tile.panel)),
+        ));
       }
-      return Center(child: Column(mainAxisSize: MainAxisSize.min, children: rows));
-    });
+      rows.add(Row(mainAxisSize: MainAxisSize.min, children: cells));
+    }
+    return Column(mainAxisSize: MainAxisSize.min, children: rows);
   }
+
+  // ---- Profile card (right sidebar, top) -----------------------------------
+
+  Widget _profileCard() {
+    final initials = _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S';
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: _isDark ? _surface : _peachSoft,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _isDark ? _line : const Color(0xFFFFE3D5)),
+        boxShadow: [BoxShadow(color: _orange.withOpacity(_isDark ? 0.0 : 0.06), blurRadius: 24, offset: const Offset(0, 10))],
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          width: 88, height: 88,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+            border: Border.all(color: Colors.white, width: 3),
+            boxShadow: [BoxShadow(color: _orange.withOpacity(0.3), blurRadius: 14, offset: const Offset(0, 6))],
+          ),
+          child: Text(initials, style: GoogleFonts.inter(fontSize: 36, fontWeight: FontWeight.w800, color: Colors.white)),
+        ),
+        const SizedBox(width: 18),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            RichText(
+              text: TextSpan(children: [
+                TextSpan(text: 'Hi, ', style: GoogleFonts.inter(fontSize: 25, fontWeight: FontWeight.w800, color: _navy)),
+                TextSpan(text: _firstName, style: GoogleFonts.inter(fontSize: 25, fontWeight: FontWeight.w800, color: _orange)),
+              ]),
+            ),
+            const SizedBox(height: 3),
+            Text(_roleLabel, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _grey)),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
+              child: Text('ONROL Learner', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
+            ),
+            const SizedBox(height: 12),
+            Text('Keep learning, keep growing.', style: GoogleFonts.inter(fontSize: 13, color: _navy, height: 1.5)),
+            Text("You're closer than you think! ✨", style: GoogleFonts.inter(fontSize: 13, color: _navy, height: 1.5)),
+          ]),
+        ),
+      ]),
+    );
+  }
+
 
   // ---- Modal panels --------------------------------------------------------
 
@@ -459,9 +602,17 @@ class _StudentHomeState extends State<StudentHome> {
         );
       },
       pageBuilder: (ctx, anim, sec) {
-        _isDark = Theme.of(ctx).brightness == Brightness.dark;
-        final size = MediaQuery.of(ctx).size;
-        return Center(
+        // Rebuild the whole panel when the theme changes so every label and
+        // surface colour re-reads `_isDark`. Otherwise toggling Dark Mode from
+        // inside this popup leaves the text/surface in their old (light) colours,
+        // because `pageBuilder` runs only once when the panel opens.
+        return ValueListenableBuilder<ThemeMode>(
+          valueListenable: themeNotifier,
+          builder: (ctx, mode, _) {
+            _isDark = mode == ThemeMode.dark ||
+                (mode == ThemeMode.system && MediaQuery.platformBrightnessOf(ctx) == Brightness.dark);
+            final size = MediaQuery.of(ctx).size;
+            return Center(
           // Material gives the text/inputs an ancestor (no yellow underlines).
           child: Material(
             type: MaterialType.transparency,
@@ -471,7 +622,12 @@ class _StudentHomeState extends State<StudentHome> {
             margin: EdgeInsets.symmetric(horizontal: size.width * 0.01, vertical: size.height * 0.01),
             padding: EdgeInsets.fromLTRB(20, MediaQuery.of(ctx).padding.top + 12, 20, 18),
             decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(10)),
-            child: SingleChildScrollView(
+            // Keyed on brightness so the re-used `body` widget instances (which
+            // Flutter would otherwise skip rebuilding) re-inflate and re-read the
+            // brightness-aware colours when Dark Mode is toggled.
+            child: KeyedSubtree(
+              key: ValueKey(_isDark),
+              child: SingleChildScrollView(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
                   // Back button (replaces the close ✕).
                   Align(
@@ -506,7 +662,10 @@ class _StudentHomeState extends State<StudentHome> {
                 ]),
               ),
             ),
+            ),
           ),
+        );
+          },
         );
       },
     );
@@ -1111,6 +1270,201 @@ class _ProfilePanelState extends State<_ProfilePanel> {
 
 // ---- Small interactive widgets ---------------------------------------------
 
+/// Live AI / tech news feed (right sidebar). Polls `/api/v1/news` on mount and
+/// every few minutes, showing loading / fallback / data states. Keeps the exact
+/// card chrome — only the list content is now real and tappable.
+///
+/// When [scrollable] (wide layout) the header + "View All" button stay pinned
+/// and only the news list scrolls; otherwise it shrink-wraps and the page
+/// scrolls as a whole.
+class _AiNewsCard extends StatefulWidget {
+  const _AiNewsCard({required this.auth, required this.scrollable, required this.onViewAll});
+  final AuthService auth;
+  final bool scrollable;
+  final VoidCallback onViewAll;
+
+  @override
+  State<_AiNewsCard> createState() => _AiNewsCardState();
+}
+
+class _AiNewsCardState extends State<_AiNewsCard> {
+  List<_News>? _items; // null until the first load resolves
+  bool _failed = false;
+  Timer? _refresh;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    // Auto-refresh in real time without a page reload.
+    _refresh = Timer.periodic(const Duration(minutes: 3), (_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _refresh?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final res = await widget.auth.apiGet('/api/v1/news?category=ai');
+      final data = ApiClient.decode(res);
+      final list = ((data['news'] as List?) ?? [])
+          .map((e) => _News.fromJson(e as Map<String, dynamic>))
+          .where((n) => n.title.isNotEmpty && n.url.isNotEmpty)
+          .toList();
+      if (!mounted) return;
+      setState(() {
+        _items = list;
+        _failed = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      // Keep any previously-loaded items; only flag failure when we have none.
+      setState(() => _failed = true);
+    }
+  }
+
+  Future<void> _open(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    // New tab on web, external browser on mobile.
+    await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      decoration: BoxDecoration(
+        color: _surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _line),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.0 : 0.04), blurRadius: 24, offset: const Offset(0, 10))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: widget.scrollable ? MainAxisSize.max : MainAxisSize.min,
+        children: [
+          Row(children: [
+            Icon(CupertinoIcons.sparkles, size: 18, color: _orange),
+            const SizedBox(width: 8),
+            Text('UPDATE ', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800, color: _navy)),
+            Text('LIVE AI NEWS', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800, color: _orange)),
+            const Spacer(),
+            _livePill(),
+          ]),
+          const SizedBox(height: 10),
+          if (widget.scrollable) Expanded(child: _body()) else _body(),
+          const SizedBox(height: 14),
+          _Pressable(
+            onTap: widget.onViewAll,
+            child: Container(
+              height: 46, alignment: Alignment.center,
+              decoration: BoxDecoration(color: _peach, borderRadius: BorderRadius.circular(12)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text('View All AI News', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: _orange)),
+                const SizedBox(width: 6),
+                Icon(CupertinoIcons.arrow_right, size: 16, color: _orange),
+              ]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Loading / fallback / list — the only part that varies by state.
+  Widget _body() {
+    final items = _items;
+    if (items == null && !_failed) return _statusBox(loading: true);
+    if ((items == null || items.isEmpty)) return _statusBox(loading: false);
+
+    final rows = <Widget>[
+      for (var i = 0; i < items!.length; i++) _newsRow(items[i], last: i == items.length - 1),
+    ];
+    if (widget.scrollable) {
+      return ListView(padding: EdgeInsets.zero, children: rows);
+    }
+    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: rows);
+  }
+
+  Widget _statusBox({required bool loading}) {
+    final child = loading
+        ? const Padding(
+            padding: EdgeInsets.symmetric(vertical: 34),
+            child: Center(child: CircularProgressIndicator(color: _orange, strokeWidth: 2.5)),
+          )
+        : Padding(
+            padding: const EdgeInsets.symmetric(vertical: 30),
+            child: Column(children: [
+              Icon(CupertinoIcons.wifi_slash, size: 28, color: _grey),
+              const SizedBox(height: 8),
+              Text('Live news unavailable', textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: _navy)),
+              const SizedBox(height: 2),
+              Text('Pull again in a moment.', textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 12, color: _grey)),
+            ]),
+          );
+    // Keep a consistent height in the scrollable (wide) layout.
+    return widget.scrollable ? Center(child: child) : child;
+  }
+
+  Widget _livePill() => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Container(width: 7, height: 7, decoration: const BoxDecoration(color: _orange, shape: BoxShape.circle)),
+          const SizedBox(width: 5),
+          Text('LIVE', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
+        ]),
+      );
+
+  Widget _newsRow(_News n, {required bool last}) {
+    final live = n.isLive;
+    return InkWell(
+      onTap: () => _open(n.url),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        decoration: BoxDecoration(border: last ? null : Border(bottom: BorderSide(color: _line))),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: 56, height: 56, alignment: Alignment.center,
+            decoration: BoxDecoration(color: _peach, borderRadius: BorderRadius.circular(12)),
+            child: Icon(n.icon, size: 26, color: _orange),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // LIVE badge for recent items; otherwise the source name.
+              if (live)
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(width: 6, height: 6, decoration: const BoxDecoration(color: _orange, shape: BoxShape.circle)),
+                  const SizedBox(width: 5),
+                  Text('LIVE', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
+                ])
+              else
+                Text(n.source.toUpperCase(), style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
+              const SizedBox(height: 4),
+              Text(n.title, maxLines: 3, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 13.5, fontWeight: FontWeight.w700, color: _navy, height: 1.3)),
+              const SizedBox(height: 4),
+              Text(
+                [n.source, if (n.ago.isNotEmpty) n.ago].join(' · '),
+                style: GoogleFonts.inter(fontSize: 11.5, color: _grey),
+              ),
+            ]),
+          ),
+          const SizedBox(width: 8),
+          Padding(
+            padding: const EdgeInsets.only(top: 20),
+            child: Icon(CupertinoIcons.chevron_right, size: 16, color: _grey),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
 /// One square option tile: a colored graphic (emoji) plus the option name.
 /// No rounded corners. Scales slightly on hover/press.
 class _GridCell extends StatefulWidget {
@@ -1131,11 +1485,16 @@ class _GridCellState extends State<_GridCell> {
   Widget build(BuildContext context) {
     final t = widget.tile;
     final s = widget.size;
-    final scale = _down ? 0.96 : (_hover ? 1.05 : 1.0);
+    final active = _hover || _down;
+    // Springy pop on hover, slight squash on press.
+    final scale = _down ? 0.95 : (_hover ? 1.08 : 1.0);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
+      onExit: (_) => setState(() {
+        _hover = false;
+        _down = false;
+      }),
       child: GestureDetector(
         onTapDown: (_) => setState(() => _down = true),
         onTapUp: (_) => setState(() => _down = false),
@@ -1143,20 +1502,48 @@ class _GridCellState extends State<_GridCell> {
         onTap: widget.onTap,
         child: AnimatedScale(
           scale: scale,
-          duration: const Duration(milliseconds: 140),
-          curve: Curves.easeOut,
-          child: Container(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutBack,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
             width: s, height: s,
-            // Solid square option (no roundness); icon + name inside it.
-            color: _hover ? Color.alphaBlend(Colors.black.withOpacity(0.10), _orange) : _orange,
             alignment: Alignment.center,
             padding: EdgeInsets.all(s * 0.08),
+            // Flush square tile; on hover a gradient sheen + orange glow lift it
+            // above its neighbours.
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: _hover ? const [Color(0xFFFF7A4D), _orange] : const [_orange, _orange],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: _orange.withOpacity(active ? 0.55 : 0.0),
+                  blurRadius: 26,
+                  spreadRadius: 1,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
             child: FittedBox(
               fit: BoxFit.scaleDown,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(t.icon, color: Colors.white, size: 30),
+                  // Icon nudges up and grows a touch on hover.
+                  AnimatedSlide(
+                    offset: _hover ? const Offset(0, -0.06) : Offset.zero,
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOut,
+                    child: AnimatedScale(
+                      scale: _hover ? 1.14 : 1.0,
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOut,
+                      child: Icon(t.icon, color: Colors.white, size: 30),
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   Text(t.label,
                       maxLines: 1,
