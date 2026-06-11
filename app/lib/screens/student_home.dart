@@ -724,7 +724,7 @@ class _StudentHomeState extends State<StudentHome> {
 
   void _openPanel(String key, {Offset? origin}) {
     final d = _panel(key);
-    _showPanel(d.$1, d.$2, d.$3, d.$4, heroTag: 'panel-$key');
+    _showPanel(d.$1, d.$2, d.$3, d.$4, heroTag: 'panel-$key', compact: key == 'logout');
   }
 
   // Course content viewer — modules & lessons from /me/courses/:id/content.
@@ -1022,12 +1022,12 @@ class _StudentHomeState extends State<StudentHome> {
     ]);
   }
 
-  void _showPanel(IconData icon, String title, String sub, List<Widget> body, {Offset? origin, String? heroTag}) {
+  void _showPanel(IconData icon, String title, String sub, List<Widget> body, {Offset? origin, String? heroTag, bool compact = false}) {
     // iOS-style shared-element expansion: push a transparent route so the
     // dashboard stays visible (blurred) behind, and let a Hero morph the tapped
     // tile into the card. See [_PanelRoute] / [_HeroPanelModal].
     Navigator.of(context).push(_PanelRoute(
-      child: _HeroPanelModal(icon: icon, title: title, sub: sub, body: body, heroTag: heroTag),
+      child: _HeroPanelModal(icon: icon, title: title, sub: sub, body: body, heroTag: heroTag, compact: compact),
     ));
   }
 
@@ -2319,12 +2319,15 @@ class _PanelRoute<T> extends PageRouteBuilder<T> {
 /// gradient header; the dashboard stays blurred/dimmed behind; the body fades
 /// in. Reverses smoothly on pop.
 class _HeroPanelModal extends StatelessWidget {
-  const _HeroPanelModal({required this.icon, required this.title, required this.sub, required this.body, this.heroTag});
+  const _HeroPanelModal({required this.icon, required this.title, required this.sub, required this.body, this.heroTag, this.compact = false});
   final IconData icon;
   final String title;
   final String sub;
   final List<Widget> body;
   final String? heroTag;
+  // Compact = a small content-sized centred card (confirm dialogs); otherwise
+  // the big 97% sheet.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -2353,11 +2356,19 @@ class _HeroPanelModal extends StatelessWidget {
             ),
           ),
           Center(
-            child: SizedBox(
-              width: size.width * 0.97,
-              height: size.height * 0.97,
-              child: _card(ctx, anim),
-            ),
+            child: compact
+                ? Padding(
+                    padding: EdgeInsets.symmetric(horizontal: size.width < 480 ? 24 : 0, vertical: 40),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: 420, maxHeight: size.height * 0.85),
+                      child: _card(ctx, anim),
+                    ),
+                  )
+                : SizedBox(
+                    width: size.width * 0.97,
+                    height: size.height * 0.97,
+                    child: _card(ctx, anim),
+                  ),
           ),
         ]);
       },
@@ -2409,11 +2420,12 @@ class _HeroPanelModal extends StatelessWidget {
             boxShadow: [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.5 : 0.25), blurRadius: 48, offset: const Offset(0, 22))],
           ),
           child: Column(
-            mainAxisSize: MainAxisSize.max,
+            mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               heroTag != null ? Hero(tag: heroTag!, child: header) : header,
-              Expanded(
+              Flexible(
+                fit: compact ? FlexFit.loose : FlexFit.tight,
                 child: FadeTransition(
                   opacity: CurvedAnimation(parent: anim, curve: const Interval(0.35, 1.0, curve: Curves.easeOut)),
                   child: SlideTransition(
@@ -2789,7 +2801,7 @@ class _StatCardState extends State<_StatCard> {
               const SizedBox(height: 12),
               TweenAnimationBuilder<double>(
                 tween: Tween(begin: 0, end: target ?? 0),
-                duration: const Duration(milliseconds: 800),
+                duration: const Duration(milliseconds: 1600),
                 curve: Curves.easeOutCubic,
                 builder: (_, v, __) => Text(
                   target != null ? v.round().toString() : widget.value,
