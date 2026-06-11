@@ -44,7 +44,7 @@ cd app && flutter analyze && flutter test
 
 Both must be clean. For the web build use:
 ```bash
-cd app && flutter build web --no-tree-shake-icons
+cd app && flutter build web --no-tree-shake-icons --pwa-strategy=none
 ```
 (`--no-tree-shake-icons` is required — the UI uses icons chosen at runtime.)
 

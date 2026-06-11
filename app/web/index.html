@@ -32,6 +32,21 @@
 
   <title>ONROL Learn</title>
   <link rel="manifest" href="manifest.json">
+  <script>
+    // Always-fresh: we build with --pwa-strategy=none (no service worker), and
+    // this kills any previously-installed worker + its caches so a deploy is
+    // never served stale. Reloads once if it found a stale worker to evict.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        var had = regs.length > 0;
+        regs.forEach(function (r) { r.unregister(); });
+        if (window.caches && caches.keys) {
+          caches.keys().then(function (ks) { ks.forEach(function (k) { caches.delete(k); }); });
+        }
+        if (had) location.reload();
+      }).catch(function () {});
+    }
+  </script>
   <!-- hls.js: enables HLS (.m3u8) streaming in browsers without native support (Chrome/Firefox) -->
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
   <script>

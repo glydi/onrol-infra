@@ -147,7 +147,7 @@ log "[6/8] Building API (Go) and web app (Flutter)"
 ( cd "$SRC_DIR/backend" && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$APP_DIR/onrol-server" ./cmd/server )
 echo "    built API binary"
 
-( cd "$SRC_DIR/app" && flutter pub get >/dev/null && flutter build web --release --no-tree-shake-icons >/dev/null )
+( cd "$SRC_DIR/app" && flutter pub get >/dev/null && flutter build web --release --no-tree-shake-icons --pwa-strategy=none >/dev/null )
 install -d "$WEB_ROOT"
 rsync -a --delete "$SRC_DIR/app/build/web/" "$WEB_ROOT/"
 echo "    built + published web app"
