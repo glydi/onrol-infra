@@ -13,13 +13,19 @@ import (
 // ---- Profile & preferences -------------------------------------------------
 
 func (h *Handlers) GetMyProfile(c *fiber.Ctx) error {
-	var email, name, phone, role, avatar string
+	var email, name, phone, role, avatar, username, occupation, location, linkedin, github string
 	if err := h.Pool.QueryRow(c.Context(),
-		`SELECT email, full_name, COALESCE(phone,''), role, COALESCE(avatar,'') FROM users WHERE id=$1`, callerID(c),
-	).Scan(&email, &name, &phone, &role, &avatar); err != nil {
+		`SELECT email, full_name, COALESCE(phone,''), role, COALESCE(avatar,''),
+		        COALESCE(username,''), COALESCE(occupation,''), COALESCE(location,''),
+		        COALESCE(linkedin,''), COALESCE(github,'')
+		   FROM users WHERE id=$1`, callerID(c),
+	).Scan(&email, &name, &phone, &role, &avatar, &username, &occupation, &location, &linkedin, &github); err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "user not found")
 	}
-	return c.JSON(fiber.Map{"id": callerID(c), "email": email, "full_name": name, "phone": phone, "role": role, "avatar": avatar})
+	return c.JSON(fiber.Map{
+		"id": callerID(c), "email": email, "full_name": name, "phone": phone, "role": role, "avatar": avatar,
+		"username": username, "occupation": occupation, "location": location, "linkedin": linkedin, "github": github,
+	})
 }
 
 // Max inline avatar payload (~1 MB of base64) — keeps the users row small.
@@ -27,9 +33,14 @@ const maxAvatarLen = 1_400_000
 
 func (h *Handlers) UpdateMyProfile(c *fiber.Ctx) error {
 	var req struct {
-		FullName *string `json:"full_name"`
-		Phone    *string `json:"phone"`
-		Avatar   *string `json:"avatar"`
+		FullName   *string `json:"full_name"`
+		Phone      *string `json:"phone"`
+		Avatar     *string `json:"avatar"`
+		Username   *string `json:"username"`
+		Occupation *string `json:"occupation"`
+		Location   *string `json:"location"`
+		Linkedin   *string `json:"linkedin"`
+		Github     *string `json:"github"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
@@ -38,8 +49,12 @@ func (h *Handlers) UpdateMyProfile(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusRequestEntityTooLarge, "image too large")
 	}
 	_, err := h.Pool.Exec(c.Context(),
-		`UPDATE users SET full_name=COALESCE($2,full_name), phone=COALESCE($3,phone), avatar=COALESCE($4,avatar), updated_at=now() WHERE id=$1`,
-		callerID(c), req.FullName, req.Phone, req.Avatar)
+		`UPDATE users SET
+		   full_name=COALESCE($2,full_name), phone=COALESCE($3,phone), avatar=COALESCE($4,avatar),
+		   username=COALESCE($5,username), occupation=COALESCE($6,occupation), location=COALESCE($7,location),
+		   linkedin=COALESCE($8,linkedin), github=COALESCE($9,github), updated_at=now()
+		 WHERE id=$1`,
+		callerID(c), req.FullName, req.Phone, req.Avatar, req.Username, req.Occupation, req.Location, req.Linkedin, req.Github)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "update failed")
 	}
