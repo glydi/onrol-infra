@@ -487,7 +487,13 @@ class _StudentHomeState extends State<StudentHome> {
 
   Widget _profileCard() {
     final initials = _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S';
-    return _glass(
+    // Tapping the card opens Profile & settings; tapping the avatar (inner
+    // GestureDetector) still opens the picture picker.
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => _openPanel('profile'),
+        child: _glass(
       padding: const EdgeInsets.all(22),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         GestureDetector(
@@ -520,7 +526,11 @@ class _StudentHomeState extends State<StudentHome> {
             ]),
           ]),
         ),
+        // Settings affordance — the whole card opens Profile & settings.
+        Icon(CupertinoIcons.gear_alt_fill, size: 18, color: _orange.withOpacity(0.55)),
       ]),
+    ),
+      ),
     );
   }
 
@@ -2527,17 +2537,33 @@ class _HeroPanelModal extends StatelessWidget {
       child: KeyedSubtree(
         key: ValueKey(_isDark),
         child: Container(
-          width: double.infinity,
-          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: _isDark ? const Color(0xFF1E2027) : Colors.white,
             borderRadius: BorderRadius.circular(24),
             boxShadow: [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.5 : 0.25), blurRadius: 48, offset: const Offset(0, 22))],
           ),
-          child: Column(
-            mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: BackdropFilter(
+              filter: ui.ImageFilter.blur(sigmaX: 26, sigmaY: 26),
+              child: Container(
+                width: double.infinity,
+                // Frosted-glass card — translucent so the blurred dashboard
+                // refracts through; white element cards stay crisp on top.
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: _isDark
+                        ? [const Color(0xFF22242D).withOpacity(0.82), const Color(0xFF181A22).withOpacity(0.70)]
+                        : [Colors.white.withOpacity(0.74), Colors.white.withOpacity(0.60)],
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: _isDark ? Colors.white.withOpacity(0.12) : Colors.white.withOpacity(0.70), width: 1.2),
+                ),
+                child: Column(
+                  mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
               heroTag != null ? Hero(tag: heroTag!, child: header) : header,
               Flexible(
                 fit: compact ? FlexFit.loose : FlexFit.tight,
@@ -2553,7 +2579,10 @@ class _HeroPanelModal extends StatelessWidget {
                   ),
                 ),
               ),
-            ],
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
       ),
