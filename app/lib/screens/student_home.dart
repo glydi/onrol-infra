@@ -950,13 +950,19 @@ class _StudentHomeState extends State<StudentHome> {
       barrierLabel: 'panel',
       barrierDismissible: true,
       barrierColor: const Color(0x401A1A2E),
-      transitionDuration: const Duration(milliseconds: 360),
+      transitionDuration: const Duration(milliseconds: 420),
       transitionBuilder: (ctx, anim, sec, child) {
-        final c = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
-        // Grow out of the tapped tile: scale from a small box at that point.
+        // fastOutSlowIn is the buttery Material easing; a gentler start scale
+        // keeps the heavy backdrop-blur cheap to animate (very smooth), while
+        // still expanding out of the tapped tile.
+        final c = CurvedAnimation(parent: anim, curve: Curves.fastOutSlowIn, reverseCurve: Curves.fastOutSlowIn);
         return FadeTransition(
           opacity: c,
-          child: ScaleTransition(scale: Tween<double>(begin: 0.15, end: 1.0).animate(c), alignment: align, child: child),
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.7, end: 1.0).animate(c),
+            alignment: align,
+            child: RepaintBoundary(child: child),
+          ),
         );
       },
       pageBuilder: (ctx, anim, sec) {
@@ -979,7 +985,7 @@ class _StudentHomeState extends State<StudentHome> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(20),
               child: BackdropFilter(
-                filter: ui.ImageFilter.blur(sigmaX: 34, sigmaY: 34),
+                filter: ui.ImageFilter.blur(sigmaX: 26, sigmaY: 26),
                 child: Container(
             width: size.width * 0.98,
             height: size.height * 0.98,
@@ -2200,11 +2206,7 @@ class _StatCardState extends State<_StatCard> {
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
         onTap: widget.onTap,
-        child: AnimatedScale(
-          scale: _hover && tappable ? 1.04 : 1.0,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOutCubic,
-          child: AnimatedContainer(
+        child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOutCubic,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -2241,8 +2243,7 @@ class _StatCardState extends State<_StatCard> {
             ]),
           ),
         ),
-      ),
-    );
+      );
   }
 }
 
