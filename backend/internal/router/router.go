@@ -234,6 +234,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Get("/me/courses/:id/content", auth, h.CourseContent)
 	api.Post("/me/courses/:id/forum", auth, h.PostForum)
 	api.Post("/me/lessons/:id/complete", auth, h.CompleteLesson)
+	api.Get("/me/resume", auth, h.ResumeLearning)
 	api.Get("/modules/:id/comments", auth, h.ListModuleComments)
 	api.Post("/modules/:id/comments", auth, h.PostModuleComment)
 	api.Get("/me/assessments", auth, h.MyAssessments)

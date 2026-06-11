@@ -195,7 +195,7 @@ class _StudentHomeState extends State<StudentHome> {
     _Tile(CupertinoIcons.videocam_fill, 'Live Classes', 'live'),
     _Tile(CupertinoIcons.rosette, 'Certificates', 'certificates'),
     _Tile(CupertinoIcons.list_number, 'Leaderboard', 'leaderboard'),
-    _Tile(CupertinoIcons.person_fill, 'Profile', 'profile'),
+    _Tile(CupertinoIcons.play_circle_fill, 'Resume', 'resume'),
     _Tile(CupertinoIcons.gear_alt_fill, 'Settings', 'settings'),
     _Tile(CupertinoIcons.square_arrow_right, 'Log Out', 'logout'),
   ];
@@ -406,6 +406,21 @@ class _StudentHomeState extends State<StudentHome> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
+          // Avatar + name — opens the full profile & settings section.
+          _Pressable(
+            onTap: () => _openPanel('profile'),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              ValueListenableBuilder<String>(
+                valueListenable: avatarNotifier,
+                builder: (ctx, av, _) => _avatarBox(av, 40, _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S'),
+              ),
+              const SizedBox(width: 10),
+              Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text('Hi, $_firstName', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
+                Text('View profile', style: GoogleFonts.poppins(fontSize: 11, color: _grey)),
+              ]),
+            ]),
+          ),
           const Spacer(),
           Row(mainAxisSize: MainAxisSize.min, children: [
             // Notification bell — opens announcements/notifications.
@@ -726,8 +741,79 @@ class _StudentHomeState extends State<StudentHome> {
               child: Text(md['title']?.toString() ?? 'Module', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
             ),
             if (lessons.isEmpty) _emptyText('No lessons.') else ...lessons.map((l) => _lessonRow(l as Map<String, dynamic>)),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _Pressable(
+                onTap: () => _openComments(md['id'].toString(), md['title']?.toString() ?? 'Module'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(CupertinoIcons.chat_bubble_2_fill, size: 15, color: _orange),
+                    const SizedBox(width: 6),
+                    Text('Comments & Doubts', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _orange)),
+                  ]),
+                ),
+              ),
+            ),
           ];
         }).toList());
+      }),
+    ]);
+  }
+
+  // Comments & doubts thread for a module: list + post (with a "doubt" toggle).
+  void _openComments(String moduleId, String moduleTitle) {
+    final text = TextEditingController();
+    bool doubt = false;
+    _showPanel(CupertinoIcons.chat_bubble_2_fill, moduleTitle, 'Comments & Doubts', [
+      StatefulBuilder(builder: (ctx, setS) {
+        Future<void> post() async {
+          if (text.text.trim().isEmpty) return;
+          try {
+            await widget.auth.apiPost('/api/v1/modules/$moduleId/comments', {'body': text.text.trim(), 'is_doubt': doubt});
+            text.clear();
+            setS(() {});
+          } catch (_) {}
+        }
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _future(_apiList('/api/v1/modules/$moduleId/comments', 'comments'), (List items) {
+            if (items.isEmpty) return _emptyText('No comments yet. Start the discussion or ask a doubt.');
+            return Column(children: items.map((e) {
+              final m = e as Map<String, dynamic>;
+              final staff = m['staff'] == true;
+              final isDoubt = m['is_doubt'] == true;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(10), border: Border.all(color: _line)),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Text(m['author']?.toString() ?? 'Someone', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
+                    const SizedBox(width: 6),
+                    if (staff) Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: _orange.withOpacity(0.14), borderRadius: BorderRadius.circular(4)), child: Text('Mentor', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w700, color: _orange))),
+                    if (isDoubt) Container(margin: const EdgeInsets.only(left: 6), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: const Color(0xFF2D7DF6).withOpacity(0.14), borderRadius: BorderRadius.circular(4)), child: Text('Doubt', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w700, color: const Color(0xFF2D7DF6)))),
+                  ]),
+                  const SizedBox(height: 4),
+                  Text(m['body']?.toString() ?? '', style: GoogleFonts.poppins(fontSize: 14, color: _navy, height: 1.4)),
+                ]),
+              );
+            }).toList());
+          }),
+          const SizedBox(height: 12),
+          CupertinoTextField(controller: text, placeholder: 'Write a comment…', minLines: 1, maxLines: 4, padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(10), border: Border.all(color: _line))),
+          const SizedBox(height: 8),
+          Row(children: [
+            _Pressable(onTap: () => setS(() => doubt = !doubt), child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(doubt ? CupertinoIcons.checkmark_square_fill : CupertinoIcons.square, size: 18, color: doubt ? _orange : _grey),
+              const SizedBox(width: 6),
+              Text('Mark as doubt', style: GoogleFonts.poppins(fontSize: 13, color: _navy)),
+            ])),
+            const Spacer(),
+            _Pressable(onTap: post, child: Container(padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10), decoration: BoxDecoration(color: _orange, borderRadius: BorderRadius.circular(8)),
+                child: Text('Post', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)))),
+          ]),
+        ]);
       }),
     ]);
   }
@@ -1142,6 +1228,40 @@ class _StudentHomeState extends State<StudentHome> {
               return Column(children: entries.map((e) => _notif(e['text'] as String, _fmtAt(e['at']?.toString()), read: e['read'] == true)).toList());
             },
           ),
+        ]);
+      case 'resume':
+        return (CupertinoIcons.play_circle_fill, 'Resume Learning', 'Pick up where you left off', [
+          _future(_apiMap('/api/v1/me/resume'), (m) {
+            final r = m['resume'];
+            if (r == null) return _emptyText("You're all caught up — nothing to resume.");
+            final res = r as Map<String, dynamic>;
+            return Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(12), border: Border.all(color: _line)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(res['course']?.toString() ?? '', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: _orange)),
+                const SizedBox(height: 4),
+                Text(res['title']?.toString() ?? 'Next lesson', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: _navy)),
+                if ((res['module']?.toString() ?? '').isNotEmpty) Text(res['module'].toString(), style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
+                const SizedBox(height: 14),
+                _Pressable(
+                  onTap: () {
+                    Navigator.of(context).maybePop();
+                    _openLesson({'id': res['lesson_id'], 'title': res['title'], 'type': res['type'], 'url': res['url']});
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 14), alignment: Alignment.center,
+                    decoration: BoxDecoration(color: _orange, borderRadius: BorderRadius.circular(10)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(CupertinoIcons.play_fill, color: Colors.white, size: 16),
+                      const SizedBox(width: 8),
+                      Text('Continue', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
+                    ]),
+                  ),
+                ),
+              ]),
+            );
+          }),
         ]);
       case 'courses':
         return (CupertinoIcons.book_fill, 'My Courses', 'Tap a course to open its content', [

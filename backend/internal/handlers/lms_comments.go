@@ -6,6 +6,28 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+// ResumeLearning returns the next incomplete lesson for the caller — the
+// "continue where you left off" target — in their most recently enrolled course.
+func (h *Handlers) ResumeLearning(c *fiber.Ctx) error {
+	var lessonID, title, ltype, body, course, courseID, module string
+	err := h.Pool.QueryRow(c.Context(), `
+		SELECT l.id, l.title, l.type, COALESCE(l.body,''), c.title, c.id, COALESCE(m.title,'')
+		FROM lessons l
+		JOIN modules m ON m.id=l.module_id
+		JOIN courses c ON c.id=m.course_id
+		JOIN course_enrollments ce ON ce.course_id=c.id AND ce.user_id=$1
+		WHERE NOT EXISTS (SELECT 1 FROM lesson_progress lp WHERE lp.user_id=$1 AND lp.lesson_id=l.id)
+		ORDER BY ce.enrolled_at DESC, m.position, l.position
+		LIMIT 1`, callerID(c)).Scan(&lessonID, &title, &ltype, &body, &course, &courseID, &module)
+	if err != nil {
+		// Nothing to resume (all done or no enrolment).
+		return c.JSON(fiber.Map{"resume": nil})
+	}
+	return c.JSON(fiber.Map{"resume": fiber.Map{
+		"lesson_id": lessonID, "title": title, "type": ltype, "url": body,
+		"course": course, "course_id": courseID, "module": module}})
+}
+
 // canAccessModule returns the module's course id if the caller may read/post in
 // it — i.e. they're enrolled in the course OR they're course staff.
 func (h *Handlers) canAccessModule(c *fiber.Ctx, moduleID string) (string, error) {
