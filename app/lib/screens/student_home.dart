@@ -1,6 +1,13 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image/image.dart' as img;
+import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api_client.dart';
@@ -20,9 +27,94 @@ Color get _navy => _isDark ? const Color(0xFFECEDF2) : const Color(0xFF1A1A2E);
 Color get _grey => _isDark ? const Color(0xFF9AA0AC) : const Color(0xFF888888);
 Color get _peach => _isDark ? const Color(0xFF2C231C) : const Color(0xFFFFF3EC);
 Color get _peachSoft => _isDark ? const Color(0xFF241D17) : const Color(0xFFFFF8F5);
-Color get _bg => _isDark ? const Color(0xFF131419) : Colors.white;
+Color get _bg => _isDark ? const Color(0xFF0E0F14) : const Color(0xFFFFF6F1);
 Color get _surface => _isDark ? const Color(0xFF1E2027) : Colors.white;
 Color get _line => _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0F0F0);
+
+// ---- Glassmorphism --------------------------------------------------------
+// Frosted translucent fill + hairline highlight border + soft drop shadow.
+Color get _glassFill => _isDark ? Colors.white.withOpacity(0.07) : Colors.white.withOpacity(0.55);
+Color get _glassBorder => _isDark ? Colors.white.withOpacity(0.12) : Colors.white.withOpacity(0.65);
+
+/// Wraps [child] in a frosted-glass surface (backdrop blur + translucent fill).
+/// Use sparingly — each one is a real BackdropFilter.
+Widget _glass({
+  required Widget child,
+  double radius = 22,
+  EdgeInsetsGeometry? padding,
+  double blur = 18,
+  Color? tint,
+}) {
+  final r = BorderRadius.circular(radius);
+  return ClipRRect(
+    borderRadius: r,
+    child: BackdropFilter(
+      filter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+      child: Container(
+        padding: padding,
+        decoration: BoxDecoration(
+          color: tint ?? _glassFill,
+          borderRadius: r,
+          border: Border.all(color: _glassBorder, width: 1),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.30 : 0.07), blurRadius: 30, offset: const Offset(0, 14))],
+        ),
+        child: child,
+      ),
+    ),
+  );
+}
+
+/// Full-bleed backdrop: a base gradient plus a few large, heavily-blurred
+/// colour blobs so the glass panels have something rich to refract.
+class _GlassBackdrop extends StatelessWidget {
+  const _GlassBackdrop();
+
+  @override
+  Widget build(BuildContext context) {
+    final blob = ui.ImageFilter.blur(sigmaX: 90, sigmaY: 90);
+    Widget circle(Color c, double d) => ImageFiltered(
+          imageFilter: blob,
+          child: Container(width: d, height: d, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+        );
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: _isDark
+              ? const [Color(0xFF0E0F14), Color(0xFF14161F)]
+              : const [Color(0xFFFFF1EA), Color(0xFFFDEAF6)],
+        ),
+      ),
+      child: Stack(children: [
+        Positioned(top: -120, left: -100, child: circle(_orange.withOpacity(_isDark ? 0.22 : 0.30), 380)),
+        Positioned(top: 80, right: -140, child: circle(const Color(0xFFFF7A4D).withOpacity(_isDark ? 0.18 : 0.28), 420)),
+        Positioned(bottom: -160, left: 120, child: circle(const Color(0xFF7C5CFF).withOpacity(_isDark ? 0.16 : 0.18), 460)),
+      ]),
+    );
+  }
+}
+
+/// A default profile picture: an emoji on a gradient square (index 0 = the
+/// user's initials instead of an emoji).
+class _Avatar {
+  const _Avatar(this.emoji, this.colors);
+  final String emoji;
+  final List<Color> colors;
+}
+
+const _avatars = <_Avatar>[
+  _Avatar('', [_orange, Color(0xFFFF7A4D)]), // letter avatar
+  _Avatar('🦊', [Color(0xFFFF8A3D), Color(0xFFFF5E3A)]),
+  _Avatar('🐼', [Color(0xFF6A85F1), Color(0xFF8E54E9)]),
+  _Avatar('🦁', [Color(0xFFFFB02E), Color(0xFFFF7A00)]),
+  _Avatar('🐯', [Color(0xFFFF9A3E), Color(0xFFEF5A2A)]),
+  _Avatar('🐨', [Color(0xFF8E9EAB), Color(0xFF5B6C82)]),
+  _Avatar('🦉', [Color(0xFF36D1DC), Color(0xFF5B86E5)]),
+  _Avatar('🐧', [Color(0xFF3A4A5E), Color(0xFF4B79A1)]),
+  _Avatar('🚀', [Color(0xFFEE5A6F), Color(0xFFF29263)]),
+  _Avatar('🐸', [Color(0xFF56AB2F), Color(0xFFA8E063)]),
+];
 
 /// Student home — a 5×5 orange checkerboard of options; each tile opens a modal
 /// panel. Matches the ONROL "Learn. Grow. Succeed." mockup.
@@ -39,6 +131,55 @@ class _Tile {
   final IconData icon;
   final String label;
   final String panel;
+}
+
+/// A headline in the "Live AI News" sidebar feed (static showcase content).
+/// A live headline from the backend RSS aggregator (`/api/v1/news`).
+class _News {
+  _News({required this.title, required this.source, required this.url, this.publishedAt});
+  final String title;
+  final String source;
+  final String url;
+  final DateTime? publishedAt;
+
+  factory _News.fromJson(Map<String, dynamic> j) => _News(
+        title: j['title']?.toString() ?? '',
+        source: j['source']?.toString() ?? '',
+        url: j['url']?.toString() ?? '',
+        publishedAt: DateTime.tryParse(j['published_at']?.toString() ?? '')?.toLocal(),
+      );
+
+  /// Recent enough (≤ 90 min) to carry the LIVE badge.
+  bool get isLive {
+    final p = publishedAt;
+    return p != null && DateTime.now().difference(p) < const Duration(minutes: 90);
+  }
+
+  /// Relative "x min/hr/day ago" label.
+  String get ago {
+    final p = publishedAt;
+    if (p == null) return '';
+    final d = DateTime.now().difference(p);
+    if (d.inMinutes < 1) return 'just now';
+    if (d.inMinutes < 60) return '${d.inMinutes} min ago';
+    if (d.inHours < 24) return '${d.inHours} hr${d.inHours == 1 ? '' : 's'} ago';
+    return '${d.inDays} day${d.inDays == 1 ? '' : 's'} ago';
+  }
+
+  IconData get icon => _sourceIcon(source);
+}
+
+/// Per-source thumbnail glyph (keeps the existing icon-tile look).
+IconData _sourceIcon(String source) {
+  final s = source.toLowerCase();
+  if (s.contains('openai')) return CupertinoIcons.sparkles;
+  if (s.contains('nvidia')) return CupertinoIcons.bolt_fill;
+  if (s.contains('meta')) return CupertinoIcons.layers_fill;
+  if (s.contains('google') || s.contains('deepmind')) return CupertinoIcons.cube_box_fill;
+  if (s.contains('microsoft')) return CupertinoIcons.square_grid_2x2_fill;
+  if (s.contains('aws') || s.contains('amazon')) return CupertinoIcons.cloud_fill;
+  if (s.contains('verge') || s.contains('techcrunch') || s.contains('venturebeat')) return CupertinoIcons.news_solid;
+  return CupertinoIcons.wand_stars;
 }
 
 class _StudentHomeState extends State<StudentHome> {
@@ -62,12 +203,44 @@ class _StudentHomeState extends State<StudentHome> {
   String get _name => widget.auth.user?.fullName ?? 'Student';
   String get _firstName => _name.split(RegExp(r'[\s@]')).first;
 
-  // Day streak shown in the header (placeholder until a backend streak exists).
+  // Day streak shown in the profile card (placeholder until a backend streak
+  // exists). Tapping the chip opens the Achievements panel.
   final int _streak = 7;
+
+  // Which of the three dashboard sections is focused: 0 = menu (matrix),
+  // 1 = profile, 2 = live news. Drives the focus highlight.
+  int _focused = 0;
 
   // XP earned grows with progress: 10 XP per completed lesson.
   static int _xpFromCourses(List courses) => courses.fold<int>(
       0, (sum, c) => sum + (((c as Map)['lessons_done'] ?? 0) as num).toInt() * 10);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAvatarFromServer();
+  }
+
+  // Pull the saved profile picture from the backend (source of truth) and cache
+  // it so the avatar is correct across devices.
+  Future<void> _loadAvatarFromServer() async {
+    try {
+      final m = ApiClient.decode(await widget.auth.apiGet('/api/v1/me/profile'));
+      await cacheAvatar(m['avatar']?.toString() ?? '');
+    } catch (_) {}
+  }
+
+  // Persist a new avatar: cache + notifier immediately, then save to the DB.
+  Future<void> _setAvatar(String v) async {
+    await cacheAvatar(v);
+    try {
+      await widget.auth.apiPatch('/api/v1/me/profile', {'avatar': v});
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't save picture — try again."), behavior: SnackBarBehavior.floating));
+      }
+    }
+  }
 
   Future<void> _logout() async {
     await widget.auth.logout();
@@ -101,7 +274,7 @@ class _StudentHomeState extends State<StudentHome> {
 
   static Widget _emptyText(String t) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 22),
-        child: Text(t, textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 13, color: _grey)),
+        child: Text(t, textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
       );
 
   static String _fmtAt(String? iso) {
@@ -114,33 +287,116 @@ class _StudentHomeState extends State<StudentHome> {
     return '${months[dt.month - 1]} ${dt.day}, $h:${dt.minute.toString().padLeft(2, '0')} $ampm';
   }
 
+  String get _roleLabel {
+    switch (widget.auth.user?.role) {
+      case 'instructor':
+        return 'ONROL Instructor';
+      case 'manager':
+        return 'ONROL Manager';
+      case 'superadmin':
+        return 'ONROL Admin';
+      default:
+        return 'ONROL Student';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     _isDark = Theme.of(context).brightness == Brightness.dark;
-    // One screen, no scrolling. The matrix is centered on the whole screen;
-    // the header floats over the top.
+    // Two-column dashboard: the checkerboard + branding on the left, a profile
+    // card and the live AI-news feed on the right. Stacks to one column when the
+    // viewport is too narrow for the side panel (phones / small windows).
     return Scaffold(
       backgroundColor: _bg,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            Positioned.fill(child: _bigGrid()),
-            Positioned(
-              left: 0, right: 0, top: 0,
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                _topBar(),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-                  child: Text('WELCOME, ${_firstName.toUpperCase()}',
-                      style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700, color: _navy, letterSpacing: 1)),
-                ),
-              ]),
-            ),
-          ],
-        ),
+      body: Stack(
+        children: [
+          // Soft, colourful backdrop the frosted-glass panels refract.
+          const Positioned.fill(child: _GlassBackdrop()),
+          SafeArea(
+            child: LayoutBuilder(builder: (context, cns) {
+              return cns.maxWidth >= 1000 ? _wideLayout() : _narrowLayout();
+            }),
+          ),
+        ],
       ),
     );
   }
+
+  // Desktop / wide: matrix centered (no scroll) on the left, sidebar pinned
+  // right. Only the sidebar (profile + AI news) scrolls.
+  // Wraps a dashboard section in a focus ring. The focused section (set on
+  // hover) gets a themed accent border + glow; the others stay neutral.
+  Widget _focusable(int index, {required Widget child, double radius = 26}) {
+    final on = _focused == index;
+    return MouseRegion(
+      onEnter: (_) {
+        if (_focused != index) setState(() => _focused = index);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.all(5),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(radius),
+          border: Border.all(color: on ? _orange.withOpacity(0.85) : Colors.transparent, width: 2),
+          boxShadow: on ? [BoxShadow(color: _orange.withOpacity(0.30), blurRadius: 26, spreadRadius: 1)] : const [],
+        ),
+        child: child,
+      ),
+    );
+  }
+
+  Widget _wideLayout() => Padding(
+        padding: const EdgeInsets.fromLTRB(40, 24, 36, 24),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child: Center(
+              child: LayoutBuilder(builder: (context, c) {
+                final side = (c.maxWidth < c.maxHeight ? c.maxWidth : c.maxHeight).clamp(280.0, 620.0).toDouble();
+                // No focus ring / boundary on the options — hovering just clears
+                // the highlight on the other sections.
+                return MouseRegion(
+                  onEnter: (_) {
+                    if (_focused != 0) setState(() => _focused = 0);
+                  },
+                  child: _matrix(side),
+                );
+              }),
+            ),
+          ),
+          const SizedBox(width: 28),
+          SizedBox(
+            width: 440,
+            // Profile card stays pinned; only the AI-news list inside scrolls.
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              _focusable(1, child: _profileCard()),
+              const SizedBox(height: 12),
+              Expanded(child: _focusable(2, child: _AiNewsCard(auth: widget.auth, scrollable: true, onViewAll: () => _openPanel('announcements')))),
+            ]),
+          ),
+        ]),
+      );
+
+  // Phone / narrow: a single scrolling column.
+  Widget _narrowLayout() => SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
+        child: Column(children: [
+          _topBar(),
+          const SizedBox(height: 14),
+          _focusable(1, child: _profileCard()),
+          const SizedBox(height: 14),
+          LayoutBuilder(builder: (context, c) {
+            return MouseRegion(
+              onEnter: (_) {
+                if (_focused != 0) setState(() => _focused = 0);
+              },
+              child: _matrix(c.maxWidth.clamp(260.0, 460.0).toDouble()),
+            );
+          }),
+          const SizedBox(height: 18),
+          _focusable(2, child: _AiNewsCard(auth: widget.auth, scrollable: false, onViewAll: () => _openPanel('announcements'))),
+        ]),
+      );
 
   // ---- Top bar -------------------------------------------------------------
 
@@ -174,50 +430,285 @@ class _StudentHomeState extends State<StudentHome> {
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 const Icon(CupertinoIcons.flame_fill, color: Colors.white, size: 16),
                 const SizedBox(width: 4),
-                Text('$_streak', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white)),
+                Text('$_streak', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white)),
               ]),
             ),
             const SizedBox(width: 12),
-            Text('ONROL', style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 1)),
+            Text('ONROL', style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 1)),
           ]),
         ],
       ),
     );
   }
 
-  // ---- Checkerboard — fills the available space, no scrolling --------------
+  // ---- Checkerboard — flush square tiles, sized to fit `side` --------------
 
-  Widget _bigGrid() {
-    return LayoutBuilder(builder: (context, cns) {
-      // No gaps — flush tiles. Centered on the whole screen, but kept clear of
-      // the floating header by reserving ~110px of vertical margin each side.
-      final w = cns.maxWidth - 4;
-      final h = cns.maxHeight - 96;
-      final side = w < h ? w : h;
-      final cell = side / 5;
-      var idx = 0;
-      final rows = <Widget>[];
-      for (var r = 0; r < 5; r++) {
-        final cells = <Widget>[];
-        for (var c = 0; c < 5; c++) {
-          // Start blank at (0,0); tiles on the alternating (r+c)-odd cells.
-          final filled = (r + c).isOdd && idx < _tiles.length;
-          final tile = filled ? _tiles[idx++] : null;
-          cells.add(tile == null
+  Widget _matrix(double side) {
+    const gap = 0.0;
+    // 5 cells + 4 gaps span `side`.
+    final cell = (side - gap * 4) / 5;
+    var idx = 0;
+    final rows = <Widget>[];
+    for (var r = 0; r < 5; r++) {
+      final cells = <Widget>[];
+      for (var c = 0; c < 5; c++) {
+        // Start blank at (0,0); tiles on the alternating (r+c)-odd cells.
+        final filled = (r + c).isOdd && idx < _tiles.length;
+        final tile = filled ? _tiles[idx++] : null;
+        cells.add(Padding(
+          padding: EdgeInsets.only(right: c < 4 ? gap : 0, bottom: r < 4 ? gap : 0),
+          child: tile == null
               ? SizedBox(width: cell, height: cell)
-              : _GridCell(tile: tile, size: cell, onTap: () => _openPanel(tile.panel)));
-        }
-        rows.add(Row(mainAxisSize: MainAxisSize.min, children: cells));
+              : _GridCell(tile: tile, size: cell, onTap: (c) => _openPanel(tile.panel, origin: c)),
+        ));
       }
-      return Center(child: Column(mainAxisSize: MainAxisSize.min, children: rows));
-    });
+      rows.add(Row(mainAxisSize: MainAxisSize.min, children: cells));
+    }
+    return Column(mainAxisSize: MainAxisSize.min, children: rows);
+  }
+
+  // ---- Profile card (right sidebar, top) -----------------------------------
+
+  Widget _profileCard() {
+    final initials = _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S';
+    return _glass(
+      padding: const EdgeInsets.all(22),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        GestureDetector(
+          onTap: _pickAvatar,
+          child: ValueListenableBuilder<String>(
+            valueListenable: avatarNotifier,
+            builder: (ctx, av, _) => _avatarBox(av, 88, initials, editable: true),
+          ),
+        ),
+        const SizedBox(width: 18),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            RichText(
+              text: TextSpan(children: [
+                TextSpan(text: 'Hi, ', style: GoogleFonts.poppins(fontSize: 25, fontWeight: FontWeight.w800, color: _navy)),
+                TextSpan(text: _firstName, style: GoogleFonts.poppins(fontSize: 25, fontWeight: FontWeight.w800, color: _orange)),
+              ]),
+            ),
+            const SizedBox(height: 3),
+            Text(_roleLabel, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _grey)),
+            const SizedBox(height: 10),
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
+                child: Text('ONROL Learner', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
+              ),
+              const SizedBox(width: 8),
+              _streakChip(),
+            ]),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  // Themed day-streak chip (fire + count). Tap opens the Achievements panel.
+  Widget _streakChip() => GestureDetector(
+        onTap: () => _openPanel('achievements'),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [BoxShadow(color: _orange.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(CupertinoIcons.flame_fill, color: Colors.white, size: 14),
+            const SizedBox(width: 4),
+            Text('$_streak day streak', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+          ]),
+        ),
+      );
+
+  // A square (rounded) profile picture. [avatar] is '' / 'p:N' (preset) or a
+  // 'data:' URI (uploaded photo). Shows a camera badge when [editable].
+  Widget _avatarBox(String avatar, double size, String initials, {bool editable = false}) {
+    final radius = size * 0.26;
+    final bytes = avatar.startsWith('data:') ? _decodeDataUri(avatar) : null;
+    Widget face;
+    if (bytes != null) {
+      face = Container(
+        width: size, height: size,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(radius),
+          border: Border.all(color: Colors.white, width: 3),
+          image: DecorationImage(image: MemoryImage(bytes), fit: BoxFit.cover),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.22), blurRadius: 14, offset: const Offset(0, 6))],
+        ),
+      );
+    } else {
+      final idx = avatar.startsWith('p:') ? (int.tryParse(avatar.substring(2)) ?? 0) : 0;
+      final a = _avatars[idx.clamp(0, _avatars.length - 1)];
+      face = Container(
+        width: size, height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(colors: a.colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
+          borderRadius: BorderRadius.circular(radius),
+          border: Border.all(color: Colors.white, width: 3),
+          boxShadow: [BoxShadow(color: a.colors.last.withOpacity(0.35), blurRadius: 14, offset: const Offset(0, 6))],
+        ),
+        child: a.emoji.isEmpty
+            ? Text(initials, style: GoogleFonts.poppins(fontSize: size * 0.40, fontWeight: FontWeight.w800, color: Colors.white))
+            : Text(a.emoji, style: TextStyle(fontSize: size * 0.52)),
+      );
+    }
+    return Stack(clipBehavior: Clip.none, children: [
+      face,
+      if (editable)
+        Positioned(
+          right: -3, bottom: -3,
+          child: Container(
+            width: 26, height: 26, alignment: Alignment.center,
+            decoration: BoxDecoration(color: _orange, shape: BoxShape.circle, border: Border.all(color: _surface, width: 2)),
+            child: const Icon(CupertinoIcons.camera_fill, size: 12, color: Colors.white),
+          ),
+        ),
+    ]);
+  }
+
+  Uint8List? _decodeDataUri(String d) {
+    try {
+      return base64Decode(d.substring(d.indexOf(',') + 1));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _toast(String msg) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating));
+  }
+
+  // Pick a photo and save it as a small square JPEG data URI. The picker first
+  // downscales (browser canvas on web / native on mobile); we then crop to a
+  // 256px square with the `image` package, falling back to the picker's bytes
+  // if Dart can't decode them (e.g. an unusual format).
+  Future<void> _uploadAvatar(BuildContext dialogCtx) async {
+    try {
+      final x = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 85,
+      );
+      if (x == null) return; // user cancelled
+      final raw = await x.readAsBytes();
+      if (raw.isEmpty) {
+        _toast("That image was empty — try another.");
+        return;
+      }
+      Uint8List out;
+      String mime;
+      final decoded = img.decodeImage(raw);
+      if (decoded != null) {
+        out = img.encodeJpg(img.copyResizeCropSquare(decoded, size: 256), quality: 82);
+        mime = 'image/jpeg';
+      } else {
+        out = raw; // already downscaled by the picker
+        mime = x.mimeType ?? 'image/png';
+      }
+      if (out.lengthInBytes > 900000) {
+        _toast('Image too large — try a smaller one.');
+        return;
+      }
+      await _setAvatar('data:$mime;base64,${base64Encode(out)}');
+      if (dialogCtx.mounted) Navigator.of(dialogCtx).pop();
+      _toast('Profile picture updated');
+    } catch (e) {
+      _toast('Upload failed: $e');
+    }
+  }
+
+  // Default-picture picker + "upload your own".
+  void _pickAvatar() {
+    final initials = _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S';
+    showDialog(
+      context: context,
+      barrierColor: const Color(0x55000000),
+      builder: (ctx) => Center(
+        child: Material(
+          type: MaterialType.transparency,
+          child: _glass(
+            radius: 24,
+            padding: const EdgeInsets.all(22),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 380),
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Choose a picture', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: _navy)),
+                const SizedBox(height: 3),
+                Text('Pick a default or upload your own', style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
+                const SizedBox(height: 18),
+                ValueListenableBuilder<String>(
+                  valueListenable: avatarNotifier,
+                  builder: (c, sel, _) => Wrap(
+                    spacing: 12, runSpacing: 12,
+                    children: [
+                      for (var i = 0; i < _avatars.length; i++)
+                        GestureDetector(
+                          onTap: () {
+                            _setAvatar('p:$i');
+                            Navigator.of(ctx).pop();
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 140),
+                            padding: const EdgeInsets.all(3),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: sel == 'p:$i' || (sel.isEmpty && i == 0) ? _orange : Colors.transparent, width: 3),
+                            ),
+                            child: _avatarBox('p:$i', 58, initials),
+                          ),
+                        ),
+                      // Upload-your-own tile.
+                      GestureDetector(
+                        onTap: () => _uploadAvatar(ctx),
+                        child: Container(
+                          width: 64, height: 64, alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            color: _orange.withOpacity(0.10),
+                            border: Border.all(color: _orange.withOpacity(0.5), width: 1.5),
+                          ),
+                          child: Column(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(CupertinoIcons.cloud_upload_fill, size: 22, color: _orange),
+                            const SizedBox(height: 2),
+                            Text('Upload', style: GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w700, color: _orange)),
+                          ]),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: _Pressable(
+                    onTap: () => Navigator.of(ctx).pop(),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      child: Text('Close', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _orange)),
+                    ),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   // ---- Modal panels --------------------------------------------------------
 
-  void _openPanel(String key) {
+  void _openPanel(String key, {Offset? origin}) {
     final d = _panel(key);
-    _showPanel(d.$1, d.$2, d.$3, d.$4);
+    _showPanel(d.$1, d.$2, d.$3, d.$4, origin: origin);
   }
 
   // Course content viewer — modules & lessons from /me/courses/:id/content.
@@ -232,7 +723,7 @@ class _StudentHomeState extends State<StudentHome> {
           return [
             Padding(
               padding: const EdgeInsets.only(top: 10, bottom: 4),
-              child: Text(md['title']?.toString() ?? 'Module', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
+              child: Text(md['title']?.toString() ?? 'Module', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
             ),
             if (lessons.isEmpty) _emptyText('No lessons.') else ...lessons.map((l) => _lessonRow(l as Map<String, dynamic>)),
           ];
@@ -266,10 +757,10 @@ class _StudentHomeState extends State<StudentHome> {
       barrierDismissible: true,
       barrierLabel: 'sent',
       barrierColor: const Color(0x66000000),
-      transitionDuration: const Duration(milliseconds: 320),
+      transitionDuration: const Duration(milliseconds: 300),
       transitionBuilder: (ctx, anim, sec, child) {
-        final c = CurvedAnimation(parent: anim, curve: Curves.easeOutBack);
-        return Transform.scale(scale: 0.7 + 0.3 * c.value, child: Opacity(opacity: anim.value.clamp(0.0, 1.0), child: child));
+        final c = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
+        return FadeTransition(opacity: c, child: ScaleTransition(scale: Tween<double>(begin: 0.85, end: 1.0).animate(c), child: child));
       },
       pageBuilder: (ctx, anim, sec) {
         _isDark = Theme.of(ctx).brightness == Brightness.dark;
@@ -280,15 +771,16 @@ class _StudentHomeState extends State<StudentHome> {
         return Center(
           child: Material(
             type: MaterialType.transparency,
-            child: Container(
-              width: 280,
+            child: SizedBox(
+              width: 300,
+              child: _glass(
+              radius: 22,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 30),
-              decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(20)),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 TweenAnimationBuilder<double>(
                   tween: Tween(begin: 0, end: 1),
-                  duration: const Duration(milliseconds: 600),
-                  curve: Curves.elasticOut,
+                  duration: const Duration(milliseconds: 480),
+                  curve: Curves.easeOutBack,
                   builder: (_, v, __) => Transform.scale(
                     scale: v,
                     child: Container(
@@ -299,10 +791,11 @@ class _StudentHomeState extends State<StudentHome> {
                   ),
                 ),
                 const SizedBox(height: 18),
-                Text(title, textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700, color: _navy)),
+                Text(title, textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: _navy)),
                 const SizedBox(height: 6),
-                Text(sub, textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 13, color: _grey, height: 1.4)),
+                Text(sub, textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, color: _grey, height: 1.4)),
               ]),
+              ),
             ),
           ),
         );
@@ -328,7 +821,7 @@ class _StudentHomeState extends State<StudentHome> {
         child: Row(children: [
           Icon(icon, size: 20, color: _orange),
           const SizedBox(width: 12),
-          Expanded(child: Text(l['title']?.toString() ?? 'Lesson', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy))),
+          Expanded(child: Text(l['title']?.toString() ?? 'Lesson', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _navy))),
           Icon(done ? CupertinoIcons.checkmark_alt_circle_fill : CupertinoIcons.chevron_right, size: done ? 20 : 16, color: done ? _green : _grey),
         ]),
       ),
@@ -354,7 +847,7 @@ class _StudentHomeState extends State<StudentHome> {
     } else if (url.isNotEmpty) {
       // Text lesson: show the body.
       _showPanel(CupertinoIcons.doc_text_fill, l['title']?.toString() ?? 'Lesson', 'Lesson', [
-        Text(url, style: GoogleFonts.inter(fontSize: 14, color: _navy, height: 1.6)),
+        Text(url, style: GoogleFonts.poppins(fontSize: 14, color: _navy, height: 1.6)),
       ]);
     }
     // Mark complete (best-effort).
@@ -385,7 +878,7 @@ class _StudentHomeState extends State<StudentHome> {
                 padding: const EdgeInsets.only(bottom: 18),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('${e.key + 1}. ${q['prompt'] ?? ''}',
-                      style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: _navy)),
+                      style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: _navy)),
                   const SizedBox(height: 8),
                   if (opts.isNotEmpty)
                     ...opts.map((o) => _Pressable(
@@ -402,7 +895,7 @@ class _StudentHomeState extends State<StudentHome> {
                               Icon(answers[qid] == o ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle,
                                   size: 18, color: answers[qid] == o ? _orange : _grey),
                               const SizedBox(width: 10),
-                              Expanded(child: Text(o, style: GoogleFonts.inter(fontSize: 14, color: _navy))),
+                              Expanded(child: Text(o, style: GoogleFonts.poppins(fontSize: 14, color: _navy))),
                             ]),
                           ),
                         ))
@@ -432,7 +925,7 @@ class _StudentHomeState extends State<StudentHome> {
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(color: _orange, borderRadius: BorderRadius.circular(10)),
-                child: Text('Submit', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
+                child: Text('Submit', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
               ),
             ),
           ]);
@@ -441,37 +934,75 @@ class _StudentHomeState extends State<StudentHome> {
     ]);
   }
 
-  void _showPanel(IconData icon, String title, String sub, List<Widget> body) {
+  void _showPanel(IconData icon, String title, String sub, List<Widget> body, {Offset? origin}) {
+    final screen = MediaQuery.of(context).size;
+    // Scale-from-origin (macOS Launchpad style): the panel grows out of the
+    // tapped tile's location. Falls back to centre when there's no origin.
+    final align = origin == null
+        ? Alignment.center
+        : Alignment(
+            (origin.dx / screen.width * 2 - 1).clamp(-1.0, 1.0),
+            (origin.dy / screen.height * 2 - 1).clamp(-1.0, 1.0),
+          );
     showGeneralDialog(
       context: context,
       barrierLabel: 'panel',
       barrierDismissible: true,
-      barrierColor: const Color(0x731A1A2E),
-      transitionDuration: const Duration(milliseconds: 300),
+      barrierColor: const Color(0x401A1A2E),
+      transitionDuration: const Duration(milliseconds: 360),
       transitionBuilder: (ctx, anim, sec, child) {
         final c = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
+        // Grow out of the tapped tile: scale from a small box at that point.
         return FadeTransition(
           opacity: c,
-          child: SlideTransition(
-            position: Tween<Offset>(begin: const Offset(0, 0.05), end: Offset.zero).animate(c),
-            child: ScaleTransition(scale: Tween<double>(begin: 0.97, end: 1.0).animate(c), child: child),
-          ),
+          child: ScaleTransition(scale: Tween<double>(begin: 0.15, end: 1.0).animate(c), alignment: align, child: child),
         );
       },
       pageBuilder: (ctx, anim, sec) {
-        _isDark = Theme.of(ctx).brightness == Brightness.dark;
-        final size = MediaQuery.of(ctx).size;
-        return Center(
+        // Rebuild the whole panel when the theme changes so every label and
+        // surface colour re-reads `_isDark`. Otherwise toggling Dark Mode from
+        // inside this popup leaves the text/surface in their old (light) colours,
+        // because `pageBuilder` runs only once when the panel opens.
+        return ValueListenableBuilder<ThemeMode>(
+          valueListenable: themeNotifier,
+          builder: (ctx, mode, _) {
+            _isDark = mode == ThemeMode.dark ||
+                (mode == ThemeMode.system && MediaQuery.platformBrightnessOf(ctx) == Brightness.dark);
+            final size = MediaQuery.of(ctx).size;
+            return Center(
           // Material gives the text/inputs an ancestor (no yellow underlines).
           child: Material(
             type: MaterialType.transparency,
-            child: Container(
+            child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: size.width * 0.01, vertical: size.height * 0.01),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: 34, sigmaY: 34),
+                child: Container(
             width: size.width * 0.98,
             height: size.height * 0.98,
-            margin: EdgeInsets.symmetric(horizontal: size.width * 0.01, vertical: size.height * 0.01),
             padding: EdgeInsets.fromLTRB(20, MediaQuery.of(ctx).padding.top + 12, 20, 18),
-            decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(10)),
-            child: SingleChildScrollView(
+            // Frosted-glass sheet — a translucent gradient + bright highlight
+            // edge so the blurred dashboard glows through the panel.
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: _isDark
+                    ? [const Color(0xFF24262F).withOpacity(0.68), const Color(0xFF181A22).withOpacity(0.50)]
+                    : [Colors.white.withOpacity(0.66), Colors.white.withOpacity(0.44)],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: _isDark ? Colors.white.withOpacity(0.14) : Colors.white.withOpacity(0.75), width: 1.2),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.35 : 0.10), blurRadius: 40, offset: const Offset(0, 18))],
+            ),
+            // Keyed on brightness so the re-used `body` widget instances (which
+            // Flutter would otherwise skip rebuilding) re-inflate and re-read the
+            // brightness-aware colours when Dark Mode is toggled.
+            child: KeyedSubtree(
+              key: ValueKey(_isDark),
+              child: SingleChildScrollView(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
                   // Back button (replaces the close ✕).
                   Align(
@@ -482,7 +1013,7 @@ class _StudentHomeState extends State<StudentHome> {
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
                           Icon(CupertinoIcons.chevron_back, size: 22, color: _orange),
-                          Text('Back', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600, color: _orange)),
+                          Text('Back', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: _orange)),
                         ]),
                       ),
                     ),
@@ -496,8 +1027,8 @@ class _StudentHomeState extends State<StudentHome> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(title, style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w700, color: _navy)),
-                        Text(sub, style: GoogleFonts.inter(fontSize: 13, color: _grey)),
+                        Text(title, style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w700, color: _navy)),
+                        Text(sub, style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
                       ]),
                     ),
                   ]),
@@ -506,7 +1037,13 @@ class _StudentHomeState extends State<StudentHome> {
                 ]),
               ),
             ),
+            ),
+            ),
+            ),
+            ),
           ),
+        );
+          },
         );
       },
     );
@@ -548,7 +1085,7 @@ class _StudentHomeState extends State<StudentHome> {
                   Row(children: [
                     Icon(CupertinoIcons.bell_fill, size: 16, color: _orange),
                     const SizedBox(width: 6),
-                    Text('Notifications', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
+                    Text('Notifications', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
                   ]),
                   const SizedBox(height: 8),
                   ...notes.take(3).map((e) {
@@ -685,7 +1222,7 @@ class _StudentHomeState extends State<StudentHome> {
               children.add(Padding(
                 padding: const EdgeInsets.only(top: 16, bottom: 4),
                 child: Text(k == null ? 'Unscheduled' : 'Day $k',
-                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: _orange)),
+                    style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _orange)),
               ));
               for (final m in groups[k]!) {
                 final isQuiz = m['type'] == 'quiz';
@@ -746,12 +1283,12 @@ class _StudentHomeState extends State<StudentHome> {
         return (CupertinoIcons.creditcard_fill, 'Payments', 'Billing & subscriptions', [
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: _peachSoft, borderRadius: BorderRadius.circular(12), border: const Border(left: BorderSide(color: _orange, width: 4))),
+            decoration: BoxDecoration(color: _peachSoft, borderRadius: BorderRadius.circular(12)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Current Plan', style: GoogleFonts.inter(fontSize: 13, color: _grey)),
+              Text('Current Plan', style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
               const SizedBox(height: 4),
-              Text('ONROL Pro', style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w700, color: _orange)),
-              Text('Renews July 10, 2026', style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFFAAAAAA))),
+              Text('ONROL Pro', style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w700, color: _orange)),
+              Text('Renews July 10, 2026', style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFFAAAAAA))),
             ]),
           ),
           const SizedBox(height: 14),
@@ -794,7 +1331,7 @@ class _StudentHomeState extends State<StudentHome> {
         return (CupertinoIcons.search, 'Search', 'Find courses & lessons', [
           _field('SEARCH', ''),
           const SizedBox(height: 8),
-          Text('Popular searches', style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFFAAAAAA), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+          Text('Popular searches', style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFFAAAAAA), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
           const SizedBox(height: 6),
           _row(CupertinoIcons.device_laptop, 'JavaScript Basics', 'Course · 4.8 rating', 'Open'),
           _row(CupertinoIcons.paintbrush_fill, 'Figma Crash Course', 'Course · 4.9 rating', 'Open'),
@@ -826,7 +1363,7 @@ class _StudentHomeState extends State<StudentHome> {
             return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: groups.entries.expand<Widget>((e) => [
               Padding(
                 padding: const EdgeInsets.only(top: 10, bottom: 4),
-                child: Text(e.key, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
+                child: Text(e.key, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
               ),
               ...e.value.map((c) {
                 final m = c as Map<String, dynamic>;
@@ -849,7 +1386,7 @@ class _StudentHomeState extends State<StudentHome> {
               const Icon(CupertinoIcons.square_arrow_right, size: 48, color: _orange),
               const SizedBox(height: 12),
               Text('Are you sure you want to log out, $_firstName? Your progress is saved and you can continue anytime.',
-                  textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 15, color: const Color(0xFF666666), height: 1.6)),
+                  textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 15, color: const Color(0xFF666666), height: 1.6)),
               const SizedBox(height: 24),
               Row(children: [
                 Expanded(child: _outlineButton('Stay', () => Navigator.of(context).pop())),
@@ -867,11 +1404,11 @@ class _StudentHomeState extends State<StudentHome> {
 
 Widget _statCard(String num, String label) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-      decoration: BoxDecoration(color: _peachSoft, borderRadius: BorderRadius.circular(12), border: const Border(left: BorderSide(color: _orange, width: 4))),
+      decoration: BoxDecoration(color: _peachSoft, borderRadius: BorderRadius.circular(12)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(num, style: GoogleFonts.inter(fontSize: 26, fontWeight: FontWeight.w700, color: _orange)),
+        Text(num, style: GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w700, color: _orange)),
         const SizedBox(height: 2),
-        Text(label, style: GoogleFonts.inter(fontSize: 12, color: _grey)),
+        Text(label, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
       ]),
     );
 
@@ -879,8 +1416,8 @@ Widget _progress(String label, double pct) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 7),
       child: Column(children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(label, style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF555555))),
-          Text('${(pct * 100).round()}%', style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF555555))),
+          Text(label, style: GoogleFonts.poppins(fontSize: 13, color: const Color(0xFF555555))),
+          Text('${(pct * 100).round()}%', style: GoogleFonts.poppins(fontSize: 13, color: const Color(0xFF555555))),
         ]),
         const SizedBox(height: 6),
         ClipRRect(
@@ -892,35 +1429,83 @@ Widget _progress(String label, double pct) => Padding(
 
 Widget _notif(String text, String time, {bool read = false}) => _StudentHomeNotif(text: text, time: time, read: read);
 
-Widget _row(IconData icon, String name, String meta, String badge, {Color? badgeBg, Color? badgeFg}) => Container(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: _line))),
-      child: Row(children: [
-        Container(width: 44, height: 44, alignment: Alignment.center, decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(8)), child: Icon(icon, size: 20, color: _orange)),
-        const SizedBox(width: 14),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(name, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
-          Text(meta, style: GoogleFonts.inter(fontSize: 12, color: _grey)),
-        ])),
-        const SizedBox(width: 8),
-        Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: badgeBg ?? _peach, borderRadius: BorderRadius.circular(20)),
-            child: Text(badge, style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: badgeFg ?? _orange))),
-      ]),
+Widget _row(IconData icon, String name, String meta, String badge, {Color? badgeBg, Color? badgeFg}) =>
+    _PanelRow(icon: icon, name: name, meta: meta, badge: badge, badgeBg: badgeBg, badgeFg: badgeFg);
+
+/// A panel list row that highlights + nudges on hover.
+class _PanelRow extends StatefulWidget {
+  const _PanelRow({required this.icon, required this.name, required this.meta, required this.badge, this.badgeBg, this.badgeFg});
+  final IconData icon;
+  final String name;
+  final String meta;
+  final String badge;
+  final Color? badgeBg;
+  final Color? badgeFg;
+
+  @override
+  State<_PanelRow> createState() => _PanelRowState();
+}
+
+class _PanelRowState extends State<_PanelRow> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOutCubic,
+        transform: Matrix4.translationValues(_hover ? 3 : 0, 0, 0),
+        margin: const EdgeInsets.symmetric(vertical: 5),
+        padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
+        // A frosted "glass chip" — minimal translucent gradient + hairline edge,
+        // sitting on the already-blurred panel; warms to an orange wash + lift
+        // on hover.
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: _hover
+                ? [_orange.withOpacity(0.18), _orange.withOpacity(0.06)]
+                : (_isDark
+                    ? [Colors.white.withOpacity(0.06), Colors.white.withOpacity(0.02)]
+                    : [Colors.white.withOpacity(0.55), Colors.white.withOpacity(0.28)]),
+          ),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _hover ? _orange.withOpacity(0.40) : _glassBorder, width: 1),
+          boxShadow: _hover ? [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 16, offset: const Offset(0, 6))] : const [],
+        ),
+        child: Row(children: [
+          Container(width: 44, height: 44, alignment: Alignment.center, decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(8)), child: Icon(widget.icon, size: 20, color: _orange)),
+          const SizedBox(width: 14),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(widget.name, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
+            Text(widget.meta, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+          ])),
+          const SizedBox(width: 8),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: widget.badgeBg ?? _peach, borderRadius: BorderRadius.circular(20)),
+              child: Text(widget.badge, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: widget.badgeFg ?? _orange))),
+        ]),
+      ),
     );
+  }
+}
 
 Widget _leader(String rank, String name, String sub, String pts, {bool highlight = false}) => Container(
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
       decoration: BoxDecoration(color: highlight ? _peachSoft : null, borderRadius: BorderRadius.circular(8)),
       child: Row(children: [
-        SizedBox(width: 28, child: Text('#$rank', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: _orange))),
+        SizedBox(width: 28, child: Text('#$rank', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _orange))),
         const SizedBox(width: 12),
         Container(width: 36, height: 36, alignment: Alignment.center, decoration: BoxDecoration(color: _orange.withOpacity(0.12), shape: BoxShape.circle), child: const Icon(CupertinoIcons.person_fill, size: 18, color: _orange)),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(name, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
-          Text(sub, style: GoogleFonts.inter(fontSize: 12, color: _grey)),
+          Text(name, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
+          Text(sub, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
         ])),
-        Text(pts, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: _orange)),
+        Text(pts, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _orange)),
       ]),
     );
 
@@ -1024,9 +1609,9 @@ Widget _help(String q, String a) => Container(
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(width: 10, height: 10, margin: const EdgeInsets.only(top: 5, right: 14), decoration: BoxDecoration(color: _navy, shape: BoxShape.circle)),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(q, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
+          Text(q, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
           const SizedBox(height: 3),
-          Text(a, style: GoogleFonts.inter(fontSize: 12, color: _grey, height: 1.4)),
+          Text(a, style: GoogleFonts.poppins(fontSize: 12, color: _grey, height: 1.4)),
         ])),
       ]),
     );
@@ -1034,11 +1619,11 @@ Widget _help(String q, String a) => Container(
 Widget _field(String label, String value) => Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFFAAAAAA), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+        Text(label, style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFFAAAAAA), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
         const SizedBox(height: 5),
         TextFormField(
           initialValue: value,
-          style: GoogleFonts.inter(fontSize: 14, color: _navy),
+          style: GoogleFonts.poppins(fontSize: 14, color: _navy),
           decoration: InputDecoration(
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1054,7 +1639,7 @@ Widget _orangeButton(String label, VoidCallback onTap) => _Pressable(
       child: Container(
         width: double.infinity, height: 46, alignment: Alignment.center,
         decoration: BoxDecoration(color: _orange, borderRadius: BorderRadius.circular(10)),
-        child: Text(label, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+        child: Text(label, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
       ),
     );
 
@@ -1063,7 +1648,7 @@ Widget _outlineButton(String label, VoidCallback onTap) => _Pressable(
       child: Container(
         height: 46, alignment: Alignment.center,
         decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: _orange, width: 2)),
-        child: Text(label, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _orange)),
+        child: Text(label, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _orange)),
       ),
     );
 
@@ -1128,12 +1713,12 @@ class _ProfilePanelState extends State<_ProfilePanel> {
   Widget _ctlField(String label, TextEditingController c, {bool enabled = true}) => Padding(
         padding: const EdgeInsets.only(bottom: 14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFFAAAAAA), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+          Text(label, style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFFAAAAAA), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
           const SizedBox(height: 5),
           TextField(
             controller: c,
             enabled: enabled,
-            style: GoogleFonts.inter(fontSize: 14, color: _navy),
+            style: GoogleFonts.poppins(fontSize: 14, color: _navy),
             decoration: InputDecoration(
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1159,8 +1744,8 @@ class _ProfilePanelState extends State<_ProfilePanel> {
         ),
       ),
       const SizedBox(height: 16),
-      Center(child: Text(_name.text, style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700, color: _navy))),
-      Center(child: Text('${_role[0].toUpperCase()}${_role.substring(1)} · ONROL', style: GoogleFonts.inter(fontSize: 13, color: _orange))),
+      Center(child: Text(_name.text, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: _navy))),
+      Center(child: Text('${_role[0].toUpperCase()}${_role.substring(1)} · ONROL', style: GoogleFonts.poppins(fontSize: 13, color: _orange))),
       const SizedBox(height: 20),
       _ctlField('FULL NAME', _name),
       _ctlField('EMAIL', TextEditingController(text: _email), enabled: false),
@@ -1173,7 +1758,7 @@ class _ProfilePanelState extends State<_ProfilePanel> {
           decoration: BoxDecoration(color: _orange, borderRadius: BorderRadius.circular(10)),
           child: _saving
               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
-              : Text('Save Changes', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+              : Text('Save Changes', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
         ),
       ),
     ]);
@@ -1182,13 +1767,260 @@ class _ProfilePanelState extends State<_ProfilePanel> {
 
 // ---- Small interactive widgets ---------------------------------------------
 
+/// Live AI / tech news feed (right sidebar). Polls `/api/v1/news` on mount and
+/// every few minutes, showing loading / fallback / data states. Keeps the exact
+/// card chrome — only the list content is now real and tappable.
+///
+/// When [scrollable] (wide layout) the header + "View All" button stay pinned
+/// and only the news list scrolls; otherwise it shrink-wraps and the page
+/// scrolls as a whole.
+class _AiNewsCard extends StatefulWidget {
+  const _AiNewsCard({required this.auth, required this.scrollable, required this.onViewAll});
+  final AuthService auth;
+  final bool scrollable;
+  final VoidCallback onViewAll;
+
+  @override
+  State<_AiNewsCard> createState() => _AiNewsCardState();
+}
+
+class _AiNewsCardState extends State<_AiNewsCard> {
+  List<_News>? _items; // null until the first load resolves
+  bool _failed = false;
+  bool _refreshing = false;
+  Timer? _poll; // refetches fresh headlines
+  Timer? _ticker; // ticks the "x min ago" labels + LIVE windows
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    // Pull fresh headlines every 90s (backend is cached, so this is cheap)…
+    _poll = Timer.periodic(const Duration(seconds: 90), (_) => _load());
+    // …and re-render every 30s so the relative times & LIVE badges stay live
+    // even between fetches.
+    _ticker = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    if (_refreshing) return;
+    if (mounted) setState(() => _refreshing = true);
+    try {
+      final res = await widget.auth.apiGet('/api/v1/news?category=ai');
+      final data = ApiClient.decode(res);
+      final list = ((data['news'] as List?) ?? [])
+          .map((e) => _News.fromJson(e as Map<String, dynamic>))
+          .where((n) => n.title.isNotEmpty && n.url.isNotEmpty)
+          .toList();
+      if (!mounted) return;
+      setState(() {
+        _items = list;
+        _failed = false;
+        _refreshing = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      // Keep any previously-loaded items; only flag failure when we have none.
+      setState(() {
+        _failed = true;
+        _refreshing = false;
+      });
+    }
+  }
+
+  Future<void> _open(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    // New tab on web, external browser on mobile.
+    await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _glass(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: widget.scrollable ? MainAxisSize.max : MainAxisSize.min,
+        children: [
+          Row(children: [
+            Icon(CupertinoIcons.sparkles, size: 18, color: _orange),
+            const SizedBox(width: 8),
+            Text('UPDATE ', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: _navy)),
+            Text('LIVE AI NEWS', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: _orange)),
+            const Spacer(),
+            _livePill(),
+          ]),
+          const SizedBox(height: 10),
+          if (widget.scrollable) Expanded(child: _body()) else _body(),
+          const SizedBox(height: 14),
+          _Pressable(
+            onTap: widget.onViewAll,
+            child: Container(
+              height: 46, alignment: Alignment.center,
+              decoration: BoxDecoration(color: _peach, borderRadius: BorderRadius.circular(12)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text('View All AI News', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _orange)),
+                const SizedBox(width: 6),
+                Icon(CupertinoIcons.arrow_right, size: 16, color: _orange),
+              ]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Loading / fallback / list — the only part that varies by state.
+  Widget _body() {
+    final items = _items;
+    if (items == null && !_failed) return _statusBox(loading: true);
+    if ((items == null || items.isEmpty)) return _statusBox(loading: false);
+
+    final rows = <Widget>[
+      for (var i = 0; i < items!.length; i++) _newsRow(items[i], last: i == items.length - 1),
+    ];
+    if (widget.scrollable) {
+      return ListView(padding: EdgeInsets.zero, children: rows);
+    }
+    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: rows);
+  }
+
+  Widget _statusBox({required bool loading}) {
+    final child = loading
+        ? const Padding(
+            padding: EdgeInsets.symmetric(vertical: 34),
+            child: Center(child: CircularProgressIndicator(color: _orange, strokeWidth: 2.5)),
+          )
+        : Padding(
+            padding: const EdgeInsets.symmetric(vertical: 30),
+            child: Column(children: [
+              Icon(CupertinoIcons.wifi_slash, size: 28, color: _grey),
+              const SizedBox(height: 8),
+              Text('Live news unavailable', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _navy)),
+              const SizedBox(height: 2),
+              Text('Pull again in a moment.', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+            ]),
+          );
+    // Keep a consistent height in the scrollable (wide) layout.
+    return widget.scrollable ? Center(child: child) : child;
+  }
+
+  // Pulsing, tappable LIVE pill — tap to refresh now; shows a spinner while
+  // fetching.
+  Widget _livePill() => GestureDetector(
+        onTap: _load,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            _refreshing
+                ? const SizedBox(width: 9, height: 9, child: CircularProgressIndicator(strokeWidth: 1.6, color: _orange))
+                : const _LiveDot(),
+            const SizedBox(width: 5),
+            Text('LIVE', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
+          ]),
+        ),
+      );
+
+  Widget _newsRow(_News n, {required bool last}) {
+    final live = n.isLive;
+    return InkWell(
+      onTap: () => _open(n.url),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        decoration: BoxDecoration(border: last ? null : Border(bottom: BorderSide(color: _line))),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: 56, height: 56, alignment: Alignment.center,
+            decoration: BoxDecoration(color: _peach, borderRadius: BorderRadius.circular(12)),
+            child: Icon(n.icon, size: 26, color: _orange),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // LIVE badge for recent items; otherwise the source name.
+              if (live)
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(width: 6, height: 6, decoration: const BoxDecoration(color: _orange, shape: BoxShape.circle)),
+                  const SizedBox(width: 5),
+                  Text('LIVE', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
+                ])
+              else
+                Text(n.source.toUpperCase(), style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
+              const SizedBox(height: 4),
+              Text(n.title, maxLines: 3, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: _navy, height: 1.3)),
+              const SizedBox(height: 4),
+              Text(
+                [n.source, if (n.ago.isNotEmpty) n.ago].join(' · '),
+                style: GoogleFonts.poppins(fontSize: 11.5, color: _grey),
+              ),
+            ]),
+          ),
+          const SizedBox(width: 8),
+          Padding(
+            padding: const EdgeInsets.only(top: 20),
+            child: Icon(CupertinoIcons.chevron_right, size: 16, color: _grey),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// A softly pulsing dot for the LIVE badge — signals the feed is live.
+class _LiveDot extends StatefulWidget {
+  const _LiveDot();
+  @override
+  State<_LiveDot> createState() => _LiveDotState();
+}
+
+class _LiveDotState extends State<_LiveDot> with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 850))..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, __) {
+        final t = _c.value;
+        return Container(
+          width: 8, height: 8,
+          decoration: BoxDecoration(
+            color: Color.lerp(_orange.withOpacity(0.45), _orange, t),
+            shape: BoxShape.circle,
+            boxShadow: [BoxShadow(color: _orange.withOpacity(0.55 * t), blurRadius: 6 * t, spreadRadius: 1.5 * t)],
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// One square option tile: a colored graphic (emoji) plus the option name.
 /// No rounded corners. Scales slightly on hover/press.
 class _GridCell extends StatefulWidget {
   const _GridCell({required this.tile, required this.size, required this.onTap});
   final _Tile tile;
   final double size;
-  final VoidCallback onTap;
+  // Reports the tile's global centre so the panel can grow from it (macOS-style).
+  final void Function(Offset center) onTap;
 
   @override
   State<_GridCell> createState() => _GridCellState();
@@ -1202,37 +2034,84 @@ class _GridCellState extends State<_GridCell> {
   Widget build(BuildContext context) {
     final t = widget.tile;
     final s = widget.size;
-    final scale = _down ? 0.96 : (_hover ? 1.05 : 1.0);
+    final active = _hover || _down;
+    // Smooth lift on hover, gentle squash on press (no overshoot/bounce).
+    final scale = _down ? 0.96 : (_hover ? 1.06 : 1.0);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
+      onExit: (_) => setState(() {
+        _hover = false;
+        _down = false;
+      }),
       child: GestureDetector(
         onTapDown: (_) => setState(() => _down = true),
         onTapUp: (_) => setState(() => _down = false),
         onTapCancel: () => setState(() => _down = false),
-        onTap: widget.onTap,
+        onTap: () {
+          final box = context.findRenderObject() as RenderBox?;
+          widget.onTap(box != null ? box.localToGlobal(box.size.center(Offset.zero)) : Offset.zero);
+        },
         child: AnimatedScale(
           scale: scale,
-          duration: const Duration(milliseconds: 140),
-          curve: Curves.easeOut,
-          child: Container(
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
             width: s, height: s,
-            // Solid square option (no roundness); icon + name inside it.
-            color: _hover ? Color.alphaBlend(Colors.black.withOpacity(0.10), _orange) : _orange,
             alignment: Alignment.center,
             padding: EdgeInsets.all(s * 0.08),
+            // Tinted-glass tile: translucent orange so the backdrop glows
+            // through, a hairline highlight edge, and an orange lift on hover.
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: _hover
+                    ? [const Color(0xFFFF7A4D).withOpacity(0.94), _orange.withOpacity(0.84)]
+                    : [_orange.withOpacity(0.92), const Color(0xFFE8421F).withOpacity(0.82)],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: _orange.withOpacity(active ? 0.55 : 0.20),
+                  blurRadius: active ? 28 : 14,
+                  spreadRadius: active ? 1 : 0,
+                  offset: Offset(0, active ? 12 : 6),
+                ),
+              ],
+            ),
+            // Glossy top sheen.
+            foregroundDecoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.white.withOpacity(0.16), Colors.white.withOpacity(0.0)],
+                stops: const [0.0, 0.55],
+              ),
+            ),
             child: FittedBox(
               fit: BoxFit.scaleDown,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(t.icon, color: Colors.white, size: 30),
+                  // Icon nudges up and grows a touch on hover.
+                  AnimatedSlide(
+                    offset: _hover ? const Offset(0, -0.05) : Offset.zero,
+                    duration: const Duration(milliseconds: 240),
+                    curve: Curves.easeOutCubic,
+                    child: AnimatedScale(
+                      scale: _hover ? 1.12 : 1.0,
+                      duration: const Duration(milliseconds: 240),
+                      curve: Curves.easeOutCubic,
+                      child: Icon(t.icon, color: Colors.white, size: 30),
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   Text(t.label,
                       maxLines: 1,
                       textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+                      style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
                 ],
               ),
             ),
@@ -1268,8 +2147,8 @@ Widget _toggleRowView(String label, String sub, bool on, VoidCallback onTap) => 
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: _line))),
       child: Row(children: [
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: GoogleFonts.inter(fontSize: 14, color: _navy)),
-          Text(sub, style: GoogleFonts.inter(fontSize: 12, color: _grey)),
+          Text(label, style: GoogleFonts.poppins(fontSize: 14, color: _navy)),
+          Text(sub, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
         ])),
         GestureDetector(
           onTap: onTap,
@@ -1319,9 +2198,9 @@ class _StudentHomeNotif extends StatelessWidget {
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(width: 10, height: 10, margin: const EdgeInsets.only(top: 5, right: 14), decoration: BoxDecoration(color: read ? const Color(0xFFDDDDDD) : _orange, shape: BoxShape.circle)),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(text, style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF333333), height: 1.5)),
+          Text(text, style: GoogleFonts.poppins(fontSize: 13, color: const Color(0xFF333333), height: 1.5)),
           const SizedBox(height: 3),
-          Text(time, style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFFAAAAAA))),
+          Text(time, style: GoogleFonts.poppins(fontSize: 11, color: const Color(0xFFAAAAAA))),
         ])),
       ]),
     );
@@ -1339,17 +2218,24 @@ class _Pressable extends StatefulWidget {
 }
 
 class _PressableState extends State<_Pressable> {
-  double _scale = 1;
+  bool _down = false;
+  bool _hover = false;
   @override
   Widget build(BuildContext context) {
+    final scale = _down ? 0.96 : (_hover ? 1.03 : 1.0);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() {
+        _hover = false;
+        _down = false;
+      }),
       child: GestureDetector(
-        onTapDown: (_) => setState(() => _scale = 0.96),
-        onTapUp: (_) => setState(() => _scale = 1),
-        onTapCancel: () => setState(() => _scale = 1),
+        onTapDown: (_) => setState(() => _down = true),
+        onTapUp: (_) => setState(() => _down = false),
+        onTapCancel: () => setState(() => _down = false),
         onTap: widget.onTap,
-        child: AnimatedScale(scale: _scale, duration: const Duration(milliseconds: 90), child: widget.child),
+        child: AnimatedScale(scale: scale, duration: const Duration(milliseconds: 140), curve: Curves.easeOutCubic, child: widget.child),
       ),
     );
   }
