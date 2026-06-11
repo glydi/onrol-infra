@@ -18,6 +18,8 @@ import 'video_player_screen.dart';
 
 // Palette — red-orange accent.
 const _orange = Color(0xFFFF4F2B);
+// Shared accent gradient (used instead of any solid orange fill).
+const _orangeGrad = LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight);
 const _green = Color(0xFF2D8A4E);
 const _greenBg = Color(0xFFEAFAF0);
 
@@ -773,7 +775,7 @@ class _StudentHomeState extends State<StudentHome> {
               Text('Mark as doubt', style: GoogleFonts.poppins(fontSize: 13, color: _navy)),
             ])),
             const Spacer(),
-            _Pressable(onTap: post, child: Container(padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10), decoration: BoxDecoration(color: _orange, borderRadius: BorderRadius.circular(8)),
+            _Pressable(onTap: post, child: Container(padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10), decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(8)),
                 child: Text('Post', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)))),
           ]),
         ]);
@@ -974,7 +976,7 @@ class _StudentHomeState extends State<StudentHome> {
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 alignment: Alignment.center,
-                decoration: BoxDecoration(color: _orange, borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(10)),
                 child: Text('Submit', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
               ),
             ),
@@ -1164,7 +1166,7 @@ class _StudentHomeState extends State<StudentHome> {
                   },
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 14), alignment: Alignment.center,
-                    decoration: BoxDecoration(color: _orange, borderRadius: BorderRadius.circular(10)),
+                    decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(10)),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       const Icon(CupertinoIcons.play_fill, color: Colors.white, size: 16),
                       const SizedBox(width: 8),
@@ -1333,7 +1335,7 @@ class _StudentHomeState extends State<StudentHome> {
         return (CupertinoIcons.creditcard_fill, 'Payments', 'Billing & subscriptions', [
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: _peachSoft, borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_orange.withOpacity(0.14), _orange.withOpacity(0.05)]), borderRadius: BorderRadius.circular(12)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Current Plan', style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
               const SizedBox(height: 4),
@@ -2006,7 +2008,7 @@ Widget _orangeButton(String label, VoidCallback onTap) => _Pressable(
       onTap: onTap,
       child: Container(
         width: double.infinity, height: 46, alignment: Alignment.center,
-        decoration: BoxDecoration(color: _orange, borderRadius: BorderRadius.circular(10)),
+        decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(10)),
         child: Text(label, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
       ),
     );
@@ -2348,7 +2350,7 @@ class _AiNewsCardState extends State<_AiNewsCard> {
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Container(
             width: 56, height: 56, alignment: Alignment.center,
-            decoration: BoxDecoration(color: _peach, borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_orange.withOpacity(0.16), _orange.withOpacity(0.06)]), borderRadius: BorderRadius.circular(12)),
             child: Icon(n.icon, size: 26, color: _orange),
           ),
           const SizedBox(width: 14),
@@ -2633,7 +2635,7 @@ Widget _avatarBox(String avatar, double size, String initials, {bool editable = 
         right: -3, bottom: -3,
         child: Container(
           width: 26, height: 26, alignment: Alignment.center,
-          decoration: BoxDecoration(color: _orange, shape: BoxShape.circle, border: Border.all(color: _surface, width: 2)),
+          decoration: BoxDecoration(gradient: _orangeGrad, shape: BoxShape.circle, border: Border.all(color: _surface, width: 2)),
           child: const Icon(CupertinoIcons.camera_fill, size: 12, color: Colors.white),
         ),
       ),
