@@ -1,6 +1,5 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
@@ -8,7 +7,6 @@ import '../theme.dart';
 import '../widgets/app_shell.dart';
 import '../widgets/profile_view.dart';
 import '../widgets/ui.dart';
-import 'crm_portal.dart';
 import 'discussion_screen.dart';
 import 'login_screen.dart';
 
@@ -94,13 +92,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     return AppShell(
       auth: widget.auth,
       onSignOut: _logout,
-      trailing: _isAdmin
-          ? Row(mainAxisSize: MainAxisSize.min, children: [
-              _openCrmButton(),
-              const SizedBox(width: 10),
-              _newCourseButton(),
-            ])
-          : null,
+      trailing: _isAdmin ? _newCourseButton() : null,
       destinations: dests,
       pages: pages,
     );
@@ -325,29 +317,6 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           Icon(CupertinoIcons.add, color: Colors.white, size: 18),
           SizedBox(width: 6),
           Text('New Course', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-        ]),
-      ),
-    );
-  }
-
-  // Opens the separate CRM portal (crm.* subdomain) in a new browser tab.
-  Widget _openCrmButton() {
-    final p = Palette.of(context);
-    return GestureDetector(
-      onTap: () => launchUrl(Uri.parse(crmUrl()), webOnlyWindowName: '_blank', mode: LaunchMode.externalApplication),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: p.card2,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: p.separator),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(CupertinoIcons.person_crop_circle_badge_checkmark, color: p.label, size: 18),
-          const SizedBox(width: 6),
-          Text('Open CRM', style: TextStyle(color: p.label, fontWeight: FontWeight.w600)),
-          const SizedBox(width: 4),
-          Icon(CupertinoIcons.arrow_up_right, color: p.secondary, size: 13),
         ]),
       ),
     );
