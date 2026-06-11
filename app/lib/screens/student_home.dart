@@ -1263,7 +1263,7 @@ class _StudentHomeState extends State<StudentHome> {
         return (CupertinoIcons.calendar, 'Calendar', 'Classes, deadlines & activities', [
           _future(_apiList('/api/v1/me/calendar', 'calendar'), (List items) {
             if (items.isEmpty) return _emptyText('Nothing scheduled yet.');
-            return _calendarAgenda(items);
+            return _CalendarView(items: items);
           }),
         ]);
       case 'progress':
@@ -1399,7 +1399,7 @@ class _StudentHomeState extends State<StudentHome> {
         return (CupertinoIcons.calendar, 'Calendar', 'Classes, deadlines & activities', [
           _future(_apiList('/api/v1/me/calendar', 'calendar'), (List items) {
             if (items.isEmpty) return _emptyText('Nothing scheduled yet.');
-            return _calendarAgenda(items);
+            return _CalendarView(items: items);
           }),
         ]);
       case 'announcements':
@@ -1548,25 +1548,13 @@ class _PanelRowState extends State<_PanelRow> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
         curve: Curves.easeOutCubic,
-        transform: Matrix4.translationValues(_hover ? 3 : 0, 0, 0),
-        margin: const EdgeInsets.symmetric(vertical: 5),
-        padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
-        // A frosted "glass chip" — minimal translucent gradient + hairline edge,
-        // sitting on the already-blurred panel; warms to an orange wash + lift
-        // on hover.
+        margin: const EdgeInsets.symmetric(vertical: 3),
+        padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 10),
+        // Minimal: transparent at rest, a light orange wash + hairline on hover.
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: _hover
-                ? [_orange.withOpacity(0.18), _orange.withOpacity(0.06)]
-                : (_isDark
-                    ? [Colors.white.withOpacity(0.06), Colors.white.withOpacity(0.02)]
-                    : [Colors.white.withOpacity(0.55), Colors.white.withOpacity(0.28)]),
-          ),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _hover ? _orange.withOpacity(0.40) : _glassBorder, width: 1),
-          boxShadow: _hover ? [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 16, offset: const Offset(0, 6))] : const [],
+          color: _hover ? _orange.withOpacity(0.06) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _hover ? _orange.withOpacity(0.18) : Colors.transparent, width: 1),
         ),
         child: Row(children: [
           Container(width: 44, height: 44, alignment: Alignment.center, decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(8)), child: Icon(widget.icon, size: 20, color: _orange)),
@@ -1692,6 +1680,172 @@ Widget _calendarAgenda(List items) {
     }
   }
   return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: out);
+}
+
+const _monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const _weekdayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+/// Live month calendar — dots per day for classes / deadlines / activities; tap
+/// a day to see its agenda. Smooth month + day-selection transitions, themed.
+class _CalendarView extends StatefulWidget {
+  const _CalendarView({required this.items});
+  final List items;
+
+  @override
+  State<_CalendarView> createState() => _CalendarViewState();
+}
+
+class _CalendarViewState extends State<_CalendarView> {
+  final Map<String, List<Map<String, dynamic>>> _byDay = {};
+  late DateTime _month;
+  late DateTime _selected;
+  int _dir = 1;
+
+  String _k(DateTime d) => '${d.year}-${d.month}-${d.day}';
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _selected = DateTime(now.year, now.month, now.day);
+    _month = DateTime(now.year, now.month);
+    for (final e in widget.items) {
+      final m = e as Map<String, dynamic>;
+      final dt = DateTime.tryParse(m['at']?.toString() ?? '')?.toLocal();
+      if (dt == null) continue;
+      _byDay.putIfAbsent(_k(DateTime(dt.year, dt.month, dt.day)), () => []).add({...m, '_dt': dt});
+    }
+  }
+
+  void _shift(int delta) => setState(() {
+        _dir = delta;
+        _month = DateTime(_month.year, _month.month + delta);
+      });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        _navBtn(CupertinoIcons.chevron_left, () => _shift(-1)),
+        Expanded(child: Center(child: Text('${_monthNames[_month.month - 1]} ${_month.year}', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: _navy)))),
+        _navBtn(CupertinoIcons.chevron_right, () => _shift(1)),
+      ]),
+      const SizedBox(height: 12),
+      Row(children: _weekdayNames.map((w) => Expanded(child: Center(child: Text(w, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: _grey))))).toList()),
+      const SizedBox(height: 6),
+      ClipRect(
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, a) => FadeTransition(
+            opacity: a,
+            child: SlideTransition(position: Tween<Offset>(begin: Offset(0.10 * _dir, 0), end: Offset.zero).animate(a), child: child),
+          ),
+          child: KeyedSubtree(key: ValueKey('${_month.year}-${_month.month}'), child: _grid()),
+        ),
+      ),
+      const SizedBox(height: 16),
+      AnimatedSwitcher(
+        duration: const Duration(milliseconds: 240),
+        child: KeyedSubtree(key: ValueKey(_k(_selected)), child: _agenda()),
+      ),
+    ]);
+  }
+
+  Widget _navBtn(IconData ic, VoidCallback onTap) => _Pressable(
+        onTap: onTap,
+        child: Container(
+          width: 36, height: 36, alignment: Alignment.center,
+          decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(10)),
+          child: Icon(ic, size: 18, color: _orange),
+        ),
+      );
+
+  Widget _grid() {
+    final first = DateTime(_month.year, _month.month, 1);
+    final lead = (first.weekday - 1) % 7; // Monday-start
+    final days = DateTime(_month.year, _month.month + 1, 0).day;
+    final cells = <DateTime?>[];
+    for (var i = 0; i < lead; i++) cells.add(null);
+    for (var d = 1; d <= days; d++) cells.add(DateTime(_month.year, _month.month, d));
+    while (cells.length % 7 != 0) cells.add(null);
+    final rows = <Widget>[];
+    for (var i = 0; i < cells.length; i += 7) {
+      rows.add(Row(children: [for (var j = 0; j < 7; j++) Expanded(child: _cell(cells[i + j]))]));
+    }
+    return Column(children: rows);
+  }
+
+  Widget _cell(DateTime? d) {
+    if (d == null) return const SizedBox(height: 46);
+    final now = DateTime.now();
+    final isToday = d.year == now.year && d.month == now.month && d.day == now.day;
+    final isSel = d == _selected;
+    final evs = _byDay[_k(d)] ?? const [];
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _selected = d),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        height: 46,
+        margin: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: isSel ? _orange : (isToday ? _orange.withOpacity(0.12) : Colors.transparent),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Text('${d.day}', style: GoogleFonts.poppins(fontSize: 13, fontWeight: isSel || isToday ? FontWeight.w700 : FontWeight.w500, color: isSel ? Colors.white : _navy)),
+          const SizedBox(height: 3),
+          SizedBox(
+            height: 5,
+            child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
+              for (final m in evs.take(3))
+                Container(width: 5, height: 5, margin: const EdgeInsets.symmetric(horizontal: 1), decoration: BoxDecoration(color: isSel ? Colors.white : _calKind(m['kind']?.toString() ?? 'event').color, shape: BoxShape.circle)),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _agenda() {
+    final evs = [...(_byDay[_k(_selected)] ?? const <Map<String, dynamic>>[])]..sort((a, b) => (a['_dt'] as DateTime).compareTo(b['_dt'] as DateTime));
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text('${_weekdayNames[(_selected.weekday - 1) % 7]}, ${_monthNames[_selected.month - 1]} ${_selected.day}', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
+      const SizedBox(height: 10),
+      if (evs.isEmpty)
+        Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('No classes, deadlines or activities.', style: GoogleFonts.poppins(fontSize: 13, color: _grey)))
+      else
+        ...evs.map((m) {
+          final k = _calKind(m['kind']?.toString() ?? 'event');
+          final dt = m['_dt'] as DateTime;
+          final course = m['course']?.toString() ?? '';
+          return Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: _cardFill, borderRadius: BorderRadius.circular(14), border: Border.all(color: _cardBorder), boxShadow: [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.0 : 0.04), blurRadius: 8, offset: const Offset(0, 3))]),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: k.color.withOpacity(0.14), borderRadius: BorderRadius.circular(10)), child: Icon(k.icon, size: 19, color: k.color)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(m['title']?.toString() ?? 'Event', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
+                  const SizedBox(height: 3),
+                  Row(children: [
+                    Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: k.color.withOpacity(0.12), borderRadius: BorderRadius.circular(20)), child: Text(k.label, style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w700, color: k.color))),
+                    if (course.isNotEmpty) ...[const SizedBox(width: 6), Flexible(child: Text(course, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12, color: _grey)))],
+                  ]),
+                ]),
+              ),
+              const SizedBox(width: 8),
+              Text(_timeLabel(dt), style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: _grey)),
+            ]),
+          );
+        }),
+    ]);
+  }
 }
 
 Widget _help(String q, String a) => Container(
