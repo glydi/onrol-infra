@@ -91,6 +91,27 @@ class _GlassBackdrop extends StatelessWidget {
   }
 }
 
+/// A default profile picture: an emoji on a gradient square (index 0 = the
+/// user's initials instead of an emoji).
+class _Avatar {
+  const _Avatar(this.emoji, this.colors);
+  final String emoji;
+  final List<Color> colors;
+}
+
+const _avatars = <_Avatar>[
+  _Avatar('', [_orange, Color(0xFFFF7A4D)]), // letter avatar
+  _Avatar('🦊', [Color(0xFFFF8A3D), Color(0xFFFF5E3A)]),
+  _Avatar('🐼', [Color(0xFF6A85F1), Color(0xFF8E54E9)]),
+  _Avatar('🦁', [Color(0xFFFFB02E), Color(0xFFFF7A00)]),
+  _Avatar('🐯', [Color(0xFFFF9A3E), Color(0xFFEF5A2A)]),
+  _Avatar('🐨', [Color(0xFF8E9EAB), Color(0xFF5B6C82)]),
+  _Avatar('🦉', [Color(0xFF36D1DC), Color(0xFF5B86E5)]),
+  _Avatar('🐧', [Color(0xFF3A4A5E), Color(0xFF4B79A1)]),
+  _Avatar('🚀', [Color(0xFFEE5A6F), Color(0xFFF29263)]),
+  _Avatar('🐸', [Color(0xFF56AB2F), Color(0xFFA8E063)]),
+];
+
 /// Student home — a 5×5 orange checkerboard of options; each tile opens a modal
 /// panel. Matches the ONROL "Learn. Grow. Succeed." mockup.
 class StudentHome extends StatefulWidget {
@@ -422,16 +443,12 @@ class _StudentHomeState extends State<StudentHome> {
     return _glass(
       padding: const EdgeInsets.all(22),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(
-          width: 88, height: 88,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: const LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-            border: Border.all(color: Colors.white, width: 3),
-            boxShadow: [BoxShadow(color: _orange.withOpacity(0.3), blurRadius: 14, offset: const Offset(0, 6))],
+        GestureDetector(
+          onTap: _pickAvatar,
+          child: ValueListenableBuilder<int>(
+            valueListenable: avatarNotifier,
+            builder: (ctx, idx, _) => _avatarBox(idx, 88, initials, editable: true),
           ),
-          child: Text(initials, style: GoogleFonts.poppins(fontSize: 36, fontWeight: FontWeight.w800, color: Colors.white)),
         ),
         const SizedBox(width: 18),
         Expanded(
@@ -477,6 +494,98 @@ class _StudentHomeState extends State<StudentHome> {
           ]),
         ),
       );
+
+  // A square (rounded) profile picture — emoji or the user's initials on a
+  // gradient. Shows a camera badge when [editable].
+  Widget _avatarBox(int idx, double size, String initials, {bool editable = false}) {
+    final a = _avatars[idx.clamp(0, _avatars.length - 1)];
+    return Stack(clipBehavior: Clip.none, children: [
+      Container(
+        width: size, height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(colors: a.colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
+          borderRadius: BorderRadius.circular(size * 0.26),
+          border: Border.all(color: Colors.white, width: 3),
+          boxShadow: [BoxShadow(color: a.colors.last.withOpacity(0.35), blurRadius: 14, offset: const Offset(0, 6))],
+        ),
+        child: a.emoji.isEmpty
+            ? Text(initials, style: GoogleFonts.poppins(fontSize: size * 0.40, fontWeight: FontWeight.w800, color: Colors.white))
+            : Text(a.emoji, style: TextStyle(fontSize: size * 0.52)),
+      ),
+      if (editable)
+        Positioned(
+          right: -3, bottom: -3,
+          child: Container(
+            width: 26, height: 26, alignment: Alignment.center,
+            decoration: BoxDecoration(color: _orange, shape: BoxShape.circle, border: Border.all(color: _surface, width: 2)),
+            child: const Icon(CupertinoIcons.camera_fill, size: 12, color: Colors.white),
+          ),
+        ),
+    ]);
+  }
+
+  // Default-picture picker.
+  void _pickAvatar() {
+    final initials = _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S';
+    showDialog(
+      context: context,
+      barrierColor: const Color(0x55000000),
+      builder: (ctx) => Center(
+        child: Material(
+          type: MaterialType.transparency,
+          child: _glass(
+            radius: 24,
+            padding: const EdgeInsets.all(22),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 380),
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Choose a picture', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: _navy)),
+                const SizedBox(height: 3),
+                Text('Pick one of the default avatars', style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
+                const SizedBox(height: 18),
+                ValueListenableBuilder<int>(
+                  valueListenable: avatarNotifier,
+                  builder: (c, sel, _) => Wrap(
+                    spacing: 12, runSpacing: 12,
+                    children: [
+                      for (var i = 0; i < _avatars.length; i++)
+                        GestureDetector(
+                          onTap: () {
+                            setAvatar(i);
+                            Navigator.of(ctx).pop();
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 140),
+                            padding: const EdgeInsets.all(3),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: sel == i ? _orange : Colors.transparent, width: 3),
+                            ),
+                            child: _avatarBox(i, 58, initials),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: _Pressable(
+                    onTap: () => Navigator.of(ctx).pop(),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      child: Text('Close', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _orange)),
+                    ),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   // ---- Modal panels --------------------------------------------------------
 
@@ -711,7 +820,7 @@ class _StudentHomeState extends State<StudentHome> {
       context: context,
       barrierLabel: 'panel',
       barrierDismissible: true,
-      barrierColor: const Color(0x731A1A2E),
+      barrierColor: const Color(0x401A1A2E),
       transitionDuration: const Duration(milliseconds: 300),
       transitionBuilder: (ctx, anim, sec, child) {
         final c = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
@@ -741,18 +850,26 @@ class _StudentHomeState extends State<StudentHome> {
             child: Padding(
             padding: EdgeInsets.symmetric(horizontal: size.width * 0.01, vertical: size.height * 0.01),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(20),
               child: BackdropFilter(
-                filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                filter: ui.ImageFilter.blur(sigmaX: 34, sigmaY: 34),
                 child: Container(
             width: size.width * 0.98,
             height: size.height * 0.98,
             padding: EdgeInsets.fromLTRB(20, MediaQuery.of(ctx).padding.top + 12, 20, 18),
-            // Frosted-glass sheet.
+            // Frosted-glass sheet — a translucent gradient + bright highlight
+            // edge so the blurred dashboard glows through the panel.
             decoration: BoxDecoration(
-              color: _isDark ? const Color(0xFF1E2027).withOpacity(0.90) : Colors.white.withOpacity(0.82),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: _glassBorder, width: 1),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: _isDark
+                    ? [const Color(0xFF24262F).withOpacity(0.68), const Color(0xFF181A22).withOpacity(0.50)]
+                    : [Colors.white.withOpacity(0.66), Colors.white.withOpacity(0.44)],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: _isDark ? Colors.white.withOpacity(0.14) : Colors.white.withOpacity(0.75), width: 1.2),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.35 : 0.10), blurRadius: 40, offset: const Offset(0, 18))],
             ),
             // Keyed on brightness so the re-used `body` widget instances (which
             // Flutter would otherwise skip rebuilding) re-inflate and re-read the
@@ -1192,21 +1309,69 @@ Widget _progress(String label, double pct) => Padding(
 
 Widget _notif(String text, String time, {bool read = false}) => _StudentHomeNotif(text: text, time: time, read: read);
 
-Widget _row(IconData icon, String name, String meta, String badge, {Color? badgeBg, Color? badgeFg}) => Container(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: _line))),
-      child: Row(children: [
-        Container(width: 44, height: 44, alignment: Alignment.center, decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(8)), child: Icon(icon, size: 20, color: _orange)),
-        const SizedBox(width: 14),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(name, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
-          Text(meta, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
-        ])),
-        const SizedBox(width: 8),
-        Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: badgeBg ?? _peach, borderRadius: BorderRadius.circular(20)),
-            child: Text(badge, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: badgeFg ?? _orange))),
-      ]),
+Widget _row(IconData icon, String name, String meta, String badge, {Color? badgeBg, Color? badgeFg}) =>
+    _PanelRow(icon: icon, name: name, meta: meta, badge: badge, badgeBg: badgeBg, badgeFg: badgeFg);
+
+/// A panel list row that highlights + nudges on hover.
+class _PanelRow extends StatefulWidget {
+  const _PanelRow({required this.icon, required this.name, required this.meta, required this.badge, this.badgeBg, this.badgeFg});
+  final IconData icon;
+  final String name;
+  final String meta;
+  final String badge;
+  final Color? badgeBg;
+  final Color? badgeFg;
+
+  @override
+  State<_PanelRow> createState() => _PanelRowState();
+}
+
+class _PanelRowState extends State<_PanelRow> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOutCubic,
+        transform: Matrix4.translationValues(_hover ? 3 : 0, 0, 0),
+        margin: const EdgeInsets.symmetric(vertical: 5),
+        padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
+        // A frosted "glass chip" — minimal translucent gradient + hairline edge,
+        // sitting on the already-blurred panel; warms to an orange wash + lift
+        // on hover.
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: _hover
+                ? [_orange.withOpacity(0.18), _orange.withOpacity(0.06)]
+                : (_isDark
+                    ? [Colors.white.withOpacity(0.06), Colors.white.withOpacity(0.02)]
+                    : [Colors.white.withOpacity(0.55), Colors.white.withOpacity(0.28)]),
+          ),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _hover ? _orange.withOpacity(0.40) : _glassBorder, width: 1),
+          boxShadow: _hover ? [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 16, offset: const Offset(0, 6))] : const [],
+        ),
+        child: Row(children: [
+          Container(width: 44, height: 44, alignment: Alignment.center, decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(8)), child: Icon(widget.icon, size: 20, color: _orange)),
+          const SizedBox(width: 14),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(widget.name, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
+            Text(widget.meta, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+          ])),
+          const SizedBox(width: 8),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: widget.badgeBg ?? _peach, borderRadius: BorderRadius.circular(20)),
+              child: Text(widget.badge, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: widget.badgeFg ?? _orange))),
+        ]),
+      ),
     );
+  }
+}
 
 Widget _leader(String rank, String name, String sub, String pts, {bool highlight = false}) => Container(
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
@@ -1852,17 +2017,24 @@ class _Pressable extends StatefulWidget {
 }
 
 class _PressableState extends State<_Pressable> {
-  double _scale = 1;
+  bool _down = false;
+  bool _hover = false;
   @override
   Widget build(BuildContext context) {
+    final scale = _down ? 0.96 : (_hover ? 1.03 : 1.0);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() {
+        _hover = false;
+        _down = false;
+      }),
       child: GestureDetector(
-        onTapDown: (_) => setState(() => _scale = 0.96),
-        onTapUp: (_) => setState(() => _scale = 1),
-        onTapCancel: () => setState(() => _scale = 1),
+        onTapDown: (_) => setState(() => _down = true),
+        onTapUp: (_) => setState(() => _down = false),
+        onTapCancel: () => setState(() => _down = false),
         onTap: widget.onTap,
-        child: AnimatedScale(scale: _scale, duration: const Duration(milliseconds: 90), child: widget.child),
+        child: AnimatedScale(scale: scale, duration: const Duration(milliseconds: 140), curve: Curves.easeOutCubic, child: widget.child),
       ),
     );
   }

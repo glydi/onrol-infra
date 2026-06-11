@@ -18,6 +18,7 @@ import 'theme_controller.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   loadTheme();
+  loadAvatar();
   runApp(const OnrolApp());
 }
 
