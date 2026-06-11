@@ -796,7 +796,7 @@ class _StudentHomeState extends State<StudentHome> {
               return Container(
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(10), border: Border.all(color: _line)),
+                decoration: BoxDecoration(color: _cardFill, borderRadius: BorderRadius.circular(10), border: Border.all(color: _cardBorder)),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
                     Text(m['author']?.toString() ?? 'Someone', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
@@ -812,7 +812,7 @@ class _StudentHomeState extends State<StudentHome> {
           }),
           const SizedBox(height: 12),
           CupertinoTextField(controller: text, placeholder: 'Write a comment…', minLines: 1, maxLines: 4, padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(10), border: Border.all(color: _line))),
+              decoration: BoxDecoration(color: _cardFill, borderRadius: BorderRadius.circular(10), border: Border.all(color: _cardBorder))),
           const SizedBox(height: 8),
           Row(children: [
             _Pressable(onTap: () => setS(() => doubt = !doubt), child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -1002,7 +1002,7 @@ class _StudentHomeState extends State<StudentHome> {
                       placeholder: 'Your answer',
                       onChanged: (v) => answers[qid] = v,
                       padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(8), border: Border.all(color: _line)),
+                      decoration: BoxDecoration(color: _cardFill, borderRadius: BorderRadius.circular(8), border: Border.all(color: _cardBorder)),
                     ),
                 ]),
               );
@@ -1198,7 +1198,7 @@ class _StudentHomeState extends State<StudentHome> {
             final res = r as Map<String, dynamic>;
             return Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(12), border: Border.all(color: _line)),
+              decoration: BoxDecoration(color: _cardFill, borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(res['course']?.toString() ?? '', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: _orange)),
                 const SizedBox(height: 4),
