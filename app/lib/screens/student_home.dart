@@ -18,8 +18,13 @@ import 'video_player_screen.dart';
 
 // Palette — red-orange accent.
 const _orange = Color(0xFFFF4F2B);
-// Shared accent gradient (used instead of any solid orange fill).
-const _orangeGrad = LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+// Shared accent gradient — a soft 3-stop ambient ramp (light → mid → deep) so
+// no surface ever reads as a flat solid colour.
+const _orangeGrad = LinearGradient(
+  colors: [Color(0xFFFF9A5E), _orange, Color(0xFFE8421F)],
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+);
 const _green = Color(0xFF2D8A4E);
 const _greenBg = Color(0xFFEAFAF0);
 
@@ -438,7 +443,7 @@ class _StudentHomeState extends State<StudentHome> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                gradient: _orangeGrad,
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [BoxShadow(color: _orange.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
               ),
@@ -547,7 +552,7 @@ class _StudentHomeState extends State<StudentHome> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+            gradient: _orangeGrad,
             borderRadius: BorderRadius.circular(20),
             boxShadow: [BoxShadow(color: _orange.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
           ),
@@ -1444,7 +1449,7 @@ class _StudentHomeState extends State<StudentHome> {
                 child: Container(
                   width: 88, height: 88, alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                    gradient: _orangeGrad,
                     shape: BoxShape.circle,
                     boxShadow: [BoxShadow(color: _orange.withOpacity(0.35), blurRadius: 22, offset: const Offset(0, 10))],
                   ),
@@ -1478,7 +1483,7 @@ class _StudentHomeState extends State<StudentHome> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                      gradient: _orangeGrad,
                       borderRadius: BorderRadius.circular(30),
                       boxShadow: [BoxShadow(color: _orange.withOpacity(0.40), blurRadius: 14, offset: const Offset(0, 6))],
                     ),
@@ -1892,7 +1897,7 @@ class _CalendarViewState extends State<_CalendarView> {
           height: 48,
           margin: const EdgeInsets.all(3),
           decoration: BoxDecoration(
-            gradient: isSel ? const LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight) : null,
+            gradient: isSel ? _orangeGrad : null,
             color: isSel ? null : (isToday ? _orange.withOpacity(0.12) : Colors.transparent),
             borderRadius: BorderRadius.circular(13),
             border: isToday && !isSel ? Border.all(color: _orange.withOpacity(0.6), width: 1.4) : null,
@@ -2173,7 +2178,7 @@ class _ProfilePanelState extends State<_ProfilePanel> {
           child: Container(
             width: double.infinity, height: 48, alignment: Alignment.center,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+              gradient: _orangeGrad,
               borderRadius: BorderRadius.circular(14),
               boxShadow: [BoxShadow(color: _orange.withOpacity(0.4), blurRadius: 14, offset: const Offset(0, 6))],
             ),
@@ -2504,7 +2509,7 @@ class _HeroPanelModal extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(14, 16, 18, 16),
         decoration: const BoxDecoration(
-          gradient: LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+          gradient: _orangeGrad,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: Row(children: [
@@ -2832,8 +2837,8 @@ class _GridCellState extends State<_GridCell> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: _hover
-                    ? [const Color(0xFFFF7A4D).withOpacity(0.94), _orange.withOpacity(0.84)]
-                    : [_orange.withOpacity(0.92), const Color(0xFFE8421F).withOpacity(0.82)],
+                    ? [const Color(0xFFFFB37A).withOpacity(0.96), const Color(0xFFFF7A4D).withOpacity(0.90), _orange.withOpacity(0.86)]
+                    : [const Color(0xFFFF9A5E).withOpacity(0.92), _orange.withOpacity(0.88), const Color(0xFFE8421F).withOpacity(0.80)],
               ),
               boxShadow: [
                 BoxShadow(
