@@ -4,69 +4,135 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ONROL — Platform</title>
-  <meta name="description" content="ONROL platform — choose your portal." />
+  <meta name="description" content="ONROL platform — one account, role-based portals for learning, CRM, franchise, accounts & more." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root{
-      --bg:#0b1020; --card:#11182e; --line:#1e2a47; --ink:#eef2fb; --muted:#9aa7c7;
-      --accent:#ff4f2b; --accent2:#2d7df6;
+      --bg:#07090d; --panel:#0c0f15; --line:#1c2230; --ink:#f4f6fb; --muted:#8a93a8;
+      --accent:#ff5a1f; --accent2:#2d7df6;
     }
     *{box-sizing:border-box} html,body{margin:0;height:100%}
     body{
-      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Arial,sans-serif;
-      background:radial-gradient(1200px 600px at 50% -10%, #16203c 0%, var(--bg) 60%);
-      color:var(--ink); min-height:100%; display:flex; flex-direction:column;
+      font-family:'Poppins',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+      background:var(--bg); color:var(--ink); min-height:100%;
+      display:flex; flex-direction:column; -webkit-font-smoothing:antialiased; overflow-x:hidden;
     }
-    .wrap{max-width:1080px; margin:0 auto; padding:64px 24px 48px; width:100%}
-    header{display:flex; align-items:center; gap:14px; margin-bottom:8px}
-    .logo{width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#ff8a5b);
-      display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:20px}
-    h1{font-size:30px;margin:0;letter-spacing:.5px;font-weight:800}
-    .tag{color:var(--muted); margin:6px 0 36px; font-size:15px}
-    .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px}
-    a.card{
-      display:block; text-decoration:none; color:inherit; background:var(--card);
-      border:1px solid var(--line); border-radius:12px; padding:20px 20px 18px;
-      transition:transform .12s ease, border-color .12s ease, background .12s ease;
+    .wrap{max-width:1200px; margin:0 auto; width:100%; padding:18px 20px 56px}
+
+    /* ---- bordered hero frame with corner + markers ---- */
+    .frame{
+      position:relative; border:1px solid var(--line); border-radius:14px;
+      overflow:hidden; min-height:min(78vh,720px);
+      display:flex; flex-direction:column;
+      background:
+        radial-gradient(120% 80% at 78% 18%, rgba(45,125,246,.18) 0%, transparent 55%),
+        radial-gradient(120% 90% at 30% 88%, rgba(255,90,31,.30) 0%, transparent 55%),
+        linear-gradient(180deg,#0a0d13,#06070b);
     }
-    a.card:hover{transform:translateY(-2px); border-color:var(--accent); background:#13203c}
-    .card .top{display:flex; align-items:center; gap:12px; margin-bottom:10px}
-    .ic{width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;
-      font-size:18px;background:#1b2747}
+    /* faint construction grid lines */
+    .frame::before{
+      content:""; position:absolute; inset:0; pointer-events:none;
+      background:
+        linear-gradient(90deg,var(--line) 1px,transparent 1px) 0 0/calc(100%/4) 100%,
+        linear-gradient(0deg,var(--line) 1px,transparent 1px) 0 0/100% calc(100%/4);
+      opacity:.18;
+    }
+    .plus{position:absolute; color:var(--muted); opacity:.55; font-size:16px; line-height:1; pointer-events:none}
+
+    /* ---- top nav ---- */
+    nav{position:relative; z-index:2; display:flex; align-items:center; justify-content:space-between;
+      padding:22px 26px; gap:16px; flex-wrap:wrap}
+    .brand{display:flex; align-items:center; gap:10px; letter-spacing:2px; font-weight:700; font-size:15px}
+    .brand .dot{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),#ff8a5b);
+      display:flex;align-items:center;justify-content:center;font-family:'Archivo Black';color:#fff;font-size:14px}
+    .links{display:flex; gap:26px; color:var(--muted); font-size:12px; letter-spacing:1.5px; font-weight:500}
+    .links span{cursor:default}
+    .talk{border:1px solid var(--line); color:var(--ink); padding:10px 18px; border-radius:8px;
+      font-size:12px; letter-spacing:1.5px; font-weight:600; text-decoration:none; transition:.15s}
+    .talk:hover{border-color:var(--accent); color:var(--accent)}
+
+    /* ---- hero ---- */
+    .hero{position:relative; z-index:2; flex:1; display:flex; flex-direction:column;
+      align-items:center; justify-content:center; text-align:center; padding:30px 20px}
+    .hero h1{font-family:'Archivo Black'; margin:0; line-height:.92; letter-spacing:-1px;
+      font-size:clamp(54px,13vw,168px); color:var(--accent); text-transform:uppercase}
+    .hero h1 .ln2{display:block; color:#f4f6fb; -webkit-text-stroke:1.5px var(--accent); color:transparent}
+    .hero p{max-width:560px; margin:26px auto 0; color:var(--muted); font-size:clamp(13px,1.6vw,16px); line-height:1.6}
+
+    .foot{position:relative; z-index:2; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;
+      padding:18px 26px; color:var(--muted); font-size:11px; letter-spacing:1.5px}
+
+    /* ---- portal grid ---- */
+    .pick{margin:48px 2px 18px; display:flex; align-items:baseline; justify-content:space-between; gap:12px}
+    .pick h2{font-family:'Archivo Black'; font-size:clamp(22px,3vw,34px); margin:0; text-transform:uppercase; letter-spacing:-.5px}
+    .pick span{color:var(--muted); font-size:13px}
+    .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px}
+    a.card{display:block; text-decoration:none; color:inherit; background:var(--panel);
+      border:1px solid var(--line); border-radius:12px; padding:22px; transition:.14s}
+    a.card:hover{transform:translateY(-3px); border-color:var(--accent); background:#10141c}
+    .card .top{display:flex; align-items:center; gap:12px; margin-bottom:12px}
+    .ic{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:19px}
     .card h3{margin:0; font-size:17px; font-weight:700}
-    .card p{margin:0; color:var(--muted); font-size:13.5px; line-height:1.5}
-    .roles{margin-top:12px; font-size:12px; color:#7f8cad}
-    .go{margin-top:14px; font-size:13px; font-weight:600; color:var(--accent); display:flex; align-items:center; gap:6px}
-    footer{margin-top:auto; padding:24px; text-align:center; color:#6b7799; font-size:12.5px}
-    code{background:#1b2747;padding:2px 6px;border-radius:5px;color:#cdd7f2}
+    .card p{margin:0; color:var(--muted); font-size:13.5px; line-height:1.55}
+    .roles{margin-top:12px; font-size:11px; letter-spacing:1px; color:#6b7488; text-transform:uppercase}
+    .go{margin-top:14px; font-size:12.5px; font-weight:600; color:var(--accent); letter-spacing:.5px}
+    @media(max-width:600px){ .links{display:none} }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <header>
-      <div class="logo">O</div>
-      <h1>ONROL</h1>
-    </header>
-    <p class="tag">Choose your portal. One account — your role decides what you see.</p>
+    <section class="frame">
+      <!-- plus markers across the top & bottom gridlines -->
+      <span class="plus" style="left:24%;top:16px">+</span>
+      <span class="plus" style="left:49.6%;top:16px">+</span>
+      <span class="plus" style="left:75%;top:16px">+</span>
+      <span class="plus" style="left:24%;bottom:14px">+</span>
+      <span class="plus" style="left:49.6%;bottom:14px">+</span>
+      <span class="plus" style="left:75%;bottom:14px">+</span>
 
+      <nav>
+        <div class="brand"><span class="dot">O</span> ONROL</div>
+        <div class="links"><span>PORTALS,</span><span>LEARNING,</span><span>CRM,</span><span>CONTACT</span></div>
+        <a class="talk" id="signin" href="#portals">SIGN IN</a>
+      </nav>
+
+      <div class="hero">
+        <h1>ONROL<span class="ln2">PLATFORM</span></h1>
+        <p>One account. Your role decides what you see — learning, CRM, franchise, accounts &amp; more, in one place.</p>
+      </div>
+
+      <div class="foot">
+        <span>&copy;2026</span>
+        <span id="loc">INDIA</span>
+        <span>HELLO@ONROL.IN</span>
+      </div>
+    </section>
+
+    <div class="pick" id="portals">
+      <h2>Choose your portal</h2>
+      <span>One account — role-based access</span>
+    </div>
     <div class="grid" id="grid"></div>
   </div>
-  <footer>© ONROL · <span id="host"></span> — secure role-based portals</footer>
 
   <script>
     // Build portal URLs from the current apex host so it works on any domain.
-    var host = location.host;                         // e.g. 187-127-178-100.sslip.io
-    document.getElementById('host').textContent = host;
+    var host = location.host;
     var scheme = location.protocol === 'http:' ? 'http://' : 'https://';
     function url(sub){ return scheme + sub + '.' + host + '/'; }
 
     var portals = [
-      {sub:'lms',        icon:'🎓', name:'LMS',                 desc:'Courses, live classes, assignments, certificates.', roles:'Admin · Mentor · Student', color:'#2d7df6'},
-      {sub:'crm',        icon:'📈', name:'CRM',                 desc:'Leads, deals, invoices, campaigns, analytics.',     roles:'Admin', color:'#ff4f2b'},
-      {sub:'ambassador', icon:'🎁', name:'Ambassador',          desc:'Referrals, codes and reward tracking.',             roles:'Admin · Ambassador', color:'#a855f7'},
-      {sub:'franchise',  icon:'🏢', name:'Franchise Partner',   desc:'Branch dashboard, enrolments, revenue share.',      roles:'Admin · Partner', color:'#0ea5a3'},
-      {sub:'accounts',   icon:'💼', name:'Accounts & Admin',    desc:'Cash ledger, expense approvals, staff.',            roles:'Admin · Employee', color:'#f59e0b'},
-      {sub:'college',    icon:'🏫', name:'College Partner',     desc:'Partner colleges, cohorts, placements.',            roles:'Admin · Employee', color:'#22c55e'}
+      {sub:'lms',        icon:'🎓', name:'LMS',               desc:'Courses, live classes, assignments, certificates.', roles:'Admin · Mentor · Student', color:'#2d7df6'},
+      {sub:'crm',        icon:'📈', name:'CRM',               desc:'Leads, deals, invoices, campaigns, analytics.',     roles:'Admin', color:'#ff5a1f'},
+      {sub:'ambassador', icon:'🎁', name:'Ambassador',        desc:'Referrals, codes and reward tracking.',             roles:'Admin · Ambassador', color:'#a855f7'},
+      {sub:'franchise',  icon:'🏢', name:'Franchise Partner', desc:'Branch dashboard, enrolments, revenue share.',      roles:'Admin · Partner', color:'#0ea5a3'},
+      {sub:'accounts',   icon:'💼', name:'Accounts & Admin',  desc:'Cash ledger, expense approvals, staff.',            roles:'Admin · Employee', color:'#f59e0b'},
+      {sub:'college',    icon:'🏫', name:'College Partner',   desc:'Partner colleges, cohorts, placements.',            roles:'Admin · Employee', color:'#22c55e'}
     ];
+    // Sign-in jumps to the LMS portal (the common entry point).
+    document.getElementById('signin').href = url('lms');
     var grid = document.getElementById('grid');
     portals.forEach(function(p){
       var a = document.createElement('a');

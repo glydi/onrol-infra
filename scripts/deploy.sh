@@ -2,9 +2,10 @@
 # =============================================================================
 # Push local edits to the live VPS — backend binary + Flutter web, in one shot.
 #
-#   bash scripts/deploy.sh            # build + ship both, verify
+#   bash scripts/deploy.sh            # build + ship API + web + landing, verify
 #   bash scripts/deploy.sh backend    # only the Go API
 #   bash scripts/deploy.sh web        # only the Flutter web app
+#   bash scripts/deploy.sh landing    # only the apex landing page
 #
 # The machine running this is expected to already have SSH access to the VPS
 # (key accepted) — no password prompts.
@@ -17,6 +18,7 @@ set -euo pipefail
 HOST="${HOST:-root@187.127.178.100}"
 APP_DIR="${APP_DIR:-/opt/onrol}"
 WEB_ROOT="${WEB_ROOT:-/var/www/onrol}"
+LANDING_ROOT="${LANDING_ROOT:-/var/www/onrol-landing}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WHAT="${1:-all}"
 
@@ -59,11 +61,22 @@ deploy_web() {
   if [ "$L" = "$R" ]; then echo "web md5 MATCH ✓ ($L)"; else echo "web md5 MISMATCH ✗  local=$L remote=$R"; exit 1; fi
 }
 
+deploy_landing() {
+  log "Publishing landing → $HOST:$LANDING_ROOT"
+  ssh "$HOST" "mkdir -p $LANDING_ROOT"
+  rsync -az -e ssh "$ROOT/deploy/landing/" "$HOST:$LANDING_ROOT/"
+  local L R
+  L="$(md5sum "$ROOT/deploy/landing/index.html" | awk '{print $1}')"
+  R="$(ssh "$HOST" "md5sum $LANDING_ROOT/index.html | awk '{print \$1}'")"
+  if [ "$L" = "$R" ]; then echo "landing md5 MATCH ✓ ($L)"; else echo "landing md5 MISMATCH ✗  local=$L remote=$R"; exit 1; fi
+}
+
 case "$WHAT" in
-  all)     deploy_backend; deploy_web ;;
+  all)     deploy_backend; deploy_web; deploy_landing ;;
   backend) deploy_backend ;;
   web)     deploy_web ;;
-  *) echo "usage: deploy.sh [all|backend|web]" >&2; exit 1 ;;
+  landing) deploy_landing ;;
+  *) echo "usage: deploy.sh [all|backend|web|landing]" >&2; exit 1 ;;
 esac
 
 log "Deployed. (hard-refresh / incognito to clear the service-worker cache)"
