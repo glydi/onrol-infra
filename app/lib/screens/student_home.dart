@@ -37,8 +37,15 @@ Color get _glassFill => _isDark ? Colors.white.withOpacity(0.07) : Colors.white.
 Color get _glassBorder => _isDark ? Colors.white.withOpacity(0.12) : Colors.white.withOpacity(0.65);
 // Bright translucent card surface for elements inside popups — glassmorphic,
 // no solid fill, so the frosted panel glows through every element.
-Color get _cardFill => _isDark ? Colors.white.withOpacity(0.08) : Colors.white.withOpacity(0.50);
 Color get _cardBorder => _isDark ? Colors.white.withOpacity(0.16) : Colors.white.withOpacity(0.70);
+// Soft ambient gradient for element surfaces — replaces flat fills.
+LinearGradient get _cardGradient => LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: _isDark
+          ? [Colors.white.withOpacity(0.12), Colors.white.withOpacity(0.04)]
+          : [Colors.white.withOpacity(0.62), Colors.white.withOpacity(0.30)],
+    );
 
 /// Wraps [child] in a frosted-glass surface (backdrop blur + translucent fill).
 /// Use sparingly — each one is a real BackdropFilter.
@@ -741,7 +748,7 @@ class _StudentHomeState extends State<StudentHome> {
               return Container(
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: _cardFill, borderRadius: BorderRadius.circular(10), border: Border.all(color: _cardBorder)),
+                decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(10), border: Border.all(color: _cardBorder)),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
                     Text(m['author']?.toString() ?? 'Someone', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
@@ -757,7 +764,7 @@ class _StudentHomeState extends State<StudentHome> {
           }),
           const SizedBox(height: 12),
           CupertinoTextField(controller: text, placeholder: 'Write a comment…', minLines: 1, maxLines: 4, padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: _cardFill, borderRadius: BorderRadius.circular(10), border: Border.all(color: _cardBorder))),
+              decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(10), border: Border.all(color: _cardBorder))),
           const SizedBox(height: 8),
           Row(children: [
             _Pressable(onTap: () => setS(() => doubt = !doubt), child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -947,7 +954,7 @@ class _StudentHomeState extends State<StudentHome> {
                       placeholder: 'Your answer',
                       onChanged: (v) => answers[qid] = v,
                       padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: _cardFill, borderRadius: BorderRadius.circular(8), border: Border.all(color: _cardBorder)),
+                      decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(8), border: Border.all(color: _cardBorder)),
                     ),
                 ]),
               );
@@ -1018,7 +1025,7 @@ class _StudentHomeState extends State<StudentHome> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: _cardFill,
+                      gradient: _cardGradient,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: _cardBorder),
                       boxShadow: [BoxShadow(color: _orange.withOpacity(0.07), blurRadius: 16, offset: const Offset(0, 8))],
@@ -1092,7 +1099,7 @@ class _StudentHomeState extends State<StudentHome> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                     decoration: BoxDecoration(
-                      color: _cardFill,
+                      gradient: _cardGradient,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: _cardBorder),
                       boxShadow: [BoxShadow(color: _orange.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))],
@@ -1143,7 +1150,7 @@ class _StudentHomeState extends State<StudentHome> {
             final res = r as Map<String, dynamic>;
             return Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: _cardFill, borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
+              decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(res['course']?.toString() ?? '', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: _orange)),
                 const SizedBox(height: 4),
@@ -1930,7 +1937,7 @@ class _CalendarViewState extends State<_CalendarView> {
             return Container(
               margin: const EdgeInsets.only(bottom: 10),
               clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(color: _cardFill, borderRadius: BorderRadius.circular(14), border: Border.all(color: _cardBorder), boxShadow: [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.0 : 0.04), blurRadius: 8, offset: const Offset(0, 3))]),
+              decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(14), border: Border.all(color: _cardBorder), boxShadow: [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.0 : 0.04), blurRadius: 8, offset: const Offset(0, 3))]),
               child: IntrinsicHeight(
                 child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   Container(width: 4, color: k.color),
@@ -2092,9 +2099,9 @@ class _ProfilePanelState extends State<_ProfilePanel> {
         child: Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(color: _cardFill, borderRadius: BorderRadius.circular(14), border: Border.all(color: _cardBorder)),
+          decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(14), border: Border.all(color: _cardBorder)),
           child: Row(children: [
-            Container(width: 34, height: 34, alignment: Alignment.center, decoration: BoxDecoration(color: _orange.withOpacity(0.14), borderRadius: BorderRadius.circular(10)), child: Icon(icon, size: 16, color: _orange)),
+            Container(width: 34, height: 34, alignment: Alignment.center, decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_orange.withOpacity(0.24), _orange.withOpacity(0.10)]), borderRadius: BorderRadius.circular(10)), child: Icon(icon, size: 16, color: _orange)),
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
@@ -2120,12 +2127,28 @@ class _ProfilePanelState extends State<_ProfilePanel> {
     }
     final initials = _name.text.trim().isNotEmpty ? _name.text.trim()[0].toUpperCase() : 'S';
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // Avatar with a soft ambient glow + a gentle scale-in.
       Center(
-        child: GestureDetector(
-          onTap: widget.onEditAvatar,
-          child: ValueListenableBuilder<String>(
-            valueListenable: avatarNotifier,
-            builder: (ctx, av, _) => _avatarBox(av, 92, initials, editable: true),
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.84, end: 1),
+          duration: const Duration(milliseconds: 520),
+          curve: Curves.easeOutBack,
+          builder: (_, s, child) => Transform.scale(scale: s, child: child),
+          child: GestureDetector(
+            onTap: widget.onEditAvatar,
+            child: Stack(alignment: Alignment.center, clipBehavior: Clip.none, children: [
+              Container(
+                width: 150, height: 150,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(colors: [_orange.withOpacity(0.34), const Color(0xFFFF7A4D).withOpacity(0.10), _orange.withOpacity(0.0)]),
+                ),
+              ),
+              ValueListenableBuilder<String>(
+                valueListenable: avatarNotifier,
+                builder: (ctx, av, _) => _avatarBox(av, 92, initials, editable: true),
+              ),
+            ]),
           ),
         ),
       ),
@@ -2692,7 +2715,7 @@ class _CourseCardState extends State<_CourseCard> {
           padding: const EdgeInsets.all(14),
           transform: Matrix4.translationValues(0, _hover ? -2 : 0, 0),
           decoration: BoxDecoration(
-            color: _cardFill,
+            gradient: _cardGradient,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: _hover ? _orange.withOpacity(0.40) : _cardBorder, width: 1),
             boxShadow: [BoxShadow(color: _orange.withOpacity(_hover ? 0.22 : 0.07), blurRadius: _hover ? 22 : 12, offset: Offset(0, _hover ? 9 : 5))],
@@ -2952,8 +2975,10 @@ class _StatCardState extends State<_StatCard> {
             curve: Curves.easeOutCubic,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             decoration: BoxDecoration(
-              // Highlights with a soft orange wash + glow on hover.
-              color: _hover ? Color.alphaBlend(_orange.withOpacity(0.10), _cardFill) : _cardFill,
+              // Soft ambient gradient; warms to an orange glow on hover.
+              gradient: _hover
+                  ? LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_orange.withOpacity(0.22), _orange.withOpacity(0.08)])
+                  : _cardGradient,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: _hover ? _orange.withOpacity(0.55) : _cardBorder, width: _hover ? 1.5 : 1),
               boxShadow: [BoxShadow(color: _orange.withOpacity(_hover ? 0.24 : 0.06), blurRadius: _hover ? 22 : 10, offset: const Offset(0, 6))],
@@ -3022,7 +3047,9 @@ class _StudentHomeNotifState extends State<_StudentHomeNotif> {
           // Softer than the stat cards: flat when idle, gentle highlight on
           // hover/expand.
           decoration: BoxDecoration(
-            color: active ? Color.alphaBlend(_orange.withOpacity(0.06), _cardFill) : _cardFill,
+            gradient: active
+                ? LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_orange.withOpacity(0.16), _orange.withOpacity(0.05)])
+                : _cardGradient,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: active ? _orange.withOpacity(0.30) : _cardBorder, width: 1),
             boxShadow: active ? [BoxShadow(color: _orange.withOpacity(0.10), blurRadius: 12, offset: const Offset(0, 4))] : const [],
