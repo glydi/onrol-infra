@@ -636,13 +636,10 @@ class _StudentHomeState extends State<StudentHome> {
           _leader('5', 'Ananya Singh', '130 lessons', '760 XP'),
         ]);
       case 'schedule':
-        return (CupertinoIcons.clock_fill, 'Schedule', 'Upcoming events', [
+        return (CupertinoIcons.calendar, 'Calendar', 'Classes, deadlines & activities', [
           _future(_apiList('/api/v1/me/calendar', 'calendar'), (List items) {
-            if (items.isEmpty) return _emptyText('Nothing scheduled.');
-            return Column(children: items.map((e) {
-              final m = e as Map<String, dynamic>;
-              return _sched(_fmtAt(m['at']?.toString()), m['title']?.toString() ?? 'Event', m['course']?.toString() ?? '', (m['kind']?.toString() ?? 'event'));
-            }).toList());
+            if (items.isEmpty) return _emptyText('Nothing scheduled yet.');
+            return _calendarAgenda(items);
           }),
         ]);
       case 'progress':
@@ -775,13 +772,10 @@ class _StudentHomeState extends State<StudentHome> {
           _row(CupertinoIcons.chart_bar_fill, 'Data Types Quiz', '15 Qs · 20 min · Completed', '90%', badgeBg: _greenBg, badgeFg: _green),
         ]);
       case 'calendar':
-        return (CupertinoIcons.calendar, 'Calendar', 'Your events', [
+        return (CupertinoIcons.calendar, 'Calendar', 'Classes, deadlines & activities', [
           _future(_apiList('/api/v1/me/calendar', 'calendar'), (List items) {
-            if (items.isEmpty) return _emptyText('No events.');
-            return Column(children: items.map((e) {
-              final m = e as Map<String, dynamic>;
-              return _sched(_fmtAt(m['at']?.toString()), m['title']?.toString() ?? 'Event', m['course']?.toString() ?? '', (m['kind']?.toString() ?? 'event'));
-            }).toList());
+            if (items.isEmpty) return _emptyText('Nothing scheduled yet.');
+            return _calendarAgenda(items);
           }),
         ]);
       case 'announcements':
@@ -930,22 +924,99 @@ Widget _leader(String rank, String name, String sub, String pts, {bool highlight
       ]),
     );
 
-Widget _sched(String time, String title, String sub, String tag) => Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        SizedBox(width: 56, child: Text(time, textAlign: TextAlign.right, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: _orange))),
-        const SizedBox(width: 14),
-        Container(width: 2, height: 56, color: const Color(0xFFF0EBE8)),
-        const SizedBox(width: 14),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
-          Text(sub, style: GoogleFonts.inter(fontSize: 12, color: _grey)),
-          const SizedBox(height: 5),
-          Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: _peach, borderRadius: BorderRadius.circular(20)),
-              child: Text(tag, style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: _orange))),
-        ])),
-      ]),
+// --- Calendar agenda: groups schedule / deadlines / activities by day. -----
+
+({IconData icon, Color color, String label}) _calKind(String kind) {
+  switch (kind) {
+    case 'session':
+      return (icon: CupertinoIcons.videocam_fill, color: _orange, label: 'Live class');
+    case 'assessment_due':
+      return (icon: CupertinoIcons.doc_text_fill, color: const Color(0xFFE0A12A), label: 'Deadline');
+    case 'announcement':
+      return (icon: CupertinoIcons.bell_fill, color: const Color(0xFF2D7DF6), label: 'Activity');
+    default:
+      return (icon: CupertinoIcons.calendar, color: _orange, label: 'Event');
+  }
+}
+
+String _dayLabel(DateTime d) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final day = DateTime(d.year, d.month, d.day);
+  final diff = day.difference(today).inDays;
+  if (diff == 0) return 'Today';
+  if (diff == 1) return 'Tomorrow';
+  if (diff == -1) return 'Yesterday';
+  const wd = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const mo = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return '${wd[d.weekday - 1]}, ${d.day} ${mo[d.month - 1]}';
+}
+
+String _timeLabel(DateTime d) {
+  final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
+  final m = d.minute.toString().padLeft(2, '0');
+  return '$h:$m ${d.hour < 12 ? 'AM' : 'PM'}';
+}
+
+Widget _calendarAgenda(List items) {
+  // Group by calendar day, preserving the (already date-sorted) order.
+  final groups = <String, List<Map<String, dynamic>>>{};
+  final order = <String>[];
+  final now = DateTime.now();
+  for (final e in items) {
+    final m = e as Map<String, dynamic>;
+    final dt = DateTime.tryParse(m['at']?.toString() ?? '')?.toLocal();
+    if (dt == null) continue;
+    final key = '${dt.year}-${dt.month}-${dt.day}';
+    if (!groups.containsKey(key)) {
+      groups[key] = [];
+      order.add(key);
+    }
+    groups[key]!.add({...m, '_dt': dt});
+  }
+  if (order.isEmpty) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 22),
+      child: Text('Nothing scheduled yet.', textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 13, color: _grey)),
     );
+  }
+
+  final out = <Widget>[];
+  for (final key in order) {
+    final dt0 = groups[key]!.first['_dt'] as DateTime;
+    final isPast = DateTime(dt0.year, dt0.month, dt0.day).isBefore(DateTime(now.year, now.month, now.day));
+    out.add(Padding(
+      padding: const EdgeInsets.only(top: 14, bottom: 8),
+      child: Text(_dayLabel(dt0).toUpperCase(),
+          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, color: isPast ? _grey : _orange, letterSpacing: 0.5)),
+    ));
+    for (final m in groups[key]!) {
+      final k = _calKind(m['kind']?.toString() ?? 'event');
+      final dt = m['_dt'] as DateTime;
+      final course = m['course']?.toString() ?? '';
+      out.add(Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: 40, height: 40, alignment: Alignment.center,
+            decoration: BoxDecoration(color: k.color.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
+            child: Icon(k.icon, size: 19, color: k.color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(m['title']?.toString() ?? 'Event', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
+              Text([k.label, if (course.isNotEmpty) course].join(' · '), style: GoogleFonts.inter(fontSize: 12, color: _grey)),
+            ]),
+          ),
+          const SizedBox(width: 8),
+          Text(_timeLabel(dt), style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: _grey)),
+        ]),
+      ));
+    }
+  }
+  return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: out);
+}
 
 Widget _help(String q, String a) => Container(
       padding: const EdgeInsets.symmetric(vertical: 12),

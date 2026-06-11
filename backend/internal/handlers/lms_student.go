@@ -415,16 +415,31 @@ func (h *Handlers) MyCertificates(c *fiber.Ctx) error {
 
 // MyCalendar: upcoming sessions + assessment due dates for enrolled courses.
 func (h *Handlers) MyCalendar(c *fiber.Ctx) error {
+	// Aggregates everything the admin/mentor schedules for the student:
+	// live classes, assignment/quiz deadlines, and announcements (activities).
+	// Includes a short recent window so just-passed items still show.
 	rows, err := h.Pool.Query(c.Context(), `
 		SELECT 'session' AS kind, cs.title, cs.starts_at AS at, c.title AS course
 		FROM class_sessions cs JOIN courses c ON c.id=cs.course_id
 		JOIN course_enrollments ce ON ce.course_id=c.id AND ce.user_id=$1
-		WHERE cs.starts_at >= now()
+		WHERE cs.starts_at >= now() - interval '7 days'
 		UNION ALL
 		SELECT 'assessment_due', a.title, a.due_at, c.title
 		FROM assessments a JOIN courses c ON c.id=a.course_id
 		JOIN course_enrollments ce ON ce.course_id=c.id AND ce.user_id=$1
-		WHERE a.due_at IS NOT NULL AND a.due_at >= now() AND a.is_published
+		WHERE a.due_at IS NOT NULL AND a.due_at >= now() - interval '7 days' AND a.is_published
+		UNION ALL
+		SELECT 'announcement', an.title, an.created_at, COALESCE(c.title,'')
+		FROM announcements an
+		LEFT JOIN courses c ON c.id=an.course_id
+		JOIN users me ON me.id=$1
+		WHERE an.created_at >= now() - interval '30 days'
+		  AND ( (an.course_id IS NULL AND (
+		            an.audience='all'
+		         OR (an.audience='batch' AND an.batch_number = me.batch)
+		         OR (an.audience='role'  AND an.role = me.role)))
+		     OR (an.course_id IS NOT NULL AND EXISTS (
+		            SELECT 1 FROM course_enrollments ce WHERE ce.course_id=an.course_id AND ce.user_id=me.id)) )
 		ORDER BY at`, callerID(c))
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "calendar failed")
