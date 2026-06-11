@@ -44,6 +44,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	inst := middleware.RequireRole("instructor")
 	ambassador := middleware.RequireAnyRole("ambassador")
 	employee := middleware.RequireAnyRole("employee")
+	franchise := middleware.RequireAnyRole("franchise_partner")
 
 	// ---- Manager: user & group management --------------------------------
 	api.Get("/manage/users", auth, mgr, h.ListUsers)
@@ -187,6 +188,17 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	// Employee self (admins also allowed).
 	api.Get("/accounts/expenses", auth, employee, h.MyExpenses)
 	api.Post("/accounts/expenses", auth, employee, h.SubmitExpense)
+
+	// ---- Franchise Partner portal ----------------------------------------
+	// Admin: manage partners + all enrollments.
+	api.Get("/manage/franchises", auth, mgr, h.ListFranchises)
+	api.Post("/manage/franchises", auth, mgr, h.CreateFranchise)
+	api.Get("/manage/franchises/enrollments", auth, mgr, h.AdminListEnrollments)
+	api.Post("/manage/franchises/enrollments/:id/status", auth, mgr, h.SetEnrollmentStatus)
+	// Franchise self (admins also allowed).
+	api.Get("/franchise/me", auth, franchise, h.MyFranchise)
+	api.Get("/franchise/enrollments", auth, franchise, h.MyEnrollments)
+	api.Post("/franchise/enrollments", auth, franchise, h.CreateEnrollment)
 
 	// ---- College Partner portal (admin + employee) -----------------------
 	api.Get("/college/summary", auth, employee, h.CollegeSummary)

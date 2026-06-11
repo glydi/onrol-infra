@@ -8,6 +8,7 @@ import 'screens/accounts_portal.dart';
 import 'screens/ambassador_portal.dart';
 import 'screens/college_portal.dart';
 import 'screens/console_screen.dart';
+import 'screens/franchise_portal.dart';
 import 'screens/crm_portal.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
@@ -56,6 +57,7 @@ class _OnrolAppState extends State<OnrolApp> {
             if (isAmbassadorHost()) return AmbassadorPortalScreen(auth: _auth);
             if (isAccountsHost()) return AccountsPortalScreen(auth: _auth);
             if (isCollegeHost()) return CollegePortalScreen(auth: _auth);
+            if (isFranchiseHost()) return FranchisePortalScreen(auth: _auth);
             return _auth.user!.isStaff ? ConsoleScreen(auth: _auth) : HomeScreen(auth: _auth);
           },
         ),

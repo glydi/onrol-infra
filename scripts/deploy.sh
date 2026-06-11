@@ -29,15 +29,22 @@ deploy_backend() {
   log "Building API (linux/amd64)"
   ( cd "$ROOT/backend" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
       go build -trimpath -ldflags="-s -w" -o /tmp/onrol-server-linux ./cmd/server )
+  local LOCAL_MD5
+  LOCAL_MD5="$(md5sum /tmp/onrol-server-linux | awk '{print $1}')"
   log "Shipping API → $HOST"
   scp -o ConnectTimeout=10 /tmp/onrol-server-linux "$HOST:$APP_DIR/onrol-server.new"
+  # Stop BEFORE swapping: replacing a running binary in place races with the
+  # restart ("Text file busy", exit 203/EXEC) and can leave a stale binary.
   ssh "$HOST" "set -e
-    mv $APP_DIR/onrol-server.new $APP_DIR/onrol-server
-    chmod +x $APP_DIR/onrol-server
-    chown onrol:onrol $APP_DIR/onrol-server
-    systemctl restart onrol.service
+    systemctl stop onrol.service
+    install -m 0755 -o onrol -g onrol $APP_DIR/onrol-server.new $APP_DIR/onrol-server
+    rm -f $APP_DIR/onrol-server.new
+    systemctl start onrol.service
     sleep 2
-    printf 'healthz: '; curl -fsS http://127.0.0.1:8080/healthz; echo"
+    systemctl is-active onrol.service >/dev/null || { echo 'service failed to start'; journalctl -u onrol -n 20 --no-pager; exit 1; }
+    REMOTE_MD5=\$(md5sum $APP_DIR/onrol-server | awk '{print \$1}')
+    [ \"\$REMOTE_MD5\" = \"$LOCAL_MD5\" ] || { echo \"binary md5 mismatch: local=$LOCAL_MD5 remote=\$REMOTE_MD5\"; exit 1; }
+    printf 'API md5 MATCH ✓ + healthz: '; curl -fsS http://127.0.0.1:8080/healthz; echo"
 }
 
 deploy_web() {
