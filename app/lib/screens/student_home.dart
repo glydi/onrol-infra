@@ -406,21 +406,8 @@ class _StudentHomeState extends State<StudentHome> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Avatar + name — opens the full profile & settings section.
-          _Pressable(
-            onTap: () => _openPanel('profile'),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              ValueListenableBuilder<String>(
-                valueListenable: avatarNotifier,
-                builder: (ctx, av, _) => _avatarBox(av, 40, _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S'),
-              ),
-              const SizedBox(width: 10),
-              Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                Text('Hi, $_firstName', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
-                Text('View profile', style: GoogleFonts.poppins(fontSize: 11, color: _grey)),
-              ]),
-            ]),
-          ),
+          // Brand on the left.
+          Text('ONROL', style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 1)),
           const Spacer(),
           Row(mainAxisSize: MainAxisSize.min, children: [
             // Notification bell — opens announcements/notifications.
@@ -449,7 +436,14 @@ class _StudentHomeState extends State<StudentHome> {
               ]),
             ),
             const SizedBox(width: 12),
-            Text('ONROL', style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 1)),
+            // Profile + settings — top-right corner. Opens the full profile section.
+            _Pressable(
+              onTap: () => _openPanel('profile'),
+              child: ValueListenableBuilder<String>(
+                valueListenable: avatarNotifier,
+                builder: (ctx, av, _) => _avatarBox(av, 40, _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S'),
+              ),
+            ),
           ]),
         ],
       ),
@@ -1330,8 +1324,17 @@ class _StudentHomeState extends State<StudentHome> {
           }),
         ]);
       case 'profile':
-        return (CupertinoIcons.person_fill, 'My Profile', 'Manage your details', [
+        return (CupertinoIcons.person_fill, 'My Profile', 'Manage your details & settings', [
           _ProfilePanel(auth: widget.auth),
+          const SizedBox(height: 22),
+          Text('Settings', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: _navy)),
+          const SizedBox(height: 8),
+          _SettingRow('Push Notifications', 'Get alerts for classes & assignments', true),
+          _SettingRow('Email Digest', 'Weekly progress summary', true),
+          const _DarkModeRow(),
+          _SettingRow('Study Reminders', 'Daily nudge to keep learning', true),
+          _SettingRow('Show Leaderboard', 'Let others see your rank', true),
+          _SettingRow('Auto-play Next Lesson', 'Continuous learning flow', false),
         ]);
       case 'settings':
         return (CupertinoIcons.gear_alt_fill, 'Settings', 'Customize your experience', [
