@@ -17,6 +17,7 @@ class AuthUser {
         role: j['role']?.toString() ?? 'student',
       );
   bool get isStaff => role == 'instructor' || role == 'manager' || role == 'superadmin';
+  bool get isAdmin => role == 'manager' || role == 'superadmin';
 }
 
 /// Login / session. Persists the JWT in the platform secure store.

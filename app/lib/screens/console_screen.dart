@@ -94,10 +94,13 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     return AppShell(
       auth: widget.auth,
       onSignOut: _logout,
-      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-        _openCrmButton(),
-        if (_isAdmin) ...[const SizedBox(width: 10), _newCourseButton()],
-      ]),
+      trailing: _isAdmin
+          ? Row(mainAxisSize: MainAxisSize.min, children: [
+              _openCrmButton(),
+              const SizedBox(width: 10),
+              _newCourseButton(),
+            ])
+          : null,
       destinations: dests,
       pages: pages,
     );

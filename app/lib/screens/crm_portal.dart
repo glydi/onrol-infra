@@ -21,6 +21,8 @@ class CrmPortalScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // CRM is admin-only (manager / superadmin).
+    if (!(auth.user?.isAdmin ?? false)) return _AccessDenied(onSignOut: () => _logout(context));
     return AppShell(
       auth: auth,
       onSignOut: () => _logout(context),
@@ -32,6 +34,30 @@ class CrmPortalScreen extends StatelessWidget {
         CrmScreen(auth: auth),
         ProfileView(auth: auth, onSignOut: () => _logout(context)),
       ],
+    );
+  }
+}
+
+class _AccessDenied extends StatelessWidget {
+  const _AccessDenied({required this.onSignOut});
+  final VoidCallback onSignOut;
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(CupertinoIcons.lock_fill, size: 48, color: CupertinoColors.systemGrey),
+            const SizedBox(height: 16),
+            Text('Admins only', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 8),
+            const Text('The CRM is restricted to administrators.', textAlign: TextAlign.center),
+            const SizedBox(height: 24),
+            TextButton(onPressed: onSignOut, child: const Text('Sign out')),
+          ]),
+        ),
+      ),
     );
   }
 }
