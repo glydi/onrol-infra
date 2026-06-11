@@ -1036,16 +1036,15 @@ class _StudentHomeState extends State<StudentHome> {
       barrierLabel: 'panel',
       barrierDismissible: true,
       barrierColor: const Color(0x401A1A2E),
-      transitionDuration: const Duration(milliseconds: 420),
+      transitionDuration: const Duration(milliseconds: 560),
       transitionBuilder: (ctx, anim, sec, child) {
-        // fastOutSlowIn is the buttery Material easing; a gentler start scale
-        // keeps the heavy backdrop-blur cheap to animate (very smooth), while
-        // still expanding out of the tapped tile.
-        final c = CurvedAnimation(parent: anim, curve: Curves.fastOutSlowIn, reverseCurve: Curves.fastOutSlowIn);
+        // Slow, neat expand: easeOutCubic settles gently; a gentle start scale
+        // keeps the heavy backdrop-blur smooth while it grows from the tile.
+        final c = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
         return FadeTransition(
           opacity: c,
           child: ScaleTransition(
-            scale: Tween<double>(begin: 0.7, end: 1.0).animate(c),
+            scale: Tween<double>(begin: 0.78, end: 1.0).animate(c),
             alignment: align,
             child: RepaintBoundary(child: child),
           ),
@@ -1160,7 +1159,52 @@ class _StudentHomeState extends State<StudentHome> {
               // Merge personal notifications + announcements, newest first.
               final notes = [...(d[3] as List), ...(d[2] as List)]
                 ..sort((a, b) => ((b as Map)['at']?.toString() ?? '').compareTo((a as Map)['at']?.toString() ?? ''));
+              final totalL = courses.fold<int>(0, (s, c) => s + (((c as Map)['lessons_total'] ?? 0) as num).toInt());
+              final doneL = courses.fold<int>(0, (s, c) => s + (((c as Map)['lessons_done'] ?? 0) as num).toInt());
+              final overall = totalL > 0 ? doneL / totalL : 0.0;
               return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                // Warm greeting.
+                Text('Hi, $_firstName 👋', style: GoogleFonts.poppins(fontSize: 19, fontWeight: FontWeight.w700, color: _navy)),
+                const SizedBox(height: 2),
+                Text("Here's your learning snapshot", style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
+                const SizedBox(height: 16),
+                // Overall-progress hero with an animated ring.
+                if (courses.isNotEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_orange.withOpacity(0.14), _orange.withOpacity(0.04)]),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: _glassBorder),
+                    ),
+                    child: Row(children: [
+                      SizedBox(
+                        width: 66, height: 66,
+                        child: Stack(alignment: Alignment.center, children: [
+                          TweenAnimationBuilder<double>(
+                            tween: Tween(begin: 0, end: overall),
+                            duration: const Duration(milliseconds: 900),
+                            curve: Curves.easeOutCubic,
+                            builder: (_, v, __) => SizedBox(
+                              width: 66, height: 66,
+                              child: CircularProgressIndicator(value: v, strokeWidth: 7, backgroundColor: _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0EBE8), valueColor: const AlwaysStoppedAnimation(_orange)),
+                            ),
+                          ),
+                          Text('${(overall * 100).round()}%', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800, color: _orange)),
+                        ]),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text('Overall progress', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
+                          const SizedBox(height: 3),
+                          Text(doneL > 0 ? '$doneL of $totalL lessons complete — keep going!' : 'Start a lesson to build your streak', style: GoogleFonts.poppins(fontSize: 12.5, color: _grey, height: 1.4)),
+                        ]),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 Row(children: [
                   Expanded(child: _statCard('${t['enrolled'] ?? 0}', 'Enrolled', icon: CupertinoIcons.book_fill, onTap: () => _openPanel('courses'))),
                   const SizedBox(width: 14),
@@ -1174,7 +1218,7 @@ class _StudentHomeState extends State<StudentHome> {
                 ]),
                 // Notifications — recent announcements.
                 if (notes.isNotEmpty) ...[
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 22),
                   Row(children: [
                     Icon(CupertinoIcons.bell_fill, size: 16, color: _orange),
                     const SizedBox(width: 6),
@@ -1189,14 +1233,21 @@ class _StudentHomeState extends State<StudentHome> {
                     return _notif(text, _fmtAt(m['at']?.toString()));
                   }),
                 ],
-                const SizedBox(height: 20),
+                const SizedBox(height: 22),
                 if (courses.isEmpty)
                   _emptyText('No courses yet — browse the catalog to enroll.')
-                else
+                else ...[
+                  Row(children: [
+                    Icon(CupertinoIcons.book_fill, size: 16, color: _orange),
+                    const SizedBox(width: 6),
+                    Text('Your Courses', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
+                  ]),
+                  const SizedBox(height: 8),
                   ...courses.map((c) {
                     final m = c as Map<String, dynamic>;
                     return _progress(m['title']?.toString() ?? 'Course', ((m['percent'] ?? 0) as num) / 100);
                   }),
+                ],
               ]);
             },
           ),
