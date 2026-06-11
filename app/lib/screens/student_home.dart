@@ -371,7 +371,7 @@ class _StudentHomeState extends State<StudentHome> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               _focusable(1, child: _profileCard()),
               const SizedBox(height: 12),
-              Expanded(child: _focusable(2, child: _AiNewsCard(auth: widget.auth, scrollable: true, onViewAll: () => _openPanel('announcements')))),
+              Expanded(child: _focusable(2, child: _AiNewsCard(auth: widget.auth, scrollable: true))),
             ]),
           ),
         ]),
@@ -394,7 +394,7 @@ class _StudentHomeState extends State<StudentHome> {
             );
           }),
           const SizedBox(height: 18),
-          _focusable(2, child: _AiNewsCard(auth: widget.auth, scrollable: false, onViewAll: () => _openPanel('announcements'))),
+          _focusable(2, child: _AiNewsCard(auth: widget.auth, scrollable: false)),
         ]),
       );
 
@@ -1069,15 +1069,15 @@ class _StudentHomeState extends State<StudentHome> {
                 ..sort((a, b) => ((b as Map)['at']?.toString() ?? '').compareTo((a as Map)['at']?.toString() ?? ''));
               return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Row(children: [
-                  Expanded(child: _statCard('${t['enrolled'] ?? 0}', 'Enrolled')),
+                  Expanded(child: _statCard('${t['enrolled'] ?? 0}', 'Enrolled', icon: CupertinoIcons.book_fill, onTap: () => _openPanel('courses'))),
                   const SizedBox(width: 14),
-                  Expanded(child: _statCard('${t['completed'] ?? 0}', 'Completed')),
+                  Expanded(child: _statCard('${t['completed'] ?? 0}', 'Completed', icon: CupertinoIcons.checkmark_seal_fill, onTap: () => _openPanel('progress'))),
                 ]),
                 const SizedBox(height: 14),
                 Row(children: [
-                  Expanded(child: _statCard('${_xpFromCourses(courses)}', 'XP earned')),
+                  Expanded(child: _statCard('${_xpFromCourses(courses)}', 'XP earned', icon: CupertinoIcons.bolt_fill, onTap: () => _openPanel('achievements'))),
                   const SizedBox(width: 14),
-                  Expanded(child: _statCard('${t['certificates'] ?? 0}', 'Certificates')),
+                  Expanded(child: _statCard('${t['certificates'] ?? 0}', 'Certificates', icon: CupertinoIcons.rosette, onTap: () => _openPanel('certificates'))),
                 ]),
                 // Notifications — recent announcements.
                 if (notes.isNotEmpty) ...[
@@ -1408,27 +1408,31 @@ class _StudentHomeState extends State<StudentHome> {
 
 // ---- Reusable panel components ---------------------------------------------
 
-Widget _statCard(String num, String label) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-      decoration: BoxDecoration(color: _peachSoft, borderRadius: BorderRadius.circular(12)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(num, style: GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w700, color: _orange)),
-        const SizedBox(height: 2),
-        Text(label, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
-      ]),
-    );
+Widget _statCard(String value, String label, {IconData? icon, VoidCallback? onTap}) =>
+    _StatCard(value: value, label: label, icon: icon, onTap: onTap);
 
 Widget _progress(String label, double pct) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 7),
       child: Column(children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(label, style: GoogleFonts.poppins(fontSize: 13, color: const Color(0xFF555555))),
-          Text('${(pct * 100).round()}%', style: GoogleFonts.poppins(fontSize: 13, color: const Color(0xFF555555))),
+          Text(label, style: GoogleFonts.poppins(fontSize: 13, color: _navy)),
+          Text('${(pct * 100).round()}%', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _orange)),
         ]),
         const SizedBox(height: 6),
         ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: LinearProgressIndicator(value: pct, minHeight: 8, backgroundColor: const Color(0xFFF0EBE8), valueColor: const AlwaysStoppedAnimation(_orange)),
+          // Bar fills with a smooth animation when the panel opens.
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: pct.clamp(0.0, 1.0)),
+            duration: const Duration(milliseconds: 700),
+            curve: Curves.easeOutCubic,
+            builder: (_, v, __) => LinearProgressIndicator(
+              value: v,
+              minHeight: 8,
+              backgroundColor: _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0EBE8),
+              valueColor: const AlwaysStoppedAnimation(_orange),
+            ),
+          ),
         ),
       ]),
     );
@@ -1704,10 +1708,9 @@ class _ProfilePanelState extends State<_ProfilePanel> {
 /// and only the news list scrolls; otherwise it shrink-wraps and the page
 /// scrolls as a whole.
 class _AiNewsCard extends StatefulWidget {
-  const _AiNewsCard({required this.auth, required this.scrollable, required this.onViewAll});
+  const _AiNewsCard({required this.auth, required this.scrollable});
   final AuthService auth;
   final bool scrollable;
-  final VoidCallback onViewAll;
 
   @override
   State<_AiNewsCard> createState() => _AiNewsCardState();
@@ -1791,19 +1794,6 @@ class _AiNewsCardState extends State<_AiNewsCard> {
           ]),
           const SizedBox(height: 10),
           if (widget.scrollable) Expanded(child: _body()) else _body(),
-          const SizedBox(height: 14),
-          _Pressable(
-            onTap: widget.onViewAll,
-            child: Container(
-              height: 46, alignment: Alignment.center,
-              decoration: BoxDecoration(color: _peach, borderRadius: BorderRadius.circular(12)),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Text('View All AI News', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _orange)),
-                const SizedBox(width: 6),
-                Icon(CupertinoIcons.arrow_right, size: 16, color: _orange),
-              ]),
-            ),
-          ),
         ],
       ),
     );
@@ -2113,25 +2103,147 @@ class _DarkModeRow extends StatelessWidget {
   }
 }
 
-class _StudentHomeNotif extends StatelessWidget {
+/// Animated count-up + hover/tappable stat tile (dashboard).
+class _StatCard extends StatefulWidget {
+  const _StatCard({required this.value, required this.label, this.icon, this.onTap});
+  final String value;
+  final String label;
+  final IconData? icon;
+  final VoidCallback? onTap;
+
+  @override
+  State<_StatCard> createState() => _StatCardState();
+}
+
+class _StatCardState extends State<_StatCard> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final target = double.tryParse(widget.value);
+    final tappable = widget.onTap != null;
+    return MouseRegion(
+      cursor: tappable ? SystemMouseCursors.click : MouseCursor.defer,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _hover && tappable ? 1.04 : 1.0,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: _hover
+                    ? [_orange.withOpacity(0.18), _orange.withOpacity(0.06)]
+                    : [_orange.withOpacity(0.10), _orange.withOpacity(0.03)],
+              ),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _hover ? _orange.withOpacity(0.40) : _glassBorder, width: 1),
+              boxShadow: _hover ? [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 16, offset: const Offset(0, 6))] : const [],
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                if (widget.icon != null) ...[Icon(widget.icon, size: 16, color: _orange), const SizedBox(width: 6)],
+                Expanded(
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: target ?? 0),
+                    duration: const Duration(milliseconds: 800),
+                    curve: Curves.easeOutCubic,
+                    builder: (_, v, __) => Text(
+                      target != null ? v.round().toString() : widget.value,
+                      style: GoogleFonts.poppins(fontSize: 24, fontWeight: FontWeight.w700, color: _orange),
+                    ),
+                  ),
+                ),
+                if (tappable) Icon(CupertinoIcons.chevron_right, size: 14, color: _orange.withOpacity(_hover ? 0.9 : 0.4)),
+              ]),
+              const SizedBox(height: 2),
+              Text(widget.label, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A notification row that expands on tap to reveal the full text. Themed glass
+/// chip with a rotating chevron.
+class _StudentHomeNotif extends StatefulWidget {
   const _StudentHomeNotif({required this.text, required this.time, this.read = false});
   final String text;
   final String time;
   final bool read;
 
   @override
+  State<_StudentHomeNotif> createState() => _StudentHomeNotifState();
+}
+
+class _StudentHomeNotifState extends State<_StudentHomeNotif> {
+  bool _open = false;
+  bool _hover = false;
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF0F0F0)))),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(width: 10, height: 10, margin: const EdgeInsets.only(top: 5, right: 14), decoration: BoxDecoration(color: read ? const Color(0xFFDDDDDD) : _orange, shape: BoxShape.circle)),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(text, style: GoogleFonts.poppins(fontSize: 13, color: const Color(0xFF333333), height: 1.5)),
-          const SizedBox(height: 3),
-          Text(time, style: GoogleFonts.poppins(fontSize: 11, color: const Color(0xFFAAAAAA))),
-        ])),
-      ]),
+    final active = _open || _hover;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() => _open = !_open),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          margin: const EdgeInsets.symmetric(vertical: 5),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: active
+                  ? [_orange.withOpacity(0.14), _orange.withOpacity(0.05)]
+                  : (_isDark ? [Colors.white.withOpacity(0.06), Colors.white.withOpacity(0.02)] : [Colors.white.withOpacity(0.55), Colors.white.withOpacity(0.28)]),
+            ),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: active ? _orange.withOpacity(0.35) : _glassBorder, width: 1),
+          ),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(width: 8, height: 8, margin: const EdgeInsets.only(top: 6, right: 12), decoration: BoxDecoration(color: widget.read ? _grey : _orange, shape: BoxShape.circle)),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.topLeft,
+                  child: Text(
+                    widget.text,
+                    maxLines: _open ? null : 2,
+                    overflow: _open ? TextOverflow.visible : TextOverflow.ellipsis,
+                    style: GoogleFonts.poppins(fontSize: 13, color: _navy, height: 1.5),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(widget.time, style: GoogleFonts.poppins(fontSize: 11, color: _grey)),
+              ]),
+            ),
+            const SizedBox(width: 8),
+            AnimatedRotation(
+              turns: _open ? 0.5 : 0,
+              duration: const Duration(milliseconds: 180),
+              child: Icon(CupertinoIcons.chevron_down, size: 16, color: active ? _orange : _grey),
+            ),
+          ]),
+        ),
+      ),
     );
   }
 }
