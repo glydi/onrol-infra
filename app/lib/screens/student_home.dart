@@ -2144,12 +2144,10 @@ class _HeroPanelModal extends StatelessWidget {
             ),
           ),
           Center(
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: size.width < 680 ? 16 : 24, vertical: 36),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: 600, maxHeight: size.height * 0.86),
-                child: _card(ctx, anim),
-              ),
+            child: SizedBox(
+              width: size.width * 0.97,
+              height: size.height * 0.97,
+              child: _card(ctx, anim),
             ),
           ),
         ]);
@@ -2202,12 +2200,11 @@ class _HeroPanelModal extends StatelessWidget {
             boxShadow: [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.5 : 0.25), blurRadius: 48, offset: const Offset(0, 22))],
           ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: MainAxisSize.max,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               heroTag != null ? Hero(tag: heroTag!, child: header) : header,
-              Flexible(
-                fit: FlexFit.loose,
+              Expanded(
                 child: FadeTransition(
                   opacity: CurvedAnimation(parent: anim, curve: const Interval(0.35, 1.0, curve: Curves.easeOut)),
                   child: SlideTransition(
