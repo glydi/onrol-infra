@@ -34,6 +34,23 @@ type Config struct {
 	AttestationMode AttestationMode
 	AdminAPIKey     string
 	Zoho            Zoho
+	Integrations    Integrations
+}
+
+// Integrations holds optional third-party API credentials. When a key is empty,
+// the corresponding feature runs in DEMO mode (simulated, with dummy data) so
+// the app works end-to-end without real credentials. Set the env var to go live.
+type Integrations struct {
+	RazorpayKey    string // RAZORPAY_KEY_ID    — payment links / orders
+	RazorpaySecret string // RAZORPAY_KEY_SECRET
+	WhatsAppToken  string // WHATSAPP_TOKEN      — WhatsApp Business (Meta) Cloud API
+	WhatsAppPhone  string // WHATSAPP_PHONE_ID
+	EmailAPIKey    string // EMAIL_API_KEY       — transactional email (SES/SendGrid/etc.)
+	EmailFrom      string // EMAIL_FROM
+	VoiceSID       string // VOICE_ACCOUNT_SID   — telephony/IVR (Twilio/Plivo/Exotel)
+	VoiceToken     string // VOICE_AUTH_TOKEN
+	SMSAPIKey      string // SMS_API_KEY         — SMS provider
+	AIAPIKey       string // AI_API_KEY          — LLM provider (Anthropic/OpenAI)
 }
 
 func (c Config) IsProduction() bool { return c.Env == "production" }
@@ -52,6 +69,18 @@ func Load() (Config, error) {
 		AdminAPIKey:     os.Getenv("ADMIN_API_KEY"),
 		Zoho: Zoho{
 			WebinarBase: getenv("ZOHO_WEBINAR_BASE", "https://webinar.zoho.in"),
+		},
+		Integrations: Integrations{
+			RazorpayKey:    os.Getenv("RAZORPAY_KEY_ID"),
+			RazorpaySecret: os.Getenv("RAZORPAY_KEY_SECRET"),
+			WhatsAppToken:  os.Getenv("WHATSAPP_TOKEN"),
+			WhatsAppPhone:  os.Getenv("WHATSAPP_PHONE_ID"),
+			EmailAPIKey:    os.Getenv("EMAIL_API_KEY"),
+			EmailFrom:      getenv("EMAIL_FROM", "no-reply@onrol.test"),
+			VoiceSID:       os.Getenv("VOICE_ACCOUNT_SID"),
+			VoiceToken:     os.Getenv("VOICE_AUTH_TOKEN"),
+			SMSAPIKey:      os.Getenv("SMS_API_KEY"),
+			AIAPIKey:       os.Getenv("AI_API_KEY"),
 		},
 	}
 

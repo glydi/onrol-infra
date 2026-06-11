@@ -164,6 +164,12 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Get("/manage/crm/affiliates/:id/commissions", auth, mgr, h.ListCommissions)
 	api.Post("/manage/crm/affiliates/:id/commissions", auth, mgr, h.AddCommission)
 	api.Post("/manage/crm/affiliates/:id/commissions/:cid/pay", auth, mgr, h.PayCommission)
+	// CRM integrations, funnel, my-day, messaging, payment links
+	api.Get("/manage/integrations", auth, mgr, h.ListIntegrations)
+	api.Get("/manage/crm/funnel", auth, mgr, h.CrmFunnel)
+	api.Get("/manage/crm/my-day", auth, mgr, h.CrmMyDay)
+	api.Post("/manage/crm/leads/:id/message", auth, mgr, h.SendLeadMessage)
+	api.Post("/manage/crm/invoices/:id/payment-link", auth, mgr, h.CreatePaymentLink)
 
 	// ---- Ambassador portal -----------------------------------------------
 	// Admin: manage ambassadors + all referrals.

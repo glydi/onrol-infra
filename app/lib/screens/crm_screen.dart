@@ -61,7 +61,8 @@ class _CrmScreenState extends State<CrmScreen> {
   int _tab = 0;
   static const _tabLabels = [
     'Leads', 'Deals', 'Accounts', 'Campaigns', 'Invoices', 'Forms',
-    'Analytics', 'Automation', 'Surveys', 'Reviews', 'Calendar', 'Feed', 'Tickets', 'Affiliates', 'Webhooks',
+    'Analytics', 'Funnel', 'My Day', 'Automation', 'Surveys', 'Reviews', 'Calendar', 'Feed',
+    'Tickets', 'Affiliates', 'Webhooks', 'Integrations',
   ];
 
   Widget _tabChip(String label, int i) {
@@ -92,6 +93,8 @@ class _CrmScreenState extends State<CrmScreen> {
       _InvoicesTab(auth: widget.auth),
       _FormsTab(auth: widget.auth),
       _AnalyticsTab(auth: widget.auth),
+      _FunnelTab(auth: widget.auth),
+      _MyDayTab(auth: widget.auth),
       _AutomationTab(auth: widget.auth),
       _SurveysTab(auth: widget.auth),
       _ReviewsTab(auth: widget.auth),
@@ -100,6 +103,7 @@ class _CrmScreenState extends State<CrmScreen> {
       _TicketsTab(auth: widget.auth),
       _AffiliatesTab(auth: widget.auth),
       _WebhooksTab(auth: widget.auth),
+      _IntegrationsTab(auth: widget.auth),
     ];
     return Scaffold(
       backgroundColor: Palette.of(context).bg,
@@ -875,6 +879,11 @@ class _InvoicesTabState extends State<_InvoicesTab> {
               onTap: () async { Navigator.pop(ctx, false); await _recordPayment(id); _load(); },
             ),
             ListTile(
+              leading: const Icon(CupertinoIcons.link, color: AppleColors.blue),
+              title: Text('Payment link', style: AppleTheme.body(ctx)),
+              onTap: () async { Navigator.pop(ctx, false); await _paymentLink(id); },
+            ),
+            ListTile(
               leading: const Icon(CupertinoIcons.trash, color: AppleColors.red),
               title: Text('Delete invoice', style: AppleTheme.body(ctx)),
               onTap: () async {
@@ -903,6 +912,26 @@ class _InvoicesTabState extends State<_InvoicesTab> {
         return e.message;
       }
     });
+  }
+
+  // Generate a payment link (Razorpay when configured, else a demo link).
+  Future<void> _paymentLink(String invoiceId) async {
+    try {
+      final r = ApiClient.decode(await widget.auth.apiPost('/api/v1/manage/crm/invoices/$invoiceId/payment-link', {}));
+      final link = r['link']?.toString() ?? '';
+      final demo = r['mode'] != 'live';
+      if (!mounted) return;
+      await showDialog(context: context, builder: (ctx) => AlertDialog(
+        title: Text(demo ? 'Payment link (demo)' : 'Payment link'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SelectableText(link.isEmpty ? '(Razorpay configured — wire the live call)' : link),
+          if (demo) const Padding(padding: EdgeInsets.only(top: 10), child: Text('Set RAZORPAY_KEY_ID + RAZORPAY_KEY_SECRET to generate real links.', style: TextStyle(fontSize: 12))),
+        ]),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close'))],
+      ));
+    } catch (_) {
+      if (mounted) _toast('Could not create link');
+    }
   }
 }
 
@@ -1200,6 +1229,29 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
     if (ok == true) { _toast('Logged'); _load(); }
   }
 
+  // Send a message to the lead via WhatsApp / SMS / Email. Uses the configured
+  // provider if available, else runs in demo mode (still logged to the timeline).
+  Future<void> _sendMessage() async {
+    final message = TextEditingController();
+    int channel = 0;
+    const channels = ['whatsapp', 'sms', 'email'];
+    final ok = await showFormSheet(context, title: 'Send Message', builder: (setS) => [
+      AppleSegmented(labels: const ['WhatsApp', 'SMS', 'Email'], selected: channel, onChanged: (i) => setS(() => channel = i)),
+      const SizedBox(height: 10),
+      sheetField(message, 'Message', CupertinoIcons.text_alignleft),
+    ], onSubmit: () async {
+      if (message.text.trim().isEmpty) return 'Enter a message';
+      try {
+        final r = ApiClient.decode(await widget.auth.apiPost('/api/v1/manage/crm/leads/$_id/message', {'channel': channels[channel], 'message': message.text.trim()}));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r['mode'] == 'live' ? 'Sent via ${channels[channel]}' : 'Sent (demo — set the ${channels[channel]} API key to go live)'), behavior: SnackBarBehavior.floating));
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) _load();
+  }
+
   Future<void> _addTask() async {
     final title = TextEditingController();
     DateTime due = DateTime.now().add(const Duration(days: 1));
@@ -1278,7 +1330,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
                 Row(children: [Expanded(child: SectionHeader('Tasks (${_tasks.length})')), _smallBtn('Add', _addTask)]),
                 if (_tasks.isEmpty) AppleCard(child: Text('No tasks. Schedule a follow-up.', style: AppleTheme.footnote(context))) else ..._tasks.map((t) => _taskRow(t as Map<String, dynamic>)),
                 const SizedBox(height: 20),
-                Row(children: [Expanded(child: SectionHeader('Activity (${_activities.length})')), _smallBtn('Log', _addActivity)]),
+                Row(children: [Expanded(child: SectionHeader('Activity (${_activities.length})')), _smallBtn('Message', _sendMessage), const SizedBox(width: 6), _smallBtn('Log', _addActivity)]),
                 if (_activities.isEmpty) AppleCard(child: Text('No activity yet.', style: AppleTheme.footnote(context))) else ..._activities.map((a) => _activityRow(a as Map<String, dynamic>)),
               ],
             ),
@@ -1898,5 +1950,152 @@ class _WebhooksTabState extends State<_WebhooksTab> {
       on ApiException catch (e) { return e.message; }
     });
     if (ok == true) { _toast('Webhook added'); _load(); }
+  }
+}
+
+// ===========================================================================
+// Funnel
+// ===========================================================================
+
+class _FunnelTab extends StatefulWidget {
+  const _FunnelTab({required this.auth});
+  final AuthService auth;
+  @override
+  State<_FunnelTab> createState() => _FunnelTabState();
+}
+
+class _FunnelTabState extends State<_FunnelTab> {
+  bool _loading = true;
+  Map<String, dynamic> _d = {};
+  @override
+  void initState() { super.initState(); _load(); }
+  Future<void> _load() async {
+    try { _d = ApiClient.decode(await widget.auth.apiGet('/api/v1/manage/crm/funnel')); } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+  @override
+  Widget build(BuildContext context) {
+    final hp = MediaQuery.of(context).size.width > 700 ? 32.0 : 18.0;
+    if (_loading) return const Center(child: CupertinoActivityIndicator());
+    final funnel = (_d['funnel'] as List?) ?? [];
+    final total = ((_d['total'] as num?) ?? 0).toInt();
+    final maxC = funnel.fold<int>(1, (m, e) => ((e['count'] as num?)?.toInt() ?? 0) > m ? (e['count'] as num).toInt() : m);
+    return RefreshIndicator(onRefresh: _load, child: ListView(padding: EdgeInsets.fromLTRB(hp, 8, hp, 40), children: [
+      Text('Conversion funnel', style: AppleTheme.subhead(context)),
+      const SizedBox(height: 6),
+      Text('${(_d['conversion_pct'] as num?)?.toStringAsFixed(1) ?? '0'}% converted · $total leads', style: AppleTheme.footnote(context)),
+      const SizedBox(height: 16),
+      ...funnel.map((e) {
+        final m = e as Map<String, dynamic>;
+        final count = (m['count'] as num?)?.toInt() ?? 0;
+        final frac = (count / maxC).clamp(0.0, 1.0);
+        return Padding(padding: const EdgeInsets.only(bottom: 12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [Expanded(child: Text(m['stage']?.toString() ?? '', style: AppleTheme.body(context))), Text('$count', style: AppleTheme.headline(context))]),
+          const SizedBox(height: 6),
+          ClipRRect(borderRadius: BorderRadius.circular(4), child: LinearProgressIndicator(value: frac, minHeight: 10, backgroundColor: Palette.of(context).card2, color: _statusColor(m['stage']?.toString() ?? ''))),
+        ]));
+      }),
+    ]));
+  }
+}
+
+// ===========================================================================
+// My Day
+// ===========================================================================
+
+class _MyDayTab extends StatefulWidget {
+  const _MyDayTab({required this.auth});
+  final AuthService auth;
+  @override
+  State<_MyDayTab> createState() => _MyDayTabState();
+}
+
+class _MyDayTabState extends State<_MyDayTab> {
+  bool _loading = true;
+  Map<String, dynamic> _d = {};
+  @override
+  void initState() { super.initState(); _load(); }
+  Future<void> _load() async {
+    try { _d = ApiClient.decode(await widget.auth.apiGet('/api/v1/manage/crm/my-day')); } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+  Future<void> _done(String id) async {
+    try { await widget.auth.apiPost('/api/v1/manage/crm/tasks/$id/status', {'status': 'completed'}); _load(); } catch (_) {}
+  }
+  @override
+  Widget build(BuildContext context) {
+    final hp = MediaQuery.of(context).size.width > 700 ? 32.0 : 18.0;
+    if (_loading) return const Center(child: CupertinoActivityIndicator());
+    final tasks = (_d['tasks'] as List?) ?? [];
+    Color bc(String b) => b == 'overdue' ? AppleColors.red : (b == 'today' ? AppleColors.orange : Palette.of(context).secondary);
+    return RefreshIndicator(onRefresh: _load, child: ListView(padding: EdgeInsets.fromLTRB(hp, 8, hp, 40), children: [
+      Text('${_d['overdue'] ?? 0} overdue · ${_d['today'] ?? 0} due today', style: AppleTheme.subhead(context)),
+      const SizedBox(height: 14),
+      if (tasks.isEmpty) AppleCard(child: Text('No open tasks. You\'re all caught up.', style: AppleTheme.footnote(context)))
+      else ...tasks.map((t) {
+        final m = t as Map<String, dynamic>;
+        final b = m['bucket']?.toString() ?? 'upcoming';
+        return Padding(padding: const EdgeInsets.only(bottom: 10), child: AppleCard(child: Row(children: [
+          GestureDetector(onTap: () => _done(m['id'].toString()), child: Icon(CupertinoIcons.circle, color: bc(b))),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(m['title']?.toString() ?? 'Task', style: AppleTheme.body(context)),
+            Text('${m['lead']} · ${_fmtD(m['due_at'])}', style: AppleTheme.footnote(context)),
+          ])),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: bc(b).withOpacity(0.14), borderRadius: BorderRadius.circular(6)), child: Text(b, style: TextStyle(fontSize: 11, color: bc(b), fontWeight: FontWeight.w700))),
+        ])));
+      }),
+    ]));
+  }
+}
+
+// ===========================================================================
+// Integrations (status + where to add the API key)
+// ===========================================================================
+
+class _IntegrationsTab extends StatefulWidget {
+  const _IntegrationsTab({required this.auth});
+  final AuthService auth;
+  @override
+  State<_IntegrationsTab> createState() => _IntegrationsTabState();
+}
+
+class _IntegrationsTabState extends State<_IntegrationsTab> {
+  bool _loading = true;
+  Map<String, dynamic> _d = {};
+  @override
+  void initState() { super.initState(); _load(); }
+  Future<void> _load() async {
+    try { _d = ApiClient.decode(await widget.auth.apiGet('/api/v1/manage/integrations')); } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+  @override
+  Widget build(BuildContext context) {
+    final hp = MediaQuery.of(context).size.width > 700 ? 32.0 : 18.0;
+    if (_loading) return const Center(child: CupertinoActivityIndicator());
+    final items = (_d['integrations'] as List?) ?? [];
+    return RefreshIndicator(onRefresh: _load, child: ListView(padding: EdgeInsets.fromLTRB(hp, 8, hp, 40), children: [
+      Text('${_d['live'] ?? 0}/${_d['total'] ?? 0} live · rest run in demo mode', style: AppleTheme.subhead(context)),
+      const SizedBox(height: 14),
+      ...items.map((e) {
+        final m = e as Map<String, dynamic>;
+        final live = m['status'] == 'live';
+        final c = live ? AppleColors.green : AppleColors.orange;
+        return Padding(padding: const EdgeInsets.only(bottom: 12), child: AppleCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: Text(m['name']?.toString() ?? '', style: AppleTheme.headline(context))),
+            Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3), decoration: BoxDecoration(color: c.withOpacity(0.14), borderRadius: BorderRadius.circular(6)), child: Text(live ? 'LIVE' : 'DEMO', style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w800))),
+          ]),
+          const SizedBox(height: 4),
+          Text(m['description']?.toString() ?? '', style: AppleTheme.footnote(context)),
+          const SizedBox(height: 8),
+          Row(children: [Icon(CupertinoIcons.gear_alt, size: 13, color: Palette.of(context).secondary), const SizedBox(width: 6), Expanded(child: Text('Set: ${m['env_var']}', style: AppleTheme.footnote(context).copyWith(fontFamily: 'monospace')))]),
+          const SizedBox(height: 2),
+          Row(children: [Icon(CupertinoIcons.arrow_right_circle, size: 13, color: Palette.of(context).secondary), const SizedBox(width: 6), Expanded(child: Text('Used in: ${m['used_in']}', style: AppleTheme.footnote(context)))]),
+        ])));
+      }),
+      const SizedBox(height: 8),
+      AppleCard(child: Text('Each integration works in DEMO mode (simulated, dummy data) until you set its env var in /opt/onrol/.env on the server, then restart. See INTEGRATIONS.md.', style: AppleTheme.footnote(context))),
+    ]));
   }
 }
