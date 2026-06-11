@@ -926,12 +926,13 @@ class _StudentHomeState extends State<StudentHome> {
       barrierLabel: 'panel',
       barrierDismissible: true,
       barrierColor: const Color(0x401A1A2E),
-      transitionDuration: const Duration(milliseconds: 340),
+      transitionDuration: const Duration(milliseconds: 360),
       transitionBuilder: (ctx, anim, sec, child) {
         final c = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
+        // Grow out of the tapped tile: scale from a small box at that point.
         return FadeTransition(
           opacity: c,
-          child: ScaleTransition(scale: Tween<double>(begin: 0.45, end: 1.0).animate(c), alignment: align, child: child),
+          child: ScaleTransition(scale: Tween<double>(begin: 0.15, end: 1.0).animate(c), alignment: align, child: child),
         );
       },
       pageBuilder: (ctx, anim, sec) {
@@ -1262,7 +1263,7 @@ class _StudentHomeState extends State<StudentHome> {
         return (CupertinoIcons.creditcard_fill, 'Payments', 'Billing & subscriptions', [
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: _peachSoft, borderRadius: BorderRadius.circular(12), border: const Border(left: BorderSide(color: _orange, width: 4))),
+            decoration: BoxDecoration(color: _peachSoft, borderRadius: BorderRadius.circular(12)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Current Plan', style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
               const SizedBox(height: 4),
@@ -1386,7 +1387,7 @@ class _StudentHomeState extends State<StudentHome> {
 
 Widget _statCard(String num, String label) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-      decoration: BoxDecoration(color: _peachSoft, borderRadius: BorderRadius.circular(12), border: const Border(left: BorderSide(color: _orange, width: 4))),
+      decoration: BoxDecoration(color: _peachSoft, borderRadius: BorderRadius.circular(12)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(num, style: GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w700, color: _orange)),
         const SizedBox(height: 2),
