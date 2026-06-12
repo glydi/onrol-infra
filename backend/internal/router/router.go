@@ -231,6 +231,8 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Get("/me/preferences", auth, h.GetPreferences)
 	api.Put("/me/preferences", auth, h.UpdatePreferences)
 	api.Get("/me/courses", auth, h.MyCourses)
+	api.Get("/me/leaderboard", auth, h.MyLeaderboard)
+	api.Get("/me/streak", auth, h.MyStreak)
 	api.Post("/me/courses/:id/enroll", auth, h.SelfEnroll)
 	api.Get("/me/courses/:id/content", auth, h.CourseContent)
 	api.Post("/me/courses/:id/forum", auth, h.PostForum)

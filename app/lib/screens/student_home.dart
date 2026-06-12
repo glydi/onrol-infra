@@ -33,7 +33,6 @@ bool _isDark = false;
 Color get _navy => _isDark ? const Color(0xFFECEDF2) : const Color(0xFF1A1A2E);
 Color get _grey => _isDark ? const Color(0xFF9AA0AC) : const Color(0xFF888888);
 Color get _peach => _isDark ? const Color(0xFF2C231C) : const Color(0xFFFFF3EC);
-Color get _peachSoft => _isDark ? const Color(0xFF241D17) : const Color(0xFFFFF8F5);
 Color get _bg => _isDark ? const Color(0xFF0E0F14) : const Color(0xFFFFF6F1);
 Color get _surface => _isDark ? const Color(0xFF1E2027) : Colors.white;
 Color get _line => _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0F0F0);
@@ -221,9 +220,9 @@ class _StudentHomeState extends State<StudentHome> {
   String get _name => widget.auth.user?.fullName ?? 'Student';
   String get _firstName => _name.split(RegExp(r'[\s@]')).first;
 
-  // Day streak shown in the profile card (placeholder until a backend streak
-  // exists). Tapping the chip opens the Achievements panel.
-  final int _streak = 7;
+  // Day streak shown in the profile card — the real run of consecutive days the
+  // learner completed a lesson (from /me/streak). Tapping opens Achievements.
+  int _streak = 0;
 
   // Which of the three dashboard sections is focused: 0 = menu (matrix),
   // 1 = profile, 2 = live news. Drives the focus highlight.
@@ -237,6 +236,16 @@ class _StudentHomeState extends State<StudentHome> {
   void initState() {
     super.initState();
     _loadAvatarFromServer();
+    _loadStreak();
+  }
+
+  // Pull the real daily streak (consecutive days with a completed lesson).
+  Future<void> _loadStreak() async {
+    try {
+      final m = ApiClient.decode(await widget.auth.apiGet('/api/v1/me/streak'));
+      final s = ((m['streak'] ?? 0) as num).toInt();
+      if (mounted) setState(() => _streak = s);
+    } catch (_) {}
   }
 
   // Pull the saved profile picture from the backend (source of truth) and cache
@@ -1222,12 +1231,13 @@ class _StudentHomeState extends State<StudentHome> {
           _SettingRow('Auto-play Next Lesson', 'Continuous learning flow', false),
         ]);
       case 'leaderboard':
-        return (CupertinoIcons.list_number, 'Leaderboard', "This week's top learners", [
-          _leader('1', 'Aryan Patel', '200 lessons', '1,240 XP'),
-          _leader('2', 'Meera Iyer', '180 lessons', '1,100 XP'),
-          _leader('3', '$_firstName (you)', '160 lessons', '980 XP', highlight: true),
-          _leader('4', 'Ravi Kumar', '145 lessons', '870 XP'),
-          _leader('5', 'Ananya Singh', '130 lessons', '760 XP'),
+        return (CupertinoIcons.list_number, 'Leaderboard', 'Top learners by lessons completed', [
+          _future(_apiList('/api/v1/me/leaderboard', 'leaderboard'), (List rows) {
+            if (rows.isEmpty) return _emptyText('No ranked learners yet — finish a lesson to climb the board!');
+            return Column(children: [
+              for (var i = 0; i < rows.length; i++) _LeaderRow(index: i, data: rows[i] as Map<String, dynamic>),
+            ]);
+          }),
         ]);
       case 'schedule':
         return (CupertinoIcons.calendar, 'Calendar', 'Classes, deadlines & activities', [
@@ -1587,21 +1597,119 @@ class _PanelRowState extends State<_PanelRow> {
   }
 }
 
-Widget _leader(String rank, String name, String sub, String pts, {bool highlight = false}) => Container(
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-      decoration: BoxDecoration(color: highlight ? _peachSoft : null, borderRadius: BorderRadius.circular(8)),
-      child: Row(children: [
-        SizedBox(width: 28, child: Text('#$rank', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _orange))),
-        const SizedBox(width: 12),
-        Container(width: 36, height: 36, alignment: Alignment.center, decoration: BoxDecoration(color: _orange.withOpacity(0.12), shape: BoxShape.circle), child: const Icon(CupertinoIcons.person_fill, size: 18, color: _orange)),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(name, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
-          Text(sub, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
-        ])),
-        Text(pts, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _orange)),
-      ]),
+/// One leaderboard entry: medal/rank badge, avatar, name + course, XP + lessons.
+/// Top-3 get gold/silver/bronze medals; the caller's row glows. Staggered in.
+class _LeaderRow extends StatefulWidget {
+  const _LeaderRow({required this.index, required this.data});
+  final int index;
+  final Map<String, dynamic> data;
+
+  @override
+  State<_LeaderRow> createState() => _LeaderRowState();
+}
+
+class _LeaderRowState extends State<_LeaderRow> {
+  bool _hover = false;
+
+  // Gold / silver / bronze gradients for the top three; null otherwise.
+  static List<Color>? _medal(int rank) {
+    switch (rank) {
+      case 1:
+        return [const Color(0xFFFFD75E), const Color(0xFFF5A623)];
+      case 2:
+        return [const Color(0xFFD6DCE3), const Color(0xFF9AA4AE)];
+      case 3:
+        return [const Color(0xFFE9A777), const Color(0xFFC57B3C)];
+      default:
+        return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.data;
+    final rank = ((d['rank'] ?? widget.index + 1) as num).toInt();
+    final name = d['name']?.toString().trim().isNotEmpty == true ? d['name'].toString() : 'Learner';
+    final course = d['course']?.toString() ?? '';
+    final xp = ((d['xp'] ?? 0) as num).toInt();
+    final lessons = ((d['lessons'] ?? 0) as num).toInt();
+    final isMe = d['is_me'] == true;
+    final avatar = d['avatar']?.toString() ?? '';
+    final initials = name.isNotEmpty ? name[0].toUpperCase() : '?';
+    final medal = _medal(rank);
+    final active = _hover || isMe;
+
+    return _Entrance(
+      index: widget.index,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.basic,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          margin: const EdgeInsets.symmetric(vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          transform: Matrix4.translationValues(0, _hover ? -1 : 0, 0),
+          decoration: BoxDecoration(
+            gradient: isMe
+                ? LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_orange.withOpacity(0.18), _orange.withOpacity(0.06)])
+                : _cardGradient,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: isMe ? _orange.withOpacity(0.55) : (_hover ? _orange.withOpacity(0.30) : _cardBorder), width: isMe ? 1.5 : 1),
+            boxShadow: active ? [BoxShadow(color: _orange.withOpacity(isMe ? 0.20 : 0.12), blurRadius: 16, offset: const Offset(0, 6))] : const [],
+          ),
+          child: Row(children: [
+            // Rank / medal badge.
+            SizedBox(
+              width: 34,
+              child: medal != null
+                  ? Container(
+                      width: 32, height: 32, alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: medal, begin: Alignment.topLeft, end: Alignment.bottomRight),
+                        shape: BoxShape.circle,
+                        boxShadow: [BoxShadow(color: medal.last.withOpacity(0.45), blurRadius: 8, offset: const Offset(0, 3))],
+                      ),
+                      child: Text('$rank', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white)),
+                    )
+                  : Center(child: Text('$rank', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _grey))),
+            ),
+            const SizedBox(width: 10),
+            _avatarBox(avatar, 40, initials),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Flexible(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy))),
+                  if (isMe) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                      decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(6)),
+                      child: Text('YOU', style: GoogleFonts.poppins(fontSize: 8.5, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5)),
+                    ),
+                  ],
+                ]),
+                const SizedBox(height: 2),
+                Row(children: [
+                  Icon(CupertinoIcons.book_fill, size: 11, color: _grey),
+                  const SizedBox(width: 4),
+                  Flexible(child: Text(course.isNotEmpty ? course : 'Getting started', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 11.5, color: _grey))),
+                ]),
+              ]),
+            ),
+            const SizedBox(width: 8),
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Text('$xp XP', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w800, color: _orange)),
+              Text('$lessons ${lessons == 1 ? 'lesson' : 'lessons'}', style: GoogleFonts.poppins(fontSize: 10.5, color: _grey)),
+            ]),
+          ]),
+        ),
+      ),
     );
+  }
+}
 
 // --- Calendar agenda: groups schedule / deadlines / activities by day. -----
 
