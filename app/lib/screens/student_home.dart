@@ -1231,13 +1231,8 @@ class _StudentHomeState extends State<StudentHome> {
           _SettingRow('Auto-play Next Lesson', 'Continuous learning flow', false),
         ]);
       case 'leaderboard':
-        return (CupertinoIcons.list_number, 'Leaderboard', 'Top learners by lessons completed', [
-          _future(_apiList('/api/v1/me/leaderboard', 'leaderboard'), (List rows) {
-            if (rows.isEmpty) return _emptyText('No ranked learners yet — finish a lesson to climb the board!');
-            return Column(children: [
-              for (var i = 0; i < rows.length; i++) _LeaderRow(index: i, data: rows[i] as Map<String, dynamic>),
-            ]);
-          }),
+        return (CupertinoIcons.list_number, 'Leaderboard', 'Ranked by XP — overall & per course', [
+          _LeaderboardView(auth: widget.auth),
         ]);
       case 'schedule':
         return (CupertinoIcons.calendar, 'Calendar', 'Classes, deadlines & activities', [
@@ -1595,6 +1590,109 @@ class _PanelRowState extends State<_PanelRow> {
       ),
     );
   }
+}
+
+/// Leaderboard with an "Overall" (total XP) tab plus one tab per enrolled
+/// course (ranked by XP earned in that course). Switching tabs animates.
+class _LeaderboardView extends StatefulWidget {
+  const _LeaderboardView({required this.auth});
+  final AuthService auth;
+
+  @override
+  State<_LeaderboardView> createState() => _LeaderboardViewState();
+}
+
+class _LeaderboardViewState extends State<_LeaderboardView> {
+  List<Map<String, dynamic>> _courses = [];
+  String? _courseId; // null = Overall
+  late Future<List<dynamic>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _fetch();
+    _loadCourses();
+  }
+
+  Future<void> _loadCourses() async {
+    try {
+      final m = ApiClient.decode(await widget.auth.apiGet('/api/v1/me/courses'));
+      final list = ((m['my_courses'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
+      if (mounted) setState(() => _courses = list);
+    } catch (_) {}
+  }
+
+  Future<List<dynamic>> _fetch() async {
+    final path = _courseId == null ? '/api/v1/me/leaderboard' : '/api/v1/me/leaderboard?course_id=$_courseId';
+    final m = ApiClient.decode(await widget.auth.apiGet(path));
+    return (m['leaderboard'] as List?) ?? [];
+  }
+
+  void _select(String? id) {
+    if (id == _courseId) return;
+    setState(() {
+      _courseId = id;
+      _future = _fetch();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // Tab selector: Overall + a chip per enrolled course.
+      SizedBox(
+        height: 38,
+        child: ListView(scrollDirection: Axis.horizontal, padding: EdgeInsets.zero, children: [
+          _tab('Overall', _courseId == null, () => _select(null)),
+          for (final c in _courses) ...[
+            const SizedBox(width: 8),
+            _tab(c['title']?.toString() ?? 'Course', _courseId == c['id']?.toString(), () => _select(c['id']?.toString())),
+          ],
+        ]),
+      ),
+      const SizedBox(height: 14),
+      FutureBuilder<List<dynamic>>(
+        future: _future,
+        builder: (ctx, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return const Padding(padding: EdgeInsets.symmetric(vertical: 34), child: Center(child: CircularProgressIndicator(color: _orange, strokeWidth: 2.5)));
+          }
+          if (snap.hasError || !snap.hasData) {
+            return Padding(padding: const EdgeInsets.symmetric(vertical: 22), child: Text("Couldn't load — pull again later.", textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, color: _grey)));
+          }
+          final rows = snap.data!;
+          return AnimatedSwitcher(
+            duration: const Duration(milliseconds: 280),
+            switchInCurve: Curves.easeOutCubic,
+            transitionBuilder: (child, a) => FadeTransition(opacity: a, child: SlideTransition(position: Tween<Offset>(begin: const Offset(0, 0.04), end: Offset.zero).animate(a), child: child)),
+            child: rows.isEmpty
+                ? Padding(key: const ValueKey('empty'), padding: const EdgeInsets.symmetric(vertical: 22), child: Text('No ranked learners here yet — finish a lesson to climb the board!', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, color: _grey)))
+                : Column(
+                    key: ValueKey(_courseId ?? 'overall'),
+                    children: [for (var i = 0; i < rows.length; i++) _LeaderRow(index: i, data: rows[i] as Map<String, dynamic>)],
+                  ),
+          );
+        },
+      ),
+    ]);
+  }
+
+  Widget _tab(String label, bool selected, VoidCallback onTap) => _Pressable(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            gradient: selected ? _orangeGrad : _cardGradient,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: selected ? Colors.transparent : _cardBorder),
+            boxShadow: selected ? [BoxShadow(color: _orange.withOpacity(0.35), blurRadius: 12, offset: const Offset(0, 5))] : const [],
+          ),
+          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? Colors.white : _navy)),
+        ),
+      );
 }
 
 /// One leaderboard entry: medal/rank badge, avatar, name + course, XP + lessons.

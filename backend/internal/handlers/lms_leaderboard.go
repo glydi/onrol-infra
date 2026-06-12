@@ -16,6 +16,10 @@ const xpPerLesson = 10
 // and flagged with is_me so the UI can highlight them.
 func (h *Handlers) MyLeaderboard(c *fiber.Ctx) error {
 	me := callerID(c)
+	// Course-scoped board when ?course_id is given; otherwise the overall XP board.
+	if courseID := c.Query("course_id"); courseID != "" {
+		return h.courseLeaderboard(c, me, courseID)
+	}
 	rows, err := h.Pool.Query(c.Context(), `
 		WITH per_user AS (
 		  SELECT u.id, u.full_name, COALESCE(u.username,'') AS username,
@@ -99,6 +103,79 @@ func leaderRow(rank int, name, username, avatar, course string, lessons, courses
 		"course": course, "courses": courses,
 		"lessons": lessons, "xp": lessons * xpPerLesson, "is_me": isMe,
 	}
+}
+
+// courseLeaderboard ranks the students enrolled in one course by the lessons
+// they've completed in that course (XP = lessons*10 within the course).
+func (h *Handlers) courseLeaderboard(c *fiber.Ctx, me, courseID string) error {
+	var title string
+	if err := h.Pool.QueryRow(c.Context(), `SELECT title FROM courses WHERE id=$1`, courseID).Scan(&title); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "course not found")
+	}
+	rows, err := h.Pool.Query(c.Context(), `
+		SELECT u.id, u.full_name, COALESCE(u.username,''), COALESCE(u.avatar,''),
+		  (SELECT count(*) FROM lesson_progress lp
+		     JOIN lessons l ON l.id = lp.lesson_id
+		     JOIN modules m ON m.id = l.module_id
+		     WHERE m.course_id = $1 AND lp.user_id = u.id) AS lessons
+		FROM users u
+		WHERE u.role = 'student'
+		  AND EXISTS (SELECT 1 FROM course_enrollments ce WHERE ce.course_id = $1 AND ce.user_id = u.id)
+		ORDER BY lessons DESC, u.full_name ASC
+		LIMIT 25`, courseID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "leaderboard failed")
+	}
+	defer rows.Close()
+
+	out := []fiber.Map{}
+	myRank := 0
+	rank := 0
+	for rows.Next() {
+		var id, name, username, avatar string
+		var lessons int
+		if err := rows.Scan(&id, &name, &username, &avatar, &lessons); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		rank++
+		isMe := id == me
+		if isMe {
+			myRank = rank
+		}
+		out = append(out, leaderRow(rank, name, username, avatar, title, lessons, 1, isMe))
+	}
+
+	// Append the caller with their true in-course rank if they're enrolled but
+	// fell outside the top slice.
+	if myRank == 0 {
+		var name, username, avatar string
+		var lessons, rnk int
+		err := h.Pool.QueryRow(c.Context(), `
+			SELECT u.full_name, COALESCE(u.username,''), COALESCE(u.avatar,''),
+			  (SELECT count(*) FROM lesson_progress lp
+			     JOIN lessons l ON l.id = lp.lesson_id JOIN modules m ON m.id = l.module_id
+			     WHERE m.course_id = $2 AND lp.user_id = u.id),
+			  1 + (SELECT count(*) FROM (
+			        SELECT u2.id, (SELECT count(*) FROM lesson_progress lp2
+			               JOIN lessons l2 ON l2.id = lp2.lesson_id JOIN modules m2 ON m2.id = l2.module_id
+			               WHERE m2.course_id = $2 AND lp2.user_id = u2.id) AS l
+			        FROM users u2
+			        WHERE u2.role = 'student'
+			          AND EXISTS (SELECT 1 FROM course_enrollments ce WHERE ce.course_id = $2 AND ce.user_id = u2.id)
+			      ) t WHERE t.l > (SELECT count(*) FROM lesson_progress lp3
+			               JOIN lessons l3 ON l3.id = lp3.lesson_id JOIN modules m3 ON m3.id = l3.module_id
+			               WHERE m3.course_id = $2 AND lp3.user_id = u.id))
+			FROM users u
+			WHERE u.id = $1
+			  AND EXISTS (SELECT 1 FROM course_enrollments ce WHERE ce.course_id = $2 AND ce.user_id = u.id)`,
+			me, courseID).Scan(&name, &username, &avatar, &lessons, &rnk)
+		if err == nil && name != "" {
+			myRank = rnk
+			out = append(out, leaderRow(rnk, name, username, avatar, title, lessons, 1, true))
+		}
+	}
+
+	return c.JSON(fiber.Map{"leaderboard": out, "my_rank": myRank, "course": title})
 }
 
 // MyStreak computes the caller's current daily learning streak from real
