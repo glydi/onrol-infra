@@ -21,6 +21,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Post("/forms/:slug/submit", h.SubmitForm)     // public hosted-form intake
 	api.Post("/surveys/:slug/submit", h.SubmitSurvey) // public survey intake
 	api.Get("/news", h.News)                          // live AI/tech news (RSS aggregate)
+	api.Get("/certificates/:serial", h.CertificatePage) // public, printable certificate / verify page
 
 	// Per-route middleware (NOT an empty-prefix group: that would mount the
 	// auth middleware at /api/v1 and leak onto the admin routes too).

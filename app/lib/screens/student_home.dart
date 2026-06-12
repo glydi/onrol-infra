@@ -10,6 +10,7 @@ import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../config.dart' as appcfg;
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../theme_controller.dart';
@@ -1317,10 +1318,10 @@ class _StudentHomeState extends State<StudentHome> {
         return (CupertinoIcons.rosette, 'Certificates', 'Your achievements', [
           _future(_apiList('/api/v1/me/certificates', 'certificates'), (List certs) {
             if (certs.isEmpty) return _emptyText('No certificates yet — complete a course to earn one.');
-            return Column(children: certs.map((c) {
-              final m = c as Map<String, dynamic>;
-              return _row(CupertinoIcons.rosette, m['course']?.toString() ?? 'Certificate', 'Issued ${_fmtAt(m['issued_at']?.toString())}', 'View');
-            }).toList());
+            return Column(children: [
+              for (var i = 0; i < certs.length; i++)
+                _CertCard(index: i, data: certs[i] as Map<String, dynamic>),
+            ]);
           }),
         ]);
       case 'live':
@@ -1591,6 +1592,113 @@ class _PanelRowState extends State<_PanelRow> {
       ),
     );
   }
+}
+
+/// An issued certificate: rosette seal, course, issued date + serial, and
+/// View / Download actions that open the printable certificate page.
+class _CertCard extends StatefulWidget {
+  const _CertCard({required this.index, required this.data});
+  final int index;
+  final Map<String, dynamic> data;
+
+  @override
+  State<_CertCard> createState() => _CertCardState();
+}
+
+class _CertCardState extends State<_CertCard> {
+  bool _hover = false;
+
+  String? get _serial => widget.data['serial']?.toString();
+
+  Future<void> _open({bool download = false}) async {
+    final serial = _serial;
+    if (serial == null || serial.isEmpty) return;
+    final url = '${appcfg.Config.apiBase}/api/v1/certificates/$serial${download ? '?download=1' : ''}';
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = widget.data;
+    final course = m['course']?.toString() ?? 'Certificate';
+    final serial = _serial ?? '';
+    final issued = _StudentHomeState._fmtAt(m['issued_at']?.toString());
+
+    return _Entrance(
+      index: widget.index,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          margin: const EdgeInsets.symmetric(vertical: 6),
+          padding: const EdgeInsets.all(14),
+          transform: Matrix4.translationValues(0, _hover ? -2 : 0, 0),
+          decoration: BoxDecoration(
+            gradient: _cardGradient,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: _hover ? _orange.withOpacity(0.40) : _cardBorder, width: 1),
+            boxShadow: [BoxShadow(color: _orange.withOpacity(_hover ? 0.20 : 0.07), blurRadius: _hover ? 22 : 12, offset: Offset(0, _hover ? 9 : 5))],
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // Rosette seal.
+              Container(
+                width: 52, height: 52, alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  gradient: _orangeGrad,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [BoxShadow(color: _orange.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 4))],
+                ),
+                child: const Icon(CupertinoIcons.rosette, size: 26, color: Colors.white),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(course, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
+                  const SizedBox(height: 3),
+                  Text('Issued $issued', style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+                  if (serial.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text('ID $serial', style: GoogleFonts.poppins(fontSize: 11, color: _grey, fontWeight: FontWeight.w500)),
+                    ),
+                ]),
+              ),
+            ]),
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(child: _certBtn('View', CupertinoIcons.eye_fill, false, () => _open())),
+              const SizedBox(width: 10),
+              Expanded(child: _certBtn('Download', CupertinoIcons.cloud_download_fill, true, () => _open(download: true))),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _certBtn(String label, IconData icon, bool filled, VoidCallback onTap) => _Pressable(
+        onTap: onTap,
+        child: Container(
+          height: 42, alignment: Alignment.center,
+          decoration: BoxDecoration(
+            gradient: filled ? _orangeGrad : null,
+            color: filled ? null : _orange.withOpacity(0.10),
+            borderRadius: BorderRadius.circular(12),
+            border: filled ? null : Border.all(color: _orange.withOpacity(0.30)),
+            boxShadow: filled ? [BoxShadow(color: _orange.withOpacity(0.32), blurRadius: 12, offset: const Offset(0, 5))] : const [],
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 16, color: filled ? Colors.white : _orange),
+            const SizedBox(width: 7),
+            Text(label, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: filled ? Colors.white : _orange)),
+          ]),
+        ),
+      );
 }
 
 /// Leaderboard with an "Overall" (total XP) tab plus one tab per enrolled
