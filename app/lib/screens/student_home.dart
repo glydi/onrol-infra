@@ -1250,12 +1250,7 @@ class _StudentHomeState extends State<StudentHome> {
         ]);
       case 'settings':
         return (CupertinoIcons.gear_alt_fill, 'Settings', 'Customize your experience', [
-          _SettingRow('Push Notifications', 'Get alerts for classes & assignments', true),
-          _SettingRow('Email Digest', 'Weekly progress summary', true),
-          const _DarkModeRow(),
-          _SettingRow('Study Reminders', 'Daily nudge to keep learning', true),
-          _SettingRow('Show Leaderboard', 'Let others see your rank', true),
-          _SettingRow('Auto-play Next Lesson', 'Continuous learning flow', false),
+          _SettingsView(auth: widget.auth, onLogout: _logout),
         ]);
       case 'leaderboard':
         return (CupertinoIcons.list_number, 'Leaderboard', 'Ranked by XP — overall & per course', [
@@ -3344,66 +3339,420 @@ class _GridCellState extends State<_GridCell> {
   }
 }
 
-/// A settings row with an animated toggle.
-class _SettingRow extends StatefulWidget {
-  const _SettingRow(this.label, this.sub, this.initial);
-  final String label;
-  final String sub;
-  final bool initial;
+// Danger accent for destructive actions (kept warm/on-theme).
+const _danger = Color(0xFFE0453C);
+
+/// Full Settings experience: Appearance (theme mode, accent colour, font size)
+/// and Security (update password, 2FA, login activity, logout all devices).
+class _SettingsView extends StatefulWidget {
+  const _SettingsView({required this.auth, required this.onLogout});
+  final AuthService auth;
+  final VoidCallback onLogout;
 
   @override
-  State<_SettingRow> createState() => _SettingRowState();
+  State<_SettingsView> createState() => _SettingsViewState();
 }
 
-class _SettingRowState extends State<_SettingRow> {
-  late bool _on = widget.initial;
+class _SettingsViewState extends State<_SettingsView> {
+  // Expansion + form state.
+  bool _pwOpen = false;
+  bool _actOpen = false;
+  bool _twoFA = false;
+  bool _savingPw = false;
+  final _cur = TextEditingController();
+  final _new = TextEditingController();
+  final _conf = TextEditingController();
+  List<dynamic>? _devices; // null until first load
+
+  static const _swatches = [
+    Color(0xFFFF4F2B), Color(0xFFF5A623), Color(0xFFE0457B),
+    Color(0xFF2D7DF6), Color(0xFF2D8A4E), Color(0xFF7C5CFC),
+  ];
+
+  Color get _ac => accentNotifier.value;
+  LinearGradient get _acGrad => LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_ac, Color.lerp(_ac, Colors.white, 0.22)!]);
 
   @override
-  Widget build(BuildContext context) =>
-      _toggleRowView(widget.label, widget.sub, _on, () => setState(() => _on = !_on));
-}
+  void initState() {
+    super.initState();
+    themeNotifier.addListener(_r);
+    accentNotifier.addListener(_r);
+    textScaleNotifier.addListener(_r);
+  }
 
-/// Shared visual for a labelled toggle row.
-Widget _toggleRowView(String label, String sub, bool on, VoidCallback onTap) => Container(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: _line))),
-      child: Row(children: [
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: GoogleFonts.poppins(fontSize: 14, color: _navy)),
-          Text(sub, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
-        ])),
-        GestureDetector(
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: 44, height: 24,
-            decoration: BoxDecoration(color: on ? _orange : _line, borderRadius: BorderRadius.circular(12)),
-            child: AnimatedAlign(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOut,
-              alignment: on ? Alignment.centerRight : Alignment.centerLeft,
-              child: Container(width: 18, height: 18, margin: const EdgeInsets.symmetric(horizontal: 3), decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
-            ),
-          ),
-        ),
-      ]),
+  void _r() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    themeNotifier.removeListener(_r);
+    accentNotifier.removeListener(_r);
+    textScaleNotifier.removeListener(_r);
+    for (final c in [_cur, _new, _conf]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
+
+  Future<void> _savePassword() async {
+    final cur = _cur.text, nw = _new.text, cf = _conf.text;
+    if (cur.isEmpty || nw.isEmpty) return _toast('Fill in all fields');
+    if (nw.length < 8) return _toast('New password must be at least 8 characters');
+    if (nw != cf) return _toast('New passwords do not match');
+    setState(() => _savingPw = true);
+    try {
+      ApiClient.decode(await widget.auth.apiPost('/api/v1/me/password', {'current_password': cur, 'new_password': nw}));
+      _cur.clear();
+      _new.clear();
+      _conf.clear();
+      if (mounted) setState(() => _pwOpen = false);
+      _toast('Password updated');
+    } on ApiException catch (e) {
+      _toast(e.message);
+    } catch (_) {
+      _toast("Couldn't update password");
+    } finally {
+      if (mounted) setState(() => _savingPw = false);
+    }
+  }
+
+  Future<void> _loadDevices() async {
+    try {
+      final m = ApiClient.decode(await widget.auth.apiGet('/api/v1/devices'));
+      if (mounted) setState(() => _devices = (m['devices'] as List?) ?? []);
+    } catch (_) {
+      if (mounted) setState(() => _devices = []);
+    }
+  }
+
+  Future<void> _confirmLogoutAll() async {
+    final ok = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('Logout all devices?'),
+        content: const Text('You will be signed out everywhere, including here.'),
+        actions: [
+          CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+          CupertinoDialogAction(isDestructiveAction: true, onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Logout')),
+        ],
+      ),
     );
+    if (ok != true) return;
+    try {
+      await widget.auth.apiDelete('/api/v1/me/devices');
+    } catch (_) {}
+    widget.onLogout();
+  }
 
-/// Dark Mode toggle — switches the app theme via [setTheme].
-class _DarkModeRow extends StatelessWidget {
-  const _DarkModeRow();
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: themeNotifier,
-      builder: (ctx, mode, _) {
-        final on = mode == ThemeMode.dark ||
-            (mode == ThemeMode.system && MediaQuery.platformBrightnessOf(ctx) == Brightness.dark);
-        return _toggleRowView('Dark Mode', 'Easy on the eyes at night', on,
-            () => setTheme(on ? ThemeMode.light : ThemeMode.dark));
-      },
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _Entrance(
+        index: 0,
+        child: _section('Appearance', CupertinoIcons.paintbrush_fill, [
+          _themeRow(),
+          _div(),
+          _colorRow(),
+          _div(),
+          _fontRow(),
+        ]),
+      ),
+      const SizedBox(height: 14),
+      _Entrance(
+        index: 1,
+        child: _section('Security', CupertinoIcons.lock_shield_fill, [
+          _passwordRow(),
+          _div(),
+          _twoFARow(),
+          _div(),
+          _activityRow(),
+          _div(),
+          _logoutAllRow(),
+        ]),
+      ),
+    ]);
+  }
+
+  // ---- Building blocks ------------------------------------------------------
+
+  Widget _section(String title, IconData icon, List<Widget> rows) => Container(
+        decoration: BoxDecoration(
+          gradient: _cardGradient,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _cardBorder),
+          boxShadow: [BoxShadow(color: _ac.withOpacity(0.06), blurRadius: 16, offset: const Offset(0, 8))],
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 15, 16, 6),
+            child: Row(children: [
+              Icon(icon, size: 16, color: _ac),
+              const SizedBox(width: 8),
+              Text(title, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w800, color: _navy)),
+            ]),
+          ),
+          ...rows,
+        ]),
+      );
+
+  Widget _div() => Container(height: 1, margin: const EdgeInsets.symmetric(horizontal: 16), color: _line);
+
+  Widget _iconChip(IconData icon, {Color? color}) {
+    final c = color ?? _ac;
+    return Container(
+      width: 34, height: 34, alignment: Alignment.center,
+      decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [c.withOpacity(0.22), c.withOpacity(0.08)]), borderRadius: BorderRadius.circular(10)),
+      child: Icon(icon, size: 16, color: c),
     );
   }
+
+  // A control row: icon + title/sub, with [control] beneath.
+  Widget _ctrlRow(IconData icon, String title, String sub, Widget control) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            _iconChip(icon),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
+              Text(sub, style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
+            ])),
+          ]),
+          const SizedBox(height: 10),
+          control,
+        ]),
+      );
+
+  // A tappable row (for expandable / action items).
+  Widget _tapRow(IconData icon, String title, String sub, VoidCallback onTap, {Widget? trailing, Color? tint}) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: Row(children: [
+            _iconChip(icon, color: tint),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: tint ?? _navy)),
+              Text(sub, style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
+            ])),
+            const SizedBox(width: 8),
+            trailing ?? Icon(CupertinoIcons.chevron_right, size: 15, color: _grey),
+          ]),
+        ),
+      );
+
+  Widget _seg(List<String> labels, int sel, void Function(int) onTap) => Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(color: _ac.withOpacity(0.08), borderRadius: BorderRadius.circular(12)),
+        child: Row(children: [
+          for (var i = 0; i < labels.length; i++)
+            Expanded(
+              child: _Pressable(
+                onTap: () => onTap(i),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    gradient: sel == i ? _acGrad : null,
+                    borderRadius: BorderRadius.circular(9),
+                    boxShadow: sel == i ? [BoxShadow(color: _ac.withOpacity(0.30), blurRadius: 10, offset: const Offset(0, 4))] : const [],
+                  ),
+                  child: Text(labels[i], style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: sel == i ? Colors.white : _navy)),
+                ),
+              ),
+            ),
+        ]),
+      );
+
+  // ---- Appearance -----------------------------------------------------------
+
+  Widget _themeRow() {
+    final mode = themeNotifier.value;
+    final sel = mode == ThemeMode.system ? 0 : (mode == ThemeMode.light ? 1 : 2);
+    return _ctrlRow(CupertinoIcons.circle_righthalf_fill, 'Theme', 'System, light or dark', _seg(['System', 'Light', 'Dark'], sel, (i) {
+      setTheme(i == 0 ? ThemeMode.system : (i == 1 ? ThemeMode.light : ThemeMode.dark));
+    }));
+  }
+
+  Widget _fontRow() {
+    const scales = [0.9, 1.0, 1.15];
+    final cur = textScaleNotifier.value;
+    var sel = 1;
+    var best = 1e9;
+    for (var i = 0; i < scales.length; i++) {
+      final d = (cur - scales[i]).abs();
+      if (d < best) {
+        best = d;
+        sel = i;
+      }
+    }
+    return _ctrlRow(CupertinoIcons.textformat_size, 'Font size', 'Make text smaller or larger', _seg(['Small', 'Default', 'Large'], sel, (i) => setTextScale(scales[i])));
+  }
+
+  Widget _colorRow() => _ctrlRow(
+        CupertinoIcons.paintbrush_fill, 'Theme color', 'Pick your accent',
+        Wrap(spacing: 12, runSpacing: 12, children: [
+          for (final c in _swatches)
+            _Pressable(
+              onTap: () => setAccent(c),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                width: 34, height: 34, alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: c,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: _ac.value == c.value ? Colors.white : Colors.transparent, width: 2.5),
+                  boxShadow: [BoxShadow(color: c.withOpacity(0.45), blurRadius: _ac.value == c.value ? 10 : 5, offset: const Offset(0, 3))],
+                ),
+                child: _ac.value == c.value ? const Icon(CupertinoIcons.checkmark_alt, size: 16, color: Colors.white) : null,
+              ),
+            ),
+        ]),
+      );
+
+  // ---- Security -------------------------------------------------------------
+
+  Widget _passwordRow() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _tapRow(
+          CupertinoIcons.lock_fill, 'Update password', 'Change your account password',
+          () => setState(() => _pwOpen = !_pwOpen),
+          trailing: AnimatedRotation(turns: _pwOpen ? 0.5 : 0, duration: const Duration(milliseconds: 200), child: Icon(CupertinoIcons.chevron_down, size: 15, color: _grey)),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: _pwOpen
+              ? Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    _pwField('Current password', _cur),
+                    const SizedBox(height: 10),
+                    _pwField('New password', _new),
+                    const SizedBox(height: 10),
+                    _pwField('Confirm new password', _conf),
+                    const SizedBox(height: 12),
+                    _Pressable(
+                      onTap: _savingPw ? () {} : _savePassword,
+                      child: Container(
+                        height: 46, alignment: Alignment.center,
+                        decoration: BoxDecoration(gradient: _acGrad, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: _ac.withOpacity(0.32), blurRadius: 12, offset: const Offset(0, 5))]),
+                        child: _savingPw
+                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
+                            : Text('Update password', style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
+                      ),
+                    ),
+                  ]),
+                )
+              : const SizedBox(width: double.infinity),
+        ),
+      ]);
+
+  Widget _pwField(String hint, TextEditingController c) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
+        child: TextField(
+          controller: c,
+          obscureText: true,
+          style: GoogleFonts.poppins(fontSize: 13.5, color: _navy),
+          decoration: InputDecoration(border: InputBorder.none, isDense: true, contentPadding: const EdgeInsets.symmetric(vertical: 13), hintText: hint, hintStyle: GoogleFonts.poppins(fontSize: 13, color: _grey.withOpacity(0.7))),
+        ),
+      );
+
+  Widget _twoFARow() => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Row(children: [
+          _iconChip(CupertinoIcons.shield_lefthalf_fill),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Text('Two-factor authentication', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
+              const SizedBox(width: 6),
+              Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: _ac.withOpacity(0.12), borderRadius: BorderRadius.circular(5)), child: Text('SOON', style: GoogleFonts.poppins(fontSize: 8.5, fontWeight: FontWeight.w800, color: _ac, letterSpacing: 0.5))),
+            ]),
+            Text('Add a one-time code at login', style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
+          ])),
+          _switch(_twoFA, () {
+            setState(() => _twoFA = !_twoFA);
+            if (_twoFA) _toast('Two-factor setup is coming soon.');
+          }),
+        ]),
+      );
+
+  Widget _switch(bool on, VoidCallback onTap) => GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: 44, height: 26,
+          decoration: BoxDecoration(gradient: on ? _acGrad : null, color: on ? null : _line, borderRadius: BorderRadius.circular(13)),
+          child: AnimatedAlign(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            alignment: on ? Alignment.centerRight : Alignment.centerLeft,
+            child: Container(width: 20, height: 20, margin: const EdgeInsets.symmetric(horizontal: 3), decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+          ),
+        ),
+      );
+
+  Widget _activityRow() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _tapRow(
+          CupertinoIcons.device_laptop, 'Login activity', 'Devices signed in to your account',
+          () {
+            setState(() => _actOpen = !_actOpen);
+            if (_actOpen && _devices == null) _loadDevices();
+          },
+          trailing: AnimatedRotation(turns: _actOpen ? 0.5 : 0, duration: const Duration(milliseconds: 200), child: Icon(CupertinoIcons.chevron_down, size: 15, color: _grey)),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: !_actOpen
+              ? const SizedBox(width: double.infinity)
+              : Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: _devices == null
+                      ? const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Center(child: CupertinoActivityIndicator()))
+                      : _devices!.isEmpty
+                          ? Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Text('No active devices.', style: GoogleFonts.poppins(fontSize: 12.5, color: _grey)))
+                          : Column(children: [for (final d in _devices!) _deviceTile(d as Map<String, dynamic>)]),
+                ),
+        ),
+      ]);
+
+  Widget _deviceTile(Map<String, dynamic> d) {
+    final platform = (d['platform']?.toString() ?? '').trim();
+    final model = (d['model']?.toString() ?? '').trim();
+    final name = model.isNotEmpty ? model : (platform.isNotEmpty ? platform : 'Unknown device');
+    final isMobile = platform.toLowerCase().contains('android') || platform.toLowerCase().contains('ios');
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
+      child: Row(children: [
+        Icon(isMobile ? CupertinoIcons.device_phone_portrait : CupertinoIcons.desktopcomputer, size: 18, color: _ac),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _navy)),
+          Text('Last seen ${_StudentHomeState._fmtAt(d['last_seen']?.toString())}', style: GoogleFonts.poppins(fontSize: 11, color: _grey)),
+        ])),
+      ]),
+    );
+  }
+
+  Widget _logoutAllRow() => _tapRow(
+        CupertinoIcons.square_arrow_right, 'Logout all devices', 'Sign out everywhere at once',
+        _confirmLogoutAll,
+        tint: _danger,
+        trailing: const SizedBox.shrink(),
+      );
 }
 
 /// Animated count-up + hover/tappable stat tile (dashboard).
