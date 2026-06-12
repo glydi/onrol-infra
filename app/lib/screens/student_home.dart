@@ -1778,19 +1778,31 @@ class _CalendarViewState extends State<_CalendarView> {
         Expanded(child: _sumChip('Activities', act, _blue, CupertinoIcons.bell_fill)),
       ]),
       const SizedBox(height: 16),
-      Row(children: _weekdayNames.map((w) => Expanded(child: Center(child: Text(w, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: _grey))))).toList()),
-      const SizedBox(height: 6),
-      ClipRect(
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 320),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (child, a) => FadeTransition(
-            opacity: a,
-            child: SlideTransition(position: Tween<Offset>(begin: Offset(0.12 * _dir, 0), end: Offset.zero).animate(a), child: child),
-          ),
-          child: KeyedSubtree(key: ValueKey('${_month.year}-${_month.month}'), child: _grid()),
+      // Dark gradient calendar panel so the white day numbers + coloured dots
+      // pop against it.
+      Container(
+        padding: const EdgeInsets.fromLTRB(8, 12, 8, 10),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF2C3142), Color(0xFF1E2230)]),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.22), blurRadius: 18, offset: const Offset(0, 8))],
         ),
+        child: Column(children: [
+          Row(children: _weekdayNames.map((w) => Expanded(child: Center(child: Text(w, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white.withOpacity(0.55)))))).toList()),
+          const SizedBox(height: 6),
+          ClipRect(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 320),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, a) => FadeTransition(
+                opacity: a,
+                child: SlideTransition(position: Tween<Offset>(begin: Offset(0.12 * _dir, 0), end: Offset.zero).animate(a), child: child),
+              ),
+              child: KeyedSubtree(key: ValueKey('${_month.year}-${_month.month}'), child: _grid()),
+            ),
+          ),
+        ]),
       ),
       AnimatedSize(
         duration: const Duration(milliseconds: 220),
@@ -1898,13 +1910,13 @@ class _CalendarViewState extends State<_CalendarView> {
           margin: const EdgeInsets.all(3),
           decoration: BoxDecoration(
             gradient: isSel ? _orangeGrad : null,
-            color: isSel ? null : (isToday ? _orange.withOpacity(0.12) : Colors.transparent),
+            color: isSel ? null : (isToday ? Colors.white.withOpacity(0.10) : Colors.transparent),
             borderRadius: BorderRadius.circular(13),
-            border: isToday && !isSel ? Border.all(color: _orange.withOpacity(0.6), width: 1.4) : null,
-            boxShadow: isSel ? [BoxShadow(color: _orange.withOpacity(0.40), blurRadius: 12, offset: const Offset(0, 5))] : const [],
+            border: isToday && !isSel ? Border.all(color: Colors.white.withOpacity(0.55), width: 1.4) : null,
+            boxShadow: isSel ? [BoxShadow(color: _orange.withOpacity(0.45), blurRadius: 14, offset: const Offset(0, 5))] : const [],
           ),
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text('${d.day}', style: GoogleFonts.poppins(fontSize: 13, fontWeight: isSel || isToday ? FontWeight.w700 : FontWeight.w500, color: isSel ? Colors.white : _navy)),
+            Text('${d.day}', style: GoogleFonts.poppins(fontSize: 13, fontWeight: isSel || isToday ? FontWeight.w700 : FontWeight.w500, color: Colors.white.withOpacity(isSel || isToday ? 1.0 : 0.88))),
             const SizedBox(height: 3),
             SizedBox(
               height: 5,
