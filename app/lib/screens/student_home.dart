@@ -1185,37 +1185,21 @@ class _StudentHomeState extends State<StudentHome> {
           ),
         ]);
       case 'resume':
-        return (CupertinoIcons.play_circle_fill, 'Resume Learning', 'Pick up where you left off', [
+        return (CupertinoIcons.play_circle_fill, 'Resume Learning', 'Continue any course in one tap', [
           _future(_apiMap('/api/v1/me/resume'), (m) {
-            final r = m['resume'];
-            if (r == null) return _emptyText("You're all caught up — nothing to resume.");
-            final res = r as Map<String, dynamic>;
-            return Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(res['course']?.toString() ?? '', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: _orange)),
-                const SizedBox(height: 4),
-                Text(res['title']?.toString() ?? 'Next lesson', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: _navy)),
-                if ((res['module']?.toString() ?? '').isNotEmpty) Text(res['module'].toString(), style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
-                const SizedBox(height: 14),
-                _Pressable(
-                  onTap: () {
+            final list = (m['courses'] as List?) ?? [];
+            if (list.isEmpty) return _emptyText("You're all caught up — nothing to resume.");
+            return Column(children: [
+              for (var i = 0; i < list.length; i++)
+                _ResumeCard(
+                  index: i,
+                  data: list[i] as Map<String, dynamic>,
+                  onContinue: (lesson) {
                     Navigator.of(context).maybePop();
-                    _openLesson({'id': res['lesson_id'], 'title': res['title'], 'type': res['type'], 'url': res['url']});
+                    _openLesson(lesson);
                   },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 14), alignment: Alignment.center,
-                    decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(10)),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(CupertinoIcons.play_fill, color: Colors.white, size: 16),
-                      const SizedBox(width: 8),
-                      Text('Continue', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
-                    ]),
-                  ),
                 ),
-              ]),
-            );
+            ]);
           }),
         ]);
       case 'courses':
@@ -3107,6 +3091,177 @@ class _EntranceState extends State<_Entrance> with SingleTickerProviderStateMixi
 
   @override
   Widget build(BuildContext context) => FadeTransition(opacity: _fade, child: SlideTransition(position: _slide, child: widget.child));
+}
+
+/// A "continue where you left off" card: course cover with a play overlay, the
+/// next lesson (activity) to resume, progress bar, and a one-tap Continue.
+class _ResumeCard extends StatefulWidget {
+  const _ResumeCard({required this.index, required this.data, required this.onContinue});
+  final int index;
+  final Map<String, dynamic> data;
+  final void Function(Map<String, dynamic> lesson) onContinue;
+
+  @override
+  State<_ResumeCard> createState() => _ResumeCardState();
+}
+
+class _ResumeCardState extends State<_ResumeCard> {
+  bool _hover = false;
+
+  static const _covers = [
+    [_orange, Color(0xFFFF7A4D)],
+    [Color(0xFFFF7A4D), Color(0xFFFFB347)],
+    [Color(0xFFF0653C), Color(0xFFFF9166)],
+    [Color(0xFFE8542E), Color(0xFFFF7A4D)],
+  ];
+
+  ({IconData icon, String label}) _kind(String type) {
+    switch (type) {
+      case 'video':
+        return (icon: CupertinoIcons.play_rectangle_fill, label: 'VIDEO');
+      case 'link':
+        return (icon: CupertinoIcons.link, label: 'LINK');
+      case 'file':
+        return (icon: CupertinoIcons.doc_fill, label: 'FILE');
+      default:
+        return (icon: CupertinoIcons.doc_text_fill, label: 'LESSON');
+    }
+  }
+
+  // 84×84 cover: admin image if set, else a gradient — with a play overlay.
+  Widget _thumb(List<Color> cover) {
+    final url = widget.data['image_url']?.toString() ?? '';
+    Widget bg;
+    Widget? im;
+    if (url.isNotEmpty) {
+      if (url.startsWith('data:')) {
+        final bytes = _decodeDataUri(url);
+        if (bytes != null) im = Image.memory(bytes, width: 84, height: 84, fit: BoxFit.cover);
+      } else if (url.startsWith('http')) {
+        im = Image.network(url, width: 84, height: 84, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox());
+      }
+    }
+    bg = im ??
+        Container(
+          width: 84, height: 84,
+          decoration: BoxDecoration(gradient: LinearGradient(colors: cover, begin: Alignment.topLeft, end: Alignment.bottomRight)),
+        );
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Stack(alignment: Alignment.center, children: [
+        SizedBox(width: 84, height: 84, child: bg),
+        // Dim + play button overlay.
+        Container(width: 84, height: 84, color: Colors.black.withOpacity(0.18)),
+        AnimatedScale(
+          scale: _hover ? 1.12 : 1.0,
+          duration: const Duration(milliseconds: 200),
+          child: Container(
+            width: 34, height: 34, alignment: Alignment.center,
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.92), shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 8)]),
+            child: const Icon(CupertinoIcons.play_fill, size: 16, color: _orange),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.data;
+    final cover = _covers[widget.index % _covers.length];
+    final course = d['course']?.toString() ?? 'Course';
+    final lesson = d['title']?.toString() ?? 'Next lesson';
+    final module = d['module']?.toString() ?? '';
+    final type = d['type']?.toString() ?? 'text';
+    final percent = ((d['percent'] ?? 0) as num).toInt();
+    final done = ((d['done'] ?? 0) as num).toInt();
+    final total = ((d['total'] ?? 0) as num).toInt();
+    final k = _kind(type);
+    final pct = (percent / 100).clamp(0.0, 1.0);
+
+    void go() => widget.onContinue({'id': d['lesson_id'], 'title': lesson, 'type': type, 'url': d['url']});
+
+    return _Entrance(
+      index: widget.index,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          onTap: go,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            margin: const EdgeInsets.symmetric(vertical: 6),
+            padding: const EdgeInsets.all(14),
+            transform: Matrix4.translationValues(0, _hover ? -2 : 0, 0),
+            decoration: BoxDecoration(
+              gradient: _cardGradient,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: _hover ? _orange.withOpacity(0.40) : _cardBorder, width: 1),
+              boxShadow: [BoxShadow(color: _orange.withOpacity(_hover ? 0.22 : 0.07), blurRadius: _hover ? 22 : 12, offset: Offset(0, _hover ? 9 : 5))],
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                _thumb(cover),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(course.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.4)),
+                    const SizedBox(height: 3),
+                    Row(children: [
+                      Icon(k.icon, size: 13, color: _grey),
+                      const SizedBox(width: 5),
+                      Text(k.label, style: GoogleFonts.poppins(fontSize: 9.5, fontWeight: FontWeight.w800, color: _grey, letterSpacing: 0.5)),
+                    ]),
+                    const SizedBox(height: 4),
+                    Text(lesson, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 14.5, fontWeight: FontWeight.w700, color: _navy, height: 1.25)),
+                    if (module.isNotEmpty)
+                      Padding(padding: const EdgeInsets.only(top: 2), child: Text(module, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 11.5, color: _grey))),
+                  ]),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              Row(children: [
+                Text('$done/$total lessons', style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
+                const Spacer(),
+                Text('$percent%', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
+              ]),
+              const SizedBox(height: 7),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: pct),
+                  duration: const Duration(milliseconds: 800),
+                  curve: Curves.easeOutCubic,
+                  builder: (_, v, __) => LinearProgressIndicator(
+                    value: v,
+                    minHeight: 6,
+                    backgroundColor: _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0EBE8),
+                    valueColor: const AlwaysStoppedAnimation(_orange),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                height: 44, alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  gradient: _orangeGrad,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [BoxShadow(color: _orange.withOpacity(0.32), blurRadius: 12, offset: const Offset(0, 5))],
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(CupertinoIcons.play_fill, color: Colors.white, size: 15),
+                  const SizedBox(width: 8),
+                  Text('Continue', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
+                ]),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// A rich course card: gradient cover, animated progress bar, hover lift.

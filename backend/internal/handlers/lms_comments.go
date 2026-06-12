@@ -6,26 +6,70 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// ResumeLearning returns the next incomplete lesson for the caller — the
-// "continue where you left off" target — in their most recently enrolled course.
+// ResumeLearning returns the next incomplete lesson to continue for EACH of the
+// caller's enrolled courses (newest first) — so they can pick up any course in
+// one tap — plus a single `resume` (the most recent course) for compatibility.
 func (h *Handlers) ResumeLearning(c *fiber.Ctx) error {
-	var lessonID, title, ltype, body, course, courseID, module string
-	err := h.Pool.QueryRow(c.Context(), `
-		SELECT l.id, l.title, l.type, COALESCE(l.body,''), c.title, c.id, COALESCE(m.title,'')
-		FROM lessons l
-		JOIN modules m ON m.id=l.module_id
-		JOIN courses c ON c.id=m.course_id
-		JOIN course_enrollments ce ON ce.course_id=c.id AND ce.user_id=$1
-		WHERE NOT EXISTS (SELECT 1 FROM lesson_progress lp WHERE lp.user_id=$1 AND lp.lesson_id=l.id)
-		ORDER BY ce.enrolled_at DESC, m.position, l.position
-		LIMIT 1`, callerID(c)).Scan(&lessonID, &title, &ltype, &body, &course, &courseID, &module)
+	rows, err := h.Pool.Query(c.Context(), `
+		SELECT c.id, c.title, COALESCE(c.image_url,''),
+		  (SELECT count(*) FROM lessons l JOIN modules m ON m.id=l.module_id WHERE m.course_id=c.id) AS total,
+		  (SELECT count(*) FROM lesson_progress lp JOIN lessons l ON l.id=lp.lesson_id
+		     JOIN modules m ON m.id=l.module_id WHERE m.course_id=c.id AND lp.user_id=$1) AS done,
+		  nl.id, nl.title, nl.type, COALESCE(nl.body,''), COALESCE(nm.title,'')
+		FROM course_enrollments ce
+		JOIN courses c ON c.id=ce.course_id
+		LEFT JOIN LATERAL (
+		  SELECT l.id, l.title, l.type, l.body, l.module_id
+		  FROM lessons l JOIN modules m ON m.id=l.module_id
+		  WHERE m.course_id=c.id
+		    AND NOT EXISTS (SELECT 1 FROM lesson_progress lp WHERE lp.user_id=$1 AND lp.lesson_id=l.id)
+		  ORDER BY m.position, l.position
+		  LIMIT 1
+		) nl ON TRUE
+		LEFT JOIN modules nm ON nm.id=nl.module_id
+		WHERE ce.user_id=$1
+		ORDER BY ce.enrolled_at DESC`, callerID(c))
 	if err != nil {
-		// Nothing to resume (all done or no enrolment).
-		return c.JSON(fiber.Map{"resume": nil})
+		return c.JSON(fiber.Map{"resume": nil, "courses": []fiber.Map{}})
 	}
-	return c.JSON(fiber.Map{"resume": fiber.Map{
-		"lesson_id": lessonID, "title": title, "type": ltype, "url": body,
-		"course": course, "course_id": courseID, "module": module}})
+	defer rows.Close()
+
+	courses := []fiber.Map{}
+	var first fiber.Map
+	for rows.Next() {
+		var courseID, course, img string
+		var total, done int
+		var lessonID, title, ltype, body, module *string
+		if err := rows.Scan(&courseID, &course, &img, &total, &done, &lessonID, &title, &ltype, &body, &module); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		if lessonID == nil {
+			continue // course fully complete — nothing left to resume
+		}
+		pct := 0
+		if total > 0 {
+			pct = done * 100 / total
+		}
+		entry := fiber.Map{
+			"course_id": courseID, "course": course, "image_url": img,
+			"total": total, "done": done, "percent": pct,
+			"lesson_id": *lessonID, "title": derefStr(title), "type": derefStr(ltype),
+			"url": derefStr(body), "module": derefStr(module),
+		}
+		courses = append(courses, entry)
+		if first == nil {
+			first = entry
+		}
+	}
+
+	var resume any
+	if first != nil {
+		resume = fiber.Map{
+			"lesson_id": first["lesson_id"], "title": first["title"], "type": first["type"], "url": first["url"],
+			"course": first["course"], "course_id": first["course_id"], "module": first["module"],
+		}
+	}
+	return c.JSON(fiber.Map{"resume": resume, "courses": courses})
 }
 
 // canAccessModule returns the module's course id if the caller may read/post in
