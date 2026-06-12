@@ -1054,14 +1054,30 @@ class _StudentHomeState extends State<StudentHome> {
               final doneL = courses.fold<int>(0, (s, c) => s + (((c as Map)['lessons_done'] ?? 0) as num).toInt());
               final overall = totalL > 0 ? doneL / totalL : 0.0;
               return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                // Warm greeting.
-                Text('Hi, $_firstName 👋', style: GoogleFonts.poppins(fontSize: 19, fontWeight: FontWeight.w700, color: _navy)),
-                const SizedBox(height: 2),
-                Text("Here's your learning snapshot", style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
-                const SizedBox(height: 16),
+                // Personal greeting with the user's avatar.
+                _Entrance(
+                  index: 0,
+                  child: Row(children: [
+                    ValueListenableBuilder<String>(
+                      valueListenable: avatarNotifier,
+                      builder: (c, av, _) => _avatarBox(av, 46, _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S'),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('Hi, $_firstName 👋', style: GoogleFonts.poppins(fontSize: 19, fontWeight: FontWeight.w700, color: _navy)),
+                        const SizedBox(height: 2),
+                        Text("Here's your learning snapshot", style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
+                      ]),
+                    ),
+                  ]),
+                ),
+                const SizedBox(height: 18),
                 // Overall-progress hero with an animated ring.
                 if (courses.isNotEmpty) ...[
-                  Container(
+                  _Entrance(
+                    index: 1,
+                    child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       gradient: _cardGradient,
@@ -1094,59 +1110,46 @@ class _StudentHomeState extends State<StudentHome> {
                         ]),
                       ),
                     ]),
-                  ),
+                  )),
                   const SizedBox(height: 16),
                 ],
-                Row(children: [
-                  Expanded(child: _statCard('${t['enrolled'] ?? 0}', 'Enrolled', icon: CupertinoIcons.book_fill, onTap: () => _openPanel('courses'))),
-                  const SizedBox(width: 14),
-                  Expanded(child: _statCard('${t['completed'] ?? 0}', 'Completed', icon: CupertinoIcons.checkmark_seal_fill, onTap: () => _openPanel('progress'))),
-                ]),
+                _Entrance(
+                  index: 2,
+                  child: Row(children: [
+                    Expanded(child: _statCard('${t['enrolled'] ?? 0}', 'Enrolled', icon: CupertinoIcons.book_fill, onTap: () => _openPanel('courses'))),
+                    const SizedBox(width: 14),
+                    Expanded(child: _statCard('${t['completed'] ?? 0}', 'Completed', icon: CupertinoIcons.checkmark_seal_fill, onTap: () => _openPanel('progress'))),
+                  ]),
+                ),
                 const SizedBox(height: 14),
-                Row(children: [
-                  Expanded(child: _statCard('${_xpFromCourses(courses)}', 'XP earned', icon: CupertinoIcons.bolt_fill, onTap: () => _openPanel('achievements'))),
-                  const SizedBox(width: 14),
-                  Expanded(child: _statCard('${t['certificates'] ?? 0}', 'Certificates', icon: CupertinoIcons.rosette, onTap: () => _openPanel('certificates'))),
-                ]),
+                _Entrance(
+                  index: 3,
+                  child: Row(children: [
+                    Expanded(child: _statCard('${_xpFromCourses(courses)}', 'XP earned', icon: CupertinoIcons.bolt_fill, onTap: () => _openPanel('achievements'))),
+                    const SizedBox(width: 14),
+                    Expanded(child: _statCard('${t['certificates'] ?? 0}', 'Certificates', icon: CupertinoIcons.rosette, onTap: () => _openPanel('certificates'))),
+                  ]),
+                ),
                 // Notifications — recent announcements.
                 if (notes.isNotEmpty) ...[
                   const SizedBox(height: 22),
-                  Row(children: [
-                    Icon(CupertinoIcons.bell_fill, size: 16, color: _orange),
-                    const SizedBox(width: 6),
-                    Text('Notifications', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
-                  ]),
-                  const SizedBox(height: 8),
-                  ...notes.take(3).map((e) {
-                    final m = e as Map<String, dynamic>;
-                    final course = m['course']?.toString() ?? '';
-                    final body = m['body']?.toString() ?? '';
-                    final text = [if (course.isNotEmpty) '[$course]', m['title'] ?? '', if (body.isNotEmpty) '— $body'].join(' ');
-                    return _notif(text, _fmtAt(m['at']?.toString()));
-                  }),
-                ],
-                const SizedBox(height: 22),
-                if (courses.isEmpty)
-                  _emptyText('No courses yet — browse the catalog to enroll.')
-                else ...[
-                  Row(children: [
-                    Icon(CupertinoIcons.book_fill, size: 16, color: _orange),
-                    const SizedBox(width: 6),
-                    Text('Your Courses', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
-                  ]),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                    decoration: BoxDecoration(
-                      gradient: _cardGradient,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: _cardBorder),
-                      boxShadow: [BoxShadow(color: _orange.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))],
-                    ),
-                    child: Column(children: courses.map((c) {
-                      final m = c as Map<String, dynamic>;
-                      return _progress(m['title']?.toString() ?? 'Course', ((m['percent'] ?? 0) as num) / 100);
-                    }).toList()),
+                  _Entrance(
+                    index: 4,
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      Row(children: [
+                        Icon(CupertinoIcons.bell_fill, size: 16, color: _orange),
+                        const SizedBox(width: 6),
+                        Text('Notifications', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
+                      ]),
+                      const SizedBox(height: 8),
+                      ...notes.take(3).map((e) {
+                        final m = e as Map<String, dynamic>;
+                        final course = m['course']?.toString() ?? '';
+                        final body = m['body']?.toString() ?? '';
+                        final text = [if (course.isNotEmpty) '[$course]', m['title'] ?? '', if (body.isNotEmpty) '— $body'].join(' ');
+                        return _notif(text, _fmtAt(m['at']?.toString()));
+                      }),
+                    ]),
                   ),
                 ],
               ]);
