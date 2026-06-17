@@ -12,10 +12,11 @@ import (
 	"github.com/minio/minio-go/v7"
 )
 
-// transcodeToHLS downloads the source video from R2, segments it into a 720p HLS
-// rendition with ffmpeg, uploads the playlist + .ts segments back to R2, and marks
-// the asset ready with its HLS url. Runs in its own goroutine; failures flip the
-// status to 'failed' (the source mp4 still plays as a fallback).
+// transcodeToHLS downloads the source video from R2, segments it into short .ts
+// pieces WITHOUT re-encoding (so there is zero quality loss — original resolution
+// and bitrate are preserved), uploads the playlist + segments back to R2, and
+// marks the asset ready. Runs in its own goroutine; failures flip the status to
+// 'failed' (the source mp4 still plays as a fallback).
 func (h *Handlers) transcodeToHLS(assetID, sourceKey string) {
 	ctx := context.Background()
 	fail := func(msg string, err error) {
@@ -45,13 +46,11 @@ func (h *Handlers) transcodeToHLS(assetID, sourceKey string) {
 		return
 	}
 
-	// Single 720p rendition (scales down only, never up), 6-second segments. Low
-	// enough bitrate to stream smoothly even off the dev URL.
+	// Remux only: split the ORIGINAL streams into ~6s .ts segments with -c copy.
+	// No re-encoding → identical quality, near-instant, and segmented so it streams
+	// smoothly. h264_mp4toannexb is applied automatically by the HLS muxer.
 	cmd := exec.Command("ffmpeg", "-y", "-i", src,
-		"-vf", "scale='min(1280,iw)':-2",
-		"-c:v", "libx264", "-preset", "veryfast", "-profile:v", "main",
-		"-b:v", "2500k", "-maxrate", "2675k", "-bufsize", "3750k",
-		"-c:a", "aac", "-b:a", "128k", "-ac", "2",
+		"-c", "copy",
 		"-f", "hls", "-hls_time", "6", "-hls_playlist_type", "vod", "-hls_flags", "independent_segments",
 		"-hls_segment_filename", filepath.Join(out, "seg_%03d.ts"),
 		filepath.Join(out, "index.m3u8"))
