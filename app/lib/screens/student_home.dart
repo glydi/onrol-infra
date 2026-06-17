@@ -918,6 +918,15 @@ class _StudentHomeState extends State<StudentHome> {
     );
   }
 
+  // Opens an external URL (Zoho live link, etc.) in a new tab / browser.
+  Future<void> _openUrl(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+    } catch (_) {}
+  }
+
   Future<void> _openLesson(Map<String, dynamic> l) async {
     final id = l['id'].toString();
     final url = l['url']?.toString() ?? '';
@@ -1336,14 +1345,10 @@ class _StudentHomeState extends State<StudentHome> {
           }),
         ]);
       case 'live':
-        return (CupertinoIcons.videocam_fill, 'Live Classes', 'Upcoming sessions', [
+        return (CupertinoIcons.videocam_fill, 'Live Classes', 'Your schedule & join links', [
           _future(_apiList('/api/v1/me/live', 'live'), (List live) {
             if (live.isEmpty) return _emptyText('No live classes scheduled.');
-            return Column(children: live.map((s) {
-              final m = s as Map<String, dynamic>;
-              final meta = [m['course']?.toString() ?? '', _fmtAt(m['starts_at']?.toString())].where((x) => x.isNotEmpty).join(' · ');
-              return _row(CupertinoIcons.dot_radiowaves_left_right, m['title']?.toString() ?? 'Live class', meta, 'Join');
-            }).toList());
+            return _LiveAgenda(items: live, onJoin: _openUrl);
           }),
         ]);
       case 'help':
@@ -1763,6 +1768,160 @@ class _ExploreListState extends State<_ExploreList> {
           badge,
           badgeBg: done ? _greenBg : null,
           badgeFg: done ? _green : null,
+        ),
+      ),
+    );
+  }
+}
+
+/// Live classes as a calendar-style agenda: sessions grouped by day, each with
+/// its time, course, a LIVE-now indicator, and a Join button (Zoho link).
+class _LiveAgenda extends StatelessWidget {
+  const _LiveAgenda({required this.items, required this.onJoin});
+  final List items;
+  final void Function(String url) onJoin;
+
+  static const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  String _dateKey(DateTime d) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(d.year, d.month, d.day);
+    final diff = day.difference(today).inDays;
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Tomorrow';
+    return '${_weekdays[d.weekday - 1]}, ${_months[d.month - 1]} ${d.day}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sessions = items.map((e) => e as Map<String, dynamic>).toList()
+      ..sort((a, b) => (a['starts_at']?.toString() ?? '').compareTo(b['starts_at']?.toString() ?? ''));
+    final groups = <String, List<Map<String, dynamic>>>{};
+    final order = <String>[];
+    for (final s in sessions) {
+      final dt = DateTime.tryParse(s['starts_at']?.toString() ?? '')?.toLocal();
+      final key = dt == null ? 'Scheduled' : _dateKey(dt);
+      groups.putIfAbsent(key, () {
+        order.add(key);
+        return [];
+      }).add(s);
+    }
+    var idx = 0;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      for (final k in order) ...[
+        Padding(
+          padding: const EdgeInsets.only(top: 12, bottom: 6),
+          child: Row(children: [
+            Icon(CupertinoIcons.calendar, size: 14, color: _orange),
+            const SizedBox(width: 7),
+            Text(k, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w800, color: _navy)),
+          ]),
+        ),
+        for (final s in groups[k]!) _LiveCard(index: idx++, data: s, onJoin: onJoin),
+      ],
+    ]);
+  }
+}
+
+class _LiveCard extends StatefulWidget {
+  const _LiveCard({required this.index, required this.data, required this.onJoin});
+  final int index;
+  final Map<String, dynamic> data;
+  final void Function(String url) onJoin;
+
+  @override
+  State<_LiveCard> createState() => _LiveCardState();
+}
+
+class _LiveCardState extends State<_LiveCard> {
+  bool _hover = false;
+
+  static String _clock(DateTime d) {
+    final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
+    final ampm = d.hour < 12 ? 'AM' : 'PM';
+    return '$h:${d.minute.toString().padLeft(2, '0')} $ampm';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.data;
+    final title = d['title']?.toString() ?? 'Live class';
+    final course = d['course']?.toString() ?? '';
+    final url = d['join_url']?.toString() ?? '';
+    final start = DateTime.tryParse(d['starts_at']?.toString() ?? '')?.toLocal();
+    final end = DateTime.tryParse(d['ends_at']?.toString() ?? '')?.toLocal();
+    final now = DateTime.now();
+    final hardEnd = end ?? start?.add(const Duration(hours: 2));
+    final live = start != null && now.isAfter(start.subtract(const Duration(minutes: 5))) && (hardEnd == null || now.isBefore(hardEnd));
+    final ended = hardEnd != null && now.isAfter(hardEnd);
+    final timeLabel = start == null ? 'TBD' : (end == null ? _clock(start) : '${_clock(start)} – ${_clock(end)}');
+    final hasLink = url.isNotEmpty;
+
+    return _Entrance(
+      index: widget.index,
+      child: MouseRegion(
+        cursor: hasLink && !ended ? SystemMouseCursors.click : MouseCursor.defer,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          onTap: hasLink && !ended ? () => widget.onJoin(url) : null,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            margin: const EdgeInsets.symmetric(vertical: 5),
+            padding: const EdgeInsets.all(13),
+            transform: Matrix4.translationValues(0, _hover && hasLink && !ended ? -2 : 0, 0),
+            decoration: BoxDecoration(
+              gradient: live
+                  ? LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_orange.withOpacity(0.16), _orange.withOpacity(0.05)])
+                  : _cardGradient,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: live ? _orange.withOpacity(0.45) : (_hover ? _orange.withOpacity(0.30) : _cardBorder), width: live ? 1.4 : 1),
+              boxShadow: [BoxShadow(color: _orange.withOpacity(_hover || live ? 0.16 : 0.06), blurRadius: _hover || live ? 18 : 10, offset: const Offset(0, 5))],
+            ),
+            child: Row(children: [
+              // Time / live indicator column.
+              Container(
+                width: 58, alignment: Alignment.center,
+                child: live
+                    ? Column(mainAxisSize: MainAxisSize.min, children: [
+                        const _LiveDot(),
+                        const SizedBox(height: 4),
+                        Text('LIVE', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
+                      ])
+                    : Icon(ended ? CupertinoIcons.checkmark_circle : CupertinoIcons.videocam_fill, size: 24, color: ended ? _grey : _orange),
+              ),
+              Container(width: 1, height: 42, color: _line, margin: const EdgeInsets.symmetric(horizontal: 12)),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy, height: 1.2)),
+                  const SizedBox(height: 3),
+                  Text([if (course.isNotEmpty) course, timeLabel].join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
+                ]),
+              ),
+              const SizedBox(width: 10),
+              // Join button (opens the Zoho link).
+              if (ended)
+                Text('Ended', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: _grey))
+              else if (!hasLink)
+                Text('Link soon', style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: _grey))
+              else
+                _Pressable(
+                  onTap: () => widget.onJoin(url),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                    decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(11), boxShadow: [BoxShadow(color: _orange.withOpacity(0.32), blurRadius: 10, offset: const Offset(0, 4))]),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(CupertinoIcons.videocam_fill, size: 14, color: Colors.white),
+                      const SizedBox(width: 6),
+                      Text(live ? 'Join now' : 'Join', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.white)),
+                    ]),
+                  ),
+                ),
+            ]),
+          ),
         ),
       ),
     );
