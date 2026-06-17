@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../theme.dart';
 import 'ui.dart';
@@ -20,6 +21,31 @@ class _ProfileViewState extends State<ProfileView> {
   double _hp(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
     return (w > 712 ? ((w > 1180 ? w - 256 : w) - 680) / 2 : 18.0).clamp(18, 400).toDouble();
+  }
+
+  // Change the signed-in account's own password (current + new).
+  Future<void> _changePassword() async {
+    final cur = TextEditingController();
+    final nw = TextEditingController();
+    final ok = await showFormSheet(context, title: 'Change Password', builder: (_) => [
+      sheetField(cur, 'Current password', CupertinoIcons.lock, obscure: true),
+      const SizedBox(height: 10),
+      sheetField(nw, 'New password (min 8)', CupertinoIcons.lock_fill, obscure: true),
+    ], onSubmit: () async {
+      if (nw.text.trim().length < 8) return 'New password must be at least 8 characters';
+      try {
+        final r = await widget.auth.apiPost('/api/v1/me/password', {'current_password': cur.text, 'new_password': nw.text.trim()});
+        ApiClient.decode(r); // throws on non-2xx
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      } catch (_) {
+        return 'Could not update password';
+      }
+    });
+    if (ok == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password updated'), behavior: SnackBarBehavior.floating));
+    }
   }
 
   Future<void> _edit() async {
@@ -145,6 +171,10 @@ class _ProfileViewState extends State<ProfileView> {
         Text('Appearance', style: AppleTheme.footnote(context)),
         const SizedBox(height: 8),
         const ThemeToggle(),
+        const SizedBox(height: 18),
+        Text('Security', style: AppleTheme.footnote(context)),
+        const SizedBox(height: 8),
+        PrimaryButton(label: 'Change Password', icon: CupertinoIcons.lock_fill, square: true, onPressed: _changePassword),
         const SizedBox(height: 22),
         PrimaryButton(label: 'Sign Out', icon: CupertinoIcons.square_arrow_right, onPressed: widget.onSignOut),
       ],

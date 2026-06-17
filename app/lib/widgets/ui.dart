@@ -555,14 +555,14 @@ class SquareScope extends InheritedWidget {
   bool updateShouldNotify(SquareScope old) => square != old.square;
 }
 
-Widget sheetField(TextEditingController c, String hint, IconData icon, {TextInputType? keyboard, bool square = false}) {
+Widget sheetField(TextEditingController c, String hint, IconData icon, {TextInputType? keyboard, bool square = false, bool obscure = false}) {
   return Builder(builder: (context) {
     final p = Palette.of(context);
     final sq = square || SquareScope.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
       decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(sq ? 0 : 8)),
-      child: AppleField(controller: c, hint: hint, icon: icon, keyboard: keyboard),
+      child: AppleField(controller: c, hint: hint, icon: icon, keyboard: keyboard, obscure: obscure),
     );
   });
 }
