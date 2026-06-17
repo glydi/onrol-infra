@@ -816,23 +816,6 @@ class _StudentHomeState extends State<StudentHome> {
     ]);
   }
 
-  Future<void> _enrollCourse(String id, String title, bool self) async {
-    try {
-      await widget.auth.apiPost('/api/v1/me/courses/$id/enroll', {});
-      if (mounted) {
-        _showRequestSent(
-          self ? 'Enrolled!' : 'Request sent',
-          self ? "You're now enrolled in $title." : "Your request for $title was sent — you'll be notified when it's approved.",
-          self ? CupertinoIcons.checkmark_alt_circle_fill : CupertinoIcons.paperplane_fill,
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not enroll'), behavior: SnackBarBehavior.floating));
-      }
-    }
-  }
-
   // Animated confirmation overlay (checkmark / paper-plane scales + fades in,
   // then auto-dismisses).
   void _showRequestSent(String title, String sub, IconData icon) {
@@ -1420,30 +1403,14 @@ class _StudentHomeState extends State<StudentHome> {
         ]);
       case 'explore':
         return (CupertinoIcons.compass_fill, 'Explore Courses', 'Browse all courses, batch-wise', [
-          _future(_apiList('/api/v1/catalog', 'catalog'), (List cat) {
-            if (cat.isEmpty) return _emptyText('No courses available right now.');
-            // Group batch-wise (by category — the catalog's grouping field).
-            final groups = <String, List>{};
-            for (final c in cat) {
-              final k = ((c as Map)['category']?.toString() ?? '').trim();
-              groups.putIfAbsent(k.isEmpty ? 'General' : k, () => []).add(c);
-            }
-            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: groups.entries.expand<Widget>((e) => [
-              Padding(
-                padding: const EdgeInsets.only(top: 10, bottom: 4),
-                child: Text(e.key, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
-              ),
-              ...e.value.map((c) {
-                final m = c as Map<String, dynamic>;
-                final self = m['enroll_type'] == 'self';
-                return GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _enrollCourse(m['id'].toString(), m['title']?.toString() ?? 'Course', self),
-                  child: _row(CupertinoIcons.book_fill, m['title']?.toString() ?? 'Course', m['category']?.toString() ?? '', self ? 'Enroll' : 'Request'),
-                );
-              }),
-            ]).toList());
-          }),
+          _ExploreList(
+            auth: widget.auth,
+            onEnrolled: (title, self) => _showRequestSent(
+              self ? 'Enrolled!' : 'Request sent',
+              self ? "You're now enrolled in $title." : "Your request for $title was sent — you'll be notified when it's approved.",
+              self ? CupertinoIcons.checkmark_alt_circle_fill : CupertinoIcons.paperplane_fill,
+            ),
+          ),
         ]);
       case 'logout':
       default:
@@ -1703,6 +1670,105 @@ class _CertCardState extends State<_CertCard> {
           ]),
         ),
       );
+}
+
+/// Explore / catalog list. Enrolling updates the row in place to "Enrolled"
+/// (or "Requested") so the action is immediately reflected — no full reload.
+class _ExploreList extends StatefulWidget {
+  const _ExploreList({required this.auth, required this.onEnrolled});
+  final AuthService auth;
+  final void Function(String title, bool self) onEnrolled;
+
+  @override
+  State<_ExploreList> createState() => _ExploreListState();
+}
+
+class _ExploreListState extends State<_ExploreList> {
+  late Future<List<dynamic>> _future = _load();
+  final Set<String> _enrolled = {};
+  final Set<String> _requested = {};
+  final Set<String> _busy = {};
+
+  Future<List<dynamic>> _load() async {
+    final m = ApiClient.decode(await widget.auth.apiGet('/api/v1/catalog'));
+    return (m['catalog'] as List?) ?? [];
+  }
+
+  Future<void> _enroll(String id, String title, bool self) async {
+    if (_busy.contains(id) || _enrolled.contains(id) || _requested.contains(id)) return;
+    setState(() => _busy.add(id));
+    try {
+      await widget.auth.apiPost('/api/v1/me/courses/$id/enroll', {});
+      if (!mounted) return;
+      setState(() {
+        _busy.remove(id);
+        (self ? _enrolled : _requested).add(id);
+      });
+      widget.onEnrolled(title, self);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _busy.remove(id));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not enroll'), behavior: SnackBarBehavior.floating));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<dynamic>>(
+      future: _future,
+      builder: (ctx, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const Padding(padding: EdgeInsets.symmetric(vertical: 34), child: Center(child: CircularProgressIndicator(color: _orange, strokeWidth: 2.5)));
+        }
+        final cat = snap.hasData ? snap.data! : const [];
+        if (cat.isEmpty) {
+          return Padding(padding: const EdgeInsets.symmetric(vertical: 22), child: Text('No courses available right now.', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, color: _grey)));
+        }
+        // Group batch-wise (by category — the catalog's grouping field).
+        final groups = <String, List>{};
+        for (final c in cat) {
+          final k = ((c as Map)['category']?.toString() ?? '').trim();
+          groups.putIfAbsent(k.isEmpty ? 'General' : k, () => []).add(c);
+        }
+        var idx = 0;
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: groups.entries.expand<Widget>((e) => [
+          Padding(
+            padding: const EdgeInsets.only(top: 10, bottom: 4),
+            child: Text(e.key, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
+          ),
+          ...e.value.map((c) => _courseRow(c as Map<String, dynamic>, idx++)),
+        ]).toList());
+      },
+    );
+  }
+
+  Widget _courseRow(Map<String, dynamic> m, int index) {
+    final id = m['id'].toString();
+    final self = m['enroll_type'] == 'self';
+    final title = m['title']?.toString() ?? 'Course';
+    final enrolled = _enrolled.contains(id);
+    final requested = _requested.contains(id);
+    final busy = _busy.contains(id);
+    final done = enrolled || requested;
+
+    final String badge = busy ? '…' : (enrolled ? 'Enrolled ✓' : (requested ? 'Requested' : (self ? 'Enroll' : 'Request')));
+
+    return _Entrance(
+      index: index,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: done || busy ? null : () => _enroll(id, title, self),
+        child: _row(
+          done ? CupertinoIcons.checkmark_seal_fill : CupertinoIcons.book_fill,
+          title,
+          m['category']?.toString() ?? '',
+          badge,
+          badgeBg: done ? _greenBg : null,
+          badgeFg: done ? _green : null,
+        ),
+      ),
+    );
+  }
 }
 
 /// Leaderboard with an "Overall" (total XP) tab plus one tab per enrolled
