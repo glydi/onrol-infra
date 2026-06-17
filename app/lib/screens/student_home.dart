@@ -730,6 +730,7 @@ class _StudentHomeState extends State<StudentHome> {
       _future(_apiMap('/api/v1/me/courses/$courseId/content'), (m) {
         final modules = (m['modules'] as List?) ?? [];
         if (modules.isEmpty) return _emptyText('No content in this course yet.');
+        return StatefulBuilder(builder: (ctx, setS) {
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: modules.expand<Widget>((mod) {
           final md = mod as Map<String, dynamic>;
           final lessons = (md['lessons'] as List?) ?? [];
@@ -738,7 +739,7 @@ class _StudentHomeState extends State<StudentHome> {
               padding: const EdgeInsets.only(top: 10, bottom: 4),
               child: Text(md['title']?.toString() ?? 'Module', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
             ),
-            if (lessons.isEmpty) _emptyText('No lessons.') else ...lessons.map((l) => _lessonRow(l as Map<String, dynamic>)),
+            if (lessons.isEmpty) _emptyText('No lessons.') else ...lessons.map((l) => _lessonRow(l as Map<String, dynamic>, () => setS(() {}))),
             Align(
               alignment: Alignment.centerLeft,
               child: _Pressable(
@@ -755,6 +756,7 @@ class _StudentHomeState extends State<StudentHome> {
             ),
           ];
         }).toList());
+        });
       }),
     ]);
   }
@@ -870,7 +872,7 @@ class _StudentHomeState extends State<StudentHome> {
     );
   }
 
-  Widget _lessonRow(Map<String, dynamic> l) {
+  Widget _lessonRow(Map<String, dynamic> l, VoidCallback onChanged) {
     final type = l['type']?.toString() ?? 'text';
     final done = l['completed'] == true;
     final icon = switch (type) {
@@ -893,7 +895,24 @@ class _StudentHomeState extends State<StudentHome> {
             Icon(l['downloadable'] == true ? CupertinoIcons.cloud_download_fill : CupertinoIcons.eye_fill, size: 15, color: _grey),
             const SizedBox(width: 8),
           ],
-          Icon(done ? CupertinoIcons.checkmark_alt_circle_fill : CupertinoIcons.chevron_right, size: done ? 20 : 16, color: done ? _green : _grey),
+          // Tappable completion toggle (works for every lesson type). Tap the
+          // circle to mark done; until then Resume keeps bringing you back here.
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: done
+                ? null
+                : () async {
+                    try {
+                      await widget.auth.apiPost('/api/v1/me/lessons/${l['id']}/complete', {});
+                      l['completed'] = true;
+                      onChanged();
+                    } catch (_) {}
+                  },
+            child: Padding(
+              padding: const EdgeInsets.all(2),
+              child: Icon(done ? CupertinoIcons.checkmark_alt_circle_fill : CupertinoIcons.circle, size: 22, color: done ? _green : _grey),
+            ),
+          ),
         ]),
       ),
     );
@@ -933,10 +952,10 @@ class _StudentHomeState extends State<StudentHome> {
         Text(url, style: GoogleFonts.poppins(fontSize: 14, color: _navy, height: 1.6)),
       ]);
     }
-    // Non-video lessons: mark complete on open (best-effort).
-    try {
-      await widget.auth.apiPost('/api/v1/me/lessons/$id/complete', {});
-    } catch (_) {}
+    // Stamp last-access (so Resume returns to this exact lesson — PDFs, notes,
+    // links, all of it). Completion is now explicit (the circle in the lesson
+    // list), so opening a doc no longer instantly skips it in Resume.
+    widget.auth.apiPost('/api/v1/me/lessons/$id/progress', {'position': 0}).ignore();
   }
 
   // Opens a quiz: loads its questions, collects answers, and submits them.
