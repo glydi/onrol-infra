@@ -24,8 +24,11 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
   bool _loading = true;
   bool _uploading = false;
   bool _r2 = true;
+  double _progress = 0; // 0..1 during chunked upload
   List<dynamic> _videos = [];
   String? _err;
+
+  static const _chunkSize = 8 * 1024 * 1024; // 8 MB pieces
 
   @override
   void initState() {
@@ -49,14 +52,43 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
   void _toast(String m) => ScaffoldMessenger.of(context)
       .showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
 
+  // Chunked upload: split the file into pieces, upload each as an R2 multipart
+  // part, then complete — so even multi-GB files upload reliably. R2 stitches the
+  // pieces back into one video; the admin only ever sees one entry.
   Future<void> _upload() async {
     final picked = await pickVideoFile();
     if (picked == null) return; // cancelled
-    setState(() => _uploading = true);
+    final bytes = picked.bytes;
+    setState(() { _uploading = true; _progress = 0; });
     try {
-      final resp = await widget.auth.apiUpload('/api/v1/manage/videos/upload',
-          bytes: picked.bytes, filename: picked.name, fields: {'title': picked.name});
-      ApiClient.decode(resp); // throws on non-2xx
+      // 1. init multipart upload
+      final initR = await widget.auth.apiPost('/api/v1/manage/videos/upload/init',
+          {'filename': picked.name, 'content_type': 'video/mp4'});
+      final init = ApiClient.decode(initR);
+      final uploadId = init['upload_id'].toString();
+      final key = init['key'].toString();
+      final qid = Uri.encodeQueryComponent(uploadId);
+      final qkey = Uri.encodeQueryComponent(key);
+
+      // 2. upload each chunk as a part
+      final parts = <Map<String, dynamic>>[];
+      var part = 1;
+      for (var off = 0; off < bytes.length; off += _chunkSize) {
+        final end = (off + _chunkSize < bytes.length) ? off + _chunkSize : bytes.length;
+        final chunk = bytes.sublist(off, end);
+        final pr = await widget.auth.apiPostBytes(
+            '/api/v1/manage/videos/upload/part?upload_id=$qid&key=$qkey&part=$part', chunk);
+        final pd = ApiClient.decode(pr);
+        parts.add({'part_number': part, 'etag': pd['etag']});
+        part++;
+        if (mounted) setState(() => _progress = end / bytes.length);
+      }
+
+      // 3. complete — R2 reassembles into one object
+      final cr = await widget.auth.apiPost('/api/v1/manage/videos/upload/complete', {
+        'upload_id': uploadId, 'key': key, 'title': picked.name, 'size': bytes.length, 'parts': parts,
+      });
+      ApiClient.decode(cr);
       _toast('Uploaded "${picked.name}"');
       await _load();
     } on ApiException catch (e) {
@@ -64,7 +96,7 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
     } catch (_) {
       _toast('Upload failed');
     }
-    if (mounted) setState(() => _uploading = false);
+    if (mounted) setState(() { _uploading = false; _progress = 0; });
   }
 
   String _size(num b) {
@@ -105,14 +137,19 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
                   const SizedBox(height: 16),
                   if (!_r2)
                     AppleCard(square: true, child: Text('Video storage (R2) is not configured on the server.', style: AppleTheme.footnote(context)))
-                  else
+                  else ...[
                     PrimaryButton(
-                      label: _uploading ? 'Uploading…' : 'Upload video',
+                      label: _uploading ? 'Uploading ${(_progress * 100).toStringAsFixed(0)}%' : 'Upload video',
                       icon: CupertinoIcons.cloud_upload,
                       square: true,
                       busy: _uploading,
                       onPressed: _uploading ? null : _upload,
                     ),
+                    if (_uploading) ...[
+                      const SizedBox(height: 8),
+                      LinearProgressIndicator(value: _progress == 0 ? null : _progress, color: Palette.of(context).accent, backgroundColor: Palette.of(context).separator),
+                    ],
+                  ],
                   const SizedBox(height: 18),
                   if (_err != null)
                     AppleCard(square: true, child: Text(_err!, style: AppleTheme.footnote(context)))

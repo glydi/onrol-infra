@@ -38,6 +38,13 @@ class ApiClient {
     return http.put(_u(path), headers: await _headers(), body: jsonEncode(body));
   }
 
+  /// Raw binary POST (one upload chunk). Body is sent as application/octet-stream.
+  Future<http.Response> postBytes(String path, List<int> bytes) async {
+    final h = await _headers(json: false);
+    h['Content-Type'] = 'application/octet-stream';
+    return http.post(_u(path), headers: h, body: bytes);
+  }
+
   Future<http.Response> get(String path) async {
     // Cache-bust so the browser (web) never serves a stale API response, and ask
     // intermediaries not to cache — fixes "data not reloading" after changes.

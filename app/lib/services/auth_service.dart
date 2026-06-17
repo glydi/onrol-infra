@@ -98,4 +98,5 @@ class AuthService {
   Future<http.Response> apiDelete(String path) => _api.delete(path);
   Future<http.Response> apiUpload(String path, {required List<int> bytes, required String filename, Map<String, String>? fields}) =>
       _api.uploadBytes(path, bytes: bytes, filename: filename, fields: fields);
+  Future<http.Response> apiPostBytes(String path, List<int> bytes) => _api.postBytes(path, bytes);
 }
