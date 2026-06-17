@@ -267,7 +267,7 @@ func (h *Handlers) ListCourseSessions(c *fiber.Ctx) error {
 // courses, with the join link. Only enrolled students see them.
 func (h *Handlers) MyLive(c *fiber.Ctx) error {
 	rows, err := h.Pool.Query(c.Context(), `
-		SELECT cs.id, cs.title, cs.starts_at, COALESCE(cs.join_url,''), c.title
+		SELECT cs.id, cs.title, cs.starts_at, cs.ends_at, COALESCE(cs.join_url,''), COALESCE(cs.location,''), c.title
 		FROM class_sessions cs
 		JOIN courses c ON c.id = cs.course_id
 		JOIN course_enrollments ce ON ce.course_id = c.id AND ce.user_id = $1
@@ -279,12 +279,16 @@ func (h *Handlers) MyLive(c *fiber.Ctx) error {
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var id, title, joinURL, course string
-		var startsAt any
-		if err := rows.Scan(&id, &title, &startsAt, &joinURL, &course); err != nil {
+		var id, title, joinURL, location, course string
+		var startsAt, endsAt any
+		if err := rows.Scan(&id, &title, &startsAt, &endsAt, &joinURL, &location, &course); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
-		out = append(out, fiber.Map{"id": id, "title": title, "starts_at": startsAt, "join_url": joinURL, "course": course})
+		// Fall back to a join link stored in `location` if join_url is unset.
+		if joinURL == "" && (strings.HasPrefix(location, "http://") || strings.HasPrefix(location, "https://")) {
+			joinURL = location
+		}
+		out = append(out, fiber.Map{"id": id, "title": title, "starts_at": startsAt, "ends_at": endsAt, "join_url": joinURL, "course": course})
 	}
 	return c.JSON(fiber.Map{"live": out})
 }
