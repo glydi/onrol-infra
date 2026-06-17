@@ -712,10 +712,10 @@ class _StudentHomeState extends State<StudentHome> {
     Widget? pic;
     if (url.startsWith('data:')) {
       try {
-        pic = Image.memory(base64Decode(url.substring(url.indexOf(',') + 1)), height: 150, width: double.infinity, fit: BoxFit.cover);
+        pic = Image.memory(base64Decode(url.substring(url.indexOf(',') + 1)), height: 220, width: double.infinity, fit: BoxFit.cover);
       } catch (_) {}
     } else if (url.startsWith('http')) {
-      pic = Image.network(url, height: 150, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox());
+      pic = Image.network(url, height: 220, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox());
     }
     if (pic == null) return const SizedBox.shrink();
     return Padding(

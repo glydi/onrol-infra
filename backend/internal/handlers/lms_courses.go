@@ -52,6 +52,7 @@ func (h *Handlers) ListCategories(c *fiber.Ctx) error {
 func (h *Handlers) CreateCourse(c *fiber.Ctx) error {
 	var req struct {
 		Title        string `json:"title"`
+		Label        string `json:"label"`        // unique Course ID (course-string)
 		Description  string `json:"description"`
 		CategoryID   string `json:"category_id"`
 		GroupID      string `json:"group_id"`
@@ -96,16 +97,46 @@ func (h *Handlers) CreateCourse(c *fiber.Ctx) error {
 	if strings.TrimSpace(req.ImageURL) != "" {
 		img = req.ImageURL
 	}
+	// Course ID (label): the unique course-string. Defaults to a slug of the title
+	// when blank. Two courses can never share a Course ID.
+	label := slugify(req.Label)
+	if label == "" {
+		label = slugify(req.Title)
+	}
+	if label == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "course id is required")
+	}
 	var id string
 	err := h.Pool.QueryRow(c.Context(),
-		`INSERT INTO courses (title, description, category_id, group_id, owner_id, enroll_type, image_url)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-		req.Title, req.Description, cat, grp, owner, req.EnrollType, img,
+		`INSERT INTO courses (title, label, description, category_id, group_id, owner_id, enroll_type, image_url)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+		req.Title, label, req.Description, cat, grp, owner, req.EnrollType, img,
 	).Scan(&id)
 	if err != nil {
+		if strings.Contains(err.Error(), "idx_courses_label") {
+			return fiber.NewError(fiber.StatusConflict, "a course with this Course ID already exists")
+		}
 		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
 	}
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": req.Title, "status": "draft"})
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": req.Title, "label": label, "status": "draft"})
+}
+
+// slugify turns a free-form string into a lowercase, dash-separated course-id
+// (a-z, 0-9, '-'), trimming repeated/edge dashes. Empty in -> empty out.
+func slugify(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			lastDash = false
+		} else if !lastDash {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
 }
 
 // UpdateCourse edits title/description/category/status (publish/archive).
@@ -116,13 +147,24 @@ func (h *Handlers) UpdateCourse(c *fiber.Ctx) error {
 	}
 	var req struct {
 		Title       *string `json:"title"`
+		Label       *string `json:"label"`       // unique Course ID
 		Description *string `json:"description"`
 		Status      *string `json:"status"`
 		EnrollType  *string `json:"enroll_type"` // admin controls admission mode
 		ImageURL    *string `json:"image_url"`   // cover image (data URI or URL)
+		BatchSize   *int    `json:"batch_size"`  // default students per batch
+		BatchAuto   *bool   `json:"batch_auto"`  // auto allocation is the default mode
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+	var label *string
+	if req.Label != nil {
+		s := slugify(*req.Label)
+		if s == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "course id cannot be empty")
+		}
+		label = &s
 	}
 	if req.Status != nil {
 		switch *req.Status {
@@ -138,15 +180,25 @@ func (h *Handlers) UpdateCourse(c *fiber.Ctx) error {
 			return fiber.NewError(fiber.StatusBadRequest, "invalid enroll_type")
 		}
 	}
+	if req.BatchSize != nil && *req.BatchSize < 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "batch_size must be >= 0")
+	}
 	_, err := h.Pool.Exec(c.Context(), `
 		UPDATE courses SET
 			title=COALESCE($2,title),
 			description=COALESCE($3,description),
 			status=COALESCE($4,status),
 			enroll_type=COALESCE($5,enroll_type),
-			image_url=COALESCE($6,image_url)
-		WHERE id=$1`, id, req.Title, req.Description, req.Status, req.EnrollType, req.ImageURL)
+			image_url=COALESCE($6,image_url),
+			batch_size=COALESCE($7,batch_size),
+			batch_auto=COALESCE($8,batch_auto),
+			label=COALESCE($9,label)
+		WHERE id=$1`, id, req.Title, req.Description, req.Status, req.EnrollType, req.ImageURL,
+		req.BatchSize, req.BatchAuto, label)
 	if err != nil {
+		if strings.Contains(err.Error(), "idx_courses_label") {
+			return fiber.NewError(fiber.StatusConflict, "a course with this Course ID already exists")
+		}
 		return fiber.NewError(fiber.StatusInternalServerError, "update failed")
 	}
 	return c.JSON(fiber.Map{"id": id, "updated": true})
@@ -154,7 +206,7 @@ func (h *Handlers) UpdateCourse(c *fiber.Ctx) error {
 
 func (h *Handlers) ListCourses(c *fiber.Ctx) error {
 	// Admin/manager + superadmin see ALL courses; an instructor sees only theirs.
-	q := `SELECT id, title, status, enroll_type, COALESCE(group_id::text,''), COALESCE(image_url,''), created_at FROM courses`
+	q := `SELECT id, title, status, enroll_type, COALESCE(group_id::text,''), COALESCE(image_url,''), COALESCE(label,''), created_at FROM courses`
 	args := []any{}
 	if callerRole(c) == "instructor" {
 		q += ` WHERE owner_id=$1`
@@ -168,13 +220,13 @@ func (h *Handlers) ListCourses(c *fiber.Ctx) error {
 	defer r.Close()
 	out := []fiber.Map{}
 	for r.Next() {
-		var id, title, status, et, grp, img string
+		var id, title, status, et, grp, img, label string
 		var created any
-		if err := r.Scan(&id, &title, &status, &et, &grp, &img, &created); err != nil {
+		if err := r.Scan(&id, &title, &status, &et, &grp, &img, &label, &created); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		out = append(out, fiber.Map{"id": id, "title": title, "status": status,
-			"enroll_type": et, "group_id": grp, "image_url": img, "created_at": created})
+			"enroll_type": et, "group_id": grp, "image_url": img, "label": label, "created_at": created})
 	}
 	return c.JSON(fiber.Map{"courses": out})
 }
@@ -335,6 +387,64 @@ func (h *Handlers) ListCourseStudents(c *fiber.Ctx) error {
 		out = append(out, fiber.Map{"id": id, "name": name, "email": email, "status": status, "percent": pct, "batch": batch})
 	}
 	return c.JSON(fiber.Map{"students": out})
+}
+
+// CourseBatches returns the students of a course grouped by batch. A course is
+// linked to its students by its label (the course-label queue): every student
+// whose course_label matches is bucketed by batch number, with the unassigned
+// queue returned as batch=null first. This is the per-course batch portal.
+func (h *Handlers) CourseBatches(c *fiber.Ctx) error {
+	courseID := c.Params("id")
+	if err := h.canManageCourse(c, courseID); err != nil {
+		return err
+	}
+	var label *string
+	var batchSize *int
+	var batchAuto bool
+	if err := h.Pool.QueryRow(c.Context(),
+		`SELECT label, batch_size, batch_auto FROM courses WHERE id=$1`, courseID,
+	).Scan(&label, &batchSize, &batchAuto); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "course not found")
+	}
+	settings := fiber.Map{"batch_size": batchSize, "batch_auto": batchAuto}
+	if label == nil || strings.TrimSpace(*label) == "" {
+		return c.JSON(fiber.Map{"label": "", "batches": []fiber.Map{}, "settings": settings})
+	}
+	rows, err := h.Pool.Query(c.Context(),
+		`SELECT id, full_name, email, batch FROM users
+		  WHERE role='student' AND lower(course_label)=lower($1)
+		  ORDER BY batch NULLS FIRST, full_name`, *label)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
+	}
+	defer rows.Close()
+	// Bucket students by batch, preserving first-seen order (queue first).
+	order := []int{}            // -1 sentinel = unassigned/queue
+	buckets := map[int][]fiber.Map{}
+	for rows.Next() {
+		var id, name, email string
+		var batch *int
+		if err := rows.Scan(&id, &name, &email, &batch); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		key := -1
+		if batch != nil {
+			key = *batch
+		}
+		if _, seen := buckets[key]; !seen {
+			order = append(order, key)
+		}
+		buckets[key] = append(buckets[key], fiber.Map{"id": id, "name": name, "email": email})
+	}
+	out := []fiber.Map{}
+	for _, key := range order {
+		var b any
+		if key >= 0 {
+			b = key
+		}
+		out = append(out, fiber.Map{"batch": b, "count": len(buckets[key]), "students": buckets[key]})
+	}
+	return c.JSON(fiber.Map{"label": *label, "batches": out, "settings": settings})
 }
 
 // ListEnrollmentRequests returns pending self-enroll requests for courses the

@@ -15,6 +15,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/onrol/lms-backend/internal/auth"
+	"github.com/onrol/lms-backend/internal/autoprovision"
 	"github.com/onrol/lms-backend/internal/config"
 	"github.com/onrol/lms-backend/internal/database"
 	"github.com/onrol/lms-backend/internal/handlers"
@@ -57,13 +58,19 @@ func main() {
 		AppName:               "onrol-api",
 		ErrorHandler:          router.ErrorHandler,
 		DisableStartupMessage: cfg.IsProduction(),
-		ReadTimeout:           15 * time.Second,
-		WriteTimeout:          30 * time.Second,
+		ReadTimeout:           15 * time.Minute, // large video uploads stream in
+		WriteTimeout:          15 * time.Minute,
+		BodyLimit:             3 * 1024 * 1024 * 1024, // 3 GB — video store uploads
+		StreamRequestBody:     true,                   // stream big bodies, don't buffer in RAM
 	})
 	app.Use(recover.New())
 	app.Use(logger.New())
 
 	router.Setup(app, h, jwtm, pool)
+
+	// Auto-provision: converted leads (with a course_id) become enrolled students
+	// on a schedule. Idempotent; logins are recorded in provisioning_log.
+	autoprovision.Start(pool, 2*time.Minute)
 
 	// Graceful shutdown.
 	go func() {

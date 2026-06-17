@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required for the app to make network/API calls in release builds.
+         (debug/profile manifests declare this separately; release uses this one.) -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="onrol_app"
         android:name="${applicationName}"

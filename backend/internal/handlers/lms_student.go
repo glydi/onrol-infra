@@ -13,18 +13,24 @@ import (
 // ---- Profile & preferences -------------------------------------------------
 
 func (h *Handlers) GetMyProfile(c *fiber.Ctx) error {
-	var email, name, phone, role, avatar, username, occupation, location, linkedin, github string
+	var email, name, phone, role, avatar, username, occupation, location, linkedin, github, courseLabel, courseName string
+	var batch *int
 	if err := h.Pool.QueryRow(c.Context(),
-		`SELECT email, full_name, COALESCE(phone,''), role, COALESCE(avatar,''),
-		        COALESCE(username,''), COALESCE(occupation,''), COALESCE(location,''),
-		        COALESCE(linkedin,''), COALESCE(github,'')
-		   FROM users WHERE id=$1`, callerID(c),
-	).Scan(&email, &name, &phone, &role, &avatar, &username, &occupation, &location, &linkedin, &github); err != nil {
+		`SELECT u.email, u.full_name, COALESCE(u.phone,''), u.role, COALESCE(u.avatar,''),
+		        COALESCE(u.username,''), COALESCE(u.occupation,''), COALESCE(u.location,''),
+		        COALESCE(u.linkedin,''), COALESCE(u.github,''),
+		        u.batch, COALESCE(u.course_label,''), COALESCE(c.title,'')
+		   FROM users u
+		   LEFT JOIN courses c ON lower(c.label)=lower(u.course_label)
+		  WHERE u.id=$1`, callerID(c),
+	).Scan(&email, &name, &phone, &role, &avatar, &username, &occupation, &location, &linkedin, &github,
+		&batch, &courseLabel, &courseName); err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "user not found")
 	}
 	return c.JSON(fiber.Map{
 		"id": callerID(c), "email": email, "full_name": name, "phone": phone, "role": role, "avatar": avatar,
 		"username": username, "occupation": occupation, "location": location, "linkedin": linkedin, "github": github,
+		"batch": batch, "course_label": courseLabel, "course": courseName,
 	})
 }
 

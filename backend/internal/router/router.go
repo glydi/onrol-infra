@@ -51,10 +51,20 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	// ---- Manager: user & group management --------------------------------
 	api.Get("/manage/users", auth, mgr, h.ListUsers)
 	api.Post("/manage/users", auth, mgr, h.CreateManagedUser)
+	api.Post("/manage/users/batch-assign", auth, mgr, h.AssignBatch)
+	api.Post("/manage/users/auto-batch", auth, mgr, h.AutoBatch)
+	api.Get("/manage/users/:id/converted-lead", auth, mgr, h.UserConvertedLead)
+	api.Get("/manage/converted-leads", auth, mgr, h.ConvertedLeads)
+
+	// ---- Video store (R2-backed media library) ---------------------------
+	api.Get("/manage/videos", auth, mgr, h.ListVideos)
+	api.Post("/manage/videos/upload", auth, mgr, h.UploadVideo)
+	api.Delete("/manage/videos/:id", auth, mgr, h.DeleteVideo)
 	api.Post("/manage/users/:id/role", auth, mgr, h.SetUserRole)
 	api.Post("/manage/users/:id/password", auth, mgr, h.ResetUserPassword)
 	api.Post("/manage/users/:id/batch", auth, mgr, h.SetUserBatch)
 	api.Delete("/manage/users/:id", auth, mgr, h.DeactivateUser)
+	api.Delete("/manage/users/:id/permanent", auth, mgr, h.PurgeUser)
 	// Device control: see/revoke a user's bound devices, or reset all (free slots).
 	api.Get("/manage/users/:id/devices", auth, mgr, h.AdminListUserDevices)
 	api.Delete("/manage/users/:id/devices/:deviceId", auth, mgr, h.AdminRevokeUserDevice)
@@ -92,6 +102,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Get("/manage/courses/:id/report/attendance", auth, inst, h.AttendanceReport)
 	api.Post("/manage/announcements", auth, inst, h.CreateAnnouncement)
 	api.Get("/manage/courses/:id/students", auth, inst, h.ListCourseStudents)
+	api.Get("/manage/courses/:id/batches", auth, inst, h.CourseBatches)
 	api.Get("/manage/courses/:id/certificates", auth, inst, h.ListCourseCertificates)
 	api.Post("/manage/courses/:id/certificates", auth, inst, h.IssueCertificates)
 	api.Delete("/manage/courses/:id/certificates/:userId", auth, inst, h.RevokeCertificate)

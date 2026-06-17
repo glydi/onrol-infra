@@ -35,11 +35,34 @@ class ApiClient {
   }
 
   Future<http.Response> get(String path) async {
-    return http.get(_u(path), headers: await _headers(json: false));
+    // Cache-bust so the browser (web) never serves a stale API response, and ask
+    // intermediaries not to cache — fixes "data not reloading" after changes.
+    final sep = path.contains('?') ? '&' : '?';
+    final busted = '$path${sep}_ts=${DateTime.now().millisecondsSinceEpoch}';
+    final headers = await _headers(json: false)
+      ..['Cache-Control'] = 'no-cache, no-store'
+      ..['Pragma'] = 'no-cache';
+    return http.get(_u(busted), headers: headers);
   }
 
   Future<http.Response> delete(String path) async {
     return http.delete(_u(path), headers: await _headers(json: false));
+  }
+
+  /// Multipart upload (e.g. a video file to the store). [fields] are extra form
+  /// fields sent alongside the file under [field].
+  Future<http.Response> uploadBytes(String path, {
+    required List<int> bytes,
+    required String filename,
+    String field = 'file',
+    Map<String, String>? fields,
+  }) async {
+    final req = http.MultipartRequest('POST', _u(path));
+    req.headers.addAll(await _headers(json: false));
+    if (fields != null) req.fields.addAll(fields);
+    req.files.add(http.MultipartFile.fromBytes(field, bytes, filename: filename));
+    final streamed = await req.send();
+    return http.Response.fromStream(streamed);
   }
 
   /// Decode a JSON object body, throwing a readable error on non-2xx.

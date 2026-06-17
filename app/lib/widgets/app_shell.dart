@@ -110,7 +110,10 @@ class _Sidebar extends StatelessWidget {
     final p = Palette.of(context);
     return Container(
       width: 256,
-      decoration: BoxDecoration(color: p.bg),
+      decoration: BoxDecoration(
+        color: p.bg,
+        border: Border(right: BorderSide(color: p.separator)),
+      ),
       padding: EdgeInsets.fromLTRB(16, MediaQuery.of(context).padding.top + 22, 16, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -119,7 +122,7 @@ class _Sidebar extends StatelessWidget {
             Container(
               width: 38, height: 38,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(SquareScope.of(context) ? 0 : 12),
                 gradient: const LinearGradient(colors: [AppleColors.blue, AppleColors.purple], begin: Alignment.topLeft, end: Alignment.bottomRight),
               ),
               child: const Icon(CupertinoIcons.book_fill, color: Colors.white, size: 20),
@@ -164,7 +167,7 @@ class _Sidebar extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           decoration: BoxDecoration(
             color: on ? p.accent : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(SquareScope.of(context) ? 0 : 8),
           ),
           child: Row(children: [
             Icon(d.icon, size: 20, color: on ? Colors.white : p.secondary),

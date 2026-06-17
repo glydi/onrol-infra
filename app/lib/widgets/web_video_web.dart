@@ -22,6 +22,9 @@ Widget hlsVideoElement(String url) {
         ..setAttribute('controlsList', 'nodownload noplaybackrate noremoteplayback')
         ..setAttribute('playsinline', 'true')
         ..setAttribute('disablePictureInPicture', 'true');
+      // Deter right-click "Save video as…". (Not real protection — browsers can't
+      // block screen recording; that needs DRM. The watermark is the deterrent.)
+      video.onContextMenu.listen((e) => e.preventDefault());
 
       final isHls = url.toLowerCase().contains('.m3u8');
       final hlsAvailable = js.context.hasProperty('Hls');

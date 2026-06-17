@@ -26,6 +26,7 @@ class _ProfileViewState extends State<ProfileView> {
     final name = TextEditingController(text: widget.auth.user?.fullName ?? '');
     final phone = TextEditingController();
     final p = Palette.of(context);
+    final sq = SquareScope.of(context); // captured before the modal leaves the scope
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -36,7 +37,7 @@ class _ProfileViewState extends State<ProfileView> {
         return StatefulBuilder(builder: (ctx, setS) {
           Widget field(TextEditingController c, String hint, IconData icon) => Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(12)),
+                decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(sq ? 0 : 12)),
                 child: AppleField(controller: c, hint: hint, icon: icon),
               );
           return Padding(
@@ -44,7 +45,7 @@ class _ProfileViewState extends State<ProfileView> {
             child: Container(
               margin: const EdgeInsets.all(10),
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(20)),
+              decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(sq ? 0 : 20)),
               child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Center(child: Text('Edit Profile', style: AppleTheme.title2(ctx))),
                 const SizedBox(height: 16),
@@ -103,12 +104,34 @@ class _ProfileViewState extends State<ProfileView> {
             const SizedBox(height: 6),
             Text((u?.role ?? 'student').toUpperCase(),
                 style: AppleTheme.footnote(context).copyWith(color: Palette.of(context).accent, fontWeight: FontWeight.w700)),
+            // Students see their course + which batch they're in.
+            if (u?.role == 'student' && ((u?.course.isNotEmpty ?? false) || u?.batch != null)) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Palette.of(context).accent.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(SquareScope.of(context) ? 0 : 20),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(CupertinoIcons.square_stack_3d_up, size: 16, color: Palette.of(context).accent),
+                  const SizedBox(width: 8),
+                  Text(
+                    [
+                      if (u!.course.isNotEmpty) u.course,
+                      u.batch != null ? 'Batch ${u.batch}' : 'Batch: not assigned yet',
+                    ].join(' · '),
+                    style: AppleTheme.footnote(context).copyWith(color: Palette.of(context).accent, fontWeight: FontWeight.w600),
+                  ),
+                ]),
+              ),
+            ],
             const SizedBox(height: 14),
             GestureDetector(
               onTap: _edit,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
-                decoration: BoxDecoration(color: Palette.of(context).accent.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
+                decoration: BoxDecoration(color: Palette.of(context).accent.withOpacity(0.12), borderRadius: BorderRadius.circular(SquareScope.of(context) ? 0 : 20)),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(CupertinoIcons.pencil, size: 15, color: Palette.of(context).accent),
                   const SizedBox(width: 6),

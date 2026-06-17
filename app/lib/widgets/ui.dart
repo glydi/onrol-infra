@@ -48,27 +48,81 @@ class GlassHeader extends StatelessWidget implements PreferredSizeWidget {
 }
 
 /// White (or elevated) rounded card — the iOS grouped-content surface.
-class AppleCard extends StatelessWidget {
-  const AppleCard({super.key, required this.child, this.padding = const EdgeInsets.all(16), this.onTap});
+class AppleCard extends StatefulWidget {
+  const AppleCard({super.key, required this.child, this.padding = const EdgeInsets.all(16), this.onTap, this.square = false});
   final Widget child;
   final EdgeInsets padding;
   final VoidCallback? onTap;
+  final bool square; // admin/LMS panels use squared (radius 0) corners
+
+  @override
+  State<AppleCard> createState() => _AppleCardState();
+}
+
+class _AppleCardState extends State<AppleCard> {
+  bool _hover = false;
 
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    final card = Container(
+    final sq = widget.square || SquareScope.of(context);
+    final interactive = widget.onTap != null;
+    final hovered = interactive && _hover;
+    final card = AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
       width: double.infinity,
-      padding: padding,
+      padding: widget.padding,
       decoration: BoxDecoration(
         color: p.card,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: p.separator),
+        borderRadius: BorderRadius.circular(sq ? 0 : 10),
+        border: Border.all(color: hovered ? p.accent : p.separator),
+        boxShadow: hovered
+            ? [BoxShadow(color: Colors.black.withOpacity(p.dark ? 0.32 : 0.08), blurRadius: 12, offset: const Offset(0, 4))]
+            : null,
       ),
-      child: child,
+      child: widget.child,
     );
-    if (onTap == null) return card;
-    return GestureDetector(onTap: onTap, behavior: HitTestBehavior.opaque, child: card);
+    if (!interactive) return card;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(onTap: widget.onTap, behavior: HitTestBehavior.opaque, child: card),
+    );
+  }
+}
+
+/// Wraps a small tappable element (chip, icon, row) with a pointer cursor and a
+/// subtle hover fade — for web ease-of-use on non-button controls.
+class HoverTap extends StatefulWidget {
+  const HoverTap({super.key, required this.onTap, required this.child});
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  State<HoverTap> createState() => _HoverTapState();
+}
+
+class _HoverTapState extends State<HoverTap> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 120),
+          opacity: _hover ? 0.6 : 1.0,
+          child: widget.child,
+        ),
+      ),
+    );
   }
 }
 
@@ -87,17 +141,23 @@ class PrimaryButton extends StatefulWidget {
 
 class _PrimaryButtonState extends State<PrimaryButton> {
   double _scale = 1;
+  bool _hover = false;
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final enabled = widget.onPressed != null && !widget.busy;
-    return GestureDetector(
+    final sq = widget.square || SquareScope.of(context);
+    return MouseRegion(
+      cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
       onTapDown: enabled ? (_) => setState(() => _scale = 0.97) : null,
       onTapUp: enabled ? (_) => setState(() => _scale = 1) : null,
       onTapCancel: enabled ? () => setState(() => _scale = 1) : null,
       onTap: enabled ? widget.onPressed : null,
       child: AnimatedScale(
-        scale: _scale,
+        scale: _scale * (enabled && _hover ? 1.015 : 1.0),
         duration: const Duration(milliseconds: 90),
         child: Container(
           height: widget.square ? 46 : 52,
@@ -114,7 +174,7 @@ class _PrimaryButtonState extends State<PrimaryButton> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-            borderRadius: BorderRadius.circular(widget.square ? 6 : 18),
+            borderRadius: BorderRadius.circular(sq ? 0 : 18),
             boxShadow: (!widget.square && enabled)
                 ? [BoxShadow(color: p.accent.withOpacity(0.38), offset: const Offset(0, 9), blurRadius: 20, spreadRadius: -3)]
                 : null,
@@ -131,8 +191,108 @@ class _PrimaryButtonState extends State<PrimaryButton> {
                 ),
         ),
       ),
-    );
+    ));
   }
+}
+
+/// One row in a [showSquareMenu].
+class SquareMenuItem {
+  const SquareMenuItem(this.label, {this.value, this.icon, this.destructive = false});
+  final String label;
+  final Object? value; // returned on tap; falls back to [label]
+  final IconData? icon;
+  final bool destructive;
+}
+
+/// A plain squared popup menu (not an iOS action sheet): a centered panel with a
+/// title and a list of tappable options. Returns the chosen item's value (or its
+/// label), or null if dismissed.
+Future<Object?> showSquareMenu(BuildContext context, {String? title, required List<SquareMenuItem> items}) {
+  return showDialog<Object?>(
+    context: context,
+    barrierColor: Colors.black.withOpacity(0.4),
+    builder: (ctx) {
+      final p = Palette.of(ctx);
+      return Dialog(
+        backgroundColor: p.card,
+        elevation: 0,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (title != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+                child: Text(title, style: AppleTheme.footnote(ctx)),
+              ),
+            ...items.map((it) => HoverTap(
+                  onTap: () => Navigator.pop(ctx, it.value ?? it.label),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                    decoration: BoxDecoration(border: Border(top: BorderSide(color: p.separator))),
+                    child: Row(children: [
+                      if (it.icon != null) ...[Icon(it.icon, size: 18, color: it.destructive ? AppleColors.red : p.label), const SizedBox(width: 12)],
+                      Expanded(child: Text(it.label, style: AppleTheme.body(ctx).copyWith(color: it.destructive ? AppleColors.red : p.label))),
+                    ]),
+                  ),
+                )),
+          ]),
+        ),
+      );
+    },
+  );
+}
+
+/// A plain squared confirm dialog (not an iOS alert). Returns true if confirmed.
+Future<bool> showSquareConfirm(BuildContext context, {required String title, required String message, String confirmLabel = 'Confirm', bool destructive = false}) async {
+  final yes = await showDialog<bool>(
+    context: context,
+    barrierColor: Colors.black.withOpacity(0.4),
+    builder: (ctx) {
+      final p = Palette.of(ctx);
+      return Dialog(
+        backgroundColor: p.card,
+        elevation: 0,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 380),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text(title, style: AppleTheme.title2(ctx)),
+              const SizedBox(height: 8),
+              Text(message, style: AppleTheme.footnote(ctx)),
+              const SizedBox(height: 20),
+              Row(children: [
+                Expanded(child: HoverTap(
+                  onTap: () => Navigator.pop(ctx, false),
+                  child: Container(
+                    height: 44,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(border: Border.all(color: p.separator)),
+                    child: Text('Cancel', style: AppleTheme.body(ctx)),
+                  ),
+                )),
+                const SizedBox(width: 10),
+                Expanded(child: HoverTap(
+                  onTap: () => Navigator.pop(ctx, true),
+                  child: Container(
+                    height: 44,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(color: destructive ? AppleColors.red : p.accent),
+                    child: Text(confirmLabel, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                  ),
+                )),
+              ]),
+            ]),
+          ),
+        ),
+      );
+    },
+  );
+  return yes ?? false;
 }
 
 /// iOS grouped text field. When [obscure] is set it shows a reveal (eye) toggle.
@@ -334,19 +494,21 @@ Widget checkerboardTiles(BuildContext context, List<Widget> tiles, {double gap =
 
 /// iOS segmented control. Pass labels + selected index.
 class AppleSegmented extends StatelessWidget {
-  const AppleSegmented({super.key, required this.labels, required this.selected, required this.onChanged});
+  const AppleSegmented({super.key, required this.labels, required this.selected, required this.onChanged, this.square = false});
   final List<String> labels;
   final int selected;
   final ValueChanged<int> onChanged;
+  final bool square; // admin/LMS panels use squared (radius 0) corners
 
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
+    final sq = square || SquareScope.of(context);
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: p.dark ? AppleColors.darkCard2 : const Color(0xFFE9E9EB),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(sq ? 0 : 8),
       ),
       child: Row(
         children: List.generate(labels.length, (i) {
@@ -362,7 +524,7 @@ class AppleSegmented extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: on ? p.card : Colors.transparent,
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(sq ? 0 : 6),
                   boxShadow: on && !p.dark
                       ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 6, offset: const Offset(0, 2))]
                       : null,
@@ -383,12 +545,23 @@ class AppleSegmented extends StatelessWidget {
 
 // ---- shared form-sheet helpers (used by console + CRM) ---------------------
 
-Widget sheetField(TextEditingController c, String hint, IconData icon, {TextInputType? keyboard}) {
+/// Marks a subtree (e.g. the LMS admin console) to render with squared corners.
+/// Shared widgets below read this, so the student app / CRM stay rounded.
+class SquareScope extends InheritedWidget {
+  const SquareScope({super.key, this.square = true, required super.child});
+  final bool square;
+  static bool of(BuildContext c) => c.dependOnInheritedWidgetOfExactType<SquareScope>()?.square ?? false;
+  @override
+  bool updateShouldNotify(SquareScope old) => square != old.square;
+}
+
+Widget sheetField(TextEditingController c, String hint, IconData icon, {TextInputType? keyboard, bool square = false}) {
   return Builder(builder: (context) {
     final p = Palette.of(context);
+    final sq = square || SquareScope.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-      decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(8)),
+      decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(sq ? 0 : 8)),
       child: AppleField(controller: c, hint: hint, icon: icon, keyboard: keyboard),
     );
   });
@@ -400,7 +573,11 @@ Future<bool?> showFormSheet(
   required String title,
   required List<Widget> Function(void Function(void Function())) builder,
   required Future<String?> Function() onSubmit,
+  bool square = false, // admin/LMS panels use squared corners
 }) {
+  // Captured from the caller (which is inside the page's SquareScope); the modal
+  // itself is mounted on the root navigator, so we re-provide the scope below.
+  final sq = square || SquareScope.of(context);
   return showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
@@ -412,12 +589,12 @@ Future<bool?> showFormSheet(
       bool busy = false;
       String? err;
       return StatefulBuilder(builder: (ctx, setS) {
-        return Padding(
+        return SquareScope(square: sq, child: Padding(
           padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
           child: Container(
             margin: const EdgeInsets.all(10),
             padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(sq ? 0 : 12)),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Center(child: Text(title, style: AppleTheme.title2(ctx))),
               const SizedBox(height: 16),
@@ -445,7 +622,7 @@ Future<bool?> showFormSheet(
               TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: TextStyle(color: p.secondary))),
             ]),
           ),
-        );
+        ));
       });
     },
   );

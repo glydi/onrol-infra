@@ -21,6 +21,7 @@ dependencies:
   url_launcher: ^6.3.1            # open link lessons in a new tab / external browser
   image_picker: ^1.1.2            # upload a custom profile picture (web + mobile)
   image: ^4.2.0                   # downscale/crop the uploaded picture client-side
+  file_picker: ^8.1.2             # pick video files for the admin video store (web + mobile)
 
 dev_dependencies:
   flutter_lints: ^4.0.0

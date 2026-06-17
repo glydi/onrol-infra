@@ -5,16 +5,20 @@ import 'api_client.dart';
 import 'device_service.dart';
 
 class AuthUser {
-  AuthUser({required this.id, required this.email, required this.fullName, required this.role});
+  AuthUser({required this.id, required this.email, required this.fullName, required this.role, this.batch, this.course = ''});
   final String id;
   final String email;
   final String fullName;
   final String role; // student | instructor | manager | superadmin
+  final int? batch; // student's batch number (null = unassigned)
+  final String course; // student's course display title
   factory AuthUser.fromJson(Map<String, dynamic> j) => AuthUser(
         id: j['id']?.toString() ?? '',
         email: j['email']?.toString() ?? '',
         fullName: j['full_name']?.toString() ?? '',
         role: j['role']?.toString() ?? 'student',
+        batch: (j['batch'] is int) ? j['batch'] as int : int.tryParse('${j['batch'] ?? ''}'),
+        course: j['course']?.toString() ?? '',
       );
   bool get isStaff => role == 'instructor' || role == 'manager' || role == 'superadmin';
   bool get isAdmin => role == 'manager' || role == 'superadmin';
@@ -89,4 +93,6 @@ class AuthService {
   Future<http.Response> apiPatch(String path, Map<String, dynamic> body) =>
       _api.patchJson(path, body);
   Future<http.Response> apiDelete(String path) => _api.delete(path);
+  Future<http.Response> apiUpload(String path, {required List<int> bytes, required String filename, Map<String, String>? fields}) =>
+      _api.uploadBytes(path, bytes: bytes, filename: filename, fields: fields);
 }

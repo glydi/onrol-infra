@@ -35,6 +35,25 @@ type Config struct {
 	AdminAPIKey     string
 	Zoho            Zoho
 	Integrations    Integrations
+	R2              R2
+}
+
+// R2 holds Cloudflare R2 (S3-compatible) storage config for the video store.
+// When AccessKey is empty, in-app upload is disabled (returns a clear error).
+type R2 struct {
+	AccountID  string // R2_ACCOUNT_ID
+	AccessKey  string // R2_ACCESS_KEY_ID
+	SecretKey  string // R2_SECRET_ACCESS_KEY
+	Bucket     string // R2_BUCKET
+	PublicBase string // R2_PUBLIC_BASE (e.g. https://pub-xxxx.r2.dev or a custom domain)
+}
+
+// Endpoint is the S3 API host (no scheme) for the minio client.
+func (r R2) Endpoint() string { return r.AccountID + ".r2.cloudflarestorage.com" }
+
+// Enabled reports whether uploads can run (creds + bucket present).
+func (r R2) Enabled() bool {
+	return r.AccountID != "" && r.AccessKey != "" && r.SecretKey != "" && r.Bucket != ""
 }
 
 // Integrations holds optional third-party API credentials. When a key is empty,
@@ -81,6 +100,13 @@ func Load() (Config, error) {
 			VoiceToken:     os.Getenv("VOICE_AUTH_TOKEN"),
 			SMSAPIKey:      os.Getenv("SMS_API_KEY"),
 			AIAPIKey:       os.Getenv("AI_API_KEY"),
+		},
+		R2: R2{
+			AccountID:  os.Getenv("R2_ACCOUNT_ID"),
+			AccessKey:  os.Getenv("R2_ACCESS_KEY_ID"),
+			SecretKey:  os.Getenv("R2_SECRET_ACCESS_KEY"),
+			Bucket:     getenv("R2_BUCKET", "onrol-vod"),
+			PublicBase: os.Getenv("R2_PUBLIC_BASE"),
 		},
 	}
 

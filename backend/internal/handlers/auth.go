@@ -197,11 +197,11 @@ func (h *Handlers) bindDevice(ctx context.Context, user models.User, deviceID, p
 		return err
 	}
 
-	// New device: enforce the limit — except for admins (manager/superadmin),
-	// who are exempt and may sign in from any number of devices. The user-row
-	// lock above already serializes concurrent logins, so a plain count is
-	// race-free here.
-	adminExempt := user.Role == "manager" || user.Role == "superadmin"
+	// New device: enforce the limit — except for staff (instructor/manager/
+	// superadmin), who are exempt and may sign in from any number of devices. The
+	// user-row lock above already serializes concurrent logins, so a plain count
+	// is race-free here.
+	adminExempt := user.Role == "manager" || user.Role == "superadmin" || user.Role == "instructor"
 	if !adminExempt {
 		var activeCount int
 		if err := tx.QueryRow(ctx,

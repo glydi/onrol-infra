@@ -1,9 +1,13 @@
 package handlers
 
 import (
+	"encoding/json"
+	"errors"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -14,7 +18,7 @@ import (
 func (h *Handlers) ListUsers(c *fiber.Ctx) error {
 	// Route is manager+ only; admins/managers manage everyone, so list all.
 	rows, err := h.Pool.Query(c.Context(),
-		`SELECT id, email, full_name, role, is_active, created_at, batch, username FROM users ORDER BY created_at DESC LIMIT 1000`)
+		`SELECT id, email, full_name, role, is_active, created_at, batch, username, course_label FROM users ORDER BY created_at DESC LIMIT 1000`)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
 	}
@@ -25,12 +29,13 @@ func (h *Handlers) ListUsers(c *fiber.Ctx) error {
 		var active bool
 		var created any
 		var batch *int
-		var username *string
-		if err := rows.Scan(&id, &email, &name, &role, &active, &created, &batch, &username); err != nil {
+		var username, courseLabel *string
+		if err := rows.Scan(&id, &email, &name, &role, &active, &created, &batch, &username, &courseLabel); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		out = append(out, fiber.Map{"id": id, "email": email, "full_name": name,
-			"role": role, "is_active": active, "created_at": created, "batch": batch, "username": username})
+			"role": role, "is_active": active, "created_at": created, "batch": batch,
+			"username": username, "course_label": courseLabel})
 	}
 	return c.JSON(fiber.Map{"users": out})
 }
@@ -59,13 +64,19 @@ func (h *Handlers) ListInstructors(c *fiber.Ctx) error {
 // the caller's scope. Managers cannot mint superadmins.
 func (h *Handlers) CreateManagedUser(c *fiber.Ctx) error {
 	var req struct {
-		Email    string `json:"email"`
-		Username string `json:"username"`
-		FullName string `json:"full_name"`
-		Phone    string `json:"phone"`
-		Password string `json:"password"`
-		Role     string `json:"role"`
-		GroupID  string `json:"group_id"`
+		Email       string `json:"email"`
+		Username    string `json:"username"`
+		FullName    string `json:"full_name"`
+		Phone       string `json:"phone"`
+		Password    string `json:"password"`
+		Role        string `json:"role"`
+		GroupID     string `json:"group_id"`
+		Batch       *int   `json:"batch"`
+		CourseLabel string `json:"course_label"`
+		Occupation  string `json:"occupation"`
+		Location    string `json:"location"`
+		Linkedin    string `json:"linkedin"`
+		Github      string `json:"github"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
@@ -102,10 +113,24 @@ func (h *Handlers) CreateManagedUser(c *fiber.Ctx) error {
 	if req.Username != "" {
 		uname = req.Username
 	}
+	// Optional detail fields are stored as NULL when blank.
+	nilIfBlank := func(s string) any {
+		if t := strings.TrimSpace(s); t != "" {
+			return t
+		}
+		return nil
+	}
+	var batch any
+	if req.Batch != nil && *req.Batch > 0 {
+		batch = *req.Batch
+	}
 	err = tx.QueryRow(c.Context(),
-		`INSERT INTO users (email, username, phone, full_name, password_hash, role, max_devices)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+		`INSERT INTO users (email, username, phone, full_name, password_hash, role, max_devices,
+		                    batch, course_label, occupation, location, linkedin, github)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
 		req.Email, uname, req.Phone, req.FullName, string(hash), req.Role, h.Cfg.MaxDevices,
+		batch, nilIfBlank(req.CourseLabel), nilIfBlank(req.Occupation),
+		nilIfBlank(req.Location), nilIfBlank(req.Linkedin), nilIfBlank(req.Github),
 	).Scan(&id)
 	if err != nil {
 		if strings.Contains(err.Error(), "users_email_key") {
@@ -204,6 +229,30 @@ func (h *Handlers) DeactivateUser(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"id": target, "deactivated": true})
 }
 
+// PurgeUser permanently deletes a user. Dependent rows (enrollments, batch,
+// progress, devices, certificates, ...) are removed by the schema's ON DELETE
+// CASCADE / SET NULL constraints. Irreversible. Manager/admin only (route-gated).
+func (h *Handlers) PurgeUser(c *fiber.Ctx) error {
+	target := c.Params("id")
+	if callerRole(c) != "superadmin" {
+		if err := h.requireUserInScope(c, target); err != nil {
+			return err
+		}
+	}
+	// Don't let an admin delete their own account out from under themselves.
+	if target == callerID(c) {
+		return fiber.NewError(fiber.StatusBadRequest, "you cannot delete your own account")
+	}
+	tag, err := h.Pool.Exec(c.Context(), `DELETE FROM users WHERE id=$1`, target)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "delete failed")
+	}
+	if tag.RowsAffected() == 0 {
+		return fiber.NewError(fiber.StatusNotFound, "user not found")
+	}
+	return c.JSON(fiber.Map{"id": target, "deleted": true})
+}
+
 // SetUserBatch assigns (or clears) a student's batch number. Pass batch: null
 // or 0 to clear. Manager/admin only (route-gated).
 func (h *Handlers) SetUserBatch(c *fiber.Ctx) error {
@@ -231,6 +280,206 @@ func (h *Handlers) SetUserBatch(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, "user not found")
 	}
 	return c.JSON(fiber.Map{"id": target, "batch": batch})
+}
+
+// AssignBatch sets (or clears) the batch number for many students at once — the
+// "create a batch from the course queue" action: pick the queued students and
+// stamp them with a batch number. Pass batch: null/0 to clear. Manager/admin only.
+func (h *Handlers) AssignBatch(c *fiber.Ctx) error {
+	var req struct {
+		UserIDs []string `json:"user_ids"`
+		Batch   *int     `json:"batch"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+	if len(req.UserIDs) == 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "user_ids is required")
+	}
+	if callerRole(c) != "superadmin" {
+		for _, id := range req.UserIDs {
+			if err := h.requireUserInScope(c, id); err != nil {
+				return err
+			}
+		}
+	}
+	var batch any
+	if req.Batch != nil && *req.Batch > 0 {
+		batch = *req.Batch
+	}
+	tag, err := h.Pool.Exec(c.Context(),
+		`UPDATE users SET batch=$2, updated_at=now() WHERE id = ANY($1::uuid[])`, req.UserIDs, batch)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "update failed")
+	}
+	return c.JSON(fiber.Map{"updated": tag.RowsAffected(), "batch": batch})
+}
+
+// AutoBatch auto-allocates students into batches: it splits the given students
+// into chunks of `size` and stamps each chunk with the next sequential batch
+// number (starting one past the highest batch in use). This is the "auto" mode of
+// batch allocation; AssignBatch is the "manual" mode (one explicit number).
+func (h *Handlers) AutoBatch(c *fiber.Ctx) error {
+	var req struct {
+		UserIDs []string `json:"user_ids"`
+		Size    int      `json:"size"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+	if len(req.UserIDs) == 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "user_ids is required")
+	}
+	if req.Size <= 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "size must be a positive number")
+	}
+	if callerRole(c) != "superadmin" {
+		for _, id := range req.UserIDs {
+			if err := h.requireUserInScope(c, id); err != nil {
+				return err
+			}
+		}
+	}
+	// Allocate in one statement: ordinal position / size gives the chunk index,
+	// offset from the next free batch number. Atomic, no per-chunk round-trips.
+	tag, err := h.Pool.Exec(c.Context(), `
+		WITH start AS (SELECT COALESCE(MAX(batch), 0) + 1 AS s FROM users),
+		     items AS (SELECT id, ord FROM unnest($1::uuid[]) WITH ORDINALITY AS t(id, ord))
+		UPDATE users u
+		   SET batch = (SELECT s FROM start) + ((i.ord - 1) / $2::int),
+		       updated_at = now()
+		  FROM items i
+		 WHERE u.id = i.id`, req.UserIDs, req.Size)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "auto-allocate failed")
+	}
+	batches := (len(req.UserIDs) + req.Size - 1) / req.Size
+	return c.JSON(fiber.Map{"updated": tag.RowsAffected(), "batches": batches})
+}
+
+// ConvertedLeads lists every converted lead from converted_leads_backup with its
+// course_id / course_title and whether it already has a student account, so the
+// admin can see who converted per course (grouped by course_id on the client) and
+// who still needs provisioning. Manager/admin only (route-gated).
+func (h *Handlers) ConvertedLeads(c *fiber.Ctx) error {
+	// The converted course is recorded a few ways: the top-level course_id column,
+	// or inside the record jsonb as custom_fields.converted_course_title, or the
+	// older program/campaign tag. We resolve a human title from those, match it to
+	// an LMS course by title or label to get the canonical Course ID (label), and
+	// group by that.
+	rows, err := h.Pool.Query(c.Context(), `
+		SELECT b.lead_id::text, COALESCE(b.name,''), COALESCE(b.phone,''), COALESCE(b.email,''),
+		       COALESCE(b.status,''), b.score,
+		       COALESCE(NULLIF(trim(b.course_id),''), crs.label, '') AS course_id,
+		       COALESCE(NULLIF(trim(b.course_title),''), crs.title, ct.raw, '') AS course_title,
+		       b.converted_at,
+		       EXISTS (SELECT 1 FROM users u WHERE u.role='student' AND (
+		            (b.email IS NOT NULL AND b.email <> '' AND lower(u.email)=lower(trim(b.email)))
+		         OR (u.username = regexp_replace(COALESCE(b.phone,''), '\D', '', 'g'))
+		       )) AS provisioned,
+		       COALESCE(pw.temp_password,'') AS temp_password
+		FROM converted_leads_backup b
+		LEFT JOIN LATERAL (
+		  SELECT COALESCE(
+		           NULLIF(b.record->'custom_fields'->>'converted_course_title',''),
+		           NULLIF(b.record->>'program',''),
+		           NULLIF(b.campaign,'')
+		         ) AS raw
+		) ct ON true
+		LEFT JOIN LATERAL (
+		  SELECT pl.temp_password FROM provisioning_log pl JOIN users u2 ON u2.id=pl.user_id
+		  WHERE (b.email IS NOT NULL AND b.email <> '' AND lower(u2.email)=lower(trim(b.email)))
+		     OR (u2.username = regexp_replace(COALESCE(b.phone,''), '\D', '', 'g'))
+		  ORDER BY pl.created_at DESC LIMIT 1
+		) pw ON true
+		LEFT JOIN LATERAL (
+		  SELECT c.label, c.title FROM courses c
+		  WHERE c.id::text = NULLIF(b.record->'custom_fields'->>'converted_course_id','')
+		     OR lower(c.title) = lower(COALESCE(NULLIF(trim(b.course_title),''), ct.raw, b.record->'custom_fields'->>'converted_course_title'))
+		     OR lower(c.label) = lower(COALESCE(NULLIF(trim(b.course_id),''), ct.raw))
+		  LIMIT 1
+		) crs ON true
+		ORDER BY lower(COALESCE(NULLIF(trim(b.course_id),''), crs.label, 'zzz')), b.name`)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
+	}
+	defer rows.Close()
+	out := []fiber.Map{}
+	for rows.Next() {
+		var leadID, name, phone, email, status, courseID, courseTitle, tempPassword string
+		var score *int
+		var convertedAt *time.Time
+		var provisioned bool
+		if err := rows.Scan(&leadID, &name, &phone, &email, &status, &score, &courseID, &courseTitle, &convertedAt, &provisioned, &tempPassword); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		out = append(out, fiber.Map{
+			"lead_id": leadID, "name": name, "phone": phone, "email": email,
+			"status": status, "score": score, "course_id": courseID, "course_title": courseTitle,
+			"converted_at": convertedAt, "provisioned": provisioned, "temp_password": tempPassword,
+		})
+	}
+	return c.JSON(fiber.Map{"leads": out})
+}
+
+// UserConvertedLead returns the original converted-lead record for a student, so
+// an admin can see where the student came from (source, campaign, program, score,
+// UTM, etc.). The student is matched back to converted_leads_backup by email or
+// by phone digits (the student's username). Returns found:false if no match.
+func (h *Handlers) UserConvertedLead(c *fiber.Ctx) error {
+	target := c.Params("id")
+	if callerRole(c) != "superadmin" {
+		if err := h.requireUserInScope(c, target); err != nil {
+			return err
+		}
+	}
+	var email string
+	var username *string
+	if err := h.Pool.QueryRow(c.Context(),
+		`SELECT email, username FROM users WHERE id=$1`, target,
+	).Scan(&email, &username); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fiber.NewError(fiber.StatusNotFound, "user not found")
+		}
+		return fiber.NewError(fiber.StatusInternalServerError, "lookup failed")
+	}
+	uname := ""
+	if username != nil {
+		uname = *username
+	}
+	var (
+		leadID, name, phone, lemail, source, campaign, status, owner string
+		score                                                        *int
+		createdAt, convertedAt                                       *time.Time
+		recordRaw                                                    []byte
+	)
+	err := h.Pool.QueryRow(c.Context(), `
+		SELECT lead_id::text, COALESCE(name,''), COALESCE(phone,''), COALESCE(email,''),
+		       COALESCE(source,''), COALESCE(campaign,''), COALESCE(status,''),
+		       score, COALESCE(owner,''), created_at, converted_at, record
+		  FROM converted_leads_backup
+		 WHERE ($1 <> '' AND lower(email)=lower($1))
+		    OR ($2 <> '' AND regexp_replace(COALESCE(phone,''),'\D','','g')=$2)
+		 ORDER BY converted_at DESC NULLS LAST
+		 LIMIT 1`, strings.ToLower(strings.TrimSpace(email)), uname,
+	).Scan(&leadID, &name, &phone, &lemail, &source, &campaign, &status,
+		&score, &owner, &createdAt, &convertedAt, &recordRaw)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return c.JSON(fiber.Map{"found": false})
+	}
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "lead lookup failed")
+	}
+	var record any
+	if len(recordRaw) > 0 {
+		_ = json.Unmarshal(recordRaw, &record)
+	}
+	return c.JSON(fiber.Map{"found": true, "lead": fiber.Map{
+		"lead_id": leadID, "name": name, "phone": phone, "email": lemail,
+		"source": source, "campaign": campaign, "status": status, "score": score,
+		"owner": owner, "created_at": createdAt, "converted_at": convertedAt,
+		"record": record,
+	}})
 }
 
 // requireUserInScope: superadmin and manager (the LMS admin) manage any user.
