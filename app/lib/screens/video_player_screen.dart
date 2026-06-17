@@ -10,10 +10,14 @@ import '../widgets/web_video_stub.dart' if (dart.library.html) '../widgets/web_v
 /// native browser download button, and the identity watermark is drawn on top.
 /// Streams progressively / via HLS; the file is never offered as a download.
 class VideoPlayerScreen extends StatefulWidget {
-  const VideoPlayerScreen({super.key, required this.url, required this.watermark, this.title = 'Video'});
+  const VideoPlayerScreen({super.key, required this.url, required this.watermark, this.title = 'Video', this.startAt = Duration.zero, this.onProgress, this.onCompleted});
   final String url;
   final String watermark;
   final String title;
+  // Resume point + callbacks so the lesson can save position / mark complete.
+  final Duration startAt;
+  final void Function(Duration position, Duration duration)? onProgress;
+  final VoidCallback? onCompleted;
 
   @override
   State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
@@ -24,6 +28,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _ready = false;
   String? _error;
   bool _showControls = true;
+  int _lastSaved = 0; // last position (s) reported, for throttling
+  bool _completed = false;
 
   @override
   void initState() {
@@ -32,7 +38,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // mobile uses video_player (native HLS via ExoPlayer/AVPlayer).
     if (!kIsWeb) {
       _c = VideoPlayerController.networkUrl(Uri.parse(widget.url));
-      _c!.initialize().then((_) {
+      _c!.initialize().then((_) async {
+        if (widget.startAt.inSeconds > 0) {
+          await _c!.seekTo(widget.startAt);
+        }
         _c!.play();
         _c!.addListener(_tick);
         if (mounted) setState(() => _ready = true);
@@ -43,11 +52,34 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   void _tick() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    final c = _c;
+    if (c != null) _report(c.value.position, c.value.duration);
+    setState(() {});
   }
+
+  // Shared progress/completion reporting for web + mobile.
+  void _report(Duration pos, Duration dur) {
+    if (dur.inSeconds > 0 && !_completed && pos.inSeconds >= (dur.inSeconds * 0.95).floor()) {
+      _completed = true;
+      widget.onCompleted?.call();
+    }
+    if ((pos.inSeconds - _lastSaved).abs() >= 5) {
+      _lastSaved = pos.inSeconds;
+      widget.onProgress?.call(pos, dur);
+    }
+  }
+
+  void _onWebTime(double position, double duration) =>
+      _report(Duration(seconds: position.floor()), Duration(seconds: duration.floor()));
 
   @override
   void dispose() {
+    // Save the final position so resume is exact even if the user just left.
+    final c = _c;
+    if (c != null && c.value.isInitialized) {
+      widget.onProgress?.call(c.value.position, c.value.duration);
+    }
     _c?.removeListener(_tick);
     _c?.dispose();
     super.dispose();
@@ -115,7 +147,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   // Web: hls.js-backed <video> (HLS on Chrome/Firefox, mp4 everywhere).
-  Widget _webPlayer() => AspectRatio(aspectRatio: 16 / 9, child: hlsVideoElement(widget.url));
+  Widget _webPlayer() => AspectRatio(
+        aspectRatio: 16 / 9,
+        child: hlsVideoElement(widget.url, startAt: widget.startAt.inSeconds.toDouble(), onTime: _onWebTime, onEnded: () {
+          if (!_completed) {
+            _completed = true;
+            widget.onCompleted?.call();
+          }
+        }),
+      );
 
   // Mobile: video_player with custom controls.
   Widget _mobilePlayer() {

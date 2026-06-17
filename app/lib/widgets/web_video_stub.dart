@@ -2,4 +2,10 @@ import 'package:flutter/widgets.dart';
 
 // Non-web fallback (never used on mobile, which plays HLS natively via
 // video_player). Present so the conditional import compiles on all platforms.
-Widget hlsVideoElement(String url) => const SizedBox.shrink();
+Widget hlsVideoElement(
+  String url, {
+  double startAt = 0,
+  void Function(double position, double duration)? onTime,
+  void Function()? onEnded,
+}) =>
+    const SizedBox.shrink();

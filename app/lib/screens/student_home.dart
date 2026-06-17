@@ -900,17 +900,28 @@ class _StudentHomeState extends State<StudentHome> {
   }
 
   Future<void> _openLesson(Map<String, dynamic> l) async {
+    final id = l['id'].toString();
     final url = l['url']?.toString() ?? '';
     final type = l['type']?.toString() ?? 'text';
+    final startAt = ((l['position'] ?? 0) as num).toInt();
     if (type == 'video' && url.isNotEmpty) {
-      // Stream in-app (mp4 native, .m3u8 via hls.js) — not a download.
+      // Stream in-app (mp4 native, .m3u8 via hls.js) — not a download. Resumes
+      // from the saved position; saves progress + marks complete when finished.
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => VideoPlayerScreen(
           url: url,
           watermark: widget.auth.user?.email ?? 'student',
           title: l['title']?.toString() ?? 'Video',
+          startAt: Duration(seconds: startAt),
+          onProgress: (pos, dur) {
+            widget.auth.apiPost('/api/v1/me/lessons/$id/progress', {'position': pos.inSeconds}).ignore();
+          },
+          onCompleted: () {
+            widget.auth.apiPost('/api/v1/me/lessons/$id/complete', {}).ignore();
+          },
         ),
       ));
+      return; // videos complete when watched, not on open
     } else if ((type == 'link' || type == 'file') && url.startsWith('http')) {
       // Open the link / document (PDF, Word, …) — browser renders or downloads it.
       try {
@@ -922,9 +933,9 @@ class _StudentHomeState extends State<StudentHome> {
         Text(url, style: GoogleFonts.poppins(fontSize: 14, color: _navy, height: 1.6)),
       ]);
     }
-    // Mark complete (best-effort).
+    // Non-video lessons: mark complete on open (best-effort).
     try {
-      await widget.auth.apiPost('/api/v1/me/lessons/${l['id']}/complete', {});
+      await widget.auth.apiPost('/api/v1/me/lessons/$id/complete', {});
     } catch (_) {}
   }
 
@@ -3704,6 +3715,13 @@ class _ResumeCardState extends State<_ResumeCard> {
     [Color(0xFFE8542E), Color(0xFFFF7A4D)],
   ];
 
+  // Seconds → m:ss (or h:mm:ss).
+  static String _fmtClock(int s) {
+    final h = s ~/ 3600, m = (s % 3600) ~/ 60, sec = s % 60;
+    final mm = h > 0 ? m.toString().padLeft(2, '0') : m.toString();
+    return h > 0 ? '$h:$mm:${sec.toString().padLeft(2, '0')}' : '$mm:${sec.toString().padLeft(2, '0')}';
+  }
+
   ({IconData icon, String label}) _kind(String type) {
     switch (type) {
       case 'video':
@@ -3765,10 +3783,11 @@ class _ResumeCardState extends State<_ResumeCard> {
     final percent = ((d['percent'] ?? 0) as num).toInt();
     final done = ((d['done'] ?? 0) as num).toInt();
     final total = ((d['total'] ?? 0) as num).toInt();
+    final position = ((d['position'] ?? 0) as num).toInt();
     final k = _kind(type);
     final pct = (percent / 100).clamp(0.0, 1.0);
 
-    void go() => widget.onContinue({'id': d['lesson_id'], 'title': lesson, 'type': type, 'url': d['url']});
+    void go() => widget.onContinue({'id': d['lesson_id'], 'title': lesson, 'type': type, 'url': d['url'], 'position': position});
 
     return _Entrance(
       index: widget.index,
@@ -3802,6 +3821,18 @@ class _ResumeCardState extends State<_ResumeCard> {
                       Icon(k.icon, size: 13, color: _grey),
                       const SizedBox(width: 5),
                       Text(k.label, style: GoogleFonts.poppins(fontSize: 9.5, fontWeight: FontWeight.w800, color: _grey, letterSpacing: 0.5)),
+                      if (position > 0) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(6)),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(CupertinoIcons.arrow_counterclockwise, size: 9, color: _orange),
+                            const SizedBox(width: 3),
+                            Text('Resume ${_fmtClock(position)}', style: GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w800, color: _orange)),
+                          ]),
+                        ),
+                      ],
                     ]),
                     const SizedBox(height: 4),
                     Text(lesson, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 14.5, fontWeight: FontWeight.w700, color: _navy, height: 1.25)),
