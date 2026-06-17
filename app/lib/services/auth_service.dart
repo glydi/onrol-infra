@@ -88,5 +88,7 @@ class AuthService {
   Future<http.Response> apiGet(String path) => _api.get(path);
   Future<http.Response> apiPatch(String path, Map<String, dynamic> body) =>
       _api.patchJson(path, body);
+  Future<http.Response> apiPut(String path, Map<String, dynamic> body) =>
+      _api.putJson(path, body);
   Future<http.Response> apiDelete(String path) => _api.delete(path);
 }

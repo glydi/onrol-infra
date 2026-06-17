@@ -34,6 +34,10 @@ class ApiClient {
     return http.patch(_u(path), headers: await _headers(), body: jsonEncode(body));
   }
 
+  Future<http.Response> putJson(String path, Map<String, dynamic> body) async {
+    return http.put(_u(path), headers: await _headers(), body: jsonEncode(body));
+  }
+
   Future<http.Response> get(String path) async {
     return http.get(_u(path), headers: await _headers(json: false));
   }
