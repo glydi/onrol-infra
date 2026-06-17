@@ -51,6 +51,10 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
       _err = 'Could not load the video store';
     }
     if (mounted) setState(() => _loading = false);
+    // Poll while anything is still transcoding so status flips to "ready" live.
+    if (mounted && _videos.any((v) => (v as Map)['status'] == 'processing')) {
+      Future.delayed(const Duration(seconds: 5), () { if (mounted) _load(); });
+    }
   }
 
   void _toast(String m) => ScaffoldMessenger.of(context)
@@ -148,14 +152,14 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
     );
   }
 
-  Future<void> _delete(String key, String title) async {
+  Future<void> _delete(String id, String title) async {
     final yes = await showSquareConfirm(context,
         title: 'Delete video',
-        message: 'Delete "$title" from R2? Lessons using its URL will stop playing.',
+        message: 'Delete "$title"? Removes the source + HLS from R2; lessons using it stop playing.',
         confirmLabel: 'Delete', destructive: true);
     if (!yes) return;
     try {
-      await widget.auth.apiDelete('/api/v1/manage/videos?key=${Uri.encodeQueryComponent(key)}');
+      await widget.auth.apiDelete('/api/v1/manage/videos/$id');
       _toast('Deleted');
       _load();
     } catch (_) { _toast('Could not delete'); }
@@ -207,6 +211,11 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
     final p = Palette.of(context);
     final url = v['url']?.toString() ?? '';
     final title = v['title']?.toString() ?? 'Video';
+    final status = v['status']?.toString() ?? 'ready';
+    final ready = status == 'ready';
+    final processing = status == 'processing';
+    final statusColor = ready ? AppleColors.green : (processing ? AppleColors.orange : AppleColors.red);
+    final statusText = ready ? 'HLS ready' : (processing ? 'Processing…' : 'Transcode failed (plays source)');
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: AppleCard(
@@ -215,16 +224,26 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
           Container(
             width: 40, height: 40, alignment: Alignment.center,
             decoration: BoxDecoration(color: p.accent.withOpacity(0.14)),
-            child: Icon(CupertinoIcons.play_rectangle_fill, color: p.accent, size: 20),
+            child: processing
+                ? const CupertinoActivityIndicator(radius: 9)
+                : Icon(CupertinoIcons.play_rectangle_fill, color: p.accent, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title, style: AppleTheme.body(context), maxLines: 1, overflow: TextOverflow.ellipsis),
             const SizedBox(height: 2),
-            Text(_size((v['size_bytes'] as num?) ?? 0), style: AppleTheme.footnote(context)),
+            Text('${_size((v['size_bytes'] as num?) ?? 0)} · ',
+                style: AppleTheme.footnote(context)),
           ])),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(color: statusColor.withOpacity(0.15)),
+            child: Text(statusText, style: TextStyle(color: statusColor, fontSize: 10.5, fontWeight: FontWeight.w600)),
+          ),
+          const SizedBox(width: 10),
           if (widget.onPick != null)
             HoverTap(
+              // Allow picking even while processing — it'll switch to HLS once ready.
               onTap: () => widget.onPick!(url, title),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -239,7 +258,7 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
             ),
             const SizedBox(width: 14),
             HoverTap(
-              onTap: () => _delete(v['key'].toString(), title),
+              onTap: () => _delete(v['id'].toString(), title),
               child: const Icon(CupertinoIcons.trash, size: 20, color: AppleColors.red),
             ),
           ],

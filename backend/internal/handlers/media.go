@@ -128,12 +128,13 @@ func (h *Handlers) CompleteVideoUpload(c *fiber.Ctx) error {
 	url := strings.TrimRight(h.Cfg.R2.PublicBase, "/") + "/" + req.Key
 	var id string
 	if err := h.Pool.QueryRow(c.Context(),
-		`INSERT INTO media_assets (title, object_key, url, content_type, size_bytes, created_by)
-		 VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+		`INSERT INTO media_assets (title, object_key, url, content_type, size_bytes, created_by, status)
+		 VALUES ($1,$2,$3,$4,$5,$6,'processing') RETURNING id`,
 		title, req.Key, url, "video/mp4", req.Size, callerID(c)).Scan(&id); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "uploaded but DB record failed")
 	}
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": title, "url": url, "size_bytes": req.Size})
+	go h.transcodeToHLS(id, req.Key) // segment to HLS for smooth streaming
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": title, "url": url, "size_bytes": req.Size, "status": "processing"})
 }
 
 // UploadVideo streams a multipart "file" straight to R2 and records it in the
@@ -175,67 +176,61 @@ func (h *Handlers) UploadVideo(c *fiber.Ctx) error {
 
 	var id string
 	if err := h.Pool.QueryRow(c.Context(),
-		`INSERT INTO media_assets (title, object_key, url, content_type, size_bytes, created_by)
-		 VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+		`INSERT INTO media_assets (title, object_key, url, content_type, size_bytes, created_by, status)
+		 VALUES ($1,$2,$3,$4,$5,$6,'processing') RETURNING id`,
 		title, key, url, ct, fh.Size, callerID(c)).Scan(&id); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "saved to R2 but DB record failed")
 	}
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": title, "url": url, "size_bytes": fh.Size})
+	go h.transcodeToHLS(id, key)
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": title, "url": url, "size_bytes": fh.Size, "status": "processing"})
 }
 
-// ListVideos lists the actual objects in the R2 bucket (the video folder) so the
-// admin can select any video that's there — including ones uploaded via the
-// Cloudflare dashboard, not just app uploads. Titles come from media_assets when
-// known, otherwise the filename.
+// ListVideos returns the video library (logical videos). play_url is the HLS
+// stream once transcoded (smooth, no stalls), else the source mp4; status shows
+// processing/ready/failed.
 func (h *Handlers) ListVideos(c *fiber.Ctx) error {
-	if !h.Cfg.R2.Enabled() {
-		return c.JSON(fiber.Map{"videos": []fiber.Map{}, "r2_enabled": false})
-	}
-	cl, err := h.r2client()
+	rows, err := h.Pool.Query(c.Context(),
+		`SELECT id, title, status,
+		        CASE WHEN status='ready' AND hls_url<>'' THEN hls_url ELSE url END AS play_url,
+		        size_bytes, created_at
+		   FROM media_assets ORDER BY created_at DESC LIMIT 500`)
 	if err != nil {
-		return fiber.NewError(fiber.StatusServiceUnavailable, "R2 unavailable")
+		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
 	}
-	// Titles from the library, keyed by object key.
-	titleByKey := map[string]string{}
-	if rows, err := h.Pool.Query(c.Context(), `SELECT object_key, title FROM media_assets`); err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var k, t string
-			if rows.Scan(&k, &t) == nil {
-				titleByKey[k] = t
-			}
-		}
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	defer rows.Close()
 	out := []fiber.Map{}
-	for obj := range cl.ListObjects(ctx, h.Cfg.R2.Bucket, minio.ListObjectsOptions{Recursive: true}) {
-		if obj.Err != nil || strings.HasSuffix(obj.Key, "/") {
-			continue
+	for rows.Next() {
+		var id, title, status, url string
+		var size int64
+		var created any
+		if err := rows.Scan(&id, &title, &status, &url, &size, &created); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
-		title := titleByKey[obj.Key]
-		if title == "" {
-			title = path.Base(obj.Key)
-		}
-		out = append(out, fiber.Map{
-			"key":        obj.Key,
-			"title":      title,
-			"url":        strings.TrimRight(h.Cfg.R2.PublicBase, "/") + "/" + obj.Key,
-			"size_bytes": obj.Size,
-		})
+		out = append(out, fiber.Map{"id": id, "title": title, "status": status, "url": url, "size_bytes": size, "created_at": created})
 	}
-	return c.JSON(fiber.Map{"videos": out, "r2_enabled": true})
+	return c.JSON(fiber.Map{"videos": out, "r2_enabled": h.Cfg.R2.Enabled()})
 }
 
-// DeleteVideo removes an R2 object (by ?key=) and any matching library record.
+// DeleteVideo removes the library record, the source object, and the HLS folder.
 func (h *Handlers) DeleteVideo(c *fiber.Ctx) error {
-	key := c.Query("key")
-	if key == "" {
-		return fiber.NewError(fiber.StatusBadRequest, "key is required")
+	id := c.Params("id")
+	var key string
+	if err := h.Pool.QueryRow(c.Context(), `SELECT object_key FROM media_assets WHERE id=$1`, id).Scan(&key); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "not found")
 	}
 	if cl, err := h.r2client(); err == nil {
 		_ = cl.RemoveObject(c.Context(), h.Cfg.R2.Bucket, key, minio.RemoveObjectOptions{})
+		// Remove the per-asset HLS folder (playlist + segments).
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		for obj := range cl.ListObjects(ctx, h.Cfg.R2.Bucket, minio.ListObjectsOptions{Prefix: "videos/" + id + "/", Recursive: true}) {
+			if obj.Err == nil {
+				_ = cl.RemoveObject(ctx, h.Cfg.R2.Bucket, obj.Key, minio.RemoveObjectOptions{})
+			}
+		}
 	}
-	_, _ = h.Pool.Exec(c.Context(), `DELETE FROM media_assets WHERE object_key=$1`, key)
-	return c.JSON(fiber.Map{"key": key, "deleted": true})
+	if _, err := h.Pool.Exec(c.Context(), `DELETE FROM media_assets WHERE id=$1`, id); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "delete failed")
+	}
+	return c.JSON(fiber.Map{"id": id, "deleted": true})
 }
