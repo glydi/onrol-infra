@@ -12,11 +12,12 @@ import (
 	"github.com/minio/minio-go/v7"
 )
 
-// transcodeToHLS downloads the source video from R2, segments it into short .ts
-// pieces WITHOUT re-encoding (so there is zero quality loss — original resolution
-// and bitrate are preserved), uploads the playlist + segments back to R2, and
-// marks the asset ready. Runs in its own goroutine; failures flip the status to
-// 'failed' (the source mp4 still plays as a fallback).
+// transcodeToHLS downloads the source video from R2 and turns it into an HLS
+// stream that actually plays smoothly: it caps the bitrate to a streamable level
+// (camera/source files can be 100+ Mbps, which no connection can stream) at high
+// visual quality, scales to at most 1080p, and segments into short .ts pieces.
+// Uploads playlist + segments back to R2 and marks the asset ready. Runs in its
+// own goroutine; failures flip the status to 'failed' (source mp4 is the fallback).
 func (h *Handlers) transcodeToHLS(assetID, sourceKey string) {
 	ctx := context.Background()
 	fail := func(msg string, err error) {
@@ -46,11 +47,15 @@ func (h *Handlers) transcodeToHLS(assetID, sourceKey string) {
 		return
 	}
 
-	// Remux only: split the ORIGINAL streams into ~6s .ts segments with -c copy.
-	// No re-encoding → identical quality, near-instant, and segmented so it streams
-	// smoothly. h264_mp4toannexb is applied automatically by the HLS muxer.
+	// Map exactly one video + (optional) one audio stream — ignores junk/data
+	// tracks. Scale down to <=1080p, CRF 21 for near-transparent quality, capped at
+	// 6 Mbps so it streams smoothly anywhere. 6-second segments.
 	cmd := exec.Command("ffmpeg", "-y", "-i", src,
-		"-c", "copy",
+		"-map", "0:v:0", "-map", "0:a:0?",
+		"-vf", "scale='min(1920,iw)':'-2'",
+		"-c:v", "libx264", "-preset", "veryfast", "-profile:v", "high", "-pix_fmt", "yuv420p",
+		"-crf", "21", "-maxrate", "6M", "-bufsize", "12M",
+		"-c:a", "aac", "-b:a", "128k", "-ac", "2",
 		"-f", "hls", "-hls_time", "6", "-hls_playlist_type", "vod", "-hls_flags", "independent_segments",
 		"-hls_segment_filename", filepath.Join(out, "seg_%03d.ts"),
 		filepath.Join(out, "index.m3u8"))
