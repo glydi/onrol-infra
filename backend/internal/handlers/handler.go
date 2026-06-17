@@ -29,8 +29,9 @@ type Handlers struct {
 }
 
 func New(cfg config.Config, pool *pgxpool.Pool, jwtm *auth.Manager, att middleware.Attestor, z *zoho.Client) *Handlers {
-	// Warm the live-news cache at boot so the first visitor never waits on the
-	// initial RSS fan-out.
-	go newsCache.get(context.Background(), "ai")
+	// Warm the live-news cache at boot and keep refreshing it on an interval so
+	// the feed is always current — the first visitor never waits, and new
+	// headlines appear without anyone having to request them.
+	newsCache.startAutoRefresh()
 	return &Handlers{Cfg: cfg, Pool: pool, JWT: jwtm, Attestor: att, Zoho: z}
 }

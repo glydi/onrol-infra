@@ -2629,16 +2629,18 @@ class _AiNewsCardState extends State<_AiNewsCard> {
   bool _refreshing = false;
   Timer? _poll; // refetches fresh headlines
   Timer? _ticker; // ticks the "x min ago" labels + LIVE windows
+  final Set<String> _knownUrls = {}; // every URL seen so far
+  Set<String> _newUrls = {}; // URLs that arrived on the latest poll
 
   @override
   void initState() {
     super.initState();
     _load();
-    // Pull fresh headlines every 90s (backend is cached, so this is cheap)…
-    _poll = Timer.periodic(const Duration(seconds: 90), (_) => _load());
-    // …and re-render every 30s so the relative times & LIVE badges stay live
+    // Pull fresh headlines every 45s (backend auto-refreshes ~every 90s)…
+    _poll = Timer.periodic(const Duration(seconds: 45), (_) => _load());
+    // …and re-render every 20s so the relative times & LIVE badges stay live
     // even between fetches.
-    _ticker = Timer.periodic(const Duration(seconds: 30), (_) {
+    _ticker = Timer.periodic(const Duration(seconds: 20), (_) {
       if (mounted) setState(() {});
     });
   }
@@ -2661,8 +2663,15 @@ class _AiNewsCardState extends State<_AiNewsCard> {
           .where((n) => n.title.isNotEmpty && n.url.isNotEmpty)
           .toList();
       if (!mounted) return;
+      // Flag headlines that are new since the last poll (skip the first load so
+      // we don't light up the whole list on open).
+      final firstLoad = _items == null;
+      final incoming = list.map((n) => n.url).toSet();
+      final fresh = firstLoad ? <String>{} : incoming.difference(_knownUrls);
+      _knownUrls.addAll(incoming);
       setState(() {
         _items = list;
+        _newUrls = fresh;
         _failed = false;
         _refreshing = false;
       });
@@ -2697,6 +2706,22 @@ class _AiNewsCardState extends State<_AiNewsCard> {
             Text('UPDATE ', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: _navy)),
             Text('LIVE AI NEWS', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: _orange)),
             const Spacer(),
+            // "N new" badge appears when fresh headlines land, then fades next poll.
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              transitionBuilder: (child, a) => FadeTransition(opacity: a, child: ScaleTransition(scale: a, child: child)),
+              child: _newUrls.isEmpty
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      key: ValueKey(_newUrls.length),
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: _orange.withOpacity(0.4), blurRadius: 8)]),
+                        child: Text('${_newUrls.length} NEW', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5)),
+                      ),
+                    ),
+            ),
             _livePill(),
           ]),
           const SizedBox(height: 10),
@@ -2713,7 +2738,7 @@ class _AiNewsCardState extends State<_AiNewsCard> {
     if ((items == null || items.isEmpty)) return _statusBox(loading: false);
 
     final rows = <Widget>[
-      for (var i = 0; i < items.length; i++) _newsRow(items[i], last: i == items.length - 1),
+      for (var i = 0; i < items.length; i++) _newsRow(items[i], last: i == items.length - 1, isNew: _newUrls.contains(items[i].url)),
     ];
     if (widget.scrollable) {
       return ListView(padding: EdgeInsets.zero, children: rows);
@@ -2758,13 +2783,24 @@ class _AiNewsCardState extends State<_AiNewsCard> {
         ),
       );
 
-  Widget _newsRow(_News n, {required bool last}) {
+  Widget _newsRow(_News n, {required bool last, bool isNew = false}) {
     final live = n.isLive;
     return InkWell(
       onTap: () => _open(n.url),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 11),
-        decoration: BoxDecoration(border: last ? null : Border(bottom: BorderSide(color: _line))),
+      // Newly-arrived headlines get a soft orange wash that fades out on the
+      // next poll (AnimatedContainer smooths the tint → transparent).
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 700),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.fromLTRB(8, 11, 8, 11),
+        margin: const EdgeInsets.symmetric(vertical: 1),
+        decoration: BoxDecoration(
+          gradient: isNew
+              ? LinearGradient(begin: Alignment.centerLeft, end: Alignment.centerRight, colors: [_orange.withOpacity(0.14), _orange.withOpacity(0.03)])
+              : null,
+          borderRadius: BorderRadius.circular(10),
+          border: last || isNew ? null : Border(bottom: BorderSide(color: _line)),
+        ),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Container(
             width: 56, height: 56, alignment: Alignment.center,
@@ -2774,10 +2810,19 @@ class _AiNewsCardState extends State<_AiNewsCard> {
           const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              // LIVE badge for recent items; otherwise the source name.
-              if (live)
+              // NEW badge for just-arrived items, then LIVE for recent ones,
+              // otherwise the source name.
+              if (isNew)
                 Row(mainAxisSize: MainAxisSize.min, children: [
-                  Container(width: 6, height: 6, decoration: const BoxDecoration(color: _orange, shape: BoxShape.circle)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(5)),
+                    child: Text('NEW', style: GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5)),
+                  ),
+                ])
+              else if (live)
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  const _LiveDot(),
                   const SizedBox(width: 5),
                   Text('LIVE', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
                 ])
