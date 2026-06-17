@@ -34,6 +34,10 @@ class ApiClient {
     return http.patch(_u(path), headers: await _headers(), body: jsonEncode(body));
   }
 
+  Future<http.Response> putJson(String path, Map<String, dynamic> body) async {
+    return http.put(_u(path), headers: await _headers(), body: jsonEncode(body));
+  }
+
   Future<http.Response> get(String path) async {
     // Cache-bust so the browser (web) never serves a stale API response, and ask
     // intermediaries not to cache — fixes "data not reloading" after changes.

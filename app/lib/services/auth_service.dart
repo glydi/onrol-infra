@@ -54,7 +54,7 @@ class AuthService {
     }
   }
 
-  Future<void> login(String email, String password, {String portal = ''}) async {
+  Future<void> login(String email, String password, {String portal = '', String? totp}) async {
     await _device.loadDeviceInfo();
     final r = await _api.postJson('/api/v1/auth/login', {
       'email': email,
@@ -62,6 +62,7 @@ class AuthService {
       'platform': _device.platform,
       'model': _device.model,
       'portal': portal,
+      if (totp != null && totp.isNotEmpty) 'totp': totp,
     });
     final data = ApiClient.decode(r); // throws ApiException(409) on device limit
     final token = data['access_token'] as String;
@@ -92,6 +93,8 @@ class AuthService {
   Future<http.Response> apiGet(String path) => _api.get(path);
   Future<http.Response> apiPatch(String path, Map<String, dynamic> body) =>
       _api.patchJson(path, body);
+  Future<http.Response> apiPut(String path, Map<String, dynamic> body) =>
+      _api.putJson(path, body);
   Future<http.Response> apiDelete(String path) => _api.delete(path);
   Future<http.Response> apiUpload(String path, {required List<int> bytes, required String filename, Map<String, String>? fields}) =>
       _api.uploadBytes(path, bytes: bytes, filename: filename, fields: fields);

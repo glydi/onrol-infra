@@ -19,6 +19,8 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
   loadTheme();
   loadAvatar();
+  loadTextScale();
+  loadAccent();
   runApp(const OnrolApp());
 }
 
@@ -39,12 +41,19 @@ class _OnrolAppState extends State<OnrolApp> {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeNotifier,
-      builder: (context, mode, _) => MaterialApp(
+      builder: (context, mode, _) => ValueListenableBuilder<double>(
+        valueListenable: textScaleNotifier,
+        builder: (context, scale, __) => MaterialApp(
         title: 'ONROL Learn',
         debugShowCheckedModeBanner: false,
         theme: AppleTheme.light(),
         darkTheme: AppleTheme.dark(),
         themeMode: mode,
+        // Apply the user's chosen font size app-wide.
+        builder: (ctx, child) => MediaQuery(
+          data: MediaQuery.of(ctx).copyWith(textScaler: TextScaler.linear(scale)),
+          child: child!,
+        ),
         home: FutureBuilder<bool>(
           future: _restored,
           builder: (context, snap) {
@@ -62,6 +71,7 @@ class _OnrolAppState extends State<OnrolApp> {
             return _auth.user!.isStaff ? ConsoleScreen(auth: _auth) : HomeScreen(auth: _auth);
           },
         ),
+      ),
       ),
     );
   }

@@ -64,9 +64,10 @@ type newsArticle struct {
 }
 
 const (
-	newsTTL     = 4 * time.Minute // cache freshness window
-	newsLimit   = 50              // max headlines kept
-	newsTimeout = 6 * time.Second // per-feed fetch budget
+	newsTTL             = 90 * time.Second // cache freshness window
+	newsRefreshInterval = 90 * time.Second // background auto-refresh cadence
+	newsLimit           = 50               // max headlines kept
+	newsTimeout         = 6 * time.Second  // per-feed fetch budget
 )
 
 var newsHTTP = &http.Client{Timeout: newsTimeout}
@@ -113,6 +114,32 @@ func (s *newsStore) get(ctx context.Context, category string) []newsArticle {
 	out := s.items
 	s.mu.Unlock()
 	return filterNews(out, category)
+}
+
+// startAutoRefresh primes the cache once, then refreshes it on a fixed interval
+// so the feed is always warm and shows the latest headlines — even with no
+// incoming requests. Called once at startup.
+func (s *newsStore) startAutoRefresh() {
+	go func() {
+		s.get(context.Background(), "ai") // cold prime (blocks until first fetch)
+		t := time.NewTicker(newsRefreshInterval)
+		defer t.Stop()
+		for range t.C {
+			s.forceRefresh()
+		}
+	}()
+}
+
+// forceRefresh refreshes now unless a refresh is already running.
+func (s *newsStore) forceRefresh() {
+	s.mu.Lock()
+	if s.fetching {
+		s.mu.Unlock()
+		return
+	}
+	s.fetching = true
+	s.mu.Unlock()
+	s.refresh()
 }
 
 func (s *newsStore) refresh() {
@@ -319,8 +346,8 @@ func (h *Handlers) News(c *fiber.Ctx) error {
 
 	items := newsCache.get(ctx, category)
 
-	// Let browsers/proxies hold the response briefly without hammering us.
-	c.Set("Cache-Control", "public, max-age=120")
+	// Short cache window so polls pick up new headlines quickly.
+	c.Set("Cache-Control", "public, max-age=20")
 	return c.JSON(fiber.Map{
 		"news":       items,
 		"count":      len(items),

@@ -27,6 +27,7 @@ type loginReq struct {
 	Platform string `json:"platform"` // android | ios | web
 	Model    string `json:"model"`
 	Portal   string `json:"portal"` // admin | mentor | student — gates by role
+	TOTP     string `json:"totp"`   // 6-digit code when the account has 2FA on
 }
 
 // portalAllowsRole enforces that a login portal only admits matching roles, so a
@@ -98,10 +99,13 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 
 	// 1. Verify credentials.
 	var user models.User
+	var totpEnabled bool
+	var totpSecret string
 	err := h.Pool.QueryRow(c.Context(),
-		`SELECT id, email, full_name, role, password_hash, max_devices, is_active
+		`SELECT id, email, full_name, role, password_hash, max_devices, is_active,
+		        COALESCE(totp_enabled,false), COALESCE(totp_secret,'')
 		 FROM users WHERE email=$1 OR lower(username)=$1`, req.Email,
-	).Scan(&user.ID, &user.Email, &user.FullName, &user.Role, &user.PasswordHash, &user.MaxDevices, &user.IsActive)
+	).Scan(&user.ID, &user.Email, &user.FullName, &user.Role, &user.PasswordHash, &user.MaxDevices, &user.IsActive, &totpEnabled, &totpSecret)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fiber.NewError(fiber.StatusUnauthorized, "invalid credentials")
 	}
@@ -113,6 +117,17 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 	}
 	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)) != nil {
 		return fiber.NewError(fiber.StatusUnauthorized, "invalid credentials")
+	}
+
+	// 1b. Two-factor: if enabled, require a valid TOTP code. A distinct
+	//     `totp_required` flag lets the client prompt for the code.
+	if totpEnabled {
+		if strings.TrimSpace(req.TOTP) == "" {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "two-factor code required", "totp_required": true})
+		}
+		if !totpValidate(totpSecret, req.TOTP) {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid two-factor code", "totp_required": true})
+		}
 	}
 
 	// Portal gate: a role-specific login page only admits its own role.

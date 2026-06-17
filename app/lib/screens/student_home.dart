@@ -208,12 +208,12 @@ class _StudentHomeState extends State<StudentHome> {
     _Tile(CupertinoIcons.compass_fill, 'Explore', 'explore'),
     _Tile(CupertinoIcons.book_fill, 'My Courses', 'courses'),
     _Tile(CupertinoIcons.calendar, 'Schedule', 'schedule'),
-    _Tile(CupertinoIcons.chart_bar_fill, 'Progress', 'progress'),
+    _Tile(CupertinoIcons.play_circle_fill, 'Resume', 'resume'),
     _Tile(CupertinoIcons.doc_text_fill, 'Assignments', 'assignments'),
     _Tile(CupertinoIcons.videocam_fill, 'Live Classes', 'live'),
     _Tile(CupertinoIcons.rosette, 'Certificates', 'certificates'),
     _Tile(CupertinoIcons.list_number, 'Leaderboard', 'leaderboard'),
-    _Tile(CupertinoIcons.play_circle_fill, 'Resume', 'resume'),
+    _Tile(CupertinoIcons.bubble_left_bubble_right_fill, 'Forum', 'forum'),
     _Tile(CupertinoIcons.gear_alt_fill, 'Settings', 'settings'),
     _Tile(CupertinoIcons.square_arrow_right, 'Log Out', 'logout'),
   ];
@@ -816,23 +816,6 @@ class _StudentHomeState extends State<StudentHome> {
     ]);
   }
 
-  Future<void> _enrollCourse(String id, String title, bool self) async {
-    try {
-      await widget.auth.apiPost('/api/v1/me/courses/$id/enroll', {});
-      if (mounted) {
-        _showRequestSent(
-          self ? 'Enrolled!' : 'Request sent',
-          self ? "You're now enrolled in $title." : "Your request for $title was sent — you'll be notified when it's approved.",
-          self ? CupertinoIcons.checkmark_alt_circle_fill : CupertinoIcons.paperplane_fill,
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not enroll'), behavior: SnackBarBehavior.floating));
-      }
-    }
-  }
-
   // Animated confirmation overlay (checkmark / paper-plane scales + fades in,
   // then auto-dismisses).
   void _showRequestSent(String title, String sub, IconData icon) {
@@ -917,17 +900,28 @@ class _StudentHomeState extends State<StudentHome> {
   }
 
   Future<void> _openLesson(Map<String, dynamic> l) async {
+    final id = l['id'].toString();
     final url = l['url']?.toString() ?? '';
     final type = l['type']?.toString() ?? 'text';
+    final startAt = ((l['position'] ?? 0) as num).toInt();
     if (type == 'video' && url.isNotEmpty) {
-      // Stream in-app (mp4 native, .m3u8 via hls.js) — not a download.
+      // Stream in-app (mp4 native, .m3u8 via hls.js) — not a download. Resumes
+      // from the saved position; saves progress + marks complete when finished.
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => VideoPlayerScreen(
           url: url,
           watermark: widget.auth.user?.email ?? 'student',
           title: l['title']?.toString() ?? 'Video',
+          startAt: Duration(seconds: startAt),
+          onProgress: (pos, dur) {
+            widget.auth.apiPost('/api/v1/me/lessons/$id/progress', {'position': pos.inSeconds}).ignore();
+          },
+          onCompleted: () {
+            widget.auth.apiPost('/api/v1/me/lessons/$id/complete', {}).ignore();
+          },
         ),
       ));
+      return; // videos complete when watched, not on open
     } else if ((type == 'link' || type == 'file') && url.startsWith('http')) {
       // Open the link / document (PDF, Word, …) — browser renders or downloads it.
       try {
@@ -939,9 +933,9 @@ class _StudentHomeState extends State<StudentHome> {
         Text(url, style: GoogleFonts.poppins(fontSize: 14, color: _navy, height: 1.6)),
       ]);
     }
-    // Mark complete (best-effort).
+    // Non-video lessons: mark complete on open (best-effort).
     try {
-      await widget.auth.apiPost('/api/v1/me/lessons/${l['id']}/complete', {});
+      await widget.auth.apiPost('/api/v1/me/lessons/$id/complete', {});
     } catch (_) {}
   }
 
@@ -1054,14 +1048,30 @@ class _StudentHomeState extends State<StudentHome> {
               final doneL = courses.fold<int>(0, (s, c) => s + (((c as Map)['lessons_done'] ?? 0) as num).toInt());
               final overall = totalL > 0 ? doneL / totalL : 0.0;
               return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                // Warm greeting.
-                Text('Hi, $_firstName 👋', style: GoogleFonts.poppins(fontSize: 19, fontWeight: FontWeight.w700, color: _navy)),
-                const SizedBox(height: 2),
-                Text("Here's your learning snapshot", style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
-                const SizedBox(height: 16),
+                // Personal greeting with the user's avatar.
+                _Entrance(
+                  index: 0,
+                  child: Row(children: [
+                    ValueListenableBuilder<String>(
+                      valueListenable: avatarNotifier,
+                      builder: (c, av, _) => _avatarBox(av, 46, _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S'),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('Hi, $_firstName 👋', style: GoogleFonts.poppins(fontSize: 19, fontWeight: FontWeight.w700, color: _navy)),
+                        const SizedBox(height: 2),
+                        Text("Here's your learning snapshot", style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
+                      ]),
+                    ),
+                  ]),
+                ),
+                const SizedBox(height: 18),
                 // Overall-progress hero with an animated ring.
                 if (courses.isNotEmpty) ...[
-                  Container(
+                  _Entrance(
+                    index: 1,
+                    child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       gradient: _cardGradient,
@@ -1094,59 +1104,46 @@ class _StudentHomeState extends State<StudentHome> {
                         ]),
                       ),
                     ]),
-                  ),
+                  )),
                   const SizedBox(height: 16),
                 ],
-                Row(children: [
-                  Expanded(child: _statCard('${t['enrolled'] ?? 0}', 'Enrolled', icon: CupertinoIcons.book_fill, onTap: () => _openPanel('courses'))),
-                  const SizedBox(width: 14),
-                  Expanded(child: _statCard('${t['completed'] ?? 0}', 'Completed', icon: CupertinoIcons.checkmark_seal_fill, onTap: () => _openPanel('progress'))),
-                ]),
+                _Entrance(
+                  index: 2,
+                  child: Row(children: [
+                    Expanded(child: _statCard('${t['enrolled'] ?? 0}', 'Enrolled', icon: CupertinoIcons.book_fill, onTap: () => _openPanel('courses'))),
+                    const SizedBox(width: 14),
+                    Expanded(child: _statCard('${t['completed'] ?? 0}', 'Completed', icon: CupertinoIcons.checkmark_seal_fill, onTap: () => _openPanel('courses'))),
+                  ]),
+                ),
                 const SizedBox(height: 14),
-                Row(children: [
-                  Expanded(child: _statCard('${_xpFromCourses(courses)}', 'XP earned', icon: CupertinoIcons.bolt_fill, onTap: () => _openPanel('achievements'))),
-                  const SizedBox(width: 14),
-                  Expanded(child: _statCard('${t['certificates'] ?? 0}', 'Certificates', icon: CupertinoIcons.rosette, onTap: () => _openPanel('certificates'))),
-                ]),
+                _Entrance(
+                  index: 3,
+                  child: Row(children: [
+                    Expanded(child: _statCard('${_xpFromCourses(courses)}', 'XP earned', icon: CupertinoIcons.bolt_fill, onTap: () => _openPanel('achievements'))),
+                    const SizedBox(width: 14),
+                    Expanded(child: _statCard('${t['certificates'] ?? 0}', 'Certificates', icon: CupertinoIcons.rosette, onTap: () => _openPanel('certificates'))),
+                  ]),
+                ),
                 // Notifications — recent announcements.
                 if (notes.isNotEmpty) ...[
                   const SizedBox(height: 22),
-                  Row(children: [
-                    Icon(CupertinoIcons.bell_fill, size: 16, color: _orange),
-                    const SizedBox(width: 6),
-                    Text('Notifications', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
-                  ]),
-                  const SizedBox(height: 8),
-                  ...notes.take(3).map((e) {
-                    final m = e as Map<String, dynamic>;
-                    final course = m['course']?.toString() ?? '';
-                    final body = m['body']?.toString() ?? '';
-                    final text = [if (course.isNotEmpty) '[$course]', m['title'] ?? '', if (body.isNotEmpty) '— $body'].join(' ');
-                    return _notif(text, _fmtAt(m['at']?.toString()));
-                  }),
-                ],
-                const SizedBox(height: 22),
-                if (courses.isEmpty)
-                  _emptyText('No courses yet — browse the catalog to enroll.')
-                else ...[
-                  Row(children: [
-                    Icon(CupertinoIcons.book_fill, size: 16, color: _orange),
-                    const SizedBox(width: 6),
-                    Text('Your Courses', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
-                  ]),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                    decoration: BoxDecoration(
-                      gradient: _cardGradient,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: _cardBorder),
-                      boxShadow: [BoxShadow(color: _orange.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))],
-                    ),
-                    child: Column(children: courses.map((c) {
-                      final m = c as Map<String, dynamic>;
-                      return _progress(m['title']?.toString() ?? 'Course', ((m['percent'] ?? 0) as num) / 100);
-                    }).toList()),
+                  _Entrance(
+                    index: 4,
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      Row(children: [
+                        Icon(CupertinoIcons.bell_fill, size: 16, color: _orange),
+                        const SizedBox(width: 6),
+                        Text('Notifications', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
+                      ]),
+                      const SizedBox(height: 8),
+                      ...notes.take(3).map((e) {
+                        final m = e as Map<String, dynamic>;
+                        final course = m['course']?.toString() ?? '';
+                        final body = m['body']?.toString() ?? '';
+                        final text = [if (course.isNotEmpty) '[$course]', m['title'] ?? '', if (body.isNotEmpty) '— $body'].join(' ');
+                        return _notif(text, _fmtAt(m['at']?.toString()));
+                      }),
+                    ]),
                   ),
                 ],
               ]);
@@ -1182,37 +1179,21 @@ class _StudentHomeState extends State<StudentHome> {
           ),
         ]);
       case 'resume':
-        return (CupertinoIcons.play_circle_fill, 'Resume Learning', 'Pick up where you left off', [
+        return (CupertinoIcons.play_circle_fill, 'Resume Learning', 'Continue any course in one tap', [
           _future(_apiMap('/api/v1/me/resume'), (m) {
-            final r = m['resume'];
-            if (r == null) return _emptyText("You're all caught up — nothing to resume.");
-            final res = r as Map<String, dynamic>;
-            return Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(res['course']?.toString() ?? '', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: _orange)),
-                const SizedBox(height: 4),
-                Text(res['title']?.toString() ?? 'Next lesson', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: _navy)),
-                if ((res['module']?.toString() ?? '').isNotEmpty) Text(res['module'].toString(), style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
-                const SizedBox(height: 14),
-                _Pressable(
-                  onTap: () {
+            final list = (m['courses'] as List?) ?? [];
+            if (list.isEmpty) return _emptyText("You're all caught up — nothing to resume.");
+            return Column(children: [
+              for (var i = 0; i < list.length; i++)
+                _ResumeCard(
+                  index: i,
+                  data: list[i] as Map<String, dynamic>,
+                  onContinue: (lesson) {
                     Navigator.of(context).maybePop();
-                    _openLesson({'id': res['lesson_id'], 'title': res['title'], 'type': res['type'], 'url': res['url']});
+                    _openLesson(lesson);
                   },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 14), alignment: Alignment.center,
-                    decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(10)),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(CupertinoIcons.play_fill, color: Colors.white, size: 16),
-                      const SizedBox(width: 8),
-                      Text('Continue', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
-                    ]),
-                  ),
                 ),
-              ]),
-            );
+            ]);
           }),
         ]);
       case 'courses':
@@ -1247,12 +1228,7 @@ class _StudentHomeState extends State<StudentHome> {
         ]);
       case 'settings':
         return (CupertinoIcons.gear_alt_fill, 'Settings', 'Customize your experience', [
-          _SettingRow('Push Notifications', 'Get alerts for classes & assignments', true),
-          _SettingRow('Email Digest', 'Weekly progress summary', true),
-          const _DarkModeRow(),
-          _SettingRow('Study Reminders', 'Daily nudge to keep learning', true),
-          _SettingRow('Show Leaderboard', 'Let others see your rank', true),
-          _SettingRow('Auto-play Next Lesson', 'Continuous learning flow', false),
+          _SettingsView(auth: widget.auth, onLogout: _logout),
         ]);
       case 'leaderboard':
         return (CupertinoIcons.list_number, 'Leaderboard', 'Ranked by XP — overall & per course', [
@@ -1265,15 +1241,9 @@ class _StudentHomeState extends State<StudentHome> {
             return _CalendarView(items: items);
           }),
         ]);
-      case 'progress':
-        return (CupertinoIcons.chart_bar_fill, 'My Progress', 'Completion per course', [
-          _future(_apiList('/api/v1/me/courses', 'my_courses'), (List courses) {
-            if (courses.isEmpty) return _emptyText('No courses to track yet.');
-            return Column(children: courses.map((c) {
-              final m = c as Map<String, dynamic>;
-              return _progress(m['title']?.toString() ?? 'Course', ((m['percent'] ?? 0) as num) / 100);
-            }).toList());
-          }),
+      case 'forum':
+        return (CupertinoIcons.bubble_left_bubble_right_fill, 'Discussion Forum', 'Ask, answer & discuss with your peers', [
+          _ForumView(auth: widget.auth),
         ]);
       case 'messages':
         return (CupertinoIcons.chat_bubble_2_fill, 'Messages', 'Your inbox', [
@@ -1438,30 +1408,14 @@ class _StudentHomeState extends State<StudentHome> {
         ]);
       case 'explore':
         return (CupertinoIcons.compass_fill, 'Explore Courses', 'Browse all courses, batch-wise', [
-          _future(_apiList('/api/v1/catalog', 'catalog'), (List cat) {
-            if (cat.isEmpty) return _emptyText('No courses available right now.');
-            // Group batch-wise (by category — the catalog's grouping field).
-            final groups = <String, List>{};
-            for (final c in cat) {
-              final k = ((c as Map)['category']?.toString() ?? '').trim();
-              groups.putIfAbsent(k.isEmpty ? 'General' : k, () => []).add(c);
-            }
-            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: groups.entries.expand<Widget>((e) => [
-              Padding(
-                padding: const EdgeInsets.only(top: 10, bottom: 4),
-                child: Text(e.key, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
-              ),
-              ...e.value.map((c) {
-                final m = c as Map<String, dynamic>;
-                final self = m['enroll_type'] == 'self';
-                return GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _enrollCourse(m['id'].toString(), m['title']?.toString() ?? 'Course', self),
-                  child: _row(CupertinoIcons.book_fill, m['title']?.toString() ?? 'Course', m['category']?.toString() ?? '', self ? 'Enroll' : 'Request'),
-                );
-              }),
-            ]).toList());
-          }),
+          _ExploreList(
+            auth: widget.auth,
+            onEnrolled: (title, self) => _showRequestSent(
+              self ? 'Enrolled!' : 'Request sent',
+              self ? "You're now enrolled in $title." : "Your request for $title was sent — you'll be notified when it's approved.",
+              self ? CupertinoIcons.checkmark_alt_circle_fill : CupertinoIcons.paperplane_fill,
+            ),
+          ),
         ]);
       case 'logout':
       default:
@@ -1535,32 +1489,6 @@ class _StudentHomeState extends State<StudentHome> {
 
 Widget _statCard(String value, String label, {IconData? icon, VoidCallback? onTap}) =>
     _StatCard(value: value, label: label, icon: icon, onTap: onTap);
-
-Widget _progress(String label, double pct) => Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
-      child: Column(children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(label, style: GoogleFonts.poppins(fontSize: 13, color: _navy)),
-          Text('${(pct * 100).round()}%', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _orange)),
-        ]),
-        const SizedBox(height: 6),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          // Bar fills with a smooth animation when the panel opens.
-          child: TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0, end: pct.clamp(0.0, 1.0)),
-            duration: const Duration(milliseconds: 700),
-            curve: Curves.easeOutCubic,
-            builder: (_, v, __) => LinearProgressIndicator(
-              value: v,
-              minHeight: 8,
-              backgroundColor: _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0EBE8),
-              valueColor: const AlwaysStoppedAnimation(_orange),
-            ),
-          ),
-        ),
-      ]),
-    );
 
 Widget _notif(String text, String time, {bool read = false}) => _StudentHomeNotif(text: text, time: time, read: read);
 
@@ -1721,6 +1649,615 @@ class _CertCardState extends State<_CertCard> {
           ]),
         ),
       );
+}
+
+/// Explore / catalog list. Enrolling updates the row in place to "Enrolled"
+/// (or "Requested") so the action is immediately reflected — no full reload.
+class _ExploreList extends StatefulWidget {
+  const _ExploreList({required this.auth, required this.onEnrolled});
+  final AuthService auth;
+  final void Function(String title, bool self) onEnrolled;
+
+  @override
+  State<_ExploreList> createState() => _ExploreListState();
+}
+
+class _ExploreListState extends State<_ExploreList> {
+  late Future<List<dynamic>> _future = _load();
+  final Set<String> _enrolled = {};
+  final Set<String> _requested = {};
+  final Set<String> _busy = {};
+
+  Future<List<dynamic>> _load() async {
+    final m = ApiClient.decode(await widget.auth.apiGet('/api/v1/catalog'));
+    return (m['catalog'] as List?) ?? [];
+  }
+
+  Future<void> _enroll(String id, String title, bool self) async {
+    if (_busy.contains(id) || _enrolled.contains(id) || _requested.contains(id)) return;
+    setState(() => _busy.add(id));
+    try {
+      await widget.auth.apiPost('/api/v1/me/courses/$id/enroll', {});
+      if (!mounted) return;
+      setState(() {
+        _busy.remove(id);
+        (self ? _enrolled : _requested).add(id);
+      });
+      widget.onEnrolled(title, self);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _busy.remove(id));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not enroll'), behavior: SnackBarBehavior.floating));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<dynamic>>(
+      future: _future,
+      builder: (ctx, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const Padding(padding: EdgeInsets.symmetric(vertical: 34), child: Center(child: CircularProgressIndicator(color: _orange, strokeWidth: 2.5)));
+        }
+        final cat = snap.hasData ? snap.data! : const [];
+        if (cat.isEmpty) {
+          return Padding(padding: const EdgeInsets.symmetric(vertical: 22), child: Text('No courses available right now.', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, color: _grey)));
+        }
+        // Group batch-wise (by category — the catalog's grouping field).
+        final groups = <String, List>{};
+        for (final c in cat) {
+          final k = ((c as Map)['category']?.toString() ?? '').trim();
+          groups.putIfAbsent(k.isEmpty ? 'General' : k, () => []).add(c);
+        }
+        var idx = 0;
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: groups.entries.expand<Widget>((e) => [
+          Padding(
+            padding: const EdgeInsets.only(top: 10, bottom: 4),
+            child: Text(e.key, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
+          ),
+          ...e.value.map((c) => _courseRow(c as Map<String, dynamic>, idx++)),
+        ]).toList());
+      },
+    );
+  }
+
+  Widget _courseRow(Map<String, dynamic> m, int index) {
+    final id = m['id'].toString();
+    final self = m['enroll_type'] == 'self';
+    final title = m['title']?.toString() ?? 'Course';
+    final enrolled = _enrolled.contains(id);
+    final requested = _requested.contains(id);
+    final busy = _busy.contains(id);
+    final done = enrolled || requested;
+
+    final String badge = busy ? '…' : (enrolled ? 'Enrolled ✓' : (requested ? 'Requested' : (self ? 'Enroll' : 'Request')));
+
+    return _Entrance(
+      index: index,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: done || busy ? null : () => _enroll(id, title, self),
+        child: _row(
+          done ? CupertinoIcons.checkmark_seal_fill : CupertinoIcons.book_fill,
+          title,
+          m['category']?.toString() ?? '',
+          badge,
+          badgeBg: done ? _greenBg : null,
+          badgeFg: done ? _green : null,
+        ),
+      ),
+    );
+  }
+}
+
+/// Discussion forum: a list of threads (newest activity first) with a composer,
+/// and a tap-through thread view with chat-style posts + a reply box. Switching
+/// between list and thread animates.
+class _ForumView extends StatefulWidget {
+  const _ForumView({required this.auth});
+  final AuthService auth;
+
+  @override
+  State<_ForumView> createState() => _ForumViewState();
+}
+
+class _ForumViewState extends State<_ForumView> {
+  late Future<List<dynamic>> _threads = _loadThreads();
+  bool _composing = false;
+  bool _busy = false;
+  bool _coursesLoaded = false;
+  List<Map<String, dynamic>> _courses = [];
+  String? _courseId; // composer target; null = General
+  String _filter = 'all'; // 'all' | 'general' | <courseId>
+  final _title = TextEditingController();
+  final _body = TextEditingController();
+  // Open thread (null = list view).
+  String? _openId;
+  String _openTitle = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _ensureCourses(); // so the filter tabs show courses right away
+  }
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _body.dispose();
+    super.dispose();
+  }
+
+  Future<List<dynamic>> _loadThreads() async {
+    final m = ApiClient.decode(await widget.auth.apiGet('/api/v1/me/forum'));
+    return (m['forum'] as List?) ?? [];
+  }
+
+  void _reload() => setState(() => _threads = _loadThreads());
+
+  Future<void> _ensureCourses() async {
+    if (_coursesLoaded) return;
+    try {
+      final m = ApiClient.decode(await widget.auth.apiGet('/api/v1/me/courses'));
+      final list = ((m['my_courses'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
+      if (mounted) {
+        setState(() {
+          _courses = list;
+          _coursesLoaded = true;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _coursesLoaded = true);
+    }
+  }
+
+  void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
+
+  Future<void> _post() async {
+    if (_title.text.trim().isEmpty || _body.text.trim().isEmpty) return _toast('Add a title and message');
+    setState(() => _busy = true);
+    try {
+      ApiClient.decode(await widget.auth.apiPost('/api/v1/me/forum', {'course_id': _courseId ?? '', 'title': _title.text.trim(), 'body': _body.text.trim()}));
+      _title.clear();
+      _body.clear();
+      if (mounted) setState(() {
+        _composing = false;
+        _busy = false;
+      });
+      _reload();
+      _toast('Discussion posted');
+    } catch (_) {
+      if (mounted) setState(() => _busy = false);
+      _toast("Couldn't post — try again");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 280),
+      switchInCurve: Curves.easeOutCubic,
+      transitionBuilder: (child, a) => FadeTransition(opacity: a, child: SlideTransition(position: Tween<Offset>(begin: const Offset(0.06, 0), end: Offset.zero).animate(a), child: child)),
+      child: _openId == null
+          ? _list(const ValueKey('list'))
+          : _ForumThread(
+              key: ValueKey(_openId),
+              auth: widget.auth,
+              threadId: _openId!,
+              title: _openTitle,
+              onBack: () {
+                setState(() => _openId = null);
+                _reload();
+              },
+            ),
+    );
+  }
+
+  Widget _list(Key key) => Column(key: key, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // Composer (collapsed → "Start a discussion" button).
+        AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: _composing ? _composer() : _startButton(),
+        ),
+        const SizedBox(height: 14),
+        _filterTabs(),
+        const SizedBox(height: 6),
+        FutureBuilder<List<dynamic>>(
+          future: _threads,
+          builder: (ctx, snap) {
+            if (snap.connectionState != ConnectionState.done) {
+              return const Padding(padding: EdgeInsets.symmetric(vertical: 34), child: Center(child: CircularProgressIndicator(color: _orange, strokeWidth: 2.5)));
+            }
+            final all = (snap.hasData ? snap.data! : const []).cast<Map<String, dynamic>>();
+            final list = all.where(_matchesFilter).toList();
+            return AnimatedSwitcher(
+              duration: const Duration(milliseconds: 260),
+              switchInCurve: Curves.easeOutCubic,
+              transitionBuilder: (child, a) => FadeTransition(opacity: a, child: SlideTransition(position: Tween<Offset>(begin: const Offset(0, 0.03), end: Offset.zero).animate(a), child: child)),
+              child: list.isEmpty
+                  ? Padding(
+                      key: ValueKey('empty-$_filter'),
+                      padding: const EdgeInsets.symmetric(vertical: 26),
+                      child: Column(children: [
+                        Icon(CupertinoIcons.bubble_left_bubble_right, size: 30, color: _grey),
+                        const SizedBox(height: 8),
+                        Text(_filter == 'general' ? 'No general discussions yet' : 'No discussions here yet', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
+                        const SizedBox(height: 2),
+                        Text('Be the first to start one!', style: GoogleFonts.poppins(fontSize: 12.5, color: _grey)),
+                      ]),
+                    )
+                  : Column(key: ValueKey('list-$_filter'), children: [for (var i = 0; i < list.length; i++) _threadCard(list[i], i)]),
+            );
+          },
+        ),
+      ]);
+
+  bool _matchesFilter(Map<String, dynamic> m) {
+    if (_filter == 'all') return true;
+    final cid = m['course_id']?.toString() ?? '';
+    if (_filter == 'general') return cid.isEmpty;
+    return cid == _filter;
+  }
+
+  Widget _filterTabs() => SizedBox(
+        height: 36,
+        child: ListView(scrollDirection: Axis.horizontal, padding: EdgeInsets.zero, children: [
+          _filterChip('All', 'all', CupertinoIcons.square_stack_3d_up_fill),
+          const SizedBox(width: 8),
+          _filterChip('General', 'general', CupertinoIcons.globe),
+          for (final c in _courses) ...[
+            const SizedBox(width: 8),
+            _filterChip(c['title']?.toString() ?? 'Course', c['id']?.toString() ?? '', CupertinoIcons.book_fill),
+          ],
+        ]),
+      );
+
+  Widget _filterChip(String label, String value, IconData icon) {
+    final sel = _filter == value;
+    return _Pressable(
+      onTap: () => setState(() => _filter = value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          gradient: sel ? _orangeGrad : null,
+          color: sel ? null : _orange.withOpacity(0.07),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: sel ? Colors.transparent : _cardBorder),
+          boxShadow: sel ? [BoxShadow(color: _orange.withOpacity(0.30), blurRadius: 10, offset: const Offset(0, 4))] : const [],
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 13, color: sel ? Colors.white : _orange),
+          const SizedBox(width: 6),
+          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: sel ? Colors.white : _navy)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _startButton() => _Pressable(
+        onTap: () {
+          setState(() => _composing = true);
+          _ensureCourses();
+        },
+        child: Container(
+          height: 48, alignment: Alignment.center,
+          decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: _orange.withOpacity(0.34), blurRadius: 14, offset: const Offset(0, 6))]),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(CupertinoIcons.plus_bubble_fill, color: Colors.white, size: 17),
+            const SizedBox(width: 8),
+            Text('Start a discussion', style: GoogleFonts.poppins(fontSize: 14.5, fontWeight: FontWeight.w700, color: Colors.white)),
+          ]),
+        ),
+      );
+
+  Widget _composer() => Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(18), border: Border.all(color: _orange.withOpacity(0.30)), boxShadow: [BoxShadow(color: _orange.withOpacity(0.10), blurRadius: 16, offset: const Offset(0, 6))]),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Icon(CupertinoIcons.plus_bubble_fill, size: 16, color: _orange),
+            const SizedBox(width: 8),
+            Text('New discussion', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w800, color: _navy)),
+            const Spacer(),
+            _Pressable(onTap: () => setState(() => _composing = false), child: Icon(CupertinoIcons.xmark_circle_fill, size: 20, color: _grey)),
+          ]),
+          const SizedBox(height: 12),
+          if (!_coursesLoaded)
+            const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Center(child: CupertinoActivityIndicator()))
+          else ...[
+            Text('Post to', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700, color: _grey, letterSpacing: 0.3)),
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 34,
+              child: ListView(scrollDirection: Axis.horizontal, padding: EdgeInsets.zero, children: [
+                _coursePill('General', _courseId == null, () => setState(() => _courseId = null)),
+                for (final c in _courses) ...[
+                  const SizedBox(width: 8),
+                  _coursePill(c['title']?.toString() ?? 'Course', _courseId == c['id']?.toString(), () => setState(() => _courseId = c['id']?.toString())),
+                ],
+              ]),
+            ),
+            const SizedBox(height: 10),
+            _field(_title, 'Title', maxLines: 1),
+            const SizedBox(height: 10),
+            _field(_body, 'Share your question or thought…', maxLines: 4),
+            const SizedBox(height: 12),
+            _Pressable(
+              onTap: _busy ? () {} : _post,
+              child: Container(
+                height: 46, alignment: Alignment.center,
+                decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: _orange.withOpacity(0.30), blurRadius: 12, offset: const Offset(0, 5))]),
+                child: _busy
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
+                    : Text('Post discussion', style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
+              ),
+            ),
+          ],
+        ]),
+      );
+
+  Widget _coursePill(String label, bool sel, VoidCallback onTap) => _Pressable(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            gradient: sel ? _orangeGrad : null,
+            color: sel ? null : _orange.withOpacity(0.07),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: sel ? Colors.transparent : _cardBorder),
+          ),
+          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: sel ? Colors.white : _navy)),
+        ),
+      );
+
+  Widget _field(TextEditingController c, String hint, {int maxLines = 1}) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(color: _isDark ? Colors.white.withOpacity(0.05) : Colors.white.withOpacity(0.55), borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
+        child: TextField(
+          controller: c,
+          maxLines: maxLines,
+          style: GoogleFonts.poppins(fontSize: 13.5, color: _navy),
+          decoration: InputDecoration(border: InputBorder.none, isDense: true, contentPadding: const EdgeInsets.symmetric(vertical: 12), hintText: hint, hintStyle: GoogleFonts.poppins(fontSize: 13, color: _grey.withOpacity(0.7))),
+        ),
+      );
+
+  Widget _threadCard(Map<String, dynamic> m, int index) {
+    final title = m['title']?.toString() ?? 'Discussion';
+    final author = m['author']?.toString() ?? 'Someone';
+    final course = m['course']?.toString() ?? '';
+    final snippet = m['snippet']?.toString() ?? '';
+    final avatar = m['avatar']?.toString() ?? '';
+    final replies = ((m['replies'] ?? 0) as num).toInt();
+    final initials = author.trim().isNotEmpty ? author.trim()[0].toUpperCase() : '?';
+    return _Entrance(
+      index: index,
+      child: _ForumHoverCard(
+        onTap: () => setState(() {
+          _openId = m['id']?.toString();
+          _openTitle = title;
+        }),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _avatarBox(avatar, 40, initials),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 14.5, fontWeight: FontWeight.w700, color: _navy, height: 1.25)),
+              if (snippet.isNotEmpty) ...[
+                const SizedBox(height: 3),
+                Text(snippet, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12.5, color: _grey, height: 1.3)),
+              ],
+              const SizedBox(height: 8),
+              Row(children: [
+                if (course.isNotEmpty)
+                  Flexible(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(8)),
+                      child: Text(course, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w700, color: _orange)),
+                    ),
+                  ),
+                const Spacer(),
+                Icon(CupertinoIcons.chat_bubble_2_fill, size: 13, color: _grey),
+                const SizedBox(width: 4),
+                Text('$replies', style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w700, color: _grey)),
+                const SizedBox(width: 10),
+                Text(_StudentHomeState._fmtAt(m['last_at']?.toString()), style: GoogleFonts.poppins(fontSize: 10.5, color: _grey)),
+              ]),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Hover-lift glass card used for forum thread rows.
+class _ForumHoverCard extends StatefulWidget {
+  const _ForumHoverCard({required this.child, required this.onTap});
+  final Widget child;
+  final VoidCallback onTap;
+  @override
+  State<_ForumHoverCard> createState() => _ForumHoverCardState();
+}
+
+class _ForumHoverCardState extends State<_ForumHoverCard> {
+  bool _hover = false;
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            margin: const EdgeInsets.symmetric(vertical: 5),
+            padding: const EdgeInsets.all(13),
+            transform: Matrix4.translationValues(0, _hover ? -2 : 0, 0),
+            decoration: BoxDecoration(
+              gradient: _cardGradient,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _hover ? _orange.withOpacity(0.40) : _cardBorder),
+              boxShadow: [BoxShadow(color: _orange.withOpacity(_hover ? 0.18 : 0.06), blurRadius: _hover ? 20 : 10, offset: Offset(0, _hover ? 8 : 4))],
+            ),
+            child: widget.child,
+          ),
+        ),
+      );
+}
+
+/// A single forum thread: chat-style posts + a reply composer.
+class _ForumThread extends StatefulWidget {
+  const _ForumThread({super.key, required this.auth, required this.threadId, required this.title, required this.onBack});
+  final AuthService auth;
+  final String threadId;
+  final String title;
+  final VoidCallback onBack;
+
+  @override
+  State<_ForumThread> createState() => _ForumThreadState();
+}
+
+class _ForumThreadState extends State<_ForumThread> {
+  late Future<Map<String, dynamic>> _future = _load();
+  final _reply = TextEditingController();
+  bool _sending = false;
+
+  Future<Map<String, dynamic>> _load() async => ApiClient.decode(await widget.auth.apiGet('/api/v1/me/forum/${widget.threadId}'));
+
+  @override
+  void dispose() {
+    _reply.dispose();
+    super.dispose();
+  }
+
+  void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
+
+  Future<void> _send() async {
+    final body = _reply.text.trim();
+    if (body.isEmpty) return;
+    setState(() => _sending = true);
+    try {
+      ApiClient.decode(await widget.auth.apiPost('/api/v1/me/forum/${widget.threadId}/reply', {'body': body}));
+      _reply.clear();
+      if (mounted) setState(() {
+        _sending = false;
+        _future = _load();
+      });
+    } catch (_) {
+      if (mounted) setState(() => _sending = false);
+      _toast("Couldn't send reply");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // Back + title.
+      Row(children: [
+        _Pressable(
+          onTap: widget.onBack,
+          child: Container(
+            width: 34, height: 34, alignment: Alignment.center,
+            decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(10), border: Border.all(color: _orange.withOpacity(0.25))),
+            child: const Icon(CupertinoIcons.chevron_back, size: 18, color: _orange),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(child: Text(widget.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: _navy))),
+      ]),
+      const SizedBox(height: 14),
+      FutureBuilder<Map<String, dynamic>>(
+        future: _future,
+        builder: (ctx, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return const Padding(padding: EdgeInsets.symmetric(vertical: 30), child: Center(child: CircularProgressIndicator(color: _orange, strokeWidth: 2.5)));
+          }
+          final posts = (snap.data?['posts'] as List?) ?? [];
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            for (var i = 0; i < posts.length; i++) _post(posts[i] as Map<String, dynamic>, i),
+          ]);
+        },
+      ),
+      const SizedBox(height: 12),
+      // Reply composer.
+      Row(children: [
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(24), border: Border.all(color: _cardBorder)),
+            child: TextField(
+              controller: _reply,
+              minLines: 1,
+              maxLines: 4,
+              style: GoogleFonts.poppins(fontSize: 13.5, color: _navy),
+              decoration: InputDecoration(border: InputBorder.none, isDense: true, contentPadding: const EdgeInsets.symmetric(vertical: 12), hintText: 'Write a reply…', hintStyle: GoogleFonts.poppins(fontSize: 13, color: _grey.withOpacity(0.7))),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        _Pressable(
+          onTap: _sending ? () {} : _send,
+          child: Container(
+            width: 46, height: 46, alignment: Alignment.center,
+            decoration: BoxDecoration(gradient: _orangeGrad, shape: BoxShape.circle, boxShadow: [BoxShadow(color: _orange.withOpacity(0.34), blurRadius: 12, offset: const Offset(0, 5))]),
+            child: _sending
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
+                : const Icon(CupertinoIcons.paperplane_fill, size: 18, color: Colors.white),
+          ),
+        ),
+      ]),
+    ]);
+  }
+
+  Widget _post(Map<String, dynamic> p, int index) {
+    final author = p['author']?.toString() ?? 'Someone';
+    final body = p['body']?.toString() ?? '';
+    final avatar = p['avatar']?.toString() ?? '';
+    final staff = p['staff'] == true;
+    final initials = author.trim().isNotEmpty ? author.trim()[0].toUpperCase() : '?';
+    return _Entrance(
+      index: index,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _avatarBox(avatar, 36, initials),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Flexible(child: Text(author, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: _navy))),
+                if (staff) ...[
+                  const SizedBox(width: 6),
+                  Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(5)), child: Text('STAFF', style: GoogleFonts.poppins(fontSize: 8, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5))),
+                ],
+                const Spacer(),
+                Text(_StudentHomeState._fmtAt(p['at']?.toString()), style: GoogleFonts.poppins(fontSize: 10, color: _grey)),
+              ]),
+              const SizedBox(height: 5),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+                decoration: BoxDecoration(
+                  gradient: _cardGradient,
+                  borderRadius: const BorderRadius.only(topLeft: Radius.circular(4), topRight: Radius.circular(14), bottomLeft: Radius.circular(14), bottomRight: Radius.circular(14)),
+                  border: Border.all(color: _cardBorder),
+                ),
+                child: Text(body, style: GoogleFonts.poppins(fontSize: 13, color: _navy, height: 1.45)),
+              ),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
 }
 
 /// Leaderboard with an "Overall" (total XP) tab plus one tab per enrolled
@@ -2647,16 +3184,18 @@ class _AiNewsCardState extends State<_AiNewsCard> {
   bool _refreshing = false;
   Timer? _poll; // refetches fresh headlines
   Timer? _ticker; // ticks the "x min ago" labels + LIVE windows
+  final Set<String> _knownUrls = {}; // every URL seen so far
+  Set<String> _newUrls = {}; // URLs that arrived on the latest poll
 
   @override
   void initState() {
     super.initState();
     _load();
-    // Pull fresh headlines every 90s (backend is cached, so this is cheap)…
-    _poll = Timer.periodic(const Duration(seconds: 90), (_) => _load());
-    // …and re-render every 30s so the relative times & LIVE badges stay live
+    // Pull fresh headlines every 45s (backend auto-refreshes ~every 90s)…
+    _poll = Timer.periodic(const Duration(seconds: 45), (_) => _load());
+    // …and re-render every 20s so the relative times & LIVE badges stay live
     // even between fetches.
-    _ticker = Timer.periodic(const Duration(seconds: 30), (_) {
+    _ticker = Timer.periodic(const Duration(seconds: 20), (_) {
       if (mounted) setState(() {});
     });
   }
@@ -2679,8 +3218,15 @@ class _AiNewsCardState extends State<_AiNewsCard> {
           .where((n) => n.title.isNotEmpty && n.url.isNotEmpty)
           .toList();
       if (!mounted) return;
+      // Flag headlines that are new since the last poll (skip the first load so
+      // we don't light up the whole list on open).
+      final firstLoad = _items == null;
+      final incoming = list.map((n) => n.url).toSet();
+      final fresh = firstLoad ? <String>{} : incoming.difference(_knownUrls);
+      _knownUrls.addAll(incoming);
       setState(() {
         _items = list;
+        _newUrls = fresh;
         _failed = false;
         _refreshing = false;
       });
@@ -2715,6 +3261,22 @@ class _AiNewsCardState extends State<_AiNewsCard> {
             Text('UPDATE ', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: _navy)),
             Text('LIVE AI NEWS', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: _orange)),
             const Spacer(),
+            // "N new" badge appears when fresh headlines land, then fades next poll.
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              transitionBuilder: (child, a) => FadeTransition(opacity: a, child: ScaleTransition(scale: a, child: child)),
+              child: _newUrls.isEmpty
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      key: ValueKey(_newUrls.length),
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: _orange.withOpacity(0.4), blurRadius: 8)]),
+                        child: Text('${_newUrls.length} NEW', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5)),
+                      ),
+                    ),
+            ),
             _livePill(),
           ]),
           const SizedBox(height: 10),
@@ -2731,7 +3293,7 @@ class _AiNewsCardState extends State<_AiNewsCard> {
     if ((items == null || items.isEmpty)) return _statusBox(loading: false);
 
     final rows = <Widget>[
-      for (var i = 0; i < items.length; i++) _newsRow(items[i], last: i == items.length - 1),
+      for (var i = 0; i < items.length; i++) _newsRow(items[i], last: i == items.length - 1, isNew: _newUrls.contains(items[i].url)),
     ];
     if (widget.scrollable) {
       return ListView(padding: EdgeInsets.zero, children: rows);
@@ -2776,13 +3338,24 @@ class _AiNewsCardState extends State<_AiNewsCard> {
         ),
       );
 
-  Widget _newsRow(_News n, {required bool last}) {
+  Widget _newsRow(_News n, {required bool last, bool isNew = false}) {
     final live = n.isLive;
     return InkWell(
       onTap: () => _open(n.url),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 11),
-        decoration: BoxDecoration(border: last ? null : Border(bottom: BorderSide(color: _line))),
+      // Newly-arrived headlines get a soft orange wash that fades out on the
+      // next poll (AnimatedContainer smooths the tint → transparent).
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 700),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.fromLTRB(8, 11, 8, 11),
+        margin: const EdgeInsets.symmetric(vertical: 1),
+        decoration: BoxDecoration(
+          gradient: isNew
+              ? LinearGradient(begin: Alignment.centerLeft, end: Alignment.centerRight, colors: [_orange.withOpacity(0.14), _orange.withOpacity(0.03)])
+              : null,
+          borderRadius: BorderRadius.circular(10),
+          border: last || isNew ? null : Border(bottom: BorderSide(color: _line)),
+        ),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Container(
             width: 56, height: 56, alignment: Alignment.center,
@@ -2792,10 +3365,19 @@ class _AiNewsCardState extends State<_AiNewsCard> {
           const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              // LIVE badge for recent items; otherwise the source name.
-              if (live)
+              // NEW badge for just-arrived items, then LIVE for recent ones,
+              // otherwise the source name.
+              if (isNew)
                 Row(mainAxisSize: MainAxisSize.min, children: [
-                  Container(width: 6, height: 6, decoration: const BoxDecoration(color: _orange, shape: BoxShape.circle)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(5)),
+                    child: Text('NEW', style: GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5)),
+                  ),
+                ])
+              else if (live)
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  const _LiveDot(),
                   const SizedBox(width: 5),
                   Text('LIVE', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
                 ])
@@ -3111,6 +3693,197 @@ class _EntranceState extends State<_Entrance> with SingleTickerProviderStateMixi
   Widget build(BuildContext context) => FadeTransition(opacity: _fade, child: SlideTransition(position: _slide, child: widget.child));
 }
 
+/// A "continue where you left off" card: course cover with a play overlay, the
+/// next lesson (activity) to resume, progress bar, and a one-tap Continue.
+class _ResumeCard extends StatefulWidget {
+  const _ResumeCard({required this.index, required this.data, required this.onContinue});
+  final int index;
+  final Map<String, dynamic> data;
+  final void Function(Map<String, dynamic> lesson) onContinue;
+
+  @override
+  State<_ResumeCard> createState() => _ResumeCardState();
+}
+
+class _ResumeCardState extends State<_ResumeCard> {
+  bool _hover = false;
+
+  static const _covers = [
+    [_orange, Color(0xFFFF7A4D)],
+    [Color(0xFFFF7A4D), Color(0xFFFFB347)],
+    [Color(0xFFF0653C), Color(0xFFFF9166)],
+    [Color(0xFFE8542E), Color(0xFFFF7A4D)],
+  ];
+
+  // Seconds → m:ss (or h:mm:ss).
+  static String _fmtClock(int s) {
+    final h = s ~/ 3600, m = (s % 3600) ~/ 60, sec = s % 60;
+    final mm = h > 0 ? m.toString().padLeft(2, '0') : m.toString();
+    return h > 0 ? '$h:$mm:${sec.toString().padLeft(2, '0')}' : '$mm:${sec.toString().padLeft(2, '0')}';
+  }
+
+  ({IconData icon, String label}) _kind(String type) {
+    switch (type) {
+      case 'video':
+        return (icon: CupertinoIcons.play_rectangle_fill, label: 'VIDEO');
+      case 'link':
+        return (icon: CupertinoIcons.link, label: 'LINK');
+      case 'file':
+        return (icon: CupertinoIcons.doc_fill, label: 'FILE');
+      default:
+        return (icon: CupertinoIcons.doc_text_fill, label: 'LESSON');
+    }
+  }
+
+  // 84×84 cover: admin image if set, else a gradient — with a play overlay.
+  Widget _thumb(List<Color> cover) {
+    final url = widget.data['image_url']?.toString() ?? '';
+    Widget bg;
+    Widget? im;
+    if (url.isNotEmpty) {
+      if (url.startsWith('data:')) {
+        final bytes = _decodeDataUri(url);
+        if (bytes != null) im = Image.memory(bytes, width: 84, height: 84, fit: BoxFit.cover);
+      } else if (url.startsWith('http')) {
+        im = Image.network(url, width: 84, height: 84, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox());
+      }
+    }
+    bg = im ??
+        Container(
+          width: 84, height: 84,
+          decoration: BoxDecoration(gradient: LinearGradient(colors: cover, begin: Alignment.topLeft, end: Alignment.bottomRight)),
+        );
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Stack(alignment: Alignment.center, children: [
+        SizedBox(width: 84, height: 84, child: bg),
+        // Dim + play button overlay.
+        Container(width: 84, height: 84, color: Colors.black.withOpacity(0.18)),
+        AnimatedScale(
+          scale: _hover ? 1.12 : 1.0,
+          duration: const Duration(milliseconds: 200),
+          child: Container(
+            width: 34, height: 34, alignment: Alignment.center,
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.92), shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 8)]),
+            child: const Icon(CupertinoIcons.play_fill, size: 16, color: _orange),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.data;
+    final cover = _covers[widget.index % _covers.length];
+    final course = d['course']?.toString() ?? 'Course';
+    final lesson = d['title']?.toString() ?? 'Next lesson';
+    final module = d['module']?.toString() ?? '';
+    final type = d['type']?.toString() ?? 'text';
+    final percent = ((d['percent'] ?? 0) as num).toInt();
+    final done = ((d['done'] ?? 0) as num).toInt();
+    final total = ((d['total'] ?? 0) as num).toInt();
+    final position = ((d['position'] ?? 0) as num).toInt();
+    final k = _kind(type);
+    final pct = (percent / 100).clamp(0.0, 1.0);
+
+    void go() => widget.onContinue({'id': d['lesson_id'], 'title': lesson, 'type': type, 'url': d['url'], 'position': position});
+
+    return _Entrance(
+      index: widget.index,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          onTap: go,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            margin: const EdgeInsets.symmetric(vertical: 6),
+            padding: const EdgeInsets.all(14),
+            transform: Matrix4.translationValues(0, _hover ? -2 : 0, 0),
+            decoration: BoxDecoration(
+              gradient: _cardGradient,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: _hover ? _orange.withOpacity(0.40) : _cardBorder, width: 1),
+              boxShadow: [BoxShadow(color: _orange.withOpacity(_hover ? 0.22 : 0.07), blurRadius: _hover ? 22 : 12, offset: Offset(0, _hover ? 9 : 5))],
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                _thumb(cover),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(course.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.4)),
+                    const SizedBox(height: 3),
+                    Row(children: [
+                      Icon(k.icon, size: 13, color: _grey),
+                      const SizedBox(width: 5),
+                      Text(k.label, style: GoogleFonts.poppins(fontSize: 9.5, fontWeight: FontWeight.w800, color: _grey, letterSpacing: 0.5)),
+                      if (position > 0) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(6)),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(CupertinoIcons.arrow_counterclockwise, size: 9, color: _orange),
+                            const SizedBox(width: 3),
+                            Text('Resume ${_fmtClock(position)}', style: GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w800, color: _orange)),
+                          ]),
+                        ),
+                      ],
+                    ]),
+                    const SizedBox(height: 4),
+                    Text(lesson, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 14.5, fontWeight: FontWeight.w700, color: _navy, height: 1.25)),
+                    if (module.isNotEmpty)
+                      Padding(padding: const EdgeInsets.only(top: 2), child: Text(module, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 11.5, color: _grey))),
+                  ]),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              Row(children: [
+                Text('$done/$total lessons', style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
+                const Spacer(),
+                Text('$percent%', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
+              ]),
+              const SizedBox(height: 7),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: pct),
+                  duration: const Duration(milliseconds: 800),
+                  curve: Curves.easeOutCubic,
+                  builder: (_, v, __) => LinearProgressIndicator(
+                    value: v,
+                    minHeight: 6,
+                    backgroundColor: _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0EBE8),
+                    valueColor: const AlwaysStoppedAnimation(_orange),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                height: 44, alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  gradient: _orangeGrad,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [BoxShadow(color: _orange.withOpacity(0.32), blurRadius: 12, offset: const Offset(0, 5))],
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(CupertinoIcons.play_fill, color: Colors.white, size: 15),
+                  const SizedBox(width: 8),
+                  Text('Continue', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
+                ]),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// A rich course card: gradient cover, animated progress bar, hover lift.
 class _CourseCard extends StatefulWidget {
   const _CourseCard({required this.index, required this.title, required this.done, required this.total, required this.percent, required this.onOpen, this.imageUrl});
@@ -3341,66 +4114,552 @@ class _GridCellState extends State<_GridCell> {
   }
 }
 
-/// A settings row with an animated toggle.
-class _SettingRow extends StatefulWidget {
-  const _SettingRow(this.label, this.sub, this.initial);
-  final String label;
-  final String sub;
-  final bool initial;
+// Danger accent for destructive actions (kept warm/on-theme).
+const _danger = Color(0xFFE0453C);
+
+/// Full Settings experience: Appearance (theme mode, accent colour, font size)
+/// and Security (update password, 2FA, login activity, logout all devices).
+class _SettingsView extends StatefulWidget {
+  const _SettingsView({required this.auth, required this.onLogout});
+  final AuthService auth;
+  final VoidCallback onLogout;
 
   @override
-  State<_SettingRow> createState() => _SettingRowState();
+  State<_SettingsView> createState() => _SettingsViewState();
 }
 
-class _SettingRowState extends State<_SettingRow> {
-  late bool _on = widget.initial;
+class _SettingsViewState extends State<_SettingsView> {
+  // Expansion + form state.
+  bool _pwOpen = false;
+  bool _actOpen = false;
+  bool _twoFA = false; // current enabled status (from /me/2fa)
+  bool _savingPw = false;
+  final _cur = TextEditingController();
+  final _new = TextEditingController();
+  final _conf = TextEditingController();
+  List<dynamic>? _devices; // null until first load
+
+  // 2FA setup/disable flow.
+  bool _faOpen = false;
+  bool _faBusy = false;
+  String? _faSecret; // pending secret while setting up
+  final _faCode = TextEditingController();
+
+  Color get _ac => accentNotifier.value;
+  LinearGradient get _acGrad => LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_ac, Color.lerp(_ac, Colors.white, 0.22)!]);
 
   @override
-  Widget build(BuildContext context) =>
-      _toggleRowView(widget.label, widget.sub, _on, () => setState(() => _on = !_on));
-}
+  void initState() {
+    super.initState();
+    themeNotifier.addListener(_r);
+    accentNotifier.addListener(_r);
+    textScaleNotifier.addListener(_r);
+    _load2FA();
+  }
 
-/// Shared visual for a labelled toggle row.
-Widget _toggleRowView(String label, String sub, bool on, VoidCallback onTap) => Container(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: _line))),
-      child: Row(children: [
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: GoogleFonts.poppins(fontSize: 14, color: _navy)),
-          Text(sub, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
-        ])),
-        GestureDetector(
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: 44, height: 24,
-            decoration: BoxDecoration(color: on ? _orange : _line, borderRadius: BorderRadius.circular(12)),
-            child: AnimatedAlign(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOut,
-              alignment: on ? Alignment.centerRight : Alignment.centerLeft,
-              child: Container(width: 18, height: 18, margin: const EdgeInsets.symmetric(horizontal: 3), decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+  Future<void> _load2FA() async {
+    try {
+      final m = ApiClient.decode(await widget.auth.apiGet('/api/v1/me/2fa'));
+      if (mounted) setState(() => _twoFA = m['enabled'] == true);
+    } catch (_) {}
+  }
+
+  Future<void> _faSetup() async {
+    setState(() => _faBusy = true);
+    try {
+      final m = ApiClient.decode(await widget.auth.apiPost('/api/v1/me/2fa/setup', {}));
+      if (mounted) setState(() {
+        _faSecret = m['secret']?.toString();
+        _faBusy = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _faBusy = false);
+      _toast("Couldn't start setup");
+    }
+  }
+
+  Future<void> _faVerify() async {
+    final code = _faCode.text.trim();
+    if (code.length < 6) return _toast('Enter the 6-digit code');
+    setState(() => _faBusy = true);
+    try {
+      ApiClient.decode(await widget.auth.apiPost('/api/v1/me/2fa/verify', {'code': code}));
+      _faCode.clear();
+      if (mounted) setState(() {
+        _twoFA = true;
+        _faOpen = false;
+        _faSecret = null;
+        _faBusy = false;
+      });
+      _toast('Two-factor authentication enabled');
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _faBusy = false);
+      _toast(e.message);
+    } catch (_) {
+      if (mounted) setState(() => _faBusy = false);
+      _toast("Couldn't verify code");
+    }
+  }
+
+  Future<void> _faDisable() async {
+    final code = _faCode.text.trim();
+    if (code.length < 6) return _toast('Enter a code to confirm');
+    setState(() => _faBusy = true);
+    try {
+      ApiClient.decode(await widget.auth.apiPost('/api/v1/me/2fa/disable', {'code': code}));
+      _faCode.clear();
+      if (mounted) setState(() {
+        _twoFA = false;
+        _faOpen = false;
+        _faBusy = false;
+      });
+      _toast('Two-factor authentication disabled');
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _faBusy = false);
+      _toast(e.message);
+    } catch (_) {
+      if (mounted) setState(() => _faBusy = false);
+      _toast("Couldn't disable");
+    }
+  }
+
+  void _r() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    themeNotifier.removeListener(_r);
+    accentNotifier.removeListener(_r);
+    textScaleNotifier.removeListener(_r);
+    for (final c in [_cur, _new, _conf, _faCode]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
+
+  Future<void> _savePassword() async {
+    final cur = _cur.text, nw = _new.text, cf = _conf.text;
+    if (cur.isEmpty || nw.isEmpty) return _toast('Fill in all fields');
+    if (nw.length < 8) return _toast('New password must be at least 8 characters');
+    if (nw != cf) return _toast('New passwords do not match');
+    setState(() => _savingPw = true);
+    try {
+      ApiClient.decode(await widget.auth.apiPost('/api/v1/me/password', {'current_password': cur, 'new_password': nw}));
+      _cur.clear();
+      _new.clear();
+      _conf.clear();
+      if (mounted) setState(() => _pwOpen = false);
+      _toast('Password updated');
+    } on ApiException catch (e) {
+      _toast(e.message);
+    } catch (_) {
+      _toast("Couldn't update password");
+    } finally {
+      if (mounted) setState(() => _savingPw = false);
+    }
+  }
+
+  Future<void> _loadDevices() async {
+    try {
+      final m = ApiClient.decode(await widget.auth.apiGet('/api/v1/devices'));
+      if (mounted) setState(() => _devices = (m['devices'] as List?) ?? []);
+    } catch (_) {
+      if (mounted) setState(() => _devices = []);
+    }
+  }
+
+  Future<void> _confirmLogoutAll() async {
+    final ok = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('Logout all devices?'),
+        content: const Text('You will be signed out everywhere, including here.'),
+        actions: [
+          CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+          CupertinoDialogAction(isDestructiveAction: true, onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Logout')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await widget.auth.apiDelete('/api/v1/me/devices');
+    } catch (_) {}
+    widget.onLogout();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _Entrance(
+        index: 0,
+        child: _section('Appearance', CupertinoIcons.paintbrush_fill, [
+          _themeRow(),
+          _div(),
+          _fontRow(),
+        ]),
+      ),
+      const SizedBox(height: 14),
+      _Entrance(
+        index: 1,
+        child: _section('Security', CupertinoIcons.lock_shield_fill, [
+          _passwordRow(),
+          _div(),
+          _twoFARow(),
+          _div(),
+          _activityRow(),
+          _div(),
+          _logoutAllRow(),
+        ]),
+      ),
+    ]);
+  }
+
+  // ---- Building blocks ------------------------------------------------------
+
+  Widget _section(String title, IconData icon, List<Widget> rows) => Container(
+        decoration: BoxDecoration(
+          gradient: _cardGradient,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _cardBorder),
+          boxShadow: [BoxShadow(color: _ac.withOpacity(0.06), blurRadius: 16, offset: const Offset(0, 8))],
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 15, 16, 6),
+            child: Row(children: [
+              Icon(icon, size: 16, color: _ac),
+              const SizedBox(width: 8),
+              Text(title, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w800, color: _navy)),
+            ]),
+          ),
+          ...rows,
+        ]),
+      );
+
+  Widget _div() => Container(height: 1, margin: const EdgeInsets.symmetric(horizontal: 16), color: _line);
+
+  Widget _iconChip(IconData icon, {Color? color}) {
+    final c = color ?? _ac;
+    return Container(
+      width: 34, height: 34, alignment: Alignment.center,
+      decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [c.withOpacity(0.22), c.withOpacity(0.08)]), borderRadius: BorderRadius.circular(10)),
+      child: Icon(icon, size: 16, color: c),
+    );
+  }
+
+  // A control row: icon + title/sub, with [control] beneath.
+  Widget _ctrlRow(IconData icon, String title, String sub, Widget control) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            _iconChip(icon),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
+              Text(sub, style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
+            ])),
+          ]),
+          const SizedBox(height: 10),
+          control,
+        ]),
+      );
+
+  // A tappable row (for expandable / action items).
+  Widget _tapRow(IconData icon, String title, String sub, VoidCallback onTap, {Widget? trailing, Color? tint}) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: Row(children: [
+            _iconChip(icon, color: tint),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: tint ?? _navy)),
+              Text(sub, style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
+            ])),
+            const SizedBox(width: 8),
+            trailing ?? Icon(CupertinoIcons.chevron_right, size: 15, color: _grey),
+          ]),
+        ),
+      );
+
+  Widget _seg(List<String> labels, int sel, void Function(int) onTap) => Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(color: _ac.withOpacity(0.08), borderRadius: BorderRadius.circular(12)),
+        child: Row(children: [
+          for (var i = 0; i < labels.length; i++)
+            Expanded(
+              child: _Pressable(
+                onTap: () => onTap(i),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    gradient: sel == i ? _acGrad : null,
+                    borderRadius: BorderRadius.circular(9),
+                    boxShadow: sel == i ? [BoxShadow(color: _ac.withOpacity(0.30), blurRadius: 10, offset: const Offset(0, 4))] : const [],
+                  ),
+                  child: Text(labels[i], style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: sel == i ? Colors.white : _navy)),
+                ),
+              ),
             ),
+        ]),
+      );
+
+  // ---- Appearance -----------------------------------------------------------
+
+  Widget _themeRow() {
+    final mode = themeNotifier.value;
+    final sel = mode == ThemeMode.system ? 0 : (mode == ThemeMode.light ? 1 : 2);
+    return _ctrlRow(CupertinoIcons.circle_righthalf_fill, 'Theme', 'System, light or dark', _seg(['System', 'Light', 'Dark'], sel, (i) {
+      setTheme(i == 0 ? ThemeMode.system : (i == 1 ? ThemeMode.light : ThemeMode.dark));
+    }));
+  }
+
+  Widget _fontRow() {
+    const scales = [0.9, 1.0, 1.15];
+    final cur = textScaleNotifier.value;
+    var sel = 1;
+    var best = 1e9;
+    for (var i = 0; i < scales.length; i++) {
+      final d = (cur - scales[i]).abs();
+      if (d < best) {
+        best = d;
+        sel = i;
+      }
+    }
+    return _ctrlRow(CupertinoIcons.textformat_size, 'Font size', 'Make text smaller or larger', _seg(['Small', 'Default', 'Large'], sel, (i) => setTextScale(scales[i])));
+  }
+
+  // ---- Security -------------------------------------------------------------
+
+  Widget _passwordRow() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _tapRow(
+          CupertinoIcons.lock_fill, 'Update password', 'Change your account password',
+          () => setState(() => _pwOpen = !_pwOpen),
+          trailing: AnimatedRotation(turns: _pwOpen ? 0.5 : 0, duration: const Duration(milliseconds: 200), child: Icon(CupertinoIcons.chevron_down, size: 15, color: _grey)),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: _pwOpen
+              ? Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    _pwField('Current password', _cur),
+                    const SizedBox(height: 10),
+                    _pwField('New password', _new),
+                    const SizedBox(height: 10),
+                    _pwField('Confirm new password', _conf),
+                    const SizedBox(height: 12),
+                    _Pressable(
+                      onTap: _savingPw ? () {} : _savePassword,
+                      child: Container(
+                        height: 46, alignment: Alignment.center,
+                        decoration: BoxDecoration(gradient: _acGrad, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: _ac.withOpacity(0.32), blurRadius: 12, offset: const Offset(0, 5))]),
+                        child: _savingPw
+                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
+                            : Text('Update password', style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
+                      ),
+                    ),
+                  ]),
+                )
+              : const SizedBox(width: double.infinity),
+        ),
+      ]);
+
+  Widget _pwField(String hint, TextEditingController c) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
+        child: TextField(
+          controller: c,
+          obscureText: true,
+          style: GoogleFonts.poppins(fontSize: 13.5, color: _navy),
+          decoration: InputDecoration(border: InputBorder.none, isDense: true, contentPadding: const EdgeInsets.symmetric(vertical: 13), hintText: hint, hintStyle: GoogleFonts.poppins(fontSize: 13, color: _grey.withOpacity(0.7))),
+        ),
+      );
+
+  Widget _twoFARow() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: Row(children: [
+            _iconChip(CupertinoIcons.shield_lefthalf_fill),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Text('Two-factor authentication', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
+                if (_twoFA) ...[
+                  const SizedBox(width: 6),
+                  Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: _green.withOpacity(0.14), borderRadius: BorderRadius.circular(5)), child: Text('ON', style: GoogleFonts.poppins(fontSize: 8.5, fontWeight: FontWeight.w800, color: _green, letterSpacing: 0.5))),
+                ],
+              ]),
+              Text(_twoFA ? 'Codes required at login' : 'Add a one-time code at login', style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
+            ])),
+            _switch(_twoFA, () {
+              if (_faBusy) return;
+              setState(() => _faOpen = !_faOpen);
+              if (_faOpen && !_twoFA && _faSecret == null) _faSetup();
+            }),
+          ]),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: _faOpen ? _faPanel() : const SizedBox(width: double.infinity),
+        ),
+      ]);
+
+  Widget _faPanel() => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+        child: _twoFA ? _faDisablePanel() : _faSetupPanel(),
+      );
+
+  Widget _faSetupPanel() {
+    if (_faSecret == null) {
+      return const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Center(child: CupertinoActivityIndicator()));
+    }
+    final pretty = _faSecret!.replaceAllMapped(RegExp(r'.{4}'), (m) => '${m.group(0)} ').trim();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text('1. In an authenticator app (Google Authenticator, Authy, 1Password), add an account and enter this setup key:', style: GoogleFonts.poppins(fontSize: 11.5, color: _grey, height: 1.4)),
+      const SizedBox(height: 8),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(10), border: Border.all(color: _cardBorder)),
+        child: SelectableText(pretty, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy, letterSpacing: 1.5)),
+      ),
+      const SizedBox(height: 12),
+      Text('2. Enter the 6-digit code it shows:', style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
+      const SizedBox(height: 8),
+      _codeField(),
+      const SizedBox(height: 12),
+      _faButton('Verify & enable', _faVerify, _acGrad),
+    ]);
+  }
+
+  Widget _faDisablePanel() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('Enter a current code from your authenticator app to turn off two-factor authentication.', style: GoogleFonts.poppins(fontSize: 11.5, color: _grey, height: 1.4)),
+        const SizedBox(height: 8),
+        _codeField(),
+        const SizedBox(height: 12),
+        _faButton('Turn off 2FA', _faDisable, LinearGradient(colors: [_danger, Color.lerp(_danger, Colors.white, 0.2)!])),
+      ]);
+
+  Widget _codeField() => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
+        child: TextField(
+          controller: _faCode,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: _navy, letterSpacing: 4),
+          decoration: InputDecoration(border: InputBorder.none, isDense: true, counterText: '', contentPadding: const EdgeInsets.symmetric(vertical: 13), hintText: '000000', hintStyle: GoogleFonts.poppins(fontSize: 16, color: _grey.withOpacity(0.5), letterSpacing: 4)),
+        ),
+      );
+
+  Widget _faButton(String label, VoidCallback onTap, Gradient g) => _Pressable(
+        onTap: _faBusy ? () {} : onTap,
+        child: Container(
+          height: 46, alignment: Alignment.center,
+          decoration: BoxDecoration(gradient: g, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: _ac.withOpacity(0.28), blurRadius: 12, offset: const Offset(0, 5))]),
+          child: _faBusy
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
+              : Text(label, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
+        ),
+      );
+
+  Widget _switch(bool on, VoidCallback onTap) => GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: 44, height: 26,
+          decoration: BoxDecoration(gradient: on ? _acGrad : null, color: on ? null : _line, borderRadius: BorderRadius.circular(13)),
+          child: AnimatedAlign(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            alignment: on ? Alignment.centerRight : Alignment.centerLeft,
+            child: Container(width: 20, height: 20, margin: const EdgeInsets.symmetric(horizontal: 3), decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+          ),
+        ),
+      );
+
+  Widget _activityRow() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _tapRow(
+          CupertinoIcons.device_laptop, 'Active devices & sessions', 'Devices signed in to your account',
+          () {
+            setState(() => _actOpen = !_actOpen);
+            if (_actOpen && _devices == null) _loadDevices();
+          },
+          trailing: AnimatedRotation(turns: _actOpen ? 0.5 : 0, duration: const Duration(milliseconds: 200), child: Icon(CupertinoIcons.chevron_down, size: 15, color: _grey)),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: !_actOpen
+              ? const SizedBox(width: double.infinity)
+              : Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: _devices == null
+                      ? const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Center(child: CupertinoActivityIndicator()))
+                      : _devices!.isEmpty
+                          ? Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Text('No active devices.', style: GoogleFonts.poppins(fontSize: 12.5, color: _grey)))
+                          : Column(children: [for (final d in _devices!) _deviceTile(d as Map<String, dynamic>)]),
+                ),
+        ),
+      ]);
+
+  Widget _deviceTile(Map<String, dynamic> d) {
+    final platform = (d['platform']?.toString() ?? '').trim();
+    final model = (d['model']?.toString() ?? '').trim();
+    final name = model.isNotEmpty ? model : (platform.isNotEmpty ? platform : 'Unknown device');
+    final isMobile = platform.toLowerCase().contains('android') || platform.toLowerCase().contains('ios');
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
+      child: Row(children: [
+        Icon(isMobile ? CupertinoIcons.device_phone_portrait : CupertinoIcons.desktopcomputer, size: 18, color: _ac),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _navy)),
+          Text('Last seen ${_StudentHomeState._fmtAt(d['last_seen']?.toString())}', style: GoogleFonts.poppins(fontSize: 11, color: _grey)),
+        ])),
+        _Pressable(
+          onTap: () => _signOutDevice(d['id']?.toString() ?? ''),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(color: _danger.withOpacity(0.10), borderRadius: BorderRadius.circular(9), border: Border.all(color: _danger.withOpacity(0.30))),
+            child: Text('Sign out', style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w700, color: _danger)),
           ),
         ),
       ]),
     );
-
-/// Dark Mode toggle — switches the app theme via [setTheme].
-class _DarkModeRow extends StatelessWidget {
-  const _DarkModeRow();
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: themeNotifier,
-      builder: (ctx, mode, _) {
-        final on = mode == ThemeMode.dark ||
-            (mode == ThemeMode.system && MediaQuery.platformBrightnessOf(ctx) == Brightness.dark);
-        return _toggleRowView('Dark Mode', 'Easy on the eyes at night', on,
-            () => setTheme(on ? ThemeMode.light : ThemeMode.dark));
-      },
-    );
   }
+
+  Future<void> _signOutDevice(String id) async {
+    if (id.isEmpty) return;
+    try {
+      await widget.auth.apiDelete('/api/v1/devices/$id');
+      if (mounted) setState(() => _devices?.removeWhere((d) => (d as Map)['id']?.toString() == id));
+      _toast('Device signed out');
+    } catch (_) {
+      _toast("Couldn't sign out device");
+    }
+  }
+
+  Widget _logoutAllRow() => _tapRow(
+        CupertinoIcons.square_arrow_right, 'Logout all devices', 'Sign out everywhere at once',
+        _confirmLogoutAll,
+        tint: _danger,
+        trailing: const SizedBox.shrink(),
+      );
 }
 
 /// Animated count-up + hover/tappable stat tile (dashboard).
