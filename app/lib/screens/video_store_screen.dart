@@ -148,14 +148,14 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
     );
   }
 
-  Future<void> _delete(String id, String title) async {
+  Future<void> _delete(String key, String title) async {
     final yes = await showSquareConfirm(context,
         title: 'Delete video',
-        message: 'Delete "$title" from the store and R2? Lessons using its URL will stop playing.',
+        message: 'Delete "$title" from R2? Lessons using its URL will stop playing.',
         confirmLabel: 'Delete', destructive: true);
     if (!yes) return;
     try {
-      await widget.auth.apiDelete('/api/v1/manage/videos/$id');
+      await widget.auth.apiDelete('/api/v1/manage/videos?key=${Uri.encodeQueryComponent(key)}');
       _toast('Deleted');
       _load();
     } catch (_) { _toast('Could not delete'); }
@@ -239,7 +239,7 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
             ),
             const SizedBox(width: 14),
             HoverTap(
-              onTap: () => _delete(v['id'].toString(), title),
+              onTap: () => _delete(v['key'].toString(), title),
               child: const Icon(CupertinoIcons.trash, size: 20, color: AppleColors.red),
             ),
           ],
