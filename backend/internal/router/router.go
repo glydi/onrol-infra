@@ -18,6 +18,8 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	// Public.
 	api.Post("/auth/register", h.Register)
 	api.Post("/auth/login", h.Login)
+	api.Post("/auth/forgot", h.ForgotPassword)        // email an OTP to reset the password
+	api.Post("/auth/reset", h.ResetPassword)          // verify OTP + set a new password
 	api.Post("/forms/:slug/submit", h.SubmitForm)     // public hosted-form intake
 	api.Post("/surveys/:slug/submit", h.SubmitSurvey) // public survey intake
 	api.Get("/news", h.News)                          // live AI/tech news (RSS aggregate)

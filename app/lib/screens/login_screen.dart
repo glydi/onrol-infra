@@ -36,6 +36,13 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _needTotp = false; // account has 2FA — show the code field
   String? _error;
 
+  // Forgot-password (OTP) flow.
+  final _fpEmail = TextEditingController();
+  final _fpCode = TextEditingController();
+  final _fpNew = TextEditingController();
+  bool _forgot = false; // showing the reset flow
+  bool _otpSent = false; // code has been emailed → show code + new password
+
   Future<void> _submit() async {
     setState(() {
       _busy = true;
@@ -45,20 +52,7 @@ class _LoginScreenState extends State<LoginScreen> {
       // One login for everyone — the account's role decides where they land.
       await widget.auth.login(_email.text.trim(), _password.text, totp: _needTotp ? _totp.text.trim() : null);
       if (!mounted) return;
-      final staff = widget.auth.user?.isStaff ?? false;
-      Navigator.of(context).pushReplacement(MaterialPageRoute(
-        builder: (_) => isCrmHost()
-            ? CrmPortalScreen(auth: widget.auth)
-            : isAmbassadorHost()
-                ? AmbassadorPortalScreen(auth: widget.auth)
-                : isAccountsHost()
-                    ? AccountsPortalScreen(auth: widget.auth)
-                    : isCollegeHost()
-                        ? CollegePortalScreen(auth: widget.auth)
-                        : isFranchiseHost()
-                            ? FranchisePortalScreen(auth: widget.auth)
-                            : (staff ? ConsoleScreen(auth: widget.auth) : HomeScreen(auth: widget.auth)),
-      ));
+      _goHome();
     } on ApiException catch (e) {
       // Account has 2FA: reveal the code field and prompt for it.
       if (e.data?['totp_required'] == true) {
@@ -77,6 +71,84 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  void _goHome() {
+    final staff = widget.auth.user?.isStaff ?? false;
+    Navigator.of(context).pushReplacement(MaterialPageRoute(
+      builder: (_) => isCrmHost()
+          ? CrmPortalScreen(auth: widget.auth)
+          : isAmbassadorHost()
+              ? AmbassadorPortalScreen(auth: widget.auth)
+              : isAccountsHost()
+                  ? AccountsPortalScreen(auth: widget.auth)
+                  : isCollegeHost()
+                      ? CollegePortalScreen(auth: widget.auth)
+                      : isFranchiseHost()
+                          ? FranchisePortalScreen(auth: widget.auth)
+                          : (staff ? ConsoleScreen(auth: widget.auth) : HomeScreen(auth: widget.auth)),
+    ));
+  }
+
+  // Step 1 of reset: email a 6-digit code.
+  Future<void> _sendReset() async {
+    final email = _fpEmail.text.trim();
+    if (email.isEmpty) {
+      setState(() => _error = 'Enter your account email.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      ApiClient.decode(await widget.auth.apiPost('/api/v1/auth/forgot', {'email': email}));
+      if (mounted) setState(() => _otpSent = true);
+    } catch (_) {
+      if (mounted) setState(() => _error = "Couldn't send the code. Try again.");
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  // Step 2 of reset: verify the code, set the new password, then sign in.
+  Future<void> _doReset() async {
+    final email = _fpEmail.text.trim();
+    final code = _fpCode.text.trim();
+    final np = _fpNew.text;
+    if (code.length < 6) {
+      setState(() => _error = 'Enter the 6-digit code we emailed you.');
+      return;
+    }
+    if (np.length < 8) {
+      setState(() => _error = 'New password must be at least 8 characters.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      ApiClient.decode(await widget.auth.apiPost('/api/v1/auth/reset', {'email': email, 'code': code, 'new_password': np}));
+      await widget.auth.login(email, np); // auto sign-in with the new password
+      if (!mounted) return;
+      _goHome();
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } catch (_) {
+      if (mounted) setState(() => _error = "Couldn't reset. Check the code and try again.");
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _toggleForgot(bool on) => setState(() {
+        _forgot = on;
+        _otpSent = false;
+        _error = null;
+        _fpCode.clear();
+        _fpNew.clear();
+        if (on) _fpEmail.text = _email.text.trim();
+      });
 
   @override
   Widget build(BuildContext context) {
@@ -123,23 +195,37 @@ class _LoginScreenState extends State<LoginScreen> {
                       ]),
                     ),
                     const SizedBox(height: 6),
-                    Text('Sign in to your account', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 14, color: grey)),
+                    Text(
+                      _forgot ? (_otpSent ? 'Enter the code we emailed you' : 'Reset your password') : 'Sign in to your account',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(fontSize: 14, color: grey),
+                    ),
                     const SizedBox(height: 28),
                     _glassCard(
                       dark: dark,
                       child: Column(
                         children: [
                           const SizedBox(height: 14),
-                          AppleField(controller: _email, hint: 'Email or username', icon: CupertinoIcons.person, keyboard: TextInputType.text),
-                          const SizedBox(height: 12),
-                          Divider(height: 1, color: p.separator),
-                          const SizedBox(height: 12),
-                          AppleField(controller: _password, hint: 'Password', icon: CupertinoIcons.lock, obscure: true),
-                          if (_needTotp) ...[
+                          if (!_forgot) ...[
+                            AppleField(controller: _email, hint: 'Email or username', icon: CupertinoIcons.person, keyboard: TextInputType.text),
                             const SizedBox(height: 12),
                             Divider(height: 1, color: p.separator),
                             const SizedBox(height: 12),
-                            AppleField(controller: _totp, hint: '6-digit code', icon: CupertinoIcons.shield_lefthalf_fill, keyboard: TextInputType.number),
+                            AppleField(controller: _password, hint: 'Password', icon: CupertinoIcons.lock, obscure: true),
+                            if (_needTotp) ...[
+                              const SizedBox(height: 12),
+                              Divider(height: 1, color: p.separator),
+                              const SizedBox(height: 12),
+                              AppleField(controller: _totp, hint: '6-digit code', icon: CupertinoIcons.shield_lefthalf_fill, keyboard: TextInputType.number),
+                            ],
+                          ] else if (!_otpSent) ...[
+                            AppleField(controller: _fpEmail, hint: 'Your account email', icon: CupertinoIcons.mail, keyboard: TextInputType.emailAddress),
+                          ] else ...[
+                            AppleField(controller: _fpCode, hint: '6-digit code', icon: CupertinoIcons.number, keyboard: TextInputType.number),
+                            const SizedBox(height: 12),
+                            Divider(height: 1, color: p.separator),
+                            const SizedBox(height: 12),
+                            AppleField(controller: _fpNew, hint: 'New password', icon: CupertinoIcons.lock, obscure: true),
                           ],
                           const SizedBox(height: 14),
                         ],
@@ -156,10 +242,28 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ],
                     const SizedBox(height: 22),
-                    _signInButton(),
-                    const SizedBox(height: 18),
-                    Text('Students, mentors and admins use the same sign-in.\nYour account decides what you see.',
-                        textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 12, color: grey, height: 1.5)),
+                    if (!_forgot)
+                      _primaryButton('Sign In', _submit)
+                    else if (!_otpSent)
+                      _primaryButton('Send code', _sendReset)
+                    else
+                      _primaryButton('Reset & sign in', _doReset),
+                    const SizedBox(height: 14),
+                    // Forgot-password / back links.
+                    if (!_forgot)
+                      GestureDetector(
+                        onTap: () => _toggleForgot(true),
+                        child: Text('Forgot password?', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _orange)),
+                      )
+                    else
+                      GestureDetector(
+                        onTap: () => _toggleForgot(false),
+                        child: Text('← Back to sign in', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _orange)),
+                      ),
+                    const SizedBox(height: 16),
+                    if (!_forgot)
+                      Text('Students, mentors and admins use the same sign-in.\nYour account decides what you see.',
+                          textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 12, color: grey, height: 1.5)),
                     const SizedBox(height: 22),
                     const ThemeToggle(),
                   ],
@@ -194,8 +298,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // Orange gradient primary button with a busy spinner.
-  Widget _signInButton() => GestureDetector(
-        onTap: _busy ? null : _submit,
+  Widget _primaryButton(String label, VoidCallback onTap) => GestureDetector(
+        onTap: _busy ? null : onTap,
         child: Container(
           height: 50,
           alignment: Alignment.center,
@@ -206,7 +310,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           child: _busy
               ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
-              : Text('Sign In', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
+              : Text(label, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
         ),
       );
 }
