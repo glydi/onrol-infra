@@ -182,7 +182,10 @@ class _LoginScreenState extends State<LoginScreen> {
         children: [
           Positioned.fill(child: _LoginBackdrop(dark: dark)),
           Center(
-            child: SingleChildScrollView(
+            child: ScrollConfiguration(
+              // Hide the scrollbar on the login page (esp. web).
+              behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+              child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 380),
@@ -311,6 +314,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                 ),
               ),
+            ),
             ),
           ),
         ],
