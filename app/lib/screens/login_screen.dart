@@ -42,6 +42,21 @@ class _LoginScreenState extends State<LoginScreen> {
   final _fpNew = TextEditingController();
   bool _forgot = false; // showing the reset flow
   bool _otpSent = false; // code has been emailed → show code + new password
+  bool _remember = true; // remember email + password for next login
+
+  @override
+  void initState() {
+    super.initState();
+    // Prefill the last-used credentials so signing back in after logout is one tap.
+    widget.auth.savedCredentials().then((c) {
+      if (c != null && mounted) {
+        setState(() {
+          _email.text = c.$1;
+          _password.text = c.$2;
+        });
+      }
+    });
+  }
 
   Future<void> _submit() async {
     setState(() {
@@ -51,6 +66,12 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       // One login for everyone — the account's role decides where they land.
       await widget.auth.login(_email.text.trim(), _password.text, totp: _needTotp ? _totp.text.trim() : null);
+      // Remember (or forget) the credentials for next time.
+      if (_remember) {
+        await widget.auth.saveCredentials(_email.text.trim(), _password.text);
+      } else {
+        await widget.auth.clearCredentials();
+      }
       if (!mounted) return;
       _goHome();
     } on ApiException catch (e) {
@@ -161,7 +182,10 @@ class _LoginScreenState extends State<LoginScreen> {
         children: [
           Positioned.fill(child: _LoginBackdrop(dark: dark)),
           Center(
-            child: SingleChildScrollView(
+            child: ScrollConfiguration(
+              // Hide the scrollbar on the login page (esp. web).
+              behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+              child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 380),
@@ -241,6 +265,27 @@ class _LoginScreenState extends State<LoginScreen> {
                         ],
                       ),
                     ],
+                    if (!_forgot) ...[
+                      const SizedBox(height: 14),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => setState(() => _remember = !_remember),
+                        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            width: 20, height: 20, alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: _remember ? _orange : Colors.transparent,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: _remember ? _orange : grey.withOpacity(0.5), width: 1.5),
+                            ),
+                            child: _remember ? const Icon(CupertinoIcons.checkmark_alt, size: 14, color: Colors.white) : null,
+                          ),
+                          const SizedBox(width: 8),
+                          Text('Remember me', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: label)),
+                        ]),
+                      ),
+                    ],
                     const SizedBox(height: 22),
                     if (!_forgot)
                       _primaryButton('Sign In', _submit)
@@ -269,6 +314,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                 ),
               ),
+            ),
             ),
           ),
         ],

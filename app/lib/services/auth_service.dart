@@ -32,8 +32,35 @@ class AuthService {
   final DeviceService _device;
   static const _storage = FlutterSecureStorage();
   static const _tokenKey = 'onrol_jwt';
+  static const _credEmailKey = 'onrol_cred_email';
+  static const _credPassKey = 'onrol_cred_pass';
 
   AuthUser? user;
+
+  /// Remember the last-used credentials (in the platform secure store) so the
+  /// login screen can prefill them after logout. Survives logout by design.
+  Future<void> saveCredentials(String email, String password) async {
+    try {
+      await _storage.write(key: _credEmailKey, value: email);
+      await _storage.write(key: _credPassKey, value: password);
+    } catch (_) {}
+  }
+
+  Future<(String, String)?> savedCredentials() async {
+    try {
+      final e = await _storage.read(key: _credEmailKey);
+      final p = await _storage.read(key: _credPassKey);
+      if (e != null && e.isNotEmpty && p != null && p.isNotEmpty) return (e, p);
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> clearCredentials() async {
+    try {
+      await _storage.delete(key: _credEmailKey);
+      await _storage.delete(key: _credPassKey);
+    } catch (_) {}
+  }
 
   /// Restore a persisted session: load the saved JWT, then validate it by
   /// fetching the profile (which also populates `user` + role for routing).
