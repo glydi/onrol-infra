@@ -208,7 +208,7 @@ class _StudentHomeState extends State<StudentHome> {
     _Tile(CupertinoIcons.compass_fill, 'Explore', 'explore'),
     _Tile(CupertinoIcons.book_fill, 'My Courses', 'courses'),
     _Tile(CupertinoIcons.calendar, 'Schedule', 'schedule'),
-    _Tile(CupertinoIcons.chart_bar_fill, 'Progress', 'progress'),
+    _Tile(CupertinoIcons.bubble_left_bubble_right_fill, 'Forum', 'forum'),
     _Tile(CupertinoIcons.doc_text_fill, 'Assignments', 'assignments'),
     _Tile(CupertinoIcons.videocam_fill, 'Live Classes', 'live'),
     _Tile(CupertinoIcons.rosette, 'Certificates', 'certificates'),
@@ -1101,7 +1101,7 @@ class _StudentHomeState extends State<StudentHome> {
                   child: Row(children: [
                     Expanded(child: _statCard('${t['enrolled'] ?? 0}', 'Enrolled', icon: CupertinoIcons.book_fill, onTap: () => _openPanel('courses'))),
                     const SizedBox(width: 14),
-                    Expanded(child: _statCard('${t['completed'] ?? 0}', 'Completed', icon: CupertinoIcons.checkmark_seal_fill, onTap: () => _openPanel('progress'))),
+                    Expanded(child: _statCard('${t['completed'] ?? 0}', 'Completed', icon: CupertinoIcons.checkmark_seal_fill, onTap: () => _openPanel('courses'))),
                   ]),
                 ),
                 const SizedBox(height: 14),
@@ -1230,15 +1230,9 @@ class _StudentHomeState extends State<StudentHome> {
             return _CalendarView(items: items);
           }),
         ]);
-      case 'progress':
-        return (CupertinoIcons.chart_bar_fill, 'My Progress', 'Completion per course', [
-          _future(_apiList('/api/v1/me/courses', 'my_courses'), (List courses) {
-            if (courses.isEmpty) return _emptyText('No courses to track yet.');
-            return Column(children: courses.map((c) {
-              final m = c as Map<String, dynamic>;
-              return _progress(m['title']?.toString() ?? 'Course', ((m['percent'] ?? 0) as num) / 100);
-            }).toList());
-          }),
+      case 'forum':
+        return (CupertinoIcons.bubble_left_bubble_right_fill, 'Discussion Forum', 'Ask, answer & discuss with your peers', [
+          _ForumView(auth: widget.auth),
         ]);
       case 'messages':
         return (CupertinoIcons.chat_bubble_2_fill, 'Messages', 'Your inbox', [
@@ -1484,32 +1478,6 @@ class _StudentHomeState extends State<StudentHome> {
 
 Widget _statCard(String value, String label, {IconData? icon, VoidCallback? onTap}) =>
     _StatCard(value: value, label: label, icon: icon, onTap: onTap);
-
-Widget _progress(String label, double pct) => Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
-      child: Column(children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(label, style: GoogleFonts.poppins(fontSize: 13, color: _navy)),
-          Text('${(pct * 100).round()}%', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _orange)),
-        ]),
-        const SizedBox(height: 6),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          // Bar fills with a smooth animation when the panel opens.
-          child: TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0, end: pct.clamp(0.0, 1.0)),
-            duration: const Duration(milliseconds: 700),
-            curve: Curves.easeOutCubic,
-            builder: (_, v, __) => LinearProgressIndicator(
-              value: v,
-              minHeight: 8,
-              backgroundColor: _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0EBE8),
-              valueColor: const AlwaysStoppedAnimation(_orange),
-            ),
-          ),
-        ),
-      ]),
-    );
 
 Widget _notif(String text, String time, {bool read = false}) => _StudentHomeNotif(text: text, time: time, read: read);
 
@@ -1766,6 +1734,457 @@ class _ExploreListState extends State<_ExploreList> {
           badgeBg: done ? _greenBg : null,
           badgeFg: done ? _green : null,
         ),
+      ),
+    );
+  }
+}
+
+/// Discussion forum: a list of threads (newest activity first) with a composer,
+/// and a tap-through thread view with chat-style posts + a reply box. Switching
+/// between list and thread animates.
+class _ForumView extends StatefulWidget {
+  const _ForumView({required this.auth});
+  final AuthService auth;
+
+  @override
+  State<_ForumView> createState() => _ForumViewState();
+}
+
+class _ForumViewState extends State<_ForumView> {
+  late Future<List<dynamic>> _threads = _loadThreads();
+  bool _composing = false;
+  bool _busy = false;
+  bool _coursesLoaded = false;
+  List<Map<String, dynamic>> _courses = [];
+  String? _courseId;
+  final _title = TextEditingController();
+  final _body = TextEditingController();
+  // Open thread (null = list view).
+  String? _openId;
+  String _openTitle = '';
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _body.dispose();
+    super.dispose();
+  }
+
+  Future<List<dynamic>> _loadThreads() async {
+    final m = ApiClient.decode(await widget.auth.apiGet('/api/v1/me/forum'));
+    return (m['forum'] as List?) ?? [];
+  }
+
+  void _reload() => setState(() => _threads = _loadThreads());
+
+  Future<void> _ensureCourses() async {
+    if (_coursesLoaded) return;
+    try {
+      final m = ApiClient.decode(await widget.auth.apiGet('/api/v1/me/courses'));
+      final list = ((m['my_courses'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
+      if (mounted) {
+        setState(() {
+          _courses = list;
+          _coursesLoaded = true;
+          _courseId ??= list.isNotEmpty ? list.first['id']?.toString() : null;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _coursesLoaded = true);
+    }
+  }
+
+  void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
+
+  Future<void> _post() async {
+    if (_courseId == null) return _toast('Pick a course');
+    if (_title.text.trim().isEmpty || _body.text.trim().isEmpty) return _toast('Add a title and message');
+    setState(() => _busy = true);
+    try {
+      ApiClient.decode(await widget.auth.apiPost('/api/v1/me/forum', {'course_id': _courseId, 'title': _title.text.trim(), 'body': _body.text.trim()}));
+      _title.clear();
+      _body.clear();
+      if (mounted) setState(() {
+        _composing = false;
+        _busy = false;
+      });
+      _reload();
+      _toast('Discussion posted');
+    } catch (_) {
+      if (mounted) setState(() => _busy = false);
+      _toast("Couldn't post — try again");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 280),
+      switchInCurve: Curves.easeOutCubic,
+      transitionBuilder: (child, a) => FadeTransition(opacity: a, child: SlideTransition(position: Tween<Offset>(begin: const Offset(0.06, 0), end: Offset.zero).animate(a), child: child)),
+      child: _openId == null
+          ? _list(const ValueKey('list'))
+          : _ForumThread(
+              key: ValueKey(_openId),
+              auth: widget.auth,
+              threadId: _openId!,
+              title: _openTitle,
+              onBack: () {
+                setState(() => _openId = null);
+                _reload();
+              },
+            ),
+    );
+  }
+
+  Widget _list(Key key) => Column(key: key, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // Composer (collapsed → "Start a discussion" button).
+        AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: _composing ? _composer() : _startButton(),
+        ),
+        const SizedBox(height: 14),
+        FutureBuilder<List<dynamic>>(
+          future: _threads,
+          builder: (ctx, snap) {
+            if (snap.connectionState != ConnectionState.done) {
+              return const Padding(padding: EdgeInsets.symmetric(vertical: 34), child: Center(child: CircularProgressIndicator(color: _orange, strokeWidth: 2.5)));
+            }
+            final list = snap.hasData ? snap.data! : const [];
+            if (list.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 26),
+                child: Column(children: [
+                  Icon(CupertinoIcons.bubble_left_bubble_right, size: 30, color: _grey),
+                  const SizedBox(height: 8),
+                  Text('No discussions yet', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
+                  const SizedBox(height: 2),
+                  Text('Be the first to start one!', style: GoogleFonts.poppins(fontSize: 12.5, color: _grey)),
+                ]),
+              );
+            }
+            return Column(children: [for (var i = 0; i < list.length; i++) _threadCard(list[i] as Map<String, dynamic>, i)]);
+          },
+        ),
+      ]);
+
+  Widget _startButton() => _Pressable(
+        onTap: () {
+          setState(() => _composing = true);
+          _ensureCourses();
+        },
+        child: Container(
+          height: 48, alignment: Alignment.center,
+          decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: _orange.withOpacity(0.34), blurRadius: 14, offset: const Offset(0, 6))]),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(CupertinoIcons.plus_bubble_fill, color: Colors.white, size: 17),
+            const SizedBox(width: 8),
+            Text('Start a discussion', style: GoogleFonts.poppins(fontSize: 14.5, fontWeight: FontWeight.w700, color: Colors.white)),
+          ]),
+        ),
+      );
+
+  Widget _composer() => Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(18), border: Border.all(color: _orange.withOpacity(0.30)), boxShadow: [BoxShadow(color: _orange.withOpacity(0.10), blurRadius: 16, offset: const Offset(0, 6))]),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Icon(CupertinoIcons.plus_bubble_fill, size: 16, color: _orange),
+            const SizedBox(width: 8),
+            Text('New discussion', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w800, color: _navy)),
+            const Spacer(),
+            _Pressable(onTap: () => setState(() => _composing = false), child: Icon(CupertinoIcons.xmark_circle_fill, size: 20, color: _grey)),
+          ]),
+          const SizedBox(height: 12),
+          if (!_coursesLoaded)
+            const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Center(child: CupertinoActivityIndicator()))
+          else if (_courses.isEmpty)
+            Text('Enroll in a course to start a discussion.', style: GoogleFonts.poppins(fontSize: 12.5, color: _grey))
+          else ...[
+            SizedBox(
+              height: 34,
+              child: ListView(scrollDirection: Axis.horizontal, padding: EdgeInsets.zero, children: [
+                for (final c in _courses) ...[
+                  _coursePill(c['title']?.toString() ?? 'Course', _courseId == c['id']?.toString(), () => setState(() => _courseId = c['id']?.toString())),
+                  const SizedBox(width: 8),
+                ],
+              ]),
+            ),
+            const SizedBox(height: 10),
+            _field(_title, 'Title', maxLines: 1),
+            const SizedBox(height: 10),
+            _field(_body, 'Share your question or thought…', maxLines: 4),
+            const SizedBox(height: 12),
+            _Pressable(
+              onTap: _busy ? () {} : _post,
+              child: Container(
+                height: 46, alignment: Alignment.center,
+                decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: _orange.withOpacity(0.30), blurRadius: 12, offset: const Offset(0, 5))]),
+                child: _busy
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
+                    : Text('Post discussion', style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
+              ),
+            ),
+          ],
+        ]),
+      );
+
+  Widget _coursePill(String label, bool sel, VoidCallback onTap) => _Pressable(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            gradient: sel ? _orangeGrad : null,
+            color: sel ? null : _orange.withOpacity(0.07),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: sel ? Colors.transparent : _cardBorder),
+          ),
+          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: sel ? Colors.white : _navy)),
+        ),
+      );
+
+  Widget _field(TextEditingController c, String hint, {int maxLines = 1}) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(color: _isDark ? Colors.white.withOpacity(0.05) : Colors.white.withOpacity(0.55), borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
+        child: TextField(
+          controller: c,
+          maxLines: maxLines,
+          style: GoogleFonts.poppins(fontSize: 13.5, color: _navy),
+          decoration: InputDecoration(border: InputBorder.none, isDense: true, contentPadding: const EdgeInsets.symmetric(vertical: 12), hintText: hint, hintStyle: GoogleFonts.poppins(fontSize: 13, color: _grey.withOpacity(0.7))),
+        ),
+      );
+
+  Widget _threadCard(Map<String, dynamic> m, int index) {
+    final title = m['title']?.toString() ?? 'Discussion';
+    final author = m['author']?.toString() ?? 'Someone';
+    final course = m['course']?.toString() ?? '';
+    final snippet = m['snippet']?.toString() ?? '';
+    final avatar = m['avatar']?.toString() ?? '';
+    final replies = ((m['replies'] ?? 0) as num).toInt();
+    final initials = author.trim().isNotEmpty ? author.trim()[0].toUpperCase() : '?';
+    return _Entrance(
+      index: index,
+      child: _ForumHoverCard(
+        onTap: () => setState(() {
+          _openId = m['id']?.toString();
+          _openTitle = title;
+        }),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _avatarBox(avatar, 40, initials),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 14.5, fontWeight: FontWeight.w700, color: _navy, height: 1.25)),
+              if (snippet.isNotEmpty) ...[
+                const SizedBox(height: 3),
+                Text(snippet, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12.5, color: _grey, height: 1.3)),
+              ],
+              const SizedBox(height: 8),
+              Row(children: [
+                if (course.isNotEmpty)
+                  Flexible(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(8)),
+                      child: Text(course, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w700, color: _orange)),
+                    ),
+                  ),
+                const Spacer(),
+                Icon(CupertinoIcons.chat_bubble_2_fill, size: 13, color: _grey),
+                const SizedBox(width: 4),
+                Text('$replies', style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w700, color: _grey)),
+                const SizedBox(width: 10),
+                Text(_StudentHomeState._fmtAt(m['last_at']?.toString()), style: GoogleFonts.poppins(fontSize: 10.5, color: _grey)),
+              ]),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Hover-lift glass card used for forum thread rows.
+class _ForumHoverCard extends StatefulWidget {
+  const _ForumHoverCard({required this.child, required this.onTap});
+  final Widget child;
+  final VoidCallback onTap;
+  @override
+  State<_ForumHoverCard> createState() => _ForumHoverCardState();
+}
+
+class _ForumHoverCardState extends State<_ForumHoverCard> {
+  bool _hover = false;
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            margin: const EdgeInsets.symmetric(vertical: 5),
+            padding: const EdgeInsets.all(13),
+            transform: Matrix4.translationValues(0, _hover ? -2 : 0, 0),
+            decoration: BoxDecoration(
+              gradient: _cardGradient,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _hover ? _orange.withOpacity(0.40) : _cardBorder),
+              boxShadow: [BoxShadow(color: _orange.withOpacity(_hover ? 0.18 : 0.06), blurRadius: _hover ? 20 : 10, offset: Offset(0, _hover ? 8 : 4))],
+            ),
+            child: widget.child,
+          ),
+        ),
+      );
+}
+
+/// A single forum thread: chat-style posts + a reply composer.
+class _ForumThread extends StatefulWidget {
+  const _ForumThread({super.key, required this.auth, required this.threadId, required this.title, required this.onBack});
+  final AuthService auth;
+  final String threadId;
+  final String title;
+  final VoidCallback onBack;
+
+  @override
+  State<_ForumThread> createState() => _ForumThreadState();
+}
+
+class _ForumThreadState extends State<_ForumThread> {
+  late Future<Map<String, dynamic>> _future = _load();
+  final _reply = TextEditingController();
+  bool _sending = false;
+
+  Future<Map<String, dynamic>> _load() async => ApiClient.decode(await widget.auth.apiGet('/api/v1/me/forum/${widget.threadId}'));
+
+  @override
+  void dispose() {
+    _reply.dispose();
+    super.dispose();
+  }
+
+  void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
+
+  Future<void> _send() async {
+    final body = _reply.text.trim();
+    if (body.isEmpty) return;
+    setState(() => _sending = true);
+    try {
+      ApiClient.decode(await widget.auth.apiPost('/api/v1/me/forum/${widget.threadId}/reply', {'body': body}));
+      _reply.clear();
+      if (mounted) setState(() {
+        _sending = false;
+        _future = _load();
+      });
+    } catch (_) {
+      if (mounted) setState(() => _sending = false);
+      _toast("Couldn't send reply");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // Back + title.
+      Row(children: [
+        _Pressable(
+          onTap: widget.onBack,
+          child: Container(
+            width: 34, height: 34, alignment: Alignment.center,
+            decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(10), border: Border.all(color: _orange.withOpacity(0.25))),
+            child: const Icon(CupertinoIcons.chevron_back, size: 18, color: _orange),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(child: Text(widget.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: _navy))),
+      ]),
+      const SizedBox(height: 14),
+      FutureBuilder<Map<String, dynamic>>(
+        future: _future,
+        builder: (ctx, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return const Padding(padding: EdgeInsets.symmetric(vertical: 30), child: Center(child: CircularProgressIndicator(color: _orange, strokeWidth: 2.5)));
+          }
+          final posts = (snap.data?['posts'] as List?) ?? [];
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            for (var i = 0; i < posts.length; i++) _post(posts[i] as Map<String, dynamic>, i),
+          ]);
+        },
+      ),
+      const SizedBox(height: 12),
+      // Reply composer.
+      Row(children: [
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(24), border: Border.all(color: _cardBorder)),
+            child: TextField(
+              controller: _reply,
+              minLines: 1,
+              maxLines: 4,
+              style: GoogleFonts.poppins(fontSize: 13.5, color: _navy),
+              decoration: InputDecoration(border: InputBorder.none, isDense: true, contentPadding: const EdgeInsets.symmetric(vertical: 12), hintText: 'Write a reply…', hintStyle: GoogleFonts.poppins(fontSize: 13, color: _grey.withOpacity(0.7))),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        _Pressable(
+          onTap: _sending ? () {} : _send,
+          child: Container(
+            width: 46, height: 46, alignment: Alignment.center,
+            decoration: BoxDecoration(gradient: _orangeGrad, shape: BoxShape.circle, boxShadow: [BoxShadow(color: _orange.withOpacity(0.34), blurRadius: 12, offset: const Offset(0, 5))]),
+            child: _sending
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
+                : const Icon(CupertinoIcons.paperplane_fill, size: 18, color: Colors.white),
+          ),
+        ),
+      ]),
+    ]);
+  }
+
+  Widget _post(Map<String, dynamic> p, int index) {
+    final author = p['author']?.toString() ?? 'Someone';
+    final body = p['body']?.toString() ?? '';
+    final avatar = p['avatar']?.toString() ?? '';
+    final staff = p['staff'] == true;
+    final initials = author.trim().isNotEmpty ? author.trim()[0].toUpperCase() : '?';
+    return _Entrance(
+      index: index,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _avatarBox(avatar, 36, initials),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Flexible(child: Text(author, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: _navy))),
+                if (staff) ...[
+                  const SizedBox(width: 6),
+                  Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(5)), child: Text('STAFF', style: GoogleFonts.poppins(fontSize: 8, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5))),
+                ],
+                const Spacer(),
+                Text(_StudentHomeState._fmtAt(p['at']?.toString()), style: GoogleFonts.poppins(fontSize: 10, color: _grey)),
+              ]),
+              const SizedBox(height: 5),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+                decoration: BoxDecoration(
+                  gradient: _cardGradient,
+                  borderRadius: const BorderRadius.only(topLeft: Radius.circular(4), topRight: Radius.circular(14), bottomLeft: Radius.circular(14), bottomRight: Radius.circular(14)),
+                  border: Border.all(color: _cardBorder),
+                ),
+                child: Text(body, style: GoogleFonts.poppins(fontSize: 13, color: _navy, height: 1.45)),
+              ),
+            ]),
+          ),
+        ]),
       ),
     );
   }
