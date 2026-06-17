@@ -1756,12 +1756,19 @@ class _ForumViewState extends State<_ForumView> {
   bool _busy = false;
   bool _coursesLoaded = false;
   List<Map<String, dynamic>> _courses = [];
-  String? _courseId;
+  String? _courseId; // composer target; null = General
+  String _filter = 'all'; // 'all' | 'general' | <courseId>
   final _title = TextEditingController();
   final _body = TextEditingController();
   // Open thread (null = list view).
   String? _openId;
   String _openTitle = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _ensureCourses(); // so the filter tabs show courses right away
+  }
 
   @override
   void dispose() {
@@ -1786,7 +1793,6 @@ class _ForumViewState extends State<_ForumView> {
         setState(() {
           _courses = list;
           _coursesLoaded = true;
-          _courseId ??= list.isNotEmpty ? list.first['id']?.toString() : null;
         });
       }
     } catch (_) {
@@ -1797,11 +1803,10 @@ class _ForumViewState extends State<_ForumView> {
   void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
 
   Future<void> _post() async {
-    if (_courseId == null) return _toast('Pick a course');
     if (_title.text.trim().isEmpty || _body.text.trim().isEmpty) return _toast('Add a title and message');
     setState(() => _busy = true);
     try {
-      ApiClient.decode(await widget.auth.apiPost('/api/v1/me/forum', {'course_id': _courseId, 'title': _title.text.trim(), 'body': _body.text.trim()}));
+      ApiClient.decode(await widget.auth.apiPost('/api/v1/me/forum', {'course_id': _courseId ?? '', 'title': _title.text.trim(), 'body': _body.text.trim()}));
       _title.clear();
       _body.clear();
       if (mounted) setState(() {
@@ -1846,29 +1851,82 @@ class _ForumViewState extends State<_ForumView> {
           child: _composing ? _composer() : _startButton(),
         ),
         const SizedBox(height: 14),
+        _filterTabs(),
+        const SizedBox(height: 6),
         FutureBuilder<List<dynamic>>(
           future: _threads,
           builder: (ctx, snap) {
             if (snap.connectionState != ConnectionState.done) {
               return const Padding(padding: EdgeInsets.symmetric(vertical: 34), child: Center(child: CircularProgressIndicator(color: _orange, strokeWidth: 2.5)));
             }
-            final list = snap.hasData ? snap.data! : const [];
-            if (list.isEmpty) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 26),
-                child: Column(children: [
-                  Icon(CupertinoIcons.bubble_left_bubble_right, size: 30, color: _grey),
-                  const SizedBox(height: 8),
-                  Text('No discussions yet', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
-                  const SizedBox(height: 2),
-                  Text('Be the first to start one!', style: GoogleFonts.poppins(fontSize: 12.5, color: _grey)),
-                ]),
-              );
-            }
-            return Column(children: [for (var i = 0; i < list.length; i++) _threadCard(list[i] as Map<String, dynamic>, i)]);
+            final all = (snap.hasData ? snap.data! : const []).cast<Map<String, dynamic>>();
+            final list = all.where(_matchesFilter).toList();
+            return AnimatedSwitcher(
+              duration: const Duration(milliseconds: 260),
+              switchInCurve: Curves.easeOutCubic,
+              transitionBuilder: (child, a) => FadeTransition(opacity: a, child: SlideTransition(position: Tween<Offset>(begin: const Offset(0, 0.03), end: Offset.zero).animate(a), child: child)),
+              child: list.isEmpty
+                  ? Padding(
+                      key: ValueKey('empty-$_filter'),
+                      padding: const EdgeInsets.symmetric(vertical: 26),
+                      child: Column(children: [
+                        Icon(CupertinoIcons.bubble_left_bubble_right, size: 30, color: _grey),
+                        const SizedBox(height: 8),
+                        Text(_filter == 'general' ? 'No general discussions yet' : 'No discussions here yet', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
+                        const SizedBox(height: 2),
+                        Text('Be the first to start one!', style: GoogleFonts.poppins(fontSize: 12.5, color: _grey)),
+                      ]),
+                    )
+                  : Column(key: ValueKey('list-$_filter'), children: [for (var i = 0; i < list.length; i++) _threadCard(list[i], i)]),
+            );
           },
         ),
       ]);
+
+  bool _matchesFilter(Map<String, dynamic> m) {
+    if (_filter == 'all') return true;
+    final cid = m['course_id']?.toString() ?? '';
+    if (_filter == 'general') return cid.isEmpty;
+    return cid == _filter;
+  }
+
+  Widget _filterTabs() => SizedBox(
+        height: 36,
+        child: ListView(scrollDirection: Axis.horizontal, padding: EdgeInsets.zero, children: [
+          _filterChip('All', 'all', CupertinoIcons.square_stack_3d_up_fill),
+          const SizedBox(width: 8),
+          _filterChip('General', 'general', CupertinoIcons.globe),
+          for (final c in _courses) ...[
+            const SizedBox(width: 8),
+            _filterChip(c['title']?.toString() ?? 'Course', c['id']?.toString() ?? '', CupertinoIcons.book_fill),
+          ],
+        ]),
+      );
+
+  Widget _filterChip(String label, String value, IconData icon) {
+    final sel = _filter == value;
+    return _Pressable(
+      onTap: () => setState(() => _filter = value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          gradient: sel ? _orangeGrad : null,
+          color: sel ? null : _orange.withOpacity(0.07),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: sel ? Colors.transparent : _cardBorder),
+          boxShadow: sel ? [BoxShadow(color: _orange.withOpacity(0.30), blurRadius: 10, offset: const Offset(0, 4))] : const [],
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 13, color: sel ? Colors.white : _orange),
+          const SizedBox(width: 6),
+          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: sel ? Colors.white : _navy)),
+        ]),
+      ),
+    );
+  }
 
   Widget _startButton() => _Pressable(
         onTap: () {
@@ -1900,15 +1958,16 @@ class _ForumViewState extends State<_ForumView> {
           const SizedBox(height: 12),
           if (!_coursesLoaded)
             const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Center(child: CupertinoActivityIndicator()))
-          else if (_courses.isEmpty)
-            Text('Enroll in a course to start a discussion.', style: GoogleFonts.poppins(fontSize: 12.5, color: _grey))
           else ...[
+            Text('Post to', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700, color: _grey, letterSpacing: 0.3)),
+            const SizedBox(height: 6),
             SizedBox(
               height: 34,
               child: ListView(scrollDirection: Axis.horizontal, padding: EdgeInsets.zero, children: [
+                _coursePill('General', _courseId == null, () => setState(() => _courseId = null)),
                 for (final c in _courses) ...[
-                  _coursePill(c['title']?.toString() ?? 'Course', _courseId == c['id']?.toString(), () => setState(() => _courseId = c['id']?.toString())),
                   const SizedBox(width: 8),
+                  _coursePill(c['title']?.toString() ?? 'Course', _courseId == c['id']?.toString(), () => setState(() => _courseId = c['id']?.toString())),
                 ],
               ]),
             ),

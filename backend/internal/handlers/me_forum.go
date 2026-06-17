@@ -14,16 +14,17 @@ import (
 // newest-activity first, with author, course, reply count and a snippet.
 func (h *Handlers) ListForum(c *fiber.Ctx) error {
 	rows, err := h.Pool.Query(c.Context(), `
-		SELECT t.id, t.title, c.id, c.title,
+		SELECT t.id, t.title, t.course_id, COALESCE(c.title,'General'),
 		       COALESCE(u.full_name,'Someone'), COALESCE(u.avatar,''),
 		       t.created_at,
 		       (SELECT count(*) FROM forum_posts p WHERE p.thread_id=t.id) AS posts,
 		       COALESCE((SELECT max(created_at) FROM forum_posts p WHERE p.thread_id=t.id), t.created_at) AS last_at,
 		       COALESCE((SELECT body FROM forum_posts p WHERE p.thread_id=t.id ORDER BY created_at LIMIT 1),'') AS snippet
 		FROM forum_threads t
-		JOIN courses c ON c.id=t.course_id
+		LEFT JOIN courses c ON c.id=t.course_id
 		LEFT JOIN users u ON u.id=t.author_id
-		WHERE EXISTS (SELECT 1 FROM course_enrollments ce WHERE ce.course_id=t.course_id AND ce.user_id=$1)
+		WHERE t.course_id IS NULL
+		   OR EXISTS (SELECT 1 FROM course_enrollments ce WHERE ce.course_id=t.course_id AND ce.user_id=$1)
 		   OR $2 <> 'student'
 		ORDER BY last_at DESC
 		LIMIT 100`, callerID(c), callerRole(c))
@@ -33,7 +34,8 @@ func (h *Handlers) ListForum(c *fiber.Ctx) error {
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var id, title, courseID, course, author, avatar, snippet string
+		var id, title, course, author, avatar, snippet string
+		var courseID *string
 		var createdAt, lastAt any
 		var posts int
 		if err := rows.Scan(&id, &title, &courseID, &course, &author, &avatar, &createdAt, &posts, &lastAt, &snippet); err != nil {
@@ -45,7 +47,7 @@ func (h *Handlers) ListForum(c *fiber.Ctx) error {
 			replies = 0
 		}
 		out = append(out, fiber.Map{
-			"id": id, "title": title, "course_id": courseID, "course": course,
+			"id": id, "title": title, "course_id": derefStr(courseID), "course": course,
 			"author": author, "avatar": avatar, "snippet": snippet,
 			"replies": replies, "created_at": createdAt, "last_at": lastAt,
 		})
@@ -56,13 +58,15 @@ func (h *Handlers) ListForum(c *fiber.Ctx) error {
 // GetForumThread returns a thread and all its posts (oldest first).
 func (h *Handlers) GetForumThread(c *fiber.Ctx) error {
 	threadID := c.Params("id")
-	var title, courseID, course string
+	var title, course string
+	var courseID *string
 	if err := h.Pool.QueryRow(c.Context(),
-		`SELECT t.title, c.id, c.title FROM forum_threads t JOIN courses c ON c.id=t.course_id WHERE t.id=$1`,
+		`SELECT t.title, t.course_id, COALESCE(c.title,'General') FROM forum_threads t LEFT JOIN courses c ON c.id=t.course_id WHERE t.id=$1`,
 		threadID).Scan(&title, &courseID, &course); err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "thread not found")
 	}
-	if !h.isEnrolled(c, courseID) && callerRole(c) == "student" {
+	// General threads (course_id NULL) are open to everyone; course threads gate on enrolment.
+	if courseID != nil && !h.isEnrolled(c, *courseID) && callerRole(c) == "student" {
 		return fiber.NewError(fiber.StatusForbidden, "not enrolled")
 	}
 	rows, err := h.Pool.Query(c.Context(), `
@@ -98,16 +102,21 @@ func (h *Handlers) CreateForumThread(c *fiber.Ctx) error {
 	}
 	req.Title = strings.TrimSpace(req.Title)
 	req.Body = strings.TrimSpace(req.Body)
-	if req.CourseID == "" || req.Title == "" || req.Body == "" {
-		return fiber.NewError(fiber.StatusBadRequest, "course, title and message are required")
+	if req.Title == "" || req.Body == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "title and message are required")
 	}
-	if !h.isEnrolled(c, req.CourseID) && callerRole(c) == "student" {
-		return fiber.NewError(fiber.StatusForbidden, "not enrolled in this course")
+	// Empty course = a General thread (no course). Course threads gate on enrolment.
+	var courseArg any
+	if req.CourseID != "" {
+		if !h.isEnrolled(c, req.CourseID) && callerRole(c) == "student" {
+			return fiber.NewError(fiber.StatusForbidden, "not enrolled in this course")
+		}
+		courseArg = req.CourseID
 	}
 	var threadID string
 	if err := h.Pool.QueryRow(c.Context(),
 		`INSERT INTO forum_threads (course_id, author_id, title) VALUES ($1,$2,$3) RETURNING id`,
-		req.CourseID, callerID(c), req.Title).Scan(&threadID); err != nil {
+		courseArg, callerID(c), req.Title).Scan(&threadID); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "thread failed")
 	}
 	if _, err := h.Pool.Exec(c.Context(),
@@ -121,12 +130,12 @@ func (h *Handlers) CreateForumThread(c *fiber.Ctx) error {
 // ReplyForum appends a reply to a thread.
 func (h *Handlers) ReplyForum(c *fiber.Ctx) error {
 	threadID := c.Params("id")
-	var courseID string
+	var courseID *string
 	if err := h.Pool.QueryRow(c.Context(),
 		`SELECT course_id FROM forum_threads WHERE id=$1`, threadID).Scan(&courseID); err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "thread not found")
 	}
-	if !h.isEnrolled(c, courseID) && callerRole(c) == "student" {
+	if courseID != nil && !h.isEnrolled(c, *courseID) && callerRole(c) == "student" {
 		return fiber.NewError(fiber.StatusForbidden, "not enrolled")
 	}
 	var req struct {
