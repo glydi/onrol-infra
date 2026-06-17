@@ -258,6 +258,11 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
             ),
             const SizedBox(width: 14),
             HoverTap(
+              onTap: () { if (!processing) _retranscode(v['id'].toString()); },
+              child: Icon(CupertinoIcons.arrow_2_circlepath, size: 20, color: processing ? p.separator : p.secondary),
+            ),
+            const SizedBox(width: 14),
+            HoverTap(
               onTap: () => _delete(v['id'].toString(), title),
               child: const Icon(CupertinoIcons.trash, size: 20, color: AppleColors.red),
             ),
@@ -265,5 +270,14 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
         ]),
       ),
     );
+  }
+
+  // Re-run HLS segmentation for an existing video (no re-encode, no quality loss).
+  Future<void> _retranscode(String id) async {
+    try {
+      await widget.auth.apiPost('/api/v1/manage/videos/$id/retranscode', {});
+      _toast('Re-processing…');
+      _load();
+    } catch (_) { _toast('Could not re-process'); }
   }
 }

@@ -211,6 +211,21 @@ func (h *Handlers) ListVideos(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"videos": out, "r2_enabled": h.Cfg.R2.Enabled()})
 }
 
+// RetranscodeVideo re-runs HLS segmentation for an existing asset (e.g. after the
+// pipeline changed). The source object must still be in R2.
+func (h *Handlers) RetranscodeVideo(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var key string
+	if err := h.Pool.QueryRow(c.Context(), `SELECT object_key FROM media_assets WHERE id=$1`, id).Scan(&key); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "not found")
+	}
+	if _, err := h.Pool.Exec(c.Context(), `UPDATE media_assets SET status='processing' WHERE id=$1`, id); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "update failed")
+	}
+	go h.transcodeToHLS(id, key)
+	return c.JSON(fiber.Map{"id": id, "status": "processing"})
+}
+
 // DeleteVideo removes the library record, the source object, and the HLS folder.
 func (h *Handlers) DeleteVideo(c *fiber.Ctx) error {
 	id := c.Params("id")
