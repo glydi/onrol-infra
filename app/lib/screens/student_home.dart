@@ -3623,12 +3623,18 @@ class _SettingsViewState extends State<_SettingsView> {
   // Expansion + form state.
   bool _pwOpen = false;
   bool _actOpen = false;
-  bool _twoFA = false;
+  bool _twoFA = false; // current enabled status (from /me/2fa)
   bool _savingPw = false;
   final _cur = TextEditingController();
   final _new = TextEditingController();
   final _conf = TextEditingController();
   List<dynamic>? _devices; // null until first load
+
+  // 2FA setup/disable flow.
+  bool _faOpen = false;
+  bool _faBusy = false;
+  String? _faSecret; // pending secret while setting up
+  final _faCode = TextEditingController();
 
   Color get _ac => accentNotifier.value;
   LinearGradient get _acGrad => LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_ac, Color.lerp(_ac, Colors.white, 0.22)!]);
@@ -3639,6 +3645,73 @@ class _SettingsViewState extends State<_SettingsView> {
     themeNotifier.addListener(_r);
     accentNotifier.addListener(_r);
     textScaleNotifier.addListener(_r);
+    _load2FA();
+  }
+
+  Future<void> _load2FA() async {
+    try {
+      final m = ApiClient.decode(await widget.auth.apiGet('/api/v1/me/2fa'));
+      if (mounted) setState(() => _twoFA = m['enabled'] == true);
+    } catch (_) {}
+  }
+
+  Future<void> _faSetup() async {
+    setState(() => _faBusy = true);
+    try {
+      final m = ApiClient.decode(await widget.auth.apiPost('/api/v1/me/2fa/setup', {}));
+      if (mounted) setState(() {
+        _faSecret = m['secret']?.toString();
+        _faBusy = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _faBusy = false);
+      _toast("Couldn't start setup");
+    }
+  }
+
+  Future<void> _faVerify() async {
+    final code = _faCode.text.trim();
+    if (code.length < 6) return _toast('Enter the 6-digit code');
+    setState(() => _faBusy = true);
+    try {
+      ApiClient.decode(await widget.auth.apiPost('/api/v1/me/2fa/verify', {'code': code}));
+      _faCode.clear();
+      if (mounted) setState(() {
+        _twoFA = true;
+        _faOpen = false;
+        _faSecret = null;
+        _faBusy = false;
+      });
+      _toast('Two-factor authentication enabled');
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _faBusy = false);
+      _toast(e.message);
+    } catch (_) {
+      if (mounted) setState(() => _faBusy = false);
+      _toast("Couldn't verify code");
+    }
+  }
+
+  Future<void> _faDisable() async {
+    final code = _faCode.text.trim();
+    if (code.length < 6) return _toast('Enter a code to confirm');
+    setState(() => _faBusy = true);
+    try {
+      ApiClient.decode(await widget.auth.apiPost('/api/v1/me/2fa/disable', {'code': code}));
+      _faCode.clear();
+      if (mounted) setState(() {
+        _twoFA = false;
+        _faOpen = false;
+        _faBusy = false;
+      });
+      _toast('Two-factor authentication disabled');
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _faBusy = false);
+      _toast(e.message);
+    } catch (_) {
+      if (mounted) setState(() => _faBusy = false);
+      _toast("Couldn't disable");
+    }
   }
 
   void _r() {
@@ -3650,7 +3723,7 @@ class _SettingsViewState extends State<_SettingsView> {
     themeNotifier.removeListener(_r);
     accentNotifier.removeListener(_r);
     textScaleNotifier.removeListener(_r);
-    for (final c in [_cur, _new, _conf]) {
+    for (final c in [_cur, _new, _conf, _faCode]) {
       c.dispose();
     }
     super.dispose();
@@ -3903,24 +3976,93 @@ class _SettingsViewState extends State<_SettingsView> {
         ),
       );
 
-  Widget _twoFARow() => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-        child: Row(children: [
-          _iconChip(CupertinoIcons.shield_lefthalf_fill),
-          const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Text('Two-factor authentication', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
-              const SizedBox(width: 6),
-              Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: _ac.withOpacity(0.12), borderRadius: BorderRadius.circular(5)), child: Text('SOON', style: GoogleFonts.poppins(fontSize: 8.5, fontWeight: FontWeight.w800, color: _ac, letterSpacing: 0.5))),
-            ]),
-            Text('Add a one-time code at login', style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
-          ])),
-          _switch(_twoFA, () {
-            setState(() => _twoFA = !_twoFA);
-            if (_twoFA) _toast('Two-factor setup is coming soon.');
-          }),
-        ]),
+  Widget _twoFARow() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: Row(children: [
+            _iconChip(CupertinoIcons.shield_lefthalf_fill),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Text('Two-factor authentication', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
+                if (_twoFA) ...[
+                  const SizedBox(width: 6),
+                  Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: _green.withOpacity(0.14), borderRadius: BorderRadius.circular(5)), child: Text('ON', style: GoogleFonts.poppins(fontSize: 8.5, fontWeight: FontWeight.w800, color: _green, letterSpacing: 0.5))),
+                ],
+              ]),
+              Text(_twoFA ? 'Codes required at login' : 'Add a one-time code at login', style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
+            ])),
+            _switch(_twoFA, () {
+              if (_faBusy) return;
+              setState(() => _faOpen = !_faOpen);
+              if (_faOpen && !_twoFA && _faSecret == null) _faSetup();
+            }),
+          ]),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: _faOpen ? _faPanel() : const SizedBox(width: double.infinity),
+        ),
+      ]);
+
+  Widget _faPanel() => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+        child: _twoFA ? _faDisablePanel() : _faSetupPanel(),
+      );
+
+  Widget _faSetupPanel() {
+    if (_faSecret == null) {
+      return const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Center(child: CupertinoActivityIndicator()));
+    }
+    final pretty = _faSecret!.replaceAllMapped(RegExp(r'.{4}'), (m) => '${m.group(0)} ').trim();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text('1. In an authenticator app (Google Authenticator, Authy, 1Password), add an account and enter this setup key:', style: GoogleFonts.poppins(fontSize: 11.5, color: _grey, height: 1.4)),
+      const SizedBox(height: 8),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(10), border: Border.all(color: _cardBorder)),
+        child: SelectableText(pretty, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy, letterSpacing: 1.5)),
+      ),
+      const SizedBox(height: 12),
+      Text('2. Enter the 6-digit code it shows:', style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
+      const SizedBox(height: 8),
+      _codeField(),
+      const SizedBox(height: 12),
+      _faButton('Verify & enable', _faVerify, _acGrad),
+    ]);
+  }
+
+  Widget _faDisablePanel() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('Enter a current code from your authenticator app to turn off two-factor authentication.', style: GoogleFonts.poppins(fontSize: 11.5, color: _grey, height: 1.4)),
+        const SizedBox(height: 8),
+        _codeField(),
+        const SizedBox(height: 12),
+        _faButton('Turn off 2FA', _faDisable, LinearGradient(colors: [_danger, Color.lerp(_danger, Colors.white, 0.2)!])),
+      ]);
+
+  Widget _codeField() => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
+        child: TextField(
+          controller: _faCode,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: _navy, letterSpacing: 4),
+          decoration: InputDecoration(border: InputBorder.none, isDense: true, counterText: '', contentPadding: const EdgeInsets.symmetric(vertical: 13), hintText: '000000', hintStyle: GoogleFonts.poppins(fontSize: 16, color: _grey.withOpacity(0.5), letterSpacing: 4)),
+        ),
+      );
+
+  Widget _faButton(String label, VoidCallback onTap, Gradient g) => _Pressable(
+        onTap: _faBusy ? () {} : onTap,
+        child: Container(
+          height: 46, alignment: Alignment.center,
+          decoration: BoxDecoration(gradient: g, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: _ac.withOpacity(0.28), blurRadius: 12, offset: const Offset(0, 5))]),
+          child: _faBusy
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
+              : Text(label, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
+        ),
       );
 
   Widget _switch(bool on, VoidCallback onTap) => GestureDetector(

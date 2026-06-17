@@ -31,7 +31,9 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _totp = TextEditingController();
   bool _busy = false;
+  bool _needTotp = false; // account has 2FA — show the code field
   String? _error;
 
   Future<void> _submit() async {
@@ -41,7 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     try {
       // One login for everyone — the account's role decides where they land.
-      await widget.auth.login(_email.text.trim(), _password.text);
+      await widget.auth.login(_email.text.trim(), _password.text, totp: _needTotp ? _totp.text.trim() : null);
       if (!mounted) return;
       final staff = widget.auth.user?.isStaff ?? false;
       Navigator.of(context).pushReplacement(MaterialPageRoute(
@@ -58,6 +60,14 @@ class _LoginScreenState extends State<LoginScreen> {
                             : (staff ? ConsoleScreen(auth: widget.auth) : HomeScreen(auth: widget.auth)),
       ));
     } on ApiException catch (e) {
+      // Account has 2FA: reveal the code field and prompt for it.
+      if (e.data?['totp_required'] == true) {
+        setState(() {
+          _needTotp = true;
+          _error = _totp.text.trim().isEmpty ? 'Enter the 6-digit code from your authenticator app.' : 'Invalid code — try again.';
+        });
+        return;
+      }
       setState(() => _error = e.status == 409
           ? 'Device limit reached. Remove a device on another phone and retry.'
           : e.message);
@@ -125,6 +135,12 @@ class _LoginScreenState extends State<LoginScreen> {
                           Divider(height: 1, color: p.separator),
                           const SizedBox(height: 12),
                           AppleField(controller: _password, hint: 'Password', icon: CupertinoIcons.lock, obscure: true),
+                          if (_needTotp) ...[
+                            const SizedBox(height: 12),
+                            Divider(height: 1, color: p.separator),
+                            const SizedBox(height: 12),
+                            AppleField(controller: _totp, hint: '6-digit code', icon: CupertinoIcons.shield_lefthalf_fill, keyboard: TextInputType.number),
+                          ],
                           const SizedBox(height: 14),
                         ],
                       ),
