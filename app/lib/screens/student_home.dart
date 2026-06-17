@@ -3630,22 +3630,6 @@ class _SettingsViewState extends State<_SettingsView> {
   final _conf = TextEditingController();
   List<dynamic>? _devices; // null until first load
 
-  // Preferences (language is functional, persisted to /me/preferences).
-  String _lang = 'en';
-  String _tz = 'Asia/Kolkata';
-  bool _emailN = true;
-  bool _pushN = true;
-
-  static const _languages = [
-    ('en', 'English'), ('hi', 'हिन्दी'), ('es', 'Español'),
-    ('fr', 'Français'), ('de', 'Deutsch'), ('ar', 'العربية'),
-  ];
-
-  static const _swatches = [
-    Color(0xFFFF4F2B), Color(0xFFF5A623), Color(0xFFE0457B),
-    Color(0xFF2D7DF6), Color(0xFF2D8A4E), Color(0xFF7C5CFC),
-  ];
-
   Color get _ac => accentNotifier.value;
   LinearGradient get _acGrad => LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_ac, Color.lerp(_ac, Colors.white, 0.22)!]);
 
@@ -3655,38 +3639,6 @@ class _SettingsViewState extends State<_SettingsView> {
     themeNotifier.addListener(_r);
     accentNotifier.addListener(_r);
     textScaleNotifier.addListener(_r);
-    _loadPrefs();
-  }
-
-  Future<void> _loadPrefs() async {
-    try {
-      final m = ApiClient.decode(await widget.auth.apiGet('/api/v1/me/preferences'));
-      if (!mounted) return;
-      setState(() {
-        _lang = m['language']?.toString() ?? 'en';
-        _tz = m['timezone']?.toString() ?? 'Asia/Kolkata';
-        _emailN = m['email_notifications'] != false;
-        _pushN = m['push_notifications'] != false;
-      });
-    } catch (_) {}
-  }
-
-  Future<void> _setLang(String code) async {
-    if (code == _lang) return;
-    final prev = _lang;
-    setState(() => _lang = code);
-    try {
-      ApiClient.decode(await widget.auth.apiPut('/api/v1/me/preferences', {
-        'language': code,
-        'timezone': _tz,
-        'email_notifications': _emailN,
-        'push_notifications': _pushN,
-      }));
-      _toast('Language preference saved');
-    } catch (_) {
-      if (mounted) setState(() => _lang = prev);
-      _toast("Couldn't save language");
-    }
   }
 
   void _r() {
@@ -3763,10 +3715,6 @@ class _SettingsViewState extends State<_SettingsView> {
         index: 0,
         child: _section('Appearance', CupertinoIcons.paintbrush_fill, [
           _themeRow(),
-          _div(),
-          _langRow(),
-          _div(),
-          _colorRow(),
           _div(),
           _fontRow(),
         ]),
@@ -3905,51 +3853,6 @@ class _SettingsViewState extends State<_SettingsView> {
     }
     return _ctrlRow(CupertinoIcons.textformat_size, 'Font size', 'Make text smaller or larger', _seg(['Small', 'Default', 'Large'], sel, (i) => setTextScale(scales[i])));
   }
-
-  Widget _langRow() => _ctrlRow(
-        CupertinoIcons.globe, 'Language', 'Your preferred language',
-        Wrap(spacing: 8, runSpacing: 8, children: [
-          for (final l in _languages)
-            _Pressable(
-              onTap: () => _setLang(l.$1),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOutCubic,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  gradient: _lang == l.$1 ? _acGrad : null,
-                  color: _lang == l.$1 ? null : _ac.withOpacity(0.07),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: _lang == l.$1 ? Colors.transparent : _cardBorder),
-                  boxShadow: _lang == l.$1 ? [BoxShadow(color: _ac.withOpacity(0.30), blurRadius: 10, offset: const Offset(0, 4))] : const [],
-                ),
-                child: Text(l.$2, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: _lang == l.$1 ? Colors.white : _navy)),
-              ),
-            ),
-        ]),
-      );
-
-  Widget _colorRow() => _ctrlRow(
-        CupertinoIcons.paintbrush_fill, 'Theme color', 'Pick your accent',
-        Wrap(spacing: 12, runSpacing: 12, children: [
-          for (final c in _swatches)
-            _Pressable(
-              onTap: () => setAccent(c),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                width: 34, height: 34, alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: c,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: _ac.value == c.value ? Colors.white : Colors.transparent, width: 2.5),
-                  boxShadow: [BoxShadow(color: c.withOpacity(0.45), blurRadius: _ac.value == c.value ? 10 : 5, offset: const Offset(0, 3))],
-                ),
-                child: _ac.value == c.value ? const Icon(CupertinoIcons.checkmark_alt, size: 16, color: Colors.white) : null,
-              ),
-            ),
-        ]),
-      );
 
   // ---- Security -------------------------------------------------------------
 
