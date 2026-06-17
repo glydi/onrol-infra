@@ -4315,6 +4315,7 @@ class _SettingsViewState extends State<_SettingsView> {
   final _cur = TextEditingController();
   final _new = TextEditingController();
   final _conf = TextEditingController();
+  final Set<TextEditingController> _shownPw = {}; // password fields revealed
   List<dynamic>? _devices; // null until first load
 
   // 2FA setup/disable flow.
@@ -4652,16 +4653,34 @@ class _SettingsViewState extends State<_SettingsView> {
         ),
       ]);
 
-  Widget _pwField(String hint, TextEditingController c) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
-        child: TextField(
-          controller: c,
-          obscureText: true,
-          style: GoogleFonts.poppins(fontSize: 13.5, color: _navy),
-          decoration: InputDecoration(border: InputBorder.none, isDense: true, contentPadding: const EdgeInsets.symmetric(vertical: 13), hintText: hint, hintStyle: GoogleFonts.poppins(fontSize: 13, color: _grey.withOpacity(0.7))),
+  Widget _pwField(String hint, TextEditingController c) {
+    final shown = _shownPw.contains(c);
+    return Container(
+      padding: const EdgeInsets.only(left: 12, right: 4),
+      decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
+      child: Row(children: [
+        Expanded(
+          child: TextField(
+            controller: c,
+            obscureText: !shown,
+            enableSuggestions: false,
+            autocorrect: false,
+            style: GoogleFonts.poppins(fontSize: 13.5, color: _navy),
+            decoration: InputDecoration(border: InputBorder.none, isDense: true, contentPadding: const EdgeInsets.symmetric(vertical: 13), hintText: hint, hintStyle: GoogleFonts.poppins(fontSize: 13, color: _grey.withOpacity(0.7))),
+          ),
         ),
-      );
+        // Eye toggle — tap to show/hide this field's text.
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => shown ? _shownPw.remove(c) : _shownPw.add(c)),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            child: Icon(shown ? CupertinoIcons.eye_slash_fill : CupertinoIcons.eye_fill, size: 18, color: shown ? _ac : _grey),
+          ),
+        ),
+      ]),
+    );
+  }
 
   Widget _twoFARow() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Padding(
