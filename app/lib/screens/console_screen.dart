@@ -31,6 +31,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   List<dynamic> _courses = [];
   List<dynamic> _requests = [];
   List<dynamic> _people = [];
+  String _peopleQuery = ''; // People-tab search across all users
 
   bool get _isAdmin => widget.auth.user?.role == 'manager' || widget.auth.user?.role == 'superadmin';
 
@@ -199,14 +200,52 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
             builder: (_) => ConvertedLeadsScreen(auth: widget.auth),
           )))),
         ]),
-        const SizedBox(height: 22),
-        if (others.isNotEmpty) ...[_peopleGroup('Admins', others), const SizedBox(height: 18)],
-        _peopleGroup('Instructors (${instructors.length})', instructors, manage: true),
+        const SizedBox(height: 16),
+        // Search across ALL people (name/email/phone/username/role).
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+          decoration: BoxDecoration(color: Palette.of(context).card, border: Border.all(color: Palette.of(context).separator)),
+          child: Row(children: [
+            Icon(CupertinoIcons.search, size: 18, color: Palette.of(context).secondary),
+            const SizedBox(width: 10),
+            Expanded(child: TextField(
+              onChanged: (v) => setState(() => _peopleQuery = v),
+              style: AppleTheme.body(context),
+              cursorColor: Palette.of(context).accent,
+              decoration: InputDecoration(isDense: true, border: InputBorder.none,
+                  hintText: 'Search people — name, email, phone…',
+                  hintStyle: AppleTheme.body(context).copyWith(color: Palette.of(context).secondary)),
+            )),
+            if (_peopleQuery.isNotEmpty)
+              HoverTap(onTap: () => setState(() => _peopleQuery = ''),
+                  child: Icon(CupertinoIcons.clear_circled_solid, size: 18, color: Palette.of(context).secondary)),
+          ]),
+        ),
         const SizedBox(height: 18),
-        // A tappable list of courses — each opens its own students/batches page.
-        ..._courseList(students),
+        if (_peopleQuery.trim().isNotEmpty) ...[
+          // Flat search results across everyone, each with the ⋯ actions menu.
+          ..._searchResults(_peopleQuery),
+        ] else ...[
+          if (others.isNotEmpty) ...[_peopleGroup('Admins', others, manage: true), const SizedBox(height: 18)],
+          _peopleGroup('Instructors (${instructors.length})', instructors, manage: true),
+          const SizedBox(height: 18),
+          // A tappable list of courses — each opens its own students/batches page.
+          ..._courseList(students),
+        ],
       ],
     ));
+  }
+
+  // People-tab search: match across all users by name/email/phone/username/role.
+  List<Widget> _searchResults(String query) {
+    final q = query.trim().toLowerCase();
+    final matches = _people.where((u) {
+      final hay = [u['full_name'], u['email'], u['phone'], u['username'], u['role'], u['course_label']]
+          .map((x) => (x ?? '').toString().toLowerCase())
+          .join(' ');
+      return hay.contains(q);
+    }).toList();
+    return [_peopleGroup('Results (${matches.length})', matches, manage: true)];
   }
 
   // Find the loaded course row for a course_label (case-insensitive), or null.
