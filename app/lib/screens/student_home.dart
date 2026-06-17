@@ -211,7 +211,7 @@ class _StudentHomeState extends State<StudentHome> {
     _Tile(CupertinoIcons.play_circle_fill, 'Resume', 'resume'),
     _Tile(CupertinoIcons.doc_text_fill, 'Assignments', 'assignments'),
     _Tile(CupertinoIcons.videocam_fill, 'Live Classes', 'live'),
-    _Tile(CupertinoIcons.rosette, 'Certificates', 'certificates'),
+    _Tile(CupertinoIcons.pencil_circle_fill, 'Practice Zone', 'practice'),
     _Tile(CupertinoIcons.list_number, 'Leaderboard', 'leaderboard'),
     _Tile(CupertinoIcons.bubble_left_bubble_right_fill, 'Forum', 'forum'),
     _Tile(CupertinoIcons.gear_alt_fill, 'Settings', 'settings'),
@@ -1334,6 +1334,10 @@ class _StudentHomeState extends State<StudentHome> {
           _row(CupertinoIcons.play_rectangle_fill, 'CSS Flexbox Tutorial', 'Video · 45 min', 'Watch'),
           _row(CupertinoIcons.book_fill, 'Figma Handbook', 'PDF · 5.1 MB', 'Download'),
         ]);
+      case 'practice':
+        return (CupertinoIcons.pencil_circle_fill, 'Practice Zone', 'Sharpen your skills — tests, quizzes & review', [
+          const _PracticeZone(),
+        ]);
       case 'certificates':
         return (CupertinoIcons.rosette, 'Certificates', 'Your achievements', [
           _future(_apiList('/api/v1/me/certificates', 'certificates'), (List certs) {
@@ -1768,6 +1772,222 @@ class _ExploreListState extends State<_ExploreList> {
           badge,
           badgeBg: done ? _greenBg : null,
           badgeFg: done ? _green : null,
+        ),
+      ),
+    );
+  }
+}
+
+/// Practice Zone hub: a featured banner, difficulty selector, and animated
+/// sections of practice features (tests, practice, review, insights).
+class _PracticeFeature {
+  const _PracticeFeature(this.icon, this.title, this.sub);
+  final IconData icon;
+  final String title;
+  final String sub;
+}
+
+class _PracticeZone extends StatefulWidget {
+  const _PracticeZone();
+  @override
+  State<_PracticeZone> createState() => _PracticeZoneState();
+}
+
+class _PracticeZoneState extends State<_PracticeZone> {
+  int _difficulty = 1; // 0 Easy, 1 Medium, 2 Hard
+
+  static const _sections = <(String, List<_PracticeFeature>)>[
+    ('Tests', [
+      _PracticeFeature(CupertinoIcons.doc_text_fill, 'Mock Tests', 'Exam-like practice tests'),
+      _PracticeFeature(CupertinoIcons.timer, 'Timed Tests', 'Beat the clock'),
+      _PracticeFeature(CupertinoIcons.doc_on_doc_fill, 'Full-Length Exams', 'Complete simulations'),
+      _PracticeFeature(CupertinoIcons.arrow_2_circlepath, 'Revision Tests', 'Recap what you learned'),
+      _PracticeFeature(CupertinoIcons.calendar_today, 'Previous Year Qs', 'PYQs by year'),
+    ]),
+    ('Practice', [
+      _PracticeFeature(CupertinoIcons.question_square_fill, 'Practice Quizzes', 'Quick topic quizzes'),
+      _PracticeFeature(CupertinoIcons.square_list_fill, 'Topic-wise Practice', 'Drill one topic'),
+      _PracticeFeature(CupertinoIcons.sun_max_fill, 'Daily Practice', "Today's question set"),
+      _PracticeFeature(CupertinoIcons.chevron_left_slash_chevron_right, 'Coding Challenges', 'Hands-on problems'),
+      _PracticeFeature(CupertinoIcons.tray_full_fill, 'Question Bank', 'All questions in one place'),
+      _PracticeFeature(CupertinoIcons.sparkles, 'Recommended', 'Picked for you'),
+    ]),
+    ('Review', [
+      _PracticeFeature(CupertinoIcons.xmark_octagon_fill, 'Incorrect Review', 'Fix your mistakes'),
+      _PracticeFeature(CupertinoIcons.bookmark_fill, 'Bookmarked', 'Saved questions'),
+      _PracticeFeature(CupertinoIcons.exclamationmark_triangle_fill, 'Weak Topics', 'Focus where it counts'),
+    ]),
+    ('Insights', [
+      _PracticeFeature(CupertinoIcons.clock_fill, 'Test History', 'Your past attempts'),
+      _PracticeFeature(CupertinoIcons.chart_bar_alt_fill, 'Performance', 'Trends & accuracy'),
+      _PracticeFeature(CupertinoIcons.list_number, 'Leaderboard', 'See where you rank'),
+    ]),
+  ];
+
+  void _open(String title) => ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$title — coming soon'), behavior: SnackBarBehavior.floating),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    var idx = 0;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // Featured banner.
+      _Entrance(
+        index: idx++,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          decoration: BoxDecoration(
+            gradient: _orangeGrad,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [BoxShadow(color: _orange.withOpacity(0.34), blurRadius: 18, offset: const Offset(0, 8))],
+          ),
+          child: Row(children: [
+            Container(
+              width: 46, height: 46, alignment: Alignment.center,
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.22), borderRadius: BorderRadius.circular(13)),
+              child: const Icon(CupertinoIcons.flame_fill, color: Colors.white, size: 24),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Daily Practice', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
+                const SizedBox(height: 2),
+                Text('Keep your streak alive — solve today’s set', style: GoogleFonts.poppins(fontSize: 12, color: Colors.white.withOpacity(0.92))),
+              ]),
+            ),
+            const SizedBox(width: 8),
+            _Pressable(
+              onTap: () => _open('Daily Practice'),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(11)),
+                child: Text('Start', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w800, color: _orange)),
+              ),
+            ),
+          ]),
+        ),
+      ),
+      const SizedBox(height: 16),
+      // Difficulty selector.
+      _Entrance(
+        index: idx++,
+        child: Row(children: [
+          Text('Difficulty', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Row(children: [
+              for (var i = 0; i < 3; i++) ...[
+                if (i > 0) const SizedBox(width: 8),
+                Expanded(child: _diffChip(['Easy', 'Medium', 'Hard'][i], i)),
+              ],
+            ]),
+          ),
+        ]),
+      ),
+      // Sections.
+      for (final s in _sections) ...[
+        const SizedBox(height: 18),
+        _Entrance(
+          index: idx++,
+          child: Row(children: [
+            Container(width: 4, height: 16, decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(2))),
+            const SizedBox(width: 8),
+            Text(s.$1, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800, color: _navy)),
+          ]),
+        ),
+        const SizedBox(height: 10),
+        LayoutBuilder(builder: (ctx, cons) {
+          final cardW = (cons.maxWidth - 12) / 2;
+          return Wrap(
+            spacing: 12, runSpacing: 12,
+            children: [for (final f in s.$2) SizedBox(width: cardW, child: _PracticeCard(index: idx++, feature: f, onTap: () => _open(f.title)))],
+          );
+        }),
+      ],
+    ]);
+  }
+
+  Widget _diffChip(String label, int i) {
+    final sel = _difficulty == i;
+    final colors = [const Color(0xFF2D8A4E), const Color(0xFFE0A12A), _danger];
+    final c = colors[i];
+    return _Pressable(
+      onTap: () => setState(() => _difficulty = i),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        height: 36, alignment: Alignment.center,
+        decoration: BoxDecoration(
+          gradient: sel ? LinearGradient(colors: [c, Color.lerp(c, Colors.white, 0.2)!]) : null,
+          color: sel ? null : c.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(11),
+          border: Border.all(color: sel ? Colors.transparent : c.withOpacity(0.3)),
+          boxShadow: sel ? [BoxShadow(color: c.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))] : const [],
+        ),
+        child: Text(label, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: sel ? Colors.white : c)),
+      ),
+    );
+  }
+}
+
+class _PracticeCard extends StatefulWidget {
+  const _PracticeCard({required this.index, required this.feature, required this.onTap});
+  final int index;
+  final _PracticeFeature feature;
+  final VoidCallback onTap;
+  @override
+  State<_PracticeCard> createState() => _PracticeCardState();
+}
+
+class _PracticeCardState extends State<_PracticeCard> {
+  bool _hover = false;
+  @override
+  Widget build(BuildContext context) {
+    final f = widget.feature;
+    return _Entrance(
+      index: widget.index,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.all(13),
+            transform: Matrix4.translationValues(0, _hover ? -3 : 0, 0),
+            decoration: BoxDecoration(
+              gradient: _cardGradient,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _hover ? _orange.withOpacity(0.45) : _cardBorder, width: 1),
+              boxShadow: [BoxShadow(color: _orange.withOpacity(_hover ? 0.20 : 0.06), blurRadius: _hover ? 20 : 10, offset: Offset(0, _hover ? 9 : 4))],
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                AnimatedScale(
+                  scale: _hover ? 1.08 : 1.0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Container(
+                    width: 38, height: 38, alignment: Alignment.center,
+                    decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_orange.withOpacity(0.22), _orange.withOpacity(0.08)]), borderRadius: BorderRadius.circular(11)),
+                    child: Icon(f.icon, size: 19, color: _orange),
+                  ),
+                ),
+                const Spacer(),
+                AnimatedSlide(
+                  offset: Offset(_hover ? 0.15 : 0, 0),
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(CupertinoIcons.chevron_right, size: 14, color: _orange.withOpacity(_hover ? 0.9 : 0.3)),
+                ),
+              ]),
+              const SizedBox(height: 10),
+              Text(f.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: _navy)),
+              const SizedBox(height: 2),
+              Text(f.sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 11, color: _grey)),
+            ]),
+          ),
         ),
       ),
     );
