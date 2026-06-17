@@ -25,6 +25,10 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
   bool _uploading = false;
   bool _r2 = true;
   double _progress = 0; // 0..1 during chunked upload
+  // Live upload breakdown shown on screen.
+  String _upName = '';
+  int _upPart = 0, _upTotalParts = 0;
+  int _upDone = 0, _upTotal = 0;
   List<dynamic> _videos = [];
   String? _err;
 
@@ -59,7 +63,11 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
     final picked = await pickVideoFile();
     if (picked == null) return; // cancelled
     final bytes = picked.bytes;
-    setState(() { _uploading = true; _progress = 0; });
+    setState(() {
+      _uploading = true; _progress = 0;
+      _upName = picked.name; _upDone = 0; _upTotal = bytes.length;
+      _upPart = 0; _upTotalParts = (bytes.length / _chunkSize).ceil();
+    });
     try {
       // 1. init multipart upload
       final initR = await widget.auth.apiPost('/api/v1/manage/videos/upload/init',
@@ -80,8 +88,10 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
             '/api/v1/manage/videos/upload/part?upload_id=$qid&key=$qkey&part=$part', chunk);
         final pd = ApiClient.decode(pr);
         parts.add({'part_number': part, 'etag': pd['etag']});
+        if (mounted) setState(() {
+          _upPart = part; _upDone = end; _progress = end / bytes.length;
+        });
         part++;
-        if (mounted) setState(() => _progress = end / bytes.length);
       }
 
       // 3. complete — R2 reassembles into one object
@@ -103,6 +113,39 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
     if (b >= 1 << 30) return '${(b / (1 << 30)).toStringAsFixed(1)} GB';
     if (b >= 1 << 20) return '${(b / (1 << 20)).toStringAsFixed(0)} MB';
     return '${(b / 1024).toStringAsFixed(0)} KB';
+  }
+
+  // Live upload breakdown: filename, a box per 8 MB chunk (fills as it uploads),
+  // the bar, and "Part X of Y · Z / W MB".
+  Widget _uploadPanel() {
+    final p = Palette.of(context);
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: p.card, border: Border.all(color: p.separator)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(CupertinoIcons.cloud_upload_fill, size: 18, color: p.accent),
+          const SizedBox(width: 8),
+          Expanded(child: Text(_upName, style: AppleTheme.body(context), maxLines: 1, overflow: TextOverflow.ellipsis)),
+          Text('${(_progress * 100).toStringAsFixed(0)}%', style: AppleTheme.body(context).copyWith(color: p.accent, fontWeight: FontWeight.w700)),
+        ]),
+        const SizedBox(height: 10),
+        // One block per chunk — solid = uploaded, faded = in progress, grey = pending.
+        Wrap(spacing: 4, runSpacing: 4, children: List.generate(_upTotalParts, (i) {
+          final done = i < _upPart;
+          final active = i == _upPart;
+          return Container(
+            width: 20, height: 11,
+            decoration: BoxDecoration(color: done ? p.accent : (active ? p.accent.withOpacity(0.45) : p.separator)),
+          );
+        })),
+        const SizedBox(height: 12),
+        LinearProgressIndicator(value: _progress == 0 ? null : _progress, color: p.accent, backgroundColor: p.separator),
+        const SizedBox(height: 8),
+        Text('Part $_upPart of $_upTotalParts · ${_size(_upDone)} / ${_size(_upTotal)}', style: AppleTheme.footnote(context)),
+      ]),
+    );
   }
 
   Future<void> _delete(String id, String title) async {
@@ -139,16 +182,13 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
                     AppleCard(square: true, child: Text('Video storage (R2) is not configured on the server.', style: AppleTheme.footnote(context)))
                   else ...[
                     PrimaryButton(
-                      label: _uploading ? 'Uploading ${(_progress * 100).toStringAsFixed(0)}%' : 'Upload video',
+                      label: _uploading ? 'Uploading… ${(_progress * 100).toStringAsFixed(0)}%' : 'Upload video',
                       icon: CupertinoIcons.cloud_upload,
                       square: true,
                       busy: _uploading,
                       onPressed: _uploading ? null : _upload,
                     ),
-                    if (_uploading) ...[
-                      const SizedBox(height: 8),
-                      LinearProgressIndicator(value: _progress == 0 ? null : _progress, color: Palette.of(context).accent, backgroundColor: Palette.of(context).separator),
-                    ],
+                    if (_uploading) _uploadPanel(),
                   ],
                   const SizedBox(height: 18),
                   if (_err != null)
