@@ -41,7 +41,7 @@ Widget hlsVideoElement(
   ui_web.platformViewRegistry.registerViewFactory(viewType, (int id) {
     final video = html.VideoElement()
       ..controls = false // ← no native browser controls
-      ..autoplay = true
+      ..autoplay = false // ← do NOT auto-play; only the Continue button resumes
       ..style.width = '100%'
       ..style.height = '100%'
       ..style.display = 'block'
@@ -80,6 +80,46 @@ Widget hlsVideoElement(
     container.append(video);
     container.append(badge);
 
+    // ---- Resume gate: the player opens PAUSED; only this Continue button
+    // starts playback (tapping the video or pressing keys won't). -------------
+    var started = false;
+    final resumeOverlay = html.DivElement()
+      ..style.position = 'absolute'
+      ..style.left = '0'
+      ..style.top = '0'
+      ..style.right = '0'
+      ..style.bottom = '0'
+      ..style.display = 'flex'
+      ..style.flexDirection = 'column'
+      ..style.alignItems = 'center'
+      ..style.justifyContent = 'center'
+      ..style.gap = '14px'
+      ..style.background = 'rgba(0,0,0,0.5)'
+      ..style.cursor = 'pointer'
+      ..style.zIndex = '9'
+      ..style.font = '600 15px -apple-system, Segoe UI, Roboto, sans-serif';
+    final resumeCircle = html.DivElement()
+      ..style.width = '78px'
+      ..style.height = '78px'
+      ..style.display = 'flex'
+      ..style.alignItems = 'center'
+      ..style.justifyContent = 'center'
+      ..style.borderRadius = '50%'
+      ..style.background = _accent
+      ..style.color = 'white'
+      ..style.fontSize = '34px'
+      ..style.boxShadow = '0 8px 26px rgba(255,79,43,0.5)'
+      ..text = '►';
+    final resumeLabel = html.DivElement()
+      ..style.color = 'white'
+      ..style.padding = '6px 14px'
+      ..style.borderRadius = '20px'
+      ..style.background = 'rgba(0,0,0,0.4)'
+      ..text = startAt > 0 ? '▶ Continue · ${_fmt(startAt)}' : '▶ Play';
+    resumeOverlay.append(resumeCircle);
+    resumeOverlay.append(resumeLabel);
+    container.append(resumeOverlay);
+
     // Deter right-click "Save video as…". (Not real protection — browsers can't
     // block screen recording; that needs DRM. The watermark is the deterrent.)
     video.onContextMenu.listen((e) => e.preventDefault());
@@ -111,7 +151,7 @@ Widget hlsVideoElement(
       ..style.flexDirection = 'column'
       ..style.gap = '4px'
       ..style.background = 'linear-gradient(to top, rgba(0,0,0,0.75), rgba(0,0,0,0))'
-      ..style.opacity = '1'
+      ..style.opacity = '0' // hidden until the user starts playback
       ..style.transition = 'opacity 0.25s ease'
       ..style.zIndex = '7'
       ..style.font = '500 13px -apple-system, Segoe UI, Roboto, sans-serif';
@@ -270,7 +310,11 @@ Widget hlsVideoElement(
     });
 
     // ---- Play/pause icon sync ----------------------------------------------
-    video.onPlay.listen((_) => playBtn.text = '❚❚');
+    video.onPlay.listen((_) {
+      playBtn.text = '❚❚';
+      started = true;
+      resumeOverlay.style.display = 'none';
+    });
     video.onPause.listen((_) => playBtn.text = '►');
 
     // ---- Auto-hide on inactivity (Netflix style) ---------------------------
@@ -287,10 +331,33 @@ Widget hlsVideoElement(
       });
     }
 
-    container.onMouseMove.listen((_) => showControls());
-    container.onMouseEnter.listen((_) => showControls());
+    // Start playback — the ONLY entry point that resumes the video.
+    void startPlayback() {
+      if (started) return;
+      started = true;
+      if (startAt > 0) {
+        try {
+          video.currentTime = startAt;
+        } catch (_) {}
+      }
+      video.play();
+      resumeOverlay.style.display = 'none';
+      showControls();
+    }
+
+    resumeOverlay.onClick.listen((e) {
+      e.stopPropagation();
+      startPlayback();
+    });
+
+    container.onMouseMove.listen((_) {
+      if (started) showControls();
+    });
+    container.onMouseEnter.listen((_) {
+      if (started) showControls();
+    });
     container.onMouseLeave.listen((_) {
-      if (!video.paused && !dragging) controls.style.opacity = '0';
+      if (started && !video.paused && !dragging) controls.style.opacity = '0';
     });
     // When paused, always show the controls.
     video.onPause.listen((_) {
@@ -319,6 +386,8 @@ Widget hlsVideoElement(
     _keySub?.cancel();
     _keySub = html.document.onKeyDown.listen((e) {
       if (container.isConnected != true) return;
+      // Until the user presses Continue, the keyboard cannot start the video.
+      if (!started) return;
       final target = e.target;
       if (target is html.InputElement || target is html.TextAreaElement) return;
       final k = e.key;
