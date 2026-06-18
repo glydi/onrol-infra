@@ -21,7 +21,8 @@ class _WatermarkOverlayState extends State<WatermarkOverlay>
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(seconds: 11))
+    // ~2.5s per random position (60s / 24 steps).
+    _ctrl = AnimationController(vsync: this, duration: const Duration(seconds: 60))
       ..repeat();
   }
 
@@ -70,10 +71,22 @@ class _WatermarkPainter extends CustomPainter {
       textDirection: TextDirection.ltr,
     )..layout();
 
-    // Drift along a Lissajous-ish path so it never sits still or predictably.
-    final dx = (sin(t * 2 * pi) * 0.5 + 0.5) * max(1, size.width - tp.width);
-    final dy = (sin(t * 2 * pi * 1.6 + 1.1) * 0.5 + 0.5) * max(1, size.height - tp.height);
+    // Jump the label to a fresh RANDOM position every step (it doesn't roam — it
+    // pops up somewhere new), so a recording can't be cleaned by masking one spot.
+    const steps = 24; // distinct positions per loop (~2.5s each)
+    final i = (t * steps).floor();
+    final rx = _rand(i * 2 + 1);
+    final ry = _rand(i * 2 + 2);
+    final dx = rx * max(1.0, size.width - tp.width);
+    final dy = ry * max(1.0, size.height - tp.height);
     tp.paint(canvas, Offset(dx, dy));
+  }
+
+  // Deterministic pseudo-random in [0,1) from an integer step (no Random object,
+  // so paints are pure and repeatable).
+  double _rand(int n) {
+    final v = sin(n * 12.9898 + 78.233) * 43758.5453;
+    return v - v.floorToDouble();
   }
 
   @override
