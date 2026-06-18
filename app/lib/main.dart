@@ -24,6 +24,11 @@ void main() {
   runApp(const OnrolApp());
 }
 
+/// When built with --dart-define=STUDENT_APP=true (the Windows student app),
+/// the app is a dedicated, light student LMS: it always lands on the student
+/// home and never shows the staff console or the per-portal subdomain screens.
+const bool kStudentApp = bool.fromEnvironment('STUDENT_APP');
+
 class OnrolApp extends StatefulWidget {
   const OnrolApp({super.key});
 
@@ -62,6 +67,8 @@ class _OnrolAppState extends State<OnrolApp> {
             }
             final hasSession = snap.data == true && _auth.user != null;
             if (!hasSession) return LoginScreen(auth: _auth);
+            // Dedicated student app (Windows): always the student LMS, nothing else.
+            if (kStudentApp) return HomeScreen(auth: _auth);
             // Per-portal subdomains route to their own portal.
             if (isCrmHost()) return CrmPortalScreen(auth: _auth);
             if (isAmbassadorHost()) return AmbassadorPortalScreen(auth: _auth);
