@@ -4755,24 +4755,26 @@ class _ResumeCardState extends State<_ResumeCard> {
                 ),
               ),
               const SizedBox(height: 12),
-              // Compact, pill-shaped — sized to its content, right-aligned.
-              Align(
-                alignment: Alignment.centerRight,
-                child: Container(
-                  height: 38,
-                  padding: const EdgeInsets.symmetric(horizontal: 18),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    gradient: _orangeGrad,
-                    borderRadius: BorderRadius.circular(19),
-                    boxShadow: [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 6, offset: const Offset(0, 2))],
+              // Compact, pill-shaped — sized to its content, pushed to the right.
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Container(
+                    height: 38,
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      gradient: _orangeGrad,
+                      borderRadius: BorderRadius.circular(19),
+                      boxShadow: [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 6, offset: const Offset(0, 2))],
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(CupertinoIcons.play_fill, color: Colors.white, size: 14),
+                      const SizedBox(width: 7),
+                      Text('Continue', style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white)),
+                    ]),
                   ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(CupertinoIcons.play_fill, color: Colors.white, size: 14),
-                    const SizedBox(width: 7),
-                    Text('Continue', style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white)),
-                  ]),
-                ),
+                ],
               ),
             ]),
           ),
