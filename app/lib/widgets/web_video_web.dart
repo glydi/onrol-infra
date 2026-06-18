@@ -7,9 +7,30 @@ import 'dart:async';
 import 'dart:html' as html;
 import 'dart:js' as js;
 import 'dart:math' as math;
+import 'dart:svg' as svg;
 import 'dart:ui_web' as ui_web;
 
 import 'package:flutter/widgets.dart';
+
+// Clean (no-emoji) Netflix-style icons — Material Design 24×24 paths.
+const _icPlay = 'M8 5v14l11-7z';
+const _icPause = 'M6 19h4V5H6v14zm8-14v14h4V5h-4z';
+const _icReplay = 'M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z';
+const _icForward = 'M12 5V1l5 5-5 5V7c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h2c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z';
+const _icVolUp = 'M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z';
+const _icVolOff = 'M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z';
+const _icFullscreen = 'M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z';
+
+// Build a fresh white SVG icon (each call returns a new element).
+svg.SvgSvgElement _vicon(String path, {double size = 22}) {
+  final s = svg.SvgSvgElement()
+    ..setAttribute('viewBox', '0 0 24 24')
+    ..setAttribute('width', size.toString())
+    ..setAttribute('height', size.toString())
+    ..setAttribute('fill', 'white');
+  s.append(svg.PathElement()..setAttribute('d', path));
+  return s;
+}
 
 // Each open registers a fresh view factory so [startAt]/callbacks are current
 // (factories are cached by view type, so we use a unique type per open).
@@ -61,7 +82,7 @@ Widget hlsVideoElement(
       ..style.outline = 'none'
       ..tabIndex = 0;
 
-    // Centre feedback badge (▶ / ❚❚ / ⏩ 10s / 🔊 80% …) — fades out.
+    // Centre feedback badge (clean icons + text, no emojis) — fades out.
     final badge = html.DivElement()
       ..style.position = 'absolute'
       ..style.top = '50%'
@@ -71,7 +92,10 @@ Widget hlsVideoElement(
       ..style.background = 'rgba(0,0,0,0.55)'
       ..style.color = 'white'
       ..style.borderRadius = '16px'
-      ..style.font = '600 22px -apple-system, Segoe UI, Roboto, sans-serif'
+      ..style.display = 'flex'
+      ..style.alignItems = 'center'
+      ..style.gap = '8px'
+      ..style.font = '600 20px -apple-system, Segoe UI, Roboto, sans-serif'
       ..style.pointerEvents = 'none'
       ..style.opacity = '0'
       ..style.transition = 'opacity 0.22s ease'
@@ -92,11 +116,24 @@ Widget hlsVideoElement(
 
     // ---- Feedback badge -----------------------------------------------------
     Timer? badgeTimer;
-    void flash(String text) {
-      badge.text = text;
+    void _show() {
       badge.style.opacity = '1';
       badgeTimer?.cancel();
       badgeTimer = Timer(const Duration(milliseconds: 560), () => badge.style.opacity = '0');
+    }
+
+    // Plain-text flash (play/pause symbols, %, speed) — no emojis.
+    void flash(String text) {
+      badge.text = text;
+      _show();
+    }
+
+    // Icon (+ optional label) flash — clean SVG, Netflix-style.
+    void flashIcon(svg.SvgSvgElement ic, [String? label]) {
+      badge.children.clear();
+      badge.append(ic);
+      if (label != null) badge.append(html.SpanElement()..text = label);
+      _show();
     }
 
     // ===================== Control bar =======================================
@@ -151,23 +188,23 @@ Widget hlsVideoElement(
     void togglePlay() {
       if (video.paused) {
         video.play();
-        flash('▶');
+        flashIcon(_vicon(_icPlay, size: 30));
       } else {
         video.pause();
-        flash('❚❚');
+        flashIcon(_vicon(_icPause, size: 30));
       }
     }
 
     void seekBy(int seconds) {
       final d = durOf();
       video.currentTime = clamp(video.currentTime.toDouble() + seconds, 0, d > 0 ? d : double.infinity);
-      flash(seconds > 0 ? '⏩ ${seconds}s' : '⏪ ${seconds.abs()}s');
+      flashIcon(_vicon(seconds > 0 ? _icForward : _icReplay, size: 30), '${seconds.abs()}s');
     }
 
     void changeVolume(double delta) {
       video.muted = false;
       video.volume = clamp(video.volume.toDouble() + delta, 0, 1);
-      flash('🔊 ${(video.volume * 100).round()}%');
+      flashIcon(_vicon(_icVolUp, size: 26), '${(video.volume * 100).round()}%');
     }
 
     void toggleFullscreen() {
@@ -186,10 +223,35 @@ Widget hlsVideoElement(
       }
     }
 
+    // Icon-button factory (clean SVG, no emojis).
+    html.SpanElement iconBtn(String path, void Function() onTap, {double size = 22}) {
+      final b = html.SpanElement()
+        ..style.cursor = 'pointer'
+        ..style.padding = '5px 7px'
+        ..style.borderRadius = '8px'
+        ..style.display = 'flex'
+        ..style.alignItems = 'center'
+        ..style.lineHeight = '0'
+        ..style.transition = 'background 0.15s ease';
+      b.append(_vicon(path, size: size));
+      b.onClick.listen((e) {
+        e.stopPropagation();
+        onTap();
+      });
+      b.onMouseEnter.listen((_) => b.style.background = 'rgba(255,255,255,0.16)');
+      b.onMouseLeave.listen((_) => b.style.background = 'transparent');
+      return b;
+    }
+
+    void setBtnIcon(html.SpanElement b, String path, {double size = 22}) {
+      b.children.clear();
+      b.append(_vicon(path, size: size));
+    }
+
     // Buttons.
-    final playBtn = btn('►', togglePlay, size: 17);
-    final back10 = btn('⟲', () => seekBy(-10), size: 17);
-    final fwd10 = btn('⟳', () => seekBy(10), size: 17);
+    final playBtn = iconBtn(_icPlay, togglePlay, size: 24);
+    final back10 = iconBtn(_icReplay, () => seekBy(-10), size: 22);
+    final fwd10 = iconBtn(_icForward, () => seekBy(10), size: 22);
     final timeLabel = html.SpanElement()
       ..text = '0:00 / 0:00'
       ..style.color = 'white'
@@ -208,11 +270,14 @@ Widget hlsVideoElement(
       flash('${speedBtn.text}');
     });
 
-    final muteBtn = btn('🔊', () {
+    final muteBtn = iconBtn(_icVolUp, () {}, size: 21);
+    void refreshMute() => setBtnIcon(muteBtn, (video.muted || video.volume == 0) ? _icVolOff : _icVolUp, size: 21);
+    muteBtn.onClick.listen((e) {
+      e.stopPropagation();
       video.muted = !video.muted;
-      flash(video.muted ? '🔇' : '🔊');
-    }, size: 14);
-    void refreshMute() => muteBtn.text = (video.muted || video.volume == 0) ? '🔇' : '🔊';
+      refreshMute();
+      flashIcon(_vicon(video.muted ? _icVolOff : _icVolUp, size: 26));
+    });
 
     final volRange = html.RangeInputElement()
       ..min = '0'
@@ -229,7 +294,7 @@ Widget hlsVideoElement(
       refreshMute();
     });
 
-    final fsBtn = btn('⛶', toggleFullscreen, size: 17);
+    final fsBtn = iconBtn(_icFullscreen, toggleFullscreen, size: 22);
 
     final spacer = html.DivElement()..style.flex = '1';
     final row = html.DivElement()
@@ -270,8 +335,8 @@ Widget hlsVideoElement(
     });
 
     // ---- Play/pause icon sync ----------------------------------------------
-    video.onPlay.listen((_) => playBtn.text = '❚❚');
-    video.onPause.listen((_) => playBtn.text = '►');
+    video.onPlay.listen((_) => setBtnIcon(playBtn, _icPause, size: 24));
+    video.onPause.listen((_) => setBtnIcon(playBtn, _icPlay, size: 24));
 
     // ---- Auto-hide on inactivity (Netflix style) ---------------------------
     Timer? hideTimer;
@@ -359,7 +424,7 @@ Widget hlsVideoElement(
         case 'M':
           video.muted = !video.muted;
           refreshMute();
-          flash(video.muted ? '🔇' : '🔊');
+          flashIcon(_vicon(video.muted ? _icVolOff : _icVolUp, size: 26));
           break;
         case 'f':
         case 'F':

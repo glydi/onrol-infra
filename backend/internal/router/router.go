@@ -271,6 +271,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Get("/me/forum/:id", auth, h.GetForumThread)
 	api.Post("/me/forum/:id/reply", auth, h.ReplyForum)
 	api.Delete("/me/forum/:id", auth, h.DeleteForumThread)
+	api.Delete("/me/forum/posts/:postId", auth, h.DeleteForumPost)
 	api.Post("/me/lessons/:id/complete", auth, h.CompleteLesson)
 	api.Post("/me/lessons/:id/progress", auth, h.SaveLessonProgress)
 	api.Get("/me/resume", auth, h.ResumeLearning)
