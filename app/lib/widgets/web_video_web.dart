@@ -1,9 +1,8 @@
 // Web video element with hls.js for HLS (.m3u8) streaming. mp4 plays via the
 // native <video>; .m3u8 is streamed by hls.js (Chrome/Firefox) or natively
-// (Safari). The native browser controls are removed — playback is driven by
-// Netflix-style keyboard shortcuts + click, with an on-video feedback badge and
-// a slim progress bar. Download/right-click are disabled; the watermark sits on
-// top.
+// (Safari). The native browser controls are removed — playback is driven by a
+// custom Netflix-style control bar that fades in on hover + keyboard shortcuts.
+// Download/right-click are disabled; the watermark sits on top.
 import 'dart:async';
 import 'dart:html' as html;
 import 'dart:js' as js;
@@ -19,6 +18,17 @@ int _seq = 0;
 // Only one player is on screen at a time; keep a single global key listener and
 // cancel the previous one whenever a new player mounts.
 StreamSubscription<html.KeyboardEvent>? _keySub;
+
+const _accent = '#FF4F2B';
+const _speeds = [0.5, 1.0, 1.25, 1.5, 2.0];
+
+String _fmt(double secs) {
+  if (!secs.isFinite || secs.isNaN || secs < 0) secs = 0;
+  final s = secs.floor();
+  final h = s ~/ 3600, m = (s % 3600) ~/ 60, sec = s % 60;
+  String two(int n) => n.toString().padLeft(2, '0');
+  return h > 0 ? '$h:${two(m)}:${two(sec)}' : '${m}:${two(sec)}';
+}
 
 Widget hlsVideoElement(
   String url, {
@@ -40,8 +50,8 @@ Widget hlsVideoElement(
       ..setAttribute('playsinline', 'true')
       ..setAttribute('disablePictureInPicture', 'true');
 
-    // Wrapper so the feedback badge + progress bar can overlay the video and
-    // the whole player can go fullscreen as one unit.
+    // Wrapper so the control bar + badge can overlay the video and the whole
+    // player can go fullscreen as one unit.
     final container = html.DivElement()
       ..style.position = 'relative'
       ..style.width = '100%'
@@ -49,7 +59,7 @@ Widget hlsVideoElement(
       ..style.background = 'black'
       ..style.overflow = 'hidden'
       ..style.outline = 'none'
-      ..tabIndex = 0; // focusable so it can take key events when clicked
+      ..tabIndex = 0;
 
     // Centre feedback badge (▶ / ❚❚ / ⏩ 10s / 🔊 80% …) — fades out.
     final badge = html.DivElement()
@@ -62,35 +72,23 @@ Widget hlsVideoElement(
       ..style.color = 'white'
       ..style.borderRadius = '16px'
       ..style.font = '600 22px -apple-system, Segoe UI, Roboto, sans-serif'
-      ..style.letterSpacing = '0.5px'
       ..style.pointerEvents = 'none'
       ..style.opacity = '0'
       ..style.transition = 'opacity 0.22s ease'
-      ..style.zIndex = '6';
-
-    // Slim bottom progress bar.
-    final barTrack = html.DivElement()
-      ..style.position = 'absolute'
-      ..style.left = '0'
-      ..style.right = '0'
-      ..style.bottom = '0'
-      ..style.height = '4px'
-      ..style.background = 'rgba(255,255,255,0.18)'
-      ..style.pointerEvents = 'none'
-      ..style.zIndex = '5';
-    final barFill = html.DivElement()
-      ..style.height = '100%'
-      ..style.width = '0%'
-      ..style.background = '#FF4F2B';
-    barTrack.append(barFill);
+      ..style.zIndex = '8';
 
     container.append(video);
-    container.append(barTrack);
     container.append(badge);
 
     // Deter right-click "Save video as…". (Not real protection — browsers can't
     // block screen recording; that needs DRM. The watermark is the deterrent.)
     video.onContextMenu.listen((e) => e.preventDefault());
+
+    double clamp(double v, double lo, double hi) => v < lo ? lo : (v > hi ? hi : v);
+    double durOf() {
+      final d = video.duration;
+      return (d.isFinite && !d.isNaN) ? d.toDouble() : 0.0;
+    }
 
     // ---- Feedback badge -----------------------------------------------------
     Timer? badgeTimer;
@@ -101,9 +99,55 @@ Widget hlsVideoElement(
       badgeTimer = Timer(const Duration(milliseconds: 560), () => badge.style.opacity = '0');
     }
 
-    double clamp(double v, double lo, double hi) => v < lo ? lo : (v > hi ? hi : v);
+    // ===================== Control bar =======================================
+    final controls = html.DivElement()
+      ..style.position = 'absolute'
+      ..style.left = '0'
+      ..style.right = '0'
+      ..style.bottom = '0'
+      ..style.padding = '20px 14px 10px'
+      ..style.boxSizing = 'border-box'
+      ..style.display = 'flex'
+      ..style.flexDirection = 'column'
+      ..style.gap = '4px'
+      ..style.background = 'linear-gradient(to top, rgba(0,0,0,0.75), rgba(0,0,0,0))'
+      ..style.opacity = '1'
+      ..style.transition = 'opacity 0.25s ease'
+      ..style.zIndex = '7'
+      ..style.font = '500 13px -apple-system, Segoe UI, Roboto, sans-serif';
 
-    // ---- Transport helpers --------------------------------------------------
+    // Seek scrubber (0..1000 for fine granularity).
+    final seek = html.RangeInputElement()
+      ..min = '0'
+      ..max = '1000'
+      ..value = '0'
+      ..style.width = '100%'
+      ..style.cursor = 'pointer'
+      ..style.height = '16px';
+    seek.style.setProperty('accent-color', _accent);
+
+    // Button factory.
+    html.SpanElement btn(String label, void Function() onTap, {double size = 15}) {
+      final b = html.SpanElement()
+        ..text = label
+        ..style.cursor = 'pointer'
+        ..style.padding = '5px 8px'
+        ..style.borderRadius = '8px'
+        ..style.color = 'white'
+        ..style.userSelect = 'none'
+        ..style.fontSize = '${size}px'
+        ..style.lineHeight = '1'
+        ..style.transition = 'background 0.15s ease';
+      b.onClick.listen((e) {
+        e.stopPropagation();
+        onTap();
+      });
+      b.onMouseEnter.listen((_) => b.style.background = 'rgba(255,255,255,0.16)');
+      b.onMouseLeave.listen((_) => b.style.background = 'transparent');
+      return b;
+    }
+
+    // ---- Transport actions (shared by buttons + keyboard) -------------------
     void togglePlay() {
       if (video.paused) {
         video.play();
@@ -115,22 +159,15 @@ Widget hlsVideoElement(
     }
 
     void seekBy(int seconds) {
-      final d = video.duration;
-      final dur = (d.isFinite && !d.isNaN) ? d.toDouble() : double.infinity;
-      video.currentTime = clamp(video.currentTime.toDouble() + seconds, 0, dur);
+      final d = durOf();
+      video.currentTime = clamp(video.currentTime.toDouble() + seconds, 0, d > 0 ? d : double.infinity);
       flash(seconds > 0 ? '⏩ ${seconds}s' : '⏪ ${seconds.abs()}s');
     }
 
     void changeVolume(double delta) {
       video.muted = false;
-      final v = clamp(video.volume.toDouble() + delta, 0, 1);
-      video.volume = v;
-      flash('🔊 ${(v * 100).round()}%');
-    }
-
-    void toggleMute() {
-      video.muted = !video.muted;
-      flash(video.muted ? '🔇' : '🔊');
+      video.volume = clamp(video.volume.toDouble() + delta, 0, 1);
+      flash('🔊 ${(video.volume * 100).round()}%');
     }
 
     void toggleFullscreen() {
@@ -142,24 +179,136 @@ Widget hlsVideoElement(
     }
 
     void jumpToFraction(double f) {
-      final d = video.duration;
-      if (d.isFinite && !d.isNaN) {
+      final d = durOf();
+      if (d > 0) {
         video.currentTime = d * clamp(f, 0, 1);
         flash('${(f * 100).round()}%');
       }
     }
 
-    // ---- Mouse: click = play/pause, double-click = fullscreen ---------------
-    var lastClick = 0;
-    video.onClick.listen((_) {
-      // Defer slightly so a double-click (fullscreen) doesn't also toggle play.
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final wasQuick = now - lastClick < 280;
-      lastClick = now;
-      if (wasQuick) return;
-      Timer(const Duration(milliseconds: 240), () {
-        if (DateTime.now().millisecondsSinceEpoch - lastClick >= 240) togglePlay();
+    // Buttons.
+    final playBtn = btn('►', togglePlay, size: 17);
+    final back10 = btn('⟲', () => seekBy(-10), size: 17);
+    final fwd10 = btn('⟳', () => seekBy(10), size: 17);
+    final timeLabel = html.SpanElement()
+      ..text = '0:00 / 0:00'
+      ..style.color = 'white'
+      ..style.fontSize = '12.5px'
+      ..style.padding = '0 6px'
+      ..style.whiteSpace = 'nowrap';
+
+    final speedBtn = btn('1×', () {}, size: 13);
+    var speedIdx = 1;
+    speedBtn.onClick.listen((e) {
+      e.stopPropagation();
+      speedIdx = (speedIdx + 1) % _speeds.length;
+      video.playbackRate = _speeds[speedIdx];
+      final sp = _speeds[speedIdx];
+      speedBtn.text = '${sp == sp.roundToDouble() ? sp.toInt() : sp}×';
+      flash('${speedBtn.text}');
+    });
+
+    final muteBtn = btn('🔊', () {
+      video.muted = !video.muted;
+      flash(video.muted ? '🔇' : '🔊');
+    }, size: 14);
+    void refreshMute() => muteBtn.text = (video.muted || video.volume == 0) ? '🔇' : '🔊';
+
+    final volRange = html.RangeInputElement()
+      ..min = '0'
+      ..max = '100'
+      ..value = '100'
+      ..style.width = '78px'
+      ..style.cursor = 'pointer'
+      ..style.height = '14px';
+    volRange.style.setProperty('accent-color', _accent);
+    volRange.onInput.listen((e) {
+      e.stopPropagation();
+      video.muted = false;
+      video.volume = (double.tryParse(volRange.value ?? '100') ?? 100) / 100;
+      refreshMute();
+    });
+
+    final fsBtn = btn('⛶', toggleFullscreen, size: 17);
+
+    final spacer = html.DivElement()..style.flex = '1';
+    final row = html.DivElement()
+      ..style.display = 'flex'
+      ..style.alignItems = 'center'
+      ..style.gap = '4px';
+    row.append(playBtn);
+    row.append(back10);
+    row.append(fwd10);
+    row.append(timeLabel);
+    row.append(spacer);
+    row.append(speedBtn);
+    row.append(muteBtn);
+    row.append(volRange);
+    row.append(fsBtn);
+
+    controls.append(seek);
+    controls.append(row);
+    container.append(controls);
+
+    // Keep clicks on the control bar from reaching the video (which toggles play).
+    controls.onClick.listen((e) => e.stopPropagation());
+
+    // ---- Scrubber wiring ----------------------------------------------------
+    var dragging = false;
+    seek.onInput.listen((e) {
+      e.stopPropagation();
+      dragging = true;
+      final d = durOf();
+      final t = (double.tryParse(seek.value ?? '0') ?? 0) / 1000 * d;
+      timeLabel.text = '${_fmt(t)} / ${_fmt(d)}';
+    });
+    seek.onChange.listen((e) {
+      e.stopPropagation();
+      final d = durOf();
+      if (d > 0) video.currentTime = (double.tryParse(seek.value ?? '0') ?? 0) / 1000 * d;
+      dragging = false;
+    });
+
+    // ---- Play/pause icon sync ----------------------------------------------
+    video.onPlay.listen((_) => playBtn.text = '❚❚');
+    video.onPause.listen((_) => playBtn.text = '►');
+
+    // ---- Auto-hide on inactivity (Netflix style) ---------------------------
+    Timer? hideTimer;
+    void showControls() {
+      controls.style.opacity = '1';
+      container.style.cursor = 'default';
+      hideTimer?.cancel();
+      hideTimer = Timer(const Duration(milliseconds: 2600), () {
+        if (!video.paused && !dragging) {
+          controls.style.opacity = '0';
+          container.style.cursor = 'none';
+        }
       });
+    }
+
+    container.onMouseMove.listen((_) => showControls());
+    container.onMouseEnter.listen((_) => showControls());
+    container.onMouseLeave.listen((_) {
+      if (!video.paused && !dragging) controls.style.opacity = '0';
+    });
+    // When paused, always show the controls.
+    video.onPause.listen((_) {
+      hideTimer?.cancel();
+      controls.style.opacity = '1';
+      container.style.cursor = 'default';
+    });
+
+    // ---- Tap on the video toggles the CONTROLS — it never plays/pauses.
+    // Playback only starts from "Continue" (which opens the player) or the
+    // explicit play button / keyboard. Double-click toggles fullscreen.
+    video.onClick.listen((_) {
+      if (controls.style.opacity == '0') {
+        showControls();
+      } else {
+        controls.style.opacity = '0';
+        if (!video.paused) container.style.cursor = 'none';
+      }
     });
     video.onDoubleClick.listen((e) {
       e.preventDefault();
@@ -169,13 +318,12 @@ Widget hlsVideoElement(
     // ---- Keyboard (Netflix-style) -------------------------------------------
     _keySub?.cancel();
     _keySub = html.document.onKeyDown.listen((e) {
-      // Ignore when this player isn't on screen, or when typing in a field.
       if (container.isConnected != true) return;
       final target = e.target;
       if (target is html.InputElement || target is html.TextAreaElement) return;
-
       final k = e.key;
       if (k == null) return;
+      showControls();
       switch (k) {
         case ' ':
         case 'k':
@@ -209,7 +357,9 @@ Widget hlsVideoElement(
           break;
         case 'm':
         case 'M':
-          toggleMute();
+          video.muted = !video.muted;
+          refreshMute();
+          flash(video.muted ? '🔇' : '🔊');
           break;
         case 'f':
         case 'F':
@@ -226,20 +376,24 @@ Widget hlsVideoElement(
     });
 
     // Resume: seek to the saved position once metadata is available.
-    if (startAt > 0) {
-      video.onLoadedMetadata.listen((_) {
+    video.onLoadedMetadata.listen((_) {
+      if (startAt > 0) {
         try {
           video.currentTime = startAt;
         } catch (_) {}
-      });
-    }
-    // Report playback position (for "resume where you stopped") + drive the bar.
+      }
+      timeLabel.text = '${_fmt(video.currentTime.toDouble())} / ${_fmt(durOf())}';
+    });
+
+    // ---- Position reporting + UI sync (drives label, scrubber) --------------
     video.onTimeUpdate.listen((_) {
-      final d = video.duration;
-      final dur = (d.isFinite && !d.isNaN) ? d.toDouble() : 0.0;
+      final d = durOf();
       final pos = video.currentTime.toDouble();
-      if (dur > 0) barFill.style.width = '${(math.min(pos / dur, 1.0) * 100).toStringAsFixed(2)}%';
-      onTime?.call(pos, dur);
+      if (!dragging) {
+        if (d > 0) seek.value = (math.min(pos / d, 1.0) * 1000).round().toString();
+        timeLabel.text = '${_fmt(pos)} / ${_fmt(d)}';
+      }
+      onTime?.call(pos, d);
     });
     if (onEnded != null) {
       video.onEnded.listen((_) => onEnded());

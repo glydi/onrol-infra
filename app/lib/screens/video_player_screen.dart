@@ -208,9 +208,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           }),
         ),
         _topBar(),
-        // Auto-fading keyboard-shortcuts hint.
+        // Auto-fading keyboard-shortcuts hint (sits above the control bar).
         Positioned(
-          left: 0, right: 0, bottom: 16,
+          left: 0, right: 0, bottom: 80,
           child: IgnorePointer(
             child: AnimatedOpacity(
               opacity: _webHint ? 1 : 0,
