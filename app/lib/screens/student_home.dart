@@ -211,7 +211,7 @@ class _StudentHomeState extends State<StudentHome> {
     _Tile(CupertinoIcons.play_circle_fill, 'Resume', 'resume'),
     _Tile(CupertinoIcons.doc_text_fill, 'Assignments', 'assignments'),
     _Tile(CupertinoIcons.videocam_fill, 'Live Classes', 'live'),
-    _Tile(CupertinoIcons.rosette, 'Certificates', 'certificates'),
+    _Tile(CupertinoIcons.doc_richtext, 'Study Hub', 'study'),
     _Tile(CupertinoIcons.list_number, 'Leaderboard', 'leaderboard'),
     _Tile(CupertinoIcons.bubble_left_bubble_right_fill, 'Forum', 'forum'),
     _Tile(CupertinoIcons.gear_alt_fill, 'Settings', 'settings'),
@@ -1334,6 +1334,10 @@ class _StudentHomeState extends State<StudentHome> {
           _row(CupertinoIcons.play_rectangle_fill, 'CSS Flexbox Tutorial', 'Video · 45 min', 'Watch'),
           _row(CupertinoIcons.book_fill, 'Figma Handbook', 'PDF · 5.1 MB', 'Download'),
         ]);
+      case 'study':
+        return (CupertinoIcons.doc_richtext, 'Study Hub', 'Guides, cheat sheets, flashcards & more', [
+          const _StudyHub(),
+        ]);
       case 'certificates':
         return (CupertinoIcons.rosette, 'Certificates', 'Your achievements', [
           _future(_apiList('/api/v1/me/certificates', 'certificates'), (List certs) {
@@ -1768,6 +1772,142 @@ class _ExploreListState extends State<_ExploreList> {
           badge,
           badgeBg: done ? _greenBg : null,
           badgeFg: done ? _green : null,
+        ),
+      ),
+    );
+  }
+}
+
+/// Study Hub: a hero banner + large animated cards for revision resources
+/// (guides, cheat sheets, mind maps, flashcards, formula sheets).
+class _StudyResource {
+  const _StudyResource(this.icon, this.title, this.sub, this.colors);
+  final IconData icon;
+  final String title;
+  final String sub;
+  final List<Color> colors;
+}
+
+class _StudyHub extends StatelessWidget {
+  const _StudyHub();
+
+  static const _items = <_StudyResource>[
+    _StudyResource(CupertinoIcons.book_fill, 'Study Guides', 'Structured notes for every topic', [Color(0xFFFF6B35), Color(0xFFFF9166)]),
+    _StudyResource(CupertinoIcons.doc_text_fill, 'Cheat Sheets', 'Quick-reference summaries', [Color(0xFFE0A12A), Color(0xFFF6C453)]),
+    _StudyResource(CupertinoIcons.rectangle_3_offgrid_fill, 'Mind Maps', 'See how concepts connect', [Color(0xFF18A999), Color(0xFF4FD1C5)]),
+    _StudyResource(CupertinoIcons.rectangle_stack_fill, 'Flashcards', 'Flip to memorize fast', [Color(0xFF2D7DF6), Color(0xFF6FA8FF)]),
+    _StudyResource(CupertinoIcons.function, 'Formula Sheets', 'All key formulas in one place', [Color(0xFF7C5CFC), Color(0xFFA88BFF)]),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    void open(String t) => ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$t — coming soon'), behavior: SnackBarBehavior.floating),
+        );
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // Hero banner.
+      _Entrance(
+        index: 0,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          decoration: BoxDecoration(
+            gradient: _orangeGrad,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [BoxShadow(color: _orange.withOpacity(0.34), blurRadius: 20, offset: const Offset(0, 9))],
+          ),
+          child: Row(children: [
+            Container(
+              width: 50, height: 50, alignment: Alignment.center,
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.22), borderRadius: BorderRadius.circular(14)),
+              child: const Icon(CupertinoIcons.lightbulb_fill, color: Colors.white, size: 26),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Revise smarter', style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white)),
+                const SizedBox(height: 2),
+                Text('Everything you need to study, in one place', style: GoogleFonts.poppins(fontSize: 12, color: Colors.white.withOpacity(0.92))),
+              ]),
+            ),
+          ]),
+        ),
+      ),
+      const SizedBox(height: 16),
+      for (var i = 0; i < _items.length; i++) _StudyCard(index: i + 1, item: _items[i], onTap: () => open(_items[i].title)),
+    ]);
+  }
+}
+
+class _StudyCard extends StatefulWidget {
+  const _StudyCard({required this.index, required this.item, required this.onTap});
+  final int index;
+  final _StudyResource item;
+  final VoidCallback onTap;
+  @override
+  State<_StudyCard> createState() => _StudyCardState();
+}
+
+class _StudyCardState extends State<_StudyCard> {
+  bool _hover = false;
+  @override
+  Widget build(BuildContext context) {
+    final it = widget.item;
+    final accent = it.colors.first;
+    return _Entrance(
+      index: widget.index,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(15),
+            transform: Matrix4.translationValues(0, _hover ? -3 : 0, 0),
+            decoration: BoxDecoration(
+              gradient: _cardGradient,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: _hover ? accent.withOpacity(0.45) : _cardBorder, width: 1),
+              boxShadow: [BoxShadow(color: accent.withOpacity(_hover ? 0.26 : 0.08), blurRadius: _hover ? 24 : 12, offset: Offset(0, _hover ? 10 : 5))],
+            ),
+            child: Row(children: [
+              AnimatedScale(
+                scale: _hover ? 1.08 : 1.0,
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutBack,
+                child: Container(
+                  width: 56, height: 56, alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: it.colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [BoxShadow(color: accent.withOpacity(0.4), blurRadius: 12, offset: const Offset(0, 5))],
+                  ),
+                  child: Icon(it.icon, size: 27, color: Colors.white),
+                ),
+              ),
+              const SizedBox(width: 15),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(it.title, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: _navy)),
+                  const SizedBox(height: 3),
+                  Text(it.sub, style: GoogleFonts.poppins(fontSize: 12.5, color: _grey, height: 1.25)),
+                ]),
+              ),
+              const SizedBox(width: 8),
+              AnimatedSlide(
+                offset: Offset(_hover ? 0.25 : 0, 0),
+                duration: const Duration(milliseconds: 220),
+                child: Container(
+                  width: 30, height: 30, alignment: Alignment.center,
+                  decoration: BoxDecoration(color: accent.withOpacity(_hover ? 0.16 : 0.08), shape: BoxShape.circle),
+                  child: Icon(CupertinoIcons.chevron_right, size: 15, color: accent),
+                ),
+              ),
+            ]),
+          ),
         ),
       ),
     );
