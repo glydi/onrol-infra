@@ -4549,6 +4549,80 @@ Widget _avatarBox(String avatar, double size, String initials, {bool editable = 
   ]);
 }
 
+/// A glowing progress line: a rounded track, an orange gradient fill, and a
+/// bright circular "spark" thumb sitting at the fill point. Used for every
+/// course / lesson progress bar so they all share one attractive look.
+/// [value] is 0..1 and animates up from 0 on first paint.
+class _GlowProgress extends StatelessWidget {
+  const _GlowProgress({required this.value, this.height = 8});
+  final double value;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final target = value.clamp(0.0, 1.0);
+    final thumb = height + 14; // diameter of the spark thumb
+    return SizedBox(
+      height: thumb,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: target),
+        duration: const Duration(milliseconds: 850),
+        curve: Curves.easeOutCubic,
+        builder: (context, t, __) {
+          return LayoutBuilder(
+            builder: (context, c) {
+              final w = c.maxWidth;
+              final fillW = (w * t).clamp(0.0, w);
+              return Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.centerLeft,
+                children: [
+                  // Track.
+                  Container(
+                    height: height,
+                    decoration: BoxDecoration(
+                      color: _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0EBE8),
+                      borderRadius: BorderRadius.circular(height),
+                    ),
+                  ),
+                  // Gradient fill.
+                  Container(
+                    height: height,
+                    width: fillW,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(colors: [Color(0xFFFF9A5E), _orange, Color(0xFFE8421F)]),
+                      borderRadius: BorderRadius.circular(height),
+                      boxShadow: [BoxShadow(color: _orange.withOpacity(0.40), blurRadius: 7, offset: const Offset(0, 1))],
+                    ),
+                  ),
+                  // Glowing spark thumb at the fill point.
+                  if (t > 0.001)
+                    Positioned(
+                      top: 0, bottom: 0,
+                      left: (fillW - thumb / 2).clamp(0.0, w - thumb),
+                      child: Container(
+                        width: thumb, height: thumb, alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(color: _orange.withOpacity(0.55), blurRadius: 10, spreadRadius: 1),
+                            BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 4, offset: const Offset(0, 2)),
+                          ],
+                        ),
+                        child: Icon(Icons.auto_awesome, size: thumb * 0.52, color: _orange),
+                      ),
+                    ),
+                ],
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
 /// Staggered fade + slide entrance for list items.
 class _Entrance extends StatefulWidget {
   const _Entrance({required this.index, required this.child});
@@ -4740,20 +4814,7 @@ class _ResumeCardState extends State<_ResumeCard> {
                 Text('$percent%', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
               ]),
               const SizedBox(height: 7),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0, end: pct),
-                  duration: const Duration(milliseconds: 800),
-                  curve: Curves.easeOutCubic,
-                  builder: (_, v, __) => LinearProgressIndicator(
-                    value: v,
-                    minHeight: 6,
-                    backgroundColor: _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0EBE8),
-                    valueColor: const AlwaysStoppedAnimation(_orange),
-                  ),
-                ),
-              ),
+              _GlowProgress(value: pct, height: 6),
               const SizedBox(height: 12),
               // Compact, pill-shaped — sized to its content, pushed to the right.
               Row(
@@ -4882,20 +4943,7 @@ class _CourseCardState extends State<_CourseCard> {
                   Text('${widget.percent}%', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: _orange)),
                 ]),
                 const SizedBox(height: 9),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0, end: pct),
-                    duration: const Duration(milliseconds: 800),
-                    curve: Curves.easeOutCubic,
-                    builder: (_, v, __) => LinearProgressIndicator(
-                      value: v,
-                      minHeight: 7,
-                      backgroundColor: _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0EBE8),
-                      valueColor: const AlwaysStoppedAnimation(_orange),
-                    ),
-                  ),
-                ),
+                _GlowProgress(value: pct, height: 7),
               ]),
             ),
           ]),
