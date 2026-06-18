@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 // video_player). Present so the conditional import compiles on all platforms.
 Widget hlsVideoElement(
   String url, {
+  String authToken = '',
   double startAt = 0,
   void Function(double position, double duration)? onTime,
   void Function()? onEnded,

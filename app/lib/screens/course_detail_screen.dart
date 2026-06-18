@@ -53,7 +53,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
     if (type == 'video') {
       // Streams the R2/HLS video with custom controls (no download) + watermark.
       await Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => VideoPlayerScreen(url: url, watermark: wm, title: l['title']?.toString() ?? 'Video')));
+        builder: (_) => VideoPlayerScreen(url: url, watermark: wm, title: l['title']?.toString() ?? 'Video', authToken: widget.auth.token)));
     } else if (type == 'link') {
       // Open the resource in a new tab / external browser (avoids iframe blocks).
       final uri = Uri.tryParse(url);

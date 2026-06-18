@@ -114,6 +114,9 @@ class AuthService {
     await _storage.delete(key: _tokenKey);
   }
 
+  /// Current JWT (for players that must authenticate HLS key requests). '' if none.
+  String get token => _api.token ?? '';
+
   // Authed call passthroughs for screens.
   Future<http.Response> apiPost(String path, Map<String, dynamic> body) =>
       _api.postJson(path, body);

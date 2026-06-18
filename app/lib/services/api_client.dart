@@ -13,6 +13,7 @@ class ApiClient {
   String? _token;
 
   set token(String? t) => _token = t;
+  String? get token => _token;
   bool get isAuthed => _token != null;
 
   Future<Map<String, String>> _headers({bool json = true}) async {

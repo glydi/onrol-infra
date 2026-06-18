@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -33,6 +34,7 @@ type Config struct {
 	MaxDevices      int
 	AttestationMode AttestationMode
 	AdminAPIKey     string
+	AppBaseURL      string // public origin of the web app/API (for HLS key URIs)
 	Zoho            Zoho
 	Integrations    Integrations
 	R2              R2
@@ -86,6 +88,7 @@ func Load() (Config, error) {
 		MaxDevices:      getint("MAX_DEVICES_PER_USER", 2),
 		AttestationMode: AttestationMode(getenv("ATTESTATION_MODE", string(AttestationLog))),
 		AdminAPIKey:     os.Getenv("ADMIN_API_KEY"),
+		AppBaseURL:      strings.TrimRight(getenv("APP_BASE_URL", "https://lms.187-127-178-100.sslip.io"), "/"),
 		Zoho: Zoho{
 			WebinarBase: getenv("ZOHO_WEBINAR_BASE", "https://webinar.zoho.in"),
 		},

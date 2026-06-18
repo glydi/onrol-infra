@@ -250,6 +250,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 
 	api.Get("/catalog", auth, h.Catalog)
 	api.Get("/me/profile", auth, h.GetMyProfile)
+	api.Get("/me/videos/:id/hls.key", auth, h.MediaHLSKey) // AES-128 key for encrypted video-store HLS
 	api.Patch("/me/profile", auth, h.UpdateMyProfile)
 	api.Get("/me/preferences", auth, h.GetPreferences)
 	api.Put("/me/preferences", auth, h.UpdatePreferences)

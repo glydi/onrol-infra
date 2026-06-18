@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"crypto/rand"
 	"log"
 	"os"
 	"os/exec"
@@ -47,9 +48,28 @@ func (h *Handlers) transcodeToHLS(assetID, sourceKey string) {
 		return
 	}
 
+	// AES-128 encrypt the segments. The key URI in the playlist points at our API
+	// (served only to logged-in users); the key bytes live in the DB, never in R2.
+	encKey := make([]byte, 16)
+	if _, err := rand.Read(encKey); err != nil {
+		fail("keygen", err)
+		return
+	}
+	keyFile := filepath.Join(tmp, "enc.key")
+	if err := os.WriteFile(keyFile, encKey, 0o600); err != nil {
+		fail("keyfile", err)
+		return
+	}
+	keyURI := h.Cfg.AppBaseURL + "/api/v1/me/videos/" + assetID + "/hls.key"
+	keyInfo := filepath.Join(tmp, "enc.keyinfo")
+	if err := os.WriteFile(keyInfo, []byte(keyURI+"\n"+keyFile+"\n"), 0o600); err != nil {
+		fail("keyinfo", err)
+		return
+	}
+
 	// Map exactly one video + (optional) one audio stream — ignores junk/data
 	// tracks. Scale down to <=1080p, CRF 21 for near-transparent quality, capped at
-	// 6 Mbps so it streams smoothly anywhere. 6-second segments.
+	// 6 Mbps so it streams smoothly anywhere. 6-second AES-128-encrypted segments.
 	cmd := exec.Command("ffmpeg", "-y", "-i", src,
 		"-map", "0:v:0", "-map", "0:a:0?",
 		"-vf", "scale='min(1920,iw)':'-2'",
@@ -57,6 +77,7 @@ func (h *Handlers) transcodeToHLS(assetID, sourceKey string) {
 		"-crf", "21", "-maxrate", "6M", "-bufsize", "12M",
 		"-c:a", "aac", "-b:a", "128k", "-ac", "2",
 		"-f", "hls", "-hls_time", "6", "-hls_playlist_type", "vod", "-hls_flags", "independent_segments",
+		"-hls_key_info_file", keyInfo,
 		"-hls_segment_filename", filepath.Join(out, "seg_%03d.ts"),
 		filepath.Join(out, "index.m3u8"))
 	if logBytes, err := cmd.CombinedOutput(); err != nil {
@@ -83,7 +104,7 @@ func (h *Handlers) transcodeToHLS(assetID, sourceKey string) {
 		}
 	}
 	hlsURL := strings.TrimRight(h.Cfg.R2.PublicBase, "/") + "/" + prefix + "index.m3u8"
-	if _, err := h.Pool.Exec(ctx, `UPDATE media_assets SET status='ready', hls_url=$2 WHERE id=$1`, assetID, hlsURL); err != nil {
+	if _, err := h.Pool.Exec(ctx, `UPDATE media_assets SET status='ready', hls_url=$2, enc_key=$3 WHERE id=$1`, assetID, hlsURL, encKey); err != nil {
 		fail("db update", err)
 		return
 	}

@@ -13,6 +13,7 @@ int _seq = 0;
 
 Widget hlsVideoElement(
   String url, {
+  String authToken = '',
   double startAt = 0,
   void Function(double position, double duration)? onTime,
   void Function()? onEnded,
@@ -55,8 +56,15 @@ Widget hlsVideoElement(
     final isHls = url.toLowerCase().contains('.m3u8');
     final hlsAvailable = js.context.hasProperty('Hls');
     if (isHls && hlsAvailable && (js.context['Hls'].callMethod('isSupported') as bool? ?? false)) {
-      // Stream HLS via hls.js (Chrome/Firefox).
-      final hls = js.JsObject(js.context['Hls'] as js.JsFunction);
+      // Stream HLS via hls.js (Chrome/Firefox/Safari-desktop). For AES-128
+      // encrypted streams, attach the JWT to the key request only (same-origin
+      // API) — never to the cross-origin R2 segments. xhrSetup is built by a small
+      // JS helper in index.html (avoids Dart<->JS interop callback plumbing).
+      final config = js.JsObject.jsify(<String, dynamic>{});
+      if (authToken.isNotEmpty && js.context.hasProperty('onrolKeyXhrSetup')) {
+        config['xhrSetup'] = js.context.callMethod('onrolKeyXhrSetup', [authToken]);
+      }
+      final hls = js.JsObject(js.context['Hls'] as js.JsFunction, [config]);
       hls.callMethod('loadSource', [url]);
       hls.callMethod('attachMedia', [video]);
     } else {

@@ -940,6 +940,7 @@ class _StudentHomeState extends State<StudentHome> {
           url: url,
           watermark: widget.auth.user?.email ?? 'student',
           title: l['title']?.toString() ?? 'Video',
+          authToken: widget.auth.token,
           startAt: Duration(seconds: startAt),
           onProgress: (pos, dur) {
             widget.auth.apiPost('/api/v1/me/lessons/$id/progress', {'position': pos.inSeconds}).ignore();

@@ -50,6 +50,17 @@
   <!-- hls.js: enables HLS (.m3u8) streaming in browsers without native support (Chrome/Firefox) -->
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
   <script>
+    // Returns an hls.js xhrSetup that attaches the JWT to the AES-128 key request
+    // ONLY (same-origin API). Never added to cross-origin R2 segment requests.
+    window.onrolKeyXhrSetup = function (token) {
+      return function (xhr, url) {
+        if (token && url && url.indexOf('/hls.key') !== -1) {
+          xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+        }
+      };
+    };
+  </script>
+  <script>
     // Discourage downloading streamed video: block right-click "Save video as"
     // on <video> elements, and disable the native download control if present.
     document.addEventListener('contextmenu', function (e) {

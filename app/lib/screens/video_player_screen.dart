@@ -15,10 +15,12 @@ import '../widgets/web_video_stub.dart' if (dart.library.html) '../widgets/web_v
 /// blocked app-wide (Android FLAG_SECURE; iOS capture-blanking) and the file is
 /// never offered as a download.
 class VideoPlayerScreen extends StatefulWidget {
-  const VideoPlayerScreen({super.key, required this.url, required this.watermark, this.title = 'Video', this.startAt = Duration.zero, this.onProgress, this.onCompleted});
+  const VideoPlayerScreen({super.key, required this.url, required this.watermark, this.title = 'Video', this.startAt = Duration.zero, this.onProgress, this.onCompleted, this.authToken = ''});
   final String url;
   final String watermark;
   final String title;
+  // JWT used to authenticate encrypted-HLS key requests (segments are AES-128).
+  final String authToken;
   // Resume point + callbacks so the lesson can save position / mark complete.
   final Duration startAt;
   final void Function(Duration position, Duration duration)? onProgress;
@@ -47,7 +49,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void initState() {
     super.initState();
     if (!kIsWeb) {
-      _c = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+      _c = VideoPlayerController.networkUrl(Uri.parse(widget.url),
+          httpHeaders: widget.authToken.isNotEmpty ? {'Authorization': 'Bearer ${widget.authToken}'} : const {});
       _c!.initialize().then((_) async {
         if (widget.startAt.inSeconds > 0) {
           await _c!.seekTo(widget.startAt);
@@ -189,7 +192,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Widget _webPlayer() => Stack(children: [
         AspectRatio(
           aspectRatio: 16 / 9,
-          child: hlsVideoElement(widget.url, startAt: widget.startAt.inSeconds.toDouble(), onTime: _onWebTime, onEnded: () {
+          child: hlsVideoElement(widget.url, authToken: widget.authToken, startAt: widget.startAt.inSeconds.toDouble(), onTime: _onWebTime, onEnded: () {
             if (!_completed) {
               _completed = true;
               widget.onCompleted?.call();

@@ -211,6 +211,19 @@ func (h *Handlers) ListVideos(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"videos": out, "r2_enabled": h.Cfg.R2.Enabled()})
 }
 
+// MediaHLSKey serves the AES-128 key for an encrypted video-store asset. Auth is
+// enforced by middleware, so only logged-in users get it (deterrent, not DRM).
+func (h *Handlers) MediaHLSKey(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var key []byte
+	if err := h.Pool.QueryRow(c.Context(), `SELECT enc_key FROM media_assets WHERE id=$1`, id).Scan(&key); err != nil || len(key) == 0 {
+		return fiber.NewError(fiber.StatusNotFound, "no key")
+	}
+	c.Set("Content-Type", "application/octet-stream")
+	c.Set("Cache-Control", "no-store")
+	return c.Send(key)
+}
+
 // RetranscodeVideo re-runs HLS segmentation for an existing asset (e.g. after the
 // pipeline changed). The source object must still be in R2.
 func (h *Handlers) RetranscodeVideo(c *fiber.Ctx) error {
