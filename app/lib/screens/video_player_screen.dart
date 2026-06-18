@@ -41,6 +41,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Timer? _hideTimer;
   int _lastSaved = 0; // last position (s) reported, for throttling
   bool _completed = false;
+  bool _webHint = true; // brief keyboard-shortcuts hint on the web player
 
   static const _speeds = [0.5, 1.0, 1.25, 1.5, 2.0];
   static const _accent = Color(0xFFFF4F2B);
@@ -48,6 +49,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    if (kIsWeb) {
+      // Fade the keyboard-shortcuts hint out after a few seconds.
+      Timer(const Duration(seconds: 5), () {
+        if (mounted) setState(() => _webHint = false);
+      });
+    }
     if (!kIsWeb) {
       _c = VideoPlayerController.networkUrl(Uri.parse(widget.url),
           httpHeaders: widget.authToken.isNotEmpty ? {'Authorization': 'Bearer ${widget.authToken}'} : const {});
@@ -187,8 +194,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     );
   }
 
-  // Web: hls.js-backed <video> (nodownload/no-PiP attributes) + resume/progress;
-  // my floating top bar overlays the native controls.
+  // Web: hls.js-backed <video> with NO native browser controls. Playback is
+  // driven by Netflix-style keyboard shortcuts + click (handled in the platform
+  // view); a floating top bar and a brief shortcuts hint overlay on top.
   Widget _webPlayer() => Stack(children: [
         AspectRatio(
           aspectRatio: 16 / 9,
@@ -200,7 +208,34 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           }),
         ),
         _topBar(),
+        // Auto-fading keyboard-shortcuts hint.
+        Positioned(
+          left: 0, right: 0, bottom: 16,
+          child: IgnorePointer(
+            child: AnimatedOpacity(
+              opacity: _webHint ? 1 : 0,
+              duration: const Duration(milliseconds: 400),
+              child: Center(child: _shortcutsHint()),
+            ),
+          ),
+        ),
       ]);
+
+  Widget _shortcutsHint() => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(color: Colors.black.withOpacity(0.55), borderRadius: BorderRadius.circular(12)),
+        child: Wrap(
+          spacing: 14, runSpacing: 6, alignment: WrapAlignment.center,
+          children: const [
+            _HintChip('Space', 'Play / Pause'),
+            _HintChip('← →', 'Seek 10s'),
+            _HintChip('↑ ↓', 'Volume'),
+            _HintChip('M', 'Mute'),
+            _HintChip('F', 'Fullscreen'),
+            _HintChip('0–9', 'Jump'),
+          ],
+        ),
+      );
 
   // Mobile: video_player with custom app controls.
   Widget _mobilePlayer() {
@@ -352,5 +387,24 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     final h = d.inHours;
     return h > 0 ? '$h:$m:$s' : '$m:$s';
+  }
+}
+
+/// One key + action pill in the web keyboard-shortcuts hint.
+class _HintChip extends StatelessWidget {
+  const _HintChip(this.keys, this.label);
+  final String keys;
+  final String label;
+  @override
+  Widget build(BuildContext context) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(color: Colors.white.withOpacity(0.18), borderRadius: BorderRadius.circular(6)),
+        child: Text(keys, style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700)),
+      ),
+      const SizedBox(width: 5),
+      Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w500)),
+    ]);
   }
 }
