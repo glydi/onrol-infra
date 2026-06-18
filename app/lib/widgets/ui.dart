@@ -160,7 +160,7 @@ class _PrimaryButtonState extends State<PrimaryButton> {
         scale: _scale * (enabled && _hover ? 1.015 : 1.0),
         duration: const Duration(milliseconds: 90),
         child: Container(
-          height: widget.square ? 46 : 52,
+          height: widget.square ? 46 : 44,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             // Admin (square): flat solid fill — sharp & standard. Else: gradient CTA.
@@ -174,19 +174,20 @@ class _PrimaryButtonState extends State<PrimaryButton> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-            borderRadius: BorderRadius.circular(sq ? 0 : 18),
+            // Compact, Coursera-style: small radius, no heavy glow.
+            borderRadius: BorderRadius.circular(sq ? 0 : 8),
             boxShadow: (!widget.square && enabled)
-                ? [BoxShadow(color: p.accent.withOpacity(0.38), offset: const Offset(0, 9), blurRadius: 20, spreadRadius: -3)]
+                ? [BoxShadow(color: p.accent.withOpacity(0.20), offset: const Offset(0, 3), blurRadius: 8, spreadRadius: -2)]
                 : null,
           ),
           child: widget.busy
-              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
+              ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
               : Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (widget.icon != null) ...[Icon(widget.icon, color: Colors.white, size: 19), const SizedBox(width: 8)],
+                    if (widget.icon != null) ...[Icon(widget.icon, color: Colors.white, size: 18), const SizedBox(width: 7)],
                     Text(widget.label,
-                        style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600)),
+                        style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
                   ],
                 ),
         ),

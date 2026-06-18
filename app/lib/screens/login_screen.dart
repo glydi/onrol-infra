@@ -347,16 +347,16 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _primaryButton(String label, VoidCallback onTap) => GestureDetector(
         onTap: _busy ? null : onTap,
         child: Container(
-          height: 50,
+          height: 46,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             gradient: const LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [BoxShadow(color: _orange.withOpacity(0.4), blurRadius: 14, offset: const Offset(0, 6))],
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [BoxShadow(color: _orange.withOpacity(0.20), blurRadius: 8, offset: const Offset(0, 3))],
           ),
           child: _busy
-              ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
-              : Text(label, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
+              : Text(label, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
         ),
       );
 }
