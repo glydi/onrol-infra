@@ -424,7 +424,13 @@ class _StudentHomeState extends State<StudentHome> {
             );
           }),
           const SizedBox(height: 18),
-          _focusable(2, child: _AiNewsCard(auth: widget.auth, scrollable: false)),
+          // Give the live AI-news box its own internal scroll (like desktop)
+          // with a bounded height, so it doesn't stretch the page forever on
+          // phones / tablets / iPads.
+          SizedBox(
+            height: (MediaQuery.of(context).size.height * 0.62).clamp(360.0, 640.0).toDouble(),
+            child: _focusable(2, child: _AiNewsCard(auth: widget.auth, scrollable: true)),
+          ),
         ]),
       );
 
