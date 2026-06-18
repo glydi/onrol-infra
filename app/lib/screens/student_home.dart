@@ -4242,19 +4242,27 @@ class _HeroPanelModal extends StatelessWidget {
         final size = MediaQuery.of(ctx).size;
         return Stack(children: [
           // Blur + dim the dashboard behind (animated with the route). Tap to close.
+          // Isolated in a RepaintBoundary so the heavy blur layer is cached and
+          // the card's own glass blur (which samples this) doesn't force the
+          // whole dashboard to re-blur on every in-popup frame.
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => Navigator.of(ctx).maybePop(),
-              child: AnimatedBuilder(
-                animation: anim,
-                builder: (_, __) {
-                  final v = Curves.easeOut.transform(anim.value.clamp(0.0, 1.0));
-                  return BackdropFilter(
-                    filter: ui.ImageFilter.blur(sigmaX: 22 * v, sigmaY: 22 * v),
-                    child: Container(color: Colors.black.withOpacity(0.34 * v)),
-                  );
-                },
+              child: RepaintBoundary(
+                child: AnimatedBuilder(
+                  animation: anim,
+                  builder: (_, __) {
+                    // Ramp the blur in over the first part of the open so the
+                    // expensive sigma sweep is brief, then hold steady. Lower
+                    // max sigma (14 vs 22) keeps it light on web.
+                    final v = Curves.easeOut.transform(anim.value.clamp(0.0, 1.0));
+                    return BackdropFilter(
+                      filter: ui.ImageFilter.blur(sigmaX: 14 * v, sigmaY: 14 * v),
+                      child: Container(color: Colors.black.withOpacity(0.34 * v)),
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -4331,7 +4339,7 @@ class _HeroPanelModal extends StatelessWidget {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(24),
             child: BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 26, sigmaY: 26),
+              filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
               child: Container(
                 width: double.infinity,
                 // Frosted-glass card — translucent so the blurred dashboard
@@ -4359,9 +4367,13 @@ class _HeroPanelModal extends StatelessWidget {
                   child: SlideTransition(
                     position: Tween<Offset>(begin: const Offset(0, 0.05), end: Offset.zero)
                         .animate(CurvedAnimation(parent: anim, curve: const Interval(0.35, 1.0, curve: Curves.easeOutCubic))),
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: body),
+                    // The body scrolls and runs its own in-popup transitions;
+                    // isolate it so those repaints never reach the glass layers.
+                    child: RepaintBoundary(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: body),
+                      ),
                     ),
                   ),
                 ),
@@ -4443,14 +4455,17 @@ class _Entrance extends StatefulWidget {
 }
 
 class _EntranceState extends State<_Entrance> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 440));
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 380));
   late final Animation<double> _fade = CurvedAnimation(parent: _c, curve: Curves.easeOut);
   late final Animation<Offset> _slide = Tween<Offset>(begin: const Offset(0, 0.10), end: Offset.zero).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
 
   @override
   void initState() {
     super.initState();
-    Future.delayed(Duration(milliseconds: 70 * widget.index), () {
+    // Lighter stagger, capped so long lists still finish quickly (no item
+    // waits more than ~360ms before starting).
+    final delay = (45 * widget.index).clamp(0, 360);
+    Future.delayed(Duration(milliseconds: delay), () {
       if (mounted) _c.forward();
     });
   }
@@ -4462,7 +4477,7 @@ class _EntranceState extends State<_Entrance> with SingleTickerProviderStateMixi
   }
 
   @override
-  Widget build(BuildContext context) => FadeTransition(opacity: _fade, child: SlideTransition(position: _slide, child: widget.child));
+  Widget build(BuildContext context) => RepaintBoundary(child: FadeTransition(opacity: _fade, child: SlideTransition(position: _slide, child: widget.child)));
 }
 
 /// A "continue where you left off" card: course cover with a play overlay, the
