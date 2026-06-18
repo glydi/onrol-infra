@@ -498,6 +498,7 @@ class _StudentHomeState extends State<StudentHome> {
               ? SizedBox(width: cell, height: cell)
               : Hero(
                   tag: 'panel-${tile.panel}',
+                  createRectTween: _smoothHeroRect,
                   child: _GridCell(tile: tile, size: cell, onTap: (c) => _openPanel(tile.panel, origin: c)),
                 ),
         ));
@@ -1886,11 +1887,20 @@ class _StudyHubState extends State<_StudyHub> {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 280),
-      switchInCurve: Curves.easeOutCubic,
-      transitionBuilder: (child, a) => FadeTransition(opacity: a, child: SlideTransition(position: Tween<Offset>(begin: const Offset(0.06, 0), end: Offset.zero).animate(a), child: child)),
-      child: _open == null ? _grid(const ValueKey('grid')) : _detail(ValueKey('d-$_open-$_course')),
+    // AnimatedSize glides the popup height between the (shorter) grid and the
+    // (taller/variable) detail panes; the switcher cross-fades the content.
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 260),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeIn,
+        transitionBuilder: _smoothSwitch,
+        layoutBuilder: _topSwitcherLayout,
+        child: _open == null ? _grid(const ValueKey('grid')) : _detail(ValueKey('d-$_open-$_course')),
+      ),
     );
   }
 
@@ -2220,7 +2230,10 @@ class _Flashcards extends StatefulWidget {
 
 class _FlashcardsState extends State<_Flashcards> with SingleTickerProviderStateMixin {
   static const _pi = 3.141592653589793;
-  late final AnimationController _flip = AnimationController(vsync: this, duration: const Duration(milliseconds: 420));
+  late final AnimationController _flip = AnimationController(vsync: this, duration: const Duration(milliseconds: 460));
+  // Eased so the flip accelerates then settles instead of rotating at a
+  // constant (abrupt-feeling) speed.
+  late final Animation<double> _flipCurved = CurvedAnimation(parent: _flip, curve: Curves.easeInOutCubic);
   late List<int> _order;
   int _pos = 0;
   bool _back = false;
@@ -2285,10 +2298,11 @@ class _FlashcardsState extends State<_Flashcards> with SingleTickerProviderState
       // The flip card.
       GestureDetector(
         onTap: _toggle,
+        child: RepaintBoundary(
         child: AnimatedBuilder(
-          animation: _flip,
+          animation: _flipCurved,
           builder: (_, __) {
-            final a = _flip.value * _pi;
+            final a = _flipCurved.value * _pi;
             final showBack = a > _pi / 2;
             final face = showBack
                 ? Transform(alignment: Alignment.center, transform: Matrix4.identity()..rotateY(_pi), child: _face(card.$2, true))
@@ -2301,6 +2315,7 @@ class _FlashcardsState extends State<_Flashcards> with SingleTickerProviderState
               child: face,
             );
           },
+        ),
         ),
       ),
       const SizedBox(height: 8),
@@ -2597,22 +2612,29 @@ class _ForumViewState extends State<_ForumView> {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 280),
-      switchInCurve: Curves.easeOutCubic,
-      transitionBuilder: (child, a) => FadeTransition(opacity: a, child: SlideTransition(position: Tween<Offset>(begin: const Offset(0.06, 0), end: Offset.zero).animate(a), child: child)),
-      child: _openId == null
-          ? _list(const ValueKey('list'))
-          : _ForumThread(
-              key: ValueKey(_openId),
-              auth: widget.auth,
-              threadId: _openId!,
-              title: _openTitle,
-              onBack: () {
-                setState(() => _openId = null);
-                _reload();
-              },
-            ),
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 260),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeIn,
+        transitionBuilder: _smoothSwitch,
+        layoutBuilder: _topSwitcherLayout,
+        child: _openId == null
+            ? _list(const ValueKey('list'))
+            : _ForumThread(
+                key: ValueKey(_openId),
+                auth: widget.auth,
+                threadId: _openId!,
+                title: _openTitle,
+                onBack: () {
+                  setState(() => _openId = null);
+                  _reload();
+                },
+              ),
+      ),
     );
   }
 
@@ -2638,7 +2660,9 @@ class _ForumViewState extends State<_ForumView> {
             return AnimatedSwitcher(
               duration: const Duration(milliseconds: 260),
               switchInCurve: Curves.easeOutCubic,
-              transitionBuilder: (child, a) => FadeTransition(opacity: a, child: SlideTransition(position: Tween<Offset>(begin: const Offset(0, 0.03), end: Offset.zero).animate(a), child: child)),
+              switchOutCurve: Curves.easeIn,
+              transitionBuilder: _smoothSwitch,
+              layoutBuilder: _topSwitcherLayout,
               child: list.isEmpty
                   ? Padding(
                       key: ValueKey('empty-$_filter'),
@@ -3095,7 +3119,9 @@ class _LeaderboardViewState extends State<_LeaderboardView> {
           return AnimatedSwitcher(
             duration: const Duration(milliseconds: 280),
             switchInCurve: Curves.easeOutCubic,
-            transitionBuilder: (child, a) => FadeTransition(opacity: a, child: SlideTransition(position: Tween<Offset>(begin: const Offset(0, 0.04), end: Offset.zero).animate(a), child: child)),
+            switchOutCurve: Curves.easeIn,
+            transitionBuilder: _smoothSwitch,
+            layoutBuilder: _topSwitcherLayout,
             child: rows.isEmpty
                 ? Padding(key: const ValueKey('empty'), padding: const EdgeInsets.symmetric(vertical: 22), child: Text('No ranked learners here yet — finish a lesson to climb the board!', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, color: _grey)))
                 : Column(
@@ -3448,9 +3474,18 @@ class _CalendarViewState extends State<_CalendarView> {
           ),
       ]),
       const SizedBox(height: 12),
-      AnimatedSwitcher(
-        duration: const Duration(milliseconds: 260),
-        child: KeyedSubtree(key: ValueKey(_k(_selected)), child: _agenda(selEvs)),
+      AnimatedSize(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 260),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeIn,
+          transitionBuilder: _smoothSwitch,
+          layoutBuilder: _topSwitcherLayout,
+          child: KeyedSubtree(key: ValueKey(_k(_selected)), child: _agenda(selEvs)),
+        ),
       ),
     ]);
   }
@@ -4210,12 +4245,42 @@ class _PanelRoute<T> extends PageRouteBuilder<T> {
       : super(
           opaque: false,
           barrierDismissible: false,
-          transitionDuration: const Duration(milliseconds: 460),
-          reverseTransitionDuration: const Duration(milliseconds: 360),
+          transitionDuration: const Duration(milliseconds: 480),
+          reverseTransitionDuration: const Duration(milliseconds: 380),
           pageBuilder: (ctx, anim, sec) => child,
           // Motion is handled by the Hero + the in-page animations.
           transitionsBuilder: (ctx, anim, sec, c) => c,
         );
+}
+
+/// Shared fade + gentle vertical slide for in-popup view changes (grid↔detail,
+/// thread open, tab switch …). Eased so the incoming pane decelerates in.
+Widget _smoothSwitch(Widget child, Animation<double> a) => FadeTransition(
+      opacity: a,
+      child: SlideTransition(
+        position: Tween<Offset>(begin: const Offset(0, 0.035), end: Offset.zero)
+            .animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+        child: child,
+      ),
+    );
+
+/// Top-aligned stack for [AnimatedSwitcher] so the panes grow from the top
+/// (matching the scroll body) and an enclosing [AnimatedSize] can glide the
+/// height between differently-sized panes instead of snapping.
+Widget _topSwitcherLayout(Widget? current, List<Widget> previous) =>
+    Stack(alignment: Alignment.topCenter, children: <Widget>[...previous, if (current != null) current]);
+
+/// Straight-line, eased Hero rect interpolation for the tile → panel expansion.
+/// Flutter's default Material Hero uses a curved *arc* path driven by a *linear*
+/// animation — on a square-tile → wide-header reshape that swoops and
+/// starts/stops abruptly, which reads as "rough". A direct lerp with an
+/// easeOutCubic curve gives a smooth, decelerating morph along a clean path.
+RectTween _smoothHeroRect(Rect? begin, Rect? end) => _SmoothRectTween(begin: begin, end: end);
+
+class _SmoothRectTween extends RectTween {
+  _SmoothRectTween({super.begin, super.end});
+  @override
+  Rect? lerp(double t) => Rect.lerp(begin, end, Curves.easeOutCubic.transform(t.clamp(0.0, 1.0)));
 }
 
 /// iOS App-Store-style expanding card. A [Hero] morphs the tapped tile into the
@@ -4242,19 +4307,27 @@ class _HeroPanelModal extends StatelessWidget {
         final size = MediaQuery.of(ctx).size;
         return Stack(children: [
           // Blur + dim the dashboard behind (animated with the route). Tap to close.
+          // Isolated in a RepaintBoundary so the heavy blur layer is cached and
+          // the card's own glass blur (which samples this) doesn't force the
+          // whole dashboard to re-blur on every in-popup frame.
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => Navigator.of(ctx).maybePop(),
-              child: AnimatedBuilder(
-                animation: anim,
-                builder: (_, __) {
-                  final v = Curves.easeOut.transform(anim.value.clamp(0.0, 1.0));
-                  return BackdropFilter(
-                    filter: ui.ImageFilter.blur(sigmaX: 22 * v, sigmaY: 22 * v),
-                    child: Container(color: Colors.black.withOpacity(0.34 * v)),
-                  );
-                },
+              child: RepaintBoundary(
+                child: AnimatedBuilder(
+                  animation: anim,
+                  builder: (_, __) {
+                    // Ramp the blur in over the first part of the open so the
+                    // expensive sigma sweep is brief, then hold steady. Lower
+                    // max sigma (14 vs 22) keeps it light on web.
+                    final v = Curves.easeOut.transform(anim.value.clamp(0.0, 1.0));
+                    return BackdropFilter(
+                      filter: ui.ImageFilter.blur(sigmaX: 14 * v, sigmaY: 14 * v),
+                      child: Container(color: Colors.black.withOpacity(0.34 * v)),
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -4331,7 +4404,7 @@ class _HeroPanelModal extends StatelessWidget {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(24),
             child: BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 26, sigmaY: 26),
+              filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
               child: Container(
                 width: double.infinity,
                 // Frosted-glass card — translucent so the blurred dashboard
@@ -4351,7 +4424,7 @@ class _HeroPanelModal extends StatelessWidget {
                   mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-              heroTag != null ? Hero(tag: heroTag!, child: header) : header,
+              heroTag != null ? Hero(tag: heroTag!, createRectTween: _smoothHeroRect, child: header) : header,
               Flexible(
                 fit: compact ? FlexFit.loose : FlexFit.tight,
                 child: FadeTransition(
@@ -4359,9 +4432,13 @@ class _HeroPanelModal extends StatelessWidget {
                   child: SlideTransition(
                     position: Tween<Offset>(begin: const Offset(0, 0.05), end: Offset.zero)
                         .animate(CurvedAnimation(parent: anim, curve: const Interval(0.35, 1.0, curve: Curves.easeOutCubic))),
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: body),
+                    // The body scrolls and runs its own in-popup transitions;
+                    // isolate it so those repaints never reach the glass layers.
+                    child: RepaintBoundary(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: body),
+                      ),
                     ),
                   ),
                 ),
@@ -4443,14 +4520,17 @@ class _Entrance extends StatefulWidget {
 }
 
 class _EntranceState extends State<_Entrance> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 440));
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 380));
   late final Animation<double> _fade = CurvedAnimation(parent: _c, curve: Curves.easeOut);
   late final Animation<Offset> _slide = Tween<Offset>(begin: const Offset(0, 0.10), end: Offset.zero).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
 
   @override
   void initState() {
     super.initState();
-    Future.delayed(Duration(milliseconds: 70 * widget.index), () {
+    // Lighter stagger, capped so long lists still finish quickly (no item
+    // waits more than ~360ms before starting).
+    final delay = (45 * widget.index).clamp(0, 360);
+    Future.delayed(Duration(milliseconds: delay), () {
       if (mounted) _c.forward();
     });
   }
@@ -4462,7 +4542,7 @@ class _EntranceState extends State<_Entrance> with SingleTickerProviderStateMixi
   }
 
   @override
-  Widget build(BuildContext context) => FadeTransition(opacity: _fade, child: SlideTransition(position: _slide, child: widget.child));
+  Widget build(BuildContext context) => RepaintBoundary(child: FadeTransition(opacity: _fade, child: SlideTransition(position: _slide, child: widget.child)));
 }
 
 /// A "continue where you left off" card: course cover with a play overlay, the
