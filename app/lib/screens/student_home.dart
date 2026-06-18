@@ -2355,13 +2355,13 @@ class _FlashcardsState extends State<_Flashcards> with SingleTickerProviderState
   Widget _navBtn(String label, IconData icon, VoidCallback onTap, {required bool filled}) => _Pressable(
         onTap: onTap,
         child: Container(
-          height: 46, alignment: Alignment.center,
+          height: 42, alignment: Alignment.center,
           decoration: BoxDecoration(
             gradient: filled ? _orangeGrad : null,
             color: filled ? null : _orange.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(12),
-            border: filled ? null : Border.all(color: _orange.withOpacity(0.3)),
-            boxShadow: filled ? [BoxShadow(color: _orange.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))] : const [],
+            borderRadius: BorderRadius.circular(8),
+            border: filled ? null : Border.all(color: _orange.withOpacity(0.35), width: 1.5),
+            boxShadow: filled ? [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 6, offset: const Offset(0, 2))] : const [],
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             if (!filled) Icon(icon, size: 15, color: _orange),
@@ -2512,11 +2512,11 @@ class _LiveCardState extends State<_LiveCard> {
                   onTap: () => widget.onJoin(url),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-                    decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(11), boxShadow: [BoxShadow(color: _orange.withOpacity(0.32), blurRadius: 10, offset: const Offset(0, 4))]),
+                    decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(8), boxShadow: [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 6, offset: const Offset(0, 2))]),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       const Icon(CupertinoIcons.videocam_fill, size: 14, color: Colors.white),
                       const SizedBox(width: 6),
-                      Text(live ? 'Join now' : 'Join', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.white)),
+                      Text(live ? 'Join now' : 'Join', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.white)),
                     ]),
                   ),
                 ),
@@ -2732,12 +2732,12 @@ class _ForumViewState extends State<_ForumView> {
           _ensureCourses();
         },
         child: Container(
-          height: 48, alignment: Alignment.center,
-          decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: _orange.withOpacity(0.34), blurRadius: 14, offset: const Offset(0, 6))]),
+          height: 44, alignment: Alignment.center,
+          decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(8), boxShadow: [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 6, offset: const Offset(0, 2))]),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(CupertinoIcons.plus_bubble_fill, color: Colors.white, size: 17),
+            const Icon(CupertinoIcons.plus_bubble_fill, color: Colors.white, size: 16),
             const SizedBox(width: 8),
-            Text('Start a discussion', style: GoogleFonts.poppins(fontSize: 14.5, fontWeight: FontWeight.w700, color: Colors.white)),
+            Text('Start a discussion', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
           ]),
         ),
       );
@@ -3684,8 +3684,8 @@ Widget _field(String label, String value) => Padding(
 Widget _orangeButton(String label, VoidCallback onTap) => _Pressable(
       onTap: onTap,
       child: Container(
-        width: double.infinity, height: 46, alignment: Alignment.center,
-        decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(10)),
+        width: double.infinity, height: 44, alignment: Alignment.center,
+        decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(8)),
         child: Text(label, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
       ),
     );
@@ -3693,8 +3693,8 @@ Widget _orangeButton(String label, VoidCallback onTap) => _Pressable(
 Widget _outlineButton(String label, VoidCallback onTap) => _Pressable(
       onTap: onTap,
       child: Container(
-        height: 46, alignment: Alignment.center,
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: _orange, width: 2)),
+        height: 44, alignment: Alignment.center,
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), border: Border.all(color: _orange, width: 1.5)),
         child: Text(label, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _orange)),
       ),
     );
@@ -4719,13 +4719,13 @@ class _ResumeCardState extends State<_ResumeCard> {
                 height: 44, alignment: Alignment.center,
                 decoration: BoxDecoration(
                   gradient: _orangeGrad,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [BoxShadow(color: _orange.withOpacity(0.32), blurRadius: 12, offset: const Offset(0, 5))],
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 6, offset: const Offset(0, 2))],
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   const Icon(CupertinoIcons.play_fill, color: Colors.white, size: 15),
                   const SizedBox(width: 8),
-                  Text('Continue', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
+                  Text('Continue', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
                 ]),
               ),
             ]),
@@ -5314,11 +5314,11 @@ class _SettingsViewState extends State<_SettingsView> {
                     _Pressable(
                       onTap: _savingPw ? () {} : _savePassword,
                       child: Container(
-                        height: 46, alignment: Alignment.center,
-                        decoration: BoxDecoration(gradient: _acGrad, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: _ac.withOpacity(0.32), blurRadius: 12, offset: const Offset(0, 5))]),
+                        height: 44, alignment: Alignment.center,
+                        decoration: BoxDecoration(gradient: _acGrad, borderRadius: BorderRadius.circular(8), boxShadow: [BoxShadow(color: _ac.withOpacity(0.18), blurRadius: 6, offset: const Offset(0, 2))]),
                         child: _savingPw
                             ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
-                            : Text('Update password', style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
+                            : Text('Update password', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
                       ),
                     ),
                   ]),
@@ -5437,11 +5437,11 @@ class _SettingsViewState extends State<_SettingsView> {
   Widget _faButton(String label, VoidCallback onTap, Gradient g) => _Pressable(
         onTap: _faBusy ? () {} : onTap,
         child: Container(
-          height: 46, alignment: Alignment.center,
-          decoration: BoxDecoration(gradient: g, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: _ac.withOpacity(0.28), blurRadius: 12, offset: const Offset(0, 5))]),
+          height: 44, alignment: Alignment.center,
+          decoration: BoxDecoration(gradient: g, borderRadius: BorderRadius.circular(8), boxShadow: [BoxShadow(color: _ac.withOpacity(0.16), blurRadius: 6, offset: const Offset(0, 2))]),
           child: _faBusy
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
-              : Text(label, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
+              : Text(label, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
         ),
       );
 
