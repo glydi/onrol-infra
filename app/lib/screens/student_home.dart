@@ -1779,66 +1779,303 @@ class _ExploreListState extends State<_ExploreList> {
   }
 }
 
-/// Study Hub: a hero banner + large animated cards for revision resources
-/// (guides, cheat sheets, mind maps, flashcards, formula sheets).
+/// Study Hub: pick a course, then open a resource (guides, cheat sheets, mind
+/// maps, flashcards, formula sheets) filled with content. Interactive +
+/// animated; example content for "AI Architect" and "AI Generalist".
 class _StudyResource {
-  const _StudyResource(this.icon, this.title, this.sub, this.colors);
+  const _StudyResource(this.id, this.icon, this.title, this.sub, this.colors);
+  final String id;
   final IconData icon;
   final String title;
   final String sub;
   final List<Color> colors;
 }
 
-class _StudyHub extends StatelessWidget {
+class _StudyHub extends StatefulWidget {
   const _StudyHub();
+  @override
+  State<_StudyHub> createState() => _StudyHubState();
+}
 
-  static const _items = <_StudyResource>[
-    _StudyResource(CupertinoIcons.book_fill, 'Study Guides', 'Structured notes for every topic', [Color(0xFFFF6B35), Color(0xFFFF9166)]),
-    _StudyResource(CupertinoIcons.doc_text_fill, 'Cheat Sheets', 'Quick-reference summaries', [Color(0xFFE0A12A), Color(0xFFF6C453)]),
-    _StudyResource(CupertinoIcons.rectangle_3_offgrid_fill, 'Mind Maps', 'See how concepts connect', [Color(0xFF18A999), Color(0xFF4FD1C5)]),
-    _StudyResource(CupertinoIcons.rectangle_stack_fill, 'Flashcards', 'Flip to memorize fast', [Color(0xFF2D7DF6), Color(0xFF6FA8FF)]),
-    _StudyResource(CupertinoIcons.function, 'Formula Sheets', 'All key formulas in one place', [Color(0xFF7C5CFC), Color(0xFFA88BFF)]),
+class _StudyHubState extends State<_StudyHub> {
+  int _course = 0; // index into _courses
+  String? _open; // resource id, null = grid
+
+  static const _courses = ['AI Architect', 'AI Generalist'];
+
+  static const _resources = <_StudyResource>[
+    _StudyResource('guides', CupertinoIcons.book_fill, 'Study Guides', 'Structured notes for every topic', [Color(0xFFFF6B35), Color(0xFFFF9166)]),
+    _StudyResource('cheats', CupertinoIcons.doc_text_fill, 'Cheat Sheets', 'Quick-reference summaries', [Color(0xFFE0A12A), Color(0xFFF6C453)]),
+    _StudyResource('mindmap', CupertinoIcons.rectangle_3_offgrid_fill, 'Mind Maps', 'See how concepts connect', [Color(0xFF18A999), Color(0xFF4FD1C5)]),
+    _StudyResource('flashcards', CupertinoIcons.rectangle_stack_fill, 'Flashcards', 'Flip to memorize fast', [Color(0xFF2D7DF6), Color(0xFF6FA8FF)]),
+    _StudyResource('formulas', CupertinoIcons.function, 'Formula Sheets', 'All key formulas in one place', [Color(0xFF7C5CFC), Color(0xFFA88BFF)]),
   ];
+
+  // ---- Example content (per course) ----------------------------------------
+  static const Map<String, List<(String, List<String>)>> _guides = {
+    'AI Architect': [
+      ('System Design for AI', ['Pipeline: ingestion → storage → features → serving.', 'Pick batch vs real-time inference per use case.', 'Design for scalability, latency and cost.', 'Add monitoring for drift, latency and accuracy.']),
+      ('MLOps', ['CI/CD for models: train → test → deploy.', 'Use a model registry with versioning.', 'Trigger automated retraining on drift.', 'Always have a rollback path.']),
+      ('Vector Databases & RAG', ['Store embeddings for semantic search.', 'Index types: HNSW (graph), IVF (clusters).', 'RAG = retrieve relevant chunks → feed the LLM.', 'Tune recall vs latency.']),
+    ],
+    'AI Generalist': [
+      ('AI Foundations', ['AI ⊃ Machine Learning ⊃ Deep Learning.', 'Learning types: supervised, unsupervised, RL.', 'Split data: train / validation / test.', 'Watch for overfitting vs underfitting.']),
+      ('Prompt Engineering', ['Give role + task + context + format.', 'Few-shot examples beat zero-shot for hard tasks.', 'Ask for chain-of-thought to improve reasoning.', 'Iterate and evaluate outputs.']),
+      ('Generative AI', ['LLMs predict the next token.', 'Diffusion models generate images.', 'Fine-tune vs prompt — start with prompting.', 'Reduce hallucinations with grounding/RAG.']),
+    ],
+  };
+
+  static const Map<String, List<(String, List<String>)>> _cheats = {
+    'AI Architect': [
+      ('Architecture', ['RAG = retriever + LLM', 'Batch vs streaming serving', 'Microservices for models', 'Feature store = shared features']),
+      ('Scaling', ['Scale stateless services horizontally', 'Cache embeddings', 'Batch GPU requests', 'Autoscale on QPS / latency']),
+    ],
+    'AI Generalist': [
+      ('ML Basics', ['Classification vs regression', 'Features = inputs, labels = outputs', 'Loss measures error', 'Gradient descent minimizes loss']),
+      ('Prompting', ['Role + Task + Context + Format', 'Few-shot examples help', 'Low temp = focused', 'High temp = creative']),
+    ],
+  };
+
+  static const Map<String, (String, List<(String, List<String>)>)> _mind = {
+    'AI Architect': ('AI System', [
+      ('Data', ['Ingestion', 'Features', 'Storage']),
+      ('Modeling', ['Train', 'Evaluate', 'Tune']),
+      ('Serving', ['API', 'Batch', 'Stream']),
+      ('Ops', ['Monitor', 'Retrain', 'Rollback']),
+    ]),
+    'AI Generalist': ('Artificial Intelligence', [
+      ('Machine Learning', ['Supervised', 'Unsupervised', 'Reinforcement']),
+      ('Generative AI', ['LLMs', 'Diffusion', 'GANs']),
+      ('Applications', ['Vision', 'NLP', 'Speech']),
+      ('Skills', ['Python', 'Data', 'Prompting']),
+    ]),
+  };
+
+  static const Map<String, List<(String, String)>> _flash = {
+    'AI Architect': [
+      ('What is RAG?', 'Retrieval-Augmented Generation — fetch relevant documents and feed them to the LLM as context.'),
+      ('What is HNSW?', 'Hierarchical Navigable Small World — a graph index for fast approximate nearest-neighbour search.'),
+      ('What is model drift?', 'When live data drifts from training data, degrading model accuracy over time.'),
+      ('What is a feature store?', 'A central repository of curated features shared across training and serving.'),
+      ('Blue-green deployment?', 'Run the new model beside the old, switch traffic once validated, roll back instantly.'),
+    ],
+    'AI Generalist': [
+      ('Supervised learning?', 'Learning from labelled data — each input has a known output.'),
+      ('What is a token?', 'A chunk of text (~¾ of a word) that an LLM reads and generates.'),
+      ('What is temperature?', 'Controls randomness: low = deterministic, high = creative.'),
+      ('What is overfitting?', 'When a model memorizes training data and fails on new, unseen data.'),
+      ('Zero-shot prompting?', 'Asking a model to do a task with only instructions — no examples.'),
+    ],
+  };
+
+  static const Map<String, List<(String, String, String)>> _formulas = {
+    'AI Architect': [
+      ('Cosine Similarity', 'cos θ = (A · B) / (‖A‖ ‖B‖)', 'Closeness of two embeddings (−1…1).'),
+      ("Little's Law", 'L = λ × W', 'Concurrency = arrival rate × time in system.'),
+      ('F1 Score', 'F1 = 2 · (P · R) / (P + R)', 'Harmonic mean of precision and recall.'),
+    ],
+    'AI Generalist': [
+      ('Accuracy', 'Acc = (TP + TN) / Total', 'Fraction of correct predictions.'),
+      ('Sigmoid', 'σ(x) = 1 / (1 + e⁻ˣ)', 'Squashes any value into (0, 1).'),
+      ('Mean Squared Error', 'MSE = (1/n) Σ (y − ŷ)²', 'Average squared prediction error.'),
+    ],
+  };
+
+  _StudyResource get _res => _resources.firstWhere((r) => r.id == _open);
+  String get _courseName => _courses[_course];
 
   @override
   Widget build(BuildContext context) {
-    void open(String t) => ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$t — coming soon'), behavior: SnackBarBehavior.floating),
-        );
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      // Hero banner.
-      _Entrance(
-        index: 0,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-          decoration: BoxDecoration(
-            gradient: _orangeGrad,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [BoxShadow(color: _orange.withOpacity(0.34), blurRadius: 20, offset: const Offset(0, 9))],
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 280),
+      switchInCurve: Curves.easeOutCubic,
+      transitionBuilder: (child, a) => FadeTransition(opacity: a, child: SlideTransition(position: Tween<Offset>(begin: const Offset(0.06, 0), end: Offset.zero).animate(a), child: child)),
+      child: _open == null ? _grid(const ValueKey('grid')) : _detail(ValueKey('d-$_open-$_course')),
+    );
+  }
+
+  Widget _grid(Key key) => Column(key: key, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // Course selector.
+        _Entrance(
+          index: 0,
+          child: SizedBox(
+            height: 38,
+            child: ListView(scrollDirection: Axis.horizontal, padding: EdgeInsets.zero, children: [
+              for (var i = 0; i < _courses.length; i++) ...[
+                if (i > 0) const SizedBox(width: 8),
+                _coursePill(_courses[i], i),
+              ],
+            ]),
           ),
-          child: Row(children: [
-            Container(
-              width: 50, height: 50, alignment: Alignment.center,
-              decoration: BoxDecoration(color: Colors.white.withOpacity(0.22), borderRadius: BorderRadius.circular(14)),
-              child: const Icon(CupertinoIcons.lightbulb_fill, color: Colors.white, size: 26),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Revise smarter', style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white)),
-                const SizedBox(height: 2),
-                Text('Everything you need to study, in one place', style: GoogleFonts.poppins(fontSize: 12, color: Colors.white.withOpacity(0.92))),
-              ]),
-            ),
+        ),
+        const SizedBox(height: 16),
+        for (var i = 0; i < _resources.length; i++) _StudyCard(index: i + 1, item: _resources[i], onTap: () => setState(() => _open = _resources[i].id)),
+      ]);
+
+  Widget _coursePill(String label, int i) {
+    final sel = _course == i;
+    return _Pressable(
+      onTap: () => setState(() => _course = i),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          gradient: sel ? _orangeGrad : null,
+          color: sel ? null : _orange.withOpacity(0.07),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: sel ? Colors.transparent : _cardBorder),
+          boxShadow: sel ? [BoxShadow(color: _orange.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))] : const [],
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(CupertinoIcons.cube_box_fill, size: 13, color: sel ? Colors.white : _orange),
+          const SizedBox(width: 6),
+          Text(label, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: sel ? Colors.white : _navy)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _detail(Key key) {
+    final r = _res;
+    return Column(key: key, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        _Pressable(
+          onTap: () => setState(() => _open = null),
+          child: Container(
+            width: 34, height: 34, alignment: Alignment.center,
+            decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(10), border: Border.all(color: _orange.withOpacity(0.25))),
+            child: const Icon(CupertinoIcons.chevron_back, size: 18, color: _orange),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(r.title, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: _navy)),
+            Text(_courseName, style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: _orange)),
           ]),
         ),
-      ),
+        Container(
+          width: 38, height: 38, alignment: Alignment.center,
+          decoration: BoxDecoration(gradient: LinearGradient(colors: r.colors, begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(12)),
+          child: Icon(r.icon, size: 19, color: Colors.white),
+        ),
+      ]),
       const SizedBox(height: 16),
-      for (var i = 0; i < _items.length; i++) _StudyCard(index: i + 1, item: _items[i], onTap: () => open(_items[i].title)),
+      _content(r.id),
     ]);
   }
+
+  Widget _content(String id) {
+    switch (id) {
+      case 'guides':
+        final items = _guides[_courseName] ?? const [];
+        return Column(children: [for (var i = 0; i < items.length; i++) _StudyExpandable(index: i, title: items[i].$1, points: items[i].$2)]);
+      case 'cheats':
+        final items = _cheats[_courseName] ?? const [];
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (var i = 0; i < items.length; i++) _cheatCard(i, items[i].$1, items[i].$2)]);
+      case 'mindmap':
+        final m = _mind[_courseName];
+        return m == null ? const SizedBox() : _mindMap(m.$1, m.$2);
+      case 'flashcards':
+        return _Flashcards(cards: _flash[_courseName] ?? const []);
+      case 'formulas':
+        final items = _formulas[_courseName] ?? const [];
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (var i = 0; i < items.length; i++) _formulaCard(i, items[i].$1, items[i].$2, items[i].$3)]);
+    }
+    return const SizedBox();
+  }
+
+  Widget _cheatCard(int i, String heading, List<String> items) => _Entrance(
+        index: i,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(16), border: Border.all(color: _cardBorder)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(CupertinoIcons.bolt_fill, size: 14, color: _orange),
+              const SizedBox(width: 7),
+              Text(heading, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w800, color: _navy)),
+            ]),
+            const SizedBox(height: 10),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final it in items)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                  decoration: BoxDecoration(gradient: LinearGradient(colors: [_orange.withOpacity(0.14), _orange.withOpacity(0.05)]), borderRadius: BorderRadius.circular(10), border: Border.all(color: _orange.withOpacity(0.18))),
+                  child: Text(it, style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: _navy)),
+                ),
+            ]),
+          ]),
+        ),
+      );
+
+  Widget _mindMap(String center, List<(String, List<String>)> branches) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _Entrance(
+          index: 0,
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+              decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(30), boxShadow: [BoxShadow(color: _orange.withOpacity(0.34), blurRadius: 14, offset: const Offset(0, 6))]),
+              child: Text(center, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
+            ),
+          ),
+        ),
+        Center(child: Container(width: 2, height: 16, color: _orange.withOpacity(0.3))),
+        for (var i = 0; i < branches.length; i++)
+          _Entrance(
+            index: i + 1,
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(13),
+              decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(14), border: Border.all(color: _cardBorder)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Container(width: 8, height: 8, decoration: BoxDecoration(gradient: _orangeGrad, shape: BoxShape.circle)),
+                  const SizedBox(width: 8),
+                  Text(branches[i].$1, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: _navy)),
+                ]),
+                const SizedBox(height: 9),
+                Padding(
+                  padding: const EdgeInsets.only(left: 16),
+                  child: Wrap(spacing: 8, runSpacing: 8, children: [
+                    for (final leaf in branches[i].$2)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(color: _orange.withOpacity(0.08), borderRadius: BorderRadius.circular(9)),
+                        child: Text(leaf, style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: _orange)),
+                      ),
+                  ]),
+                ),
+              ]),
+            ),
+          ),
+      ]);
+
+  Widget _formulaCard(int i, String name, String formula, String note) => _Entrance(
+        index: i,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(16), border: Border.all(color: _cardBorder)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(name, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w800, color: _orange)),
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(color: _isDark ? Colors.white.withOpacity(0.05) : Colors.white.withOpacity(0.55), borderRadius: BorderRadius.circular(10), border: Border.all(color: _cardBorder)),
+              child: Text(formula, style: GoogleFonts.robotoMono(fontSize: 15, fontWeight: FontWeight.w600, color: _navy)),
+            ),
+            const SizedBox(height: 7),
+            Text(note, style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
+          ]),
+        ),
+      );
 }
 
+/// A large, colourful resource entry card (Study Guides, Flashcards, …).
 class _StudyCard extends StatefulWidget {
   const _StudyCard({required this.index, required this.item, required this.onTap});
   final int index;
@@ -1913,6 +2150,213 @@ class _StudyCardState extends State<_StudyCard> {
       ),
     );
   }
+}
+
+/// Expandable study-guide topic (tap to reveal the bullet points).
+class _StudyExpandable extends StatefulWidget {
+  const _StudyExpandable({required this.index, required this.title, required this.points});
+  final int index;
+  final String title;
+  final List<String> points;
+  @override
+  State<_StudyExpandable> createState() => _StudyExpandableState();
+}
+
+class _StudyExpandableState extends State<_StudyExpandable> {
+  bool _open = false;
+  @override
+  Widget build(BuildContext context) {
+    return _Entrance(
+      index: widget.index,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(14), border: Border.all(color: _open ? _orange.withOpacity(0.35) : _cardBorder)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _Pressable(
+            onTap: () => setState(() => _open = !_open),
+            child: Padding(
+              padding: const EdgeInsets.all(13),
+              child: Row(children: [
+                Icon(CupertinoIcons.doc_text_fill, size: 16, color: _orange),
+                const SizedBox(width: 10),
+                Expanded(child: Text(widget.title, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy))),
+                AnimatedRotation(turns: _open ? 0.5 : 0, duration: const Duration(milliseconds: 200), child: Icon(CupertinoIcons.chevron_down, size: 16, color: _grey)),
+              ]),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: _open
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(15, 0, 15, 13),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      for (final p in widget.points)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 7),
+                          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Padding(padding: const EdgeInsets.only(top: 6, right: 9), child: Container(width: 5, height: 5, decoration: BoxDecoration(gradient: _orangeGrad, shape: BoxShape.circle))),
+                            Expanded(child: Text(p, style: GoogleFonts.poppins(fontSize: 12.5, color: _navy, height: 1.4))),
+                          ]),
+                        ),
+                    ]),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Interactive flashcard deck: tap to flip (3D), navigate, shuffle.
+class _Flashcards extends StatefulWidget {
+  const _Flashcards({required this.cards});
+  final List<(String, String)> cards;
+  @override
+  State<_Flashcards> createState() => _FlashcardsState();
+}
+
+class _FlashcardsState extends State<_Flashcards> with SingleTickerProviderStateMixin {
+  static const _pi = 3.141592653589793;
+  late final AnimationController _flip = AnimationController(vsync: this, duration: const Duration(milliseconds: 420));
+  late List<int> _order;
+  int _pos = 0;
+  bool _back = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _order = List<int>.generate(widget.cards.length, (i) => i);
+  }
+
+  @override
+  void dispose() {
+    _flip.dispose();
+    super.dispose();
+  }
+
+  void _toggle() {
+    if (_flip.isAnimating) return;
+    _back ? _flip.reverse() : _flip.forward();
+    setState(() => _back = !_back);
+  }
+
+  void _go(int delta) {
+    if (widget.cards.isEmpty) return;
+    setState(() {
+      _pos = (_pos + delta) % _order.length;
+      if (_pos < 0) _pos += _order.length;
+      _back = false;
+      _flip.value = 0;
+    });
+  }
+
+  void _shuffle() {
+    setState(() {
+      _order = List<int>.from(_order)..shuffle();
+      _pos = 0;
+      _back = false;
+      _flip.value = 0;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.cards.isEmpty) {
+      return Padding(padding: const EdgeInsets.symmetric(vertical: 22), child: Text('No flashcards yet.', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, color: _grey)));
+    }
+    final card = widget.cards[_order[_pos]];
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Text('Card ${_pos + 1} of ${_order.length}', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: _grey)),
+        const Spacer(),
+        _Pressable(
+          onTap: _shuffle,
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(CupertinoIcons.shuffle, size: 14, color: _orange),
+            const SizedBox(width: 5),
+            Text('Shuffle', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
+          ]),
+        ),
+      ]),
+      const SizedBox(height: 10),
+      // The flip card.
+      GestureDetector(
+        onTap: _toggle,
+        child: AnimatedBuilder(
+          animation: _flip,
+          builder: (_, __) {
+            final a = _flip.value * _pi;
+            final showBack = a > _pi / 2;
+            final face = showBack
+                ? Transform(alignment: Alignment.center, transform: Matrix4.identity()..rotateY(_pi), child: _face(card.$2, true))
+                : _face(card.$1, false);
+            return Transform(
+              alignment: Alignment.center,
+              transform: Matrix4.identity()
+                ..setEntry(3, 2, 0.001)
+                ..rotateY(a),
+              child: face,
+            );
+          },
+        ),
+      ),
+      const SizedBox(height: 8),
+      Center(child: Text('Tap the card to flip', style: GoogleFonts.poppins(fontSize: 11.5, color: _grey))),
+      const SizedBox(height: 12),
+      Row(children: [
+        Expanded(child: _navBtn('Previous', CupertinoIcons.chevron_back, () => _go(-1), filled: false)),
+        const SizedBox(width: 12),
+        Expanded(child: _navBtn('Next', CupertinoIcons.chevron_right, () => _go(1), filled: true)),
+      ]),
+    ]);
+  }
+
+  Widget _face(String text, bool isBack) => Container(
+        height: 200,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          gradient: isBack
+              ? const LinearGradient(colors: [Color(0xFF2D7DF6), Color(0xFF6FA8FF)], begin: Alignment.topLeft, end: Alignment.bottomRight)
+              : _cardGradient,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: isBack ? Colors.transparent : _orange.withOpacity(0.3), width: 1.4),
+          boxShadow: [BoxShadow(color: (isBack ? const Color(0xFF2D7DF6) : _orange).withOpacity(0.22), blurRadius: 22, offset: const Offset(0, 10))],
+        ),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            decoration: BoxDecoration(color: isBack ? Colors.white.withOpacity(0.22) : _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
+            child: Text(isBack ? 'ANSWER' : 'QUESTION', style: GoogleFonts.poppins(fontSize: 9.5, fontWeight: FontWeight.w800, color: isBack ? Colors.white : _orange, letterSpacing: 0.6)),
+          ),
+          const SizedBox(height: 14),
+          Text(text, textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: isBack ? Colors.white : _navy, height: 1.35)),
+        ]),
+      );
+
+  Widget _navBtn(String label, IconData icon, VoidCallback onTap, {required bool filled}) => _Pressable(
+        onTap: onTap,
+        child: Container(
+          height: 46, alignment: Alignment.center,
+          decoration: BoxDecoration(
+            gradient: filled ? _orangeGrad : null,
+            color: filled ? null : _orange.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: filled ? null : Border.all(color: _orange.withOpacity(0.3)),
+            boxShadow: filled ? [BoxShadow(color: _orange.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))] : const [],
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            if (!filled) Icon(icon, size: 15, color: _orange),
+            if (!filled) const SizedBox(width: 6),
+            Text(label, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: filled ? Colors.white : _orange)),
+            if (filled) const SizedBox(width: 6),
+            if (filled) Icon(icon, size: 15, color: Colors.white),
+          ]),
+        ),
+      );
 }
 
 /// Live classes as a calendar-style agenda: sessions grouped by day, each with
@@ -3840,26 +4284,35 @@ class _HeroPanelModal extends StatelessWidget {
       type: MaterialType.transparency,
       child: Container(
         padding: const EdgeInsets.fromLTRB(14, 16, 18, 16),
-        decoration: const BoxDecoration(
-          gradient: _orangeGrad,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        // Frosted-glass header (no bold orange): translucent gradient + a
+        // hairline edge, with the accent used only on the icon/back chip.
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: _isDark
+                ? [Colors.white.withOpacity(0.10), Colors.white.withOpacity(0.04)]
+                : [Colors.white.withOpacity(0.55), Colors.white.withOpacity(0.28)],
+          ),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(bottom: BorderSide(color: _isDark ? Colors.white.withOpacity(0.10) : Colors.white.withOpacity(0.6))),
         ),
         child: Row(children: [
           _Pressable(
             onTap: () => Navigator.of(ctx).maybePop(),
             child: Container(
               width: 34, height: 34, alignment: Alignment.center,
-              decoration: BoxDecoration(color: Colors.white.withOpacity(0.22), borderRadius: BorderRadius.circular(10)),
-              child: const Icon(CupertinoIcons.chevron_back, size: 20, color: Colors.white),
+              decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(10), border: Border.all(color: _orange.withOpacity(0.25))),
+              child: const Icon(CupertinoIcons.chevron_back, size: 20, color: _orange),
             ),
           ),
           const SizedBox(width: 12),
-          Icon(icon, size: 26, color: Colors.white),
+          Icon(icon, size: 26, color: _orange),
           const SizedBox(width: 12),
           Expanded(
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
-              Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12, color: Colors.white.withOpacity(0.9))),
+              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: _navy)),
+              Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
             ]),
           ),
         ]),

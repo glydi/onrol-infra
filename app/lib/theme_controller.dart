@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'services/reload_stub.dart' if (dart.library.html) 'services/reload_web.dart';
+
 /// App-wide theme mode (Light / Dark / System), persisted across launches.
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
 
@@ -19,6 +21,7 @@ Future<void> loadTheme() async {
 }
 
 Future<void> setTheme(ThemeMode m) async {
+  if (m == themeNotifier.value) return; // no change → nothing to do
   themeNotifier.value = m;
   final s = switch (m) {
     ThemeMode.light => 'light',
@@ -28,6 +31,9 @@ Future<void> setTheme(ThemeMode m) async {
   try {
     await _storage.write(key: _key, value: s);
   } catch (_) {}
+  // Persisted → hard-reload (web) so the new theme is reapplied everywhere
+  // cleanly. No-op on mobile, which rebuilds live via [themeNotifier].
+  reloadApp();
 }
 
 /// App-wide text scale (font size). 0.9 = small, 1.0 = default, 1.15 = large.
