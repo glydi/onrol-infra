@@ -498,6 +498,7 @@ class _StudentHomeState extends State<StudentHome> {
               ? SizedBox(width: cell, height: cell)
               : Hero(
                   tag: 'panel-${tile.panel}',
+                  createRectTween: _smoothHeroRect,
                   child: _GridCell(tile: tile, size: cell, onTap: (c) => _openPanel(tile.panel, origin: c)),
                 ),
         ));
@@ -4210,12 +4211,25 @@ class _PanelRoute<T> extends PageRouteBuilder<T> {
       : super(
           opaque: false,
           barrierDismissible: false,
-          transitionDuration: const Duration(milliseconds: 460),
-          reverseTransitionDuration: const Duration(milliseconds: 360),
+          transitionDuration: const Duration(milliseconds: 480),
+          reverseTransitionDuration: const Duration(milliseconds: 380),
           pageBuilder: (ctx, anim, sec) => child,
           // Motion is handled by the Hero + the in-page animations.
           transitionsBuilder: (ctx, anim, sec, c) => c,
         );
+}
+
+/// Straight-line, eased Hero rect interpolation for the tile → panel expansion.
+/// Flutter's default Material Hero uses a curved *arc* path driven by a *linear*
+/// animation — on a square-tile → wide-header reshape that swoops and
+/// starts/stops abruptly, which reads as "rough". A direct lerp with an
+/// easeOutCubic curve gives a smooth, decelerating morph along a clean path.
+RectTween _smoothHeroRect(Rect? begin, Rect? end) => _SmoothRectTween(begin: begin, end: end);
+
+class _SmoothRectTween extends RectTween {
+  _SmoothRectTween({super.begin, super.end});
+  @override
+  Rect? lerp(double t) => Rect.lerp(begin, end, Curves.easeOutCubic.transform(t.clamp(0.0, 1.0)));
 }
 
 /// iOS App-Store-style expanding card. A [Hero] morphs the tapped tile into the
@@ -4359,7 +4373,7 @@ class _HeroPanelModal extends StatelessWidget {
                   mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-              heroTag != null ? Hero(tag: heroTag!, child: header) : header,
+              heroTag != null ? Hero(tag: heroTag!, createRectTween: _smoothHeroRect, child: header) : header,
               Flexible(
                 fit: compact ? FlexFit.loose : FlexFit.tight,
                 child: FadeTransition(
