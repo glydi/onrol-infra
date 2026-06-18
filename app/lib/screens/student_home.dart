@@ -418,7 +418,9 @@ class _StudentHomeState extends State<StudentHome> {
               onEnter: (_) {
                 if (_focused != 0) setState(() => _focused = 0);
               },
-              child: _matrix(c.maxWidth.clamp(260.0, 460.0).toDouble()),
+              // Centre the grid so it doesn't hug the left on wider phones,
+              // tablets and iPads (where this single-column layout is used).
+              child: Center(child: _matrix(c.maxWidth.clamp(260.0, 480.0).toDouble())),
             );
           }),
           const SizedBox(height: 18),
@@ -4381,8 +4383,10 @@ class _HeroPanelModal extends StatelessWidget {
                     ),
                   )
                 : SizedBox(
-                    width: size.width * 0.97,
-                    height: size.height * 0.97,
+                    // Full-bleed on phones; on tablets / laptops / desktops cap
+                    // the sheet and centre it so content isn't stretched wide.
+                    width: (size.width * 0.97).clamp(0.0, 1180.0),
+                    height: (size.height * 0.97).clamp(0.0, 960.0),
                     child: _card(ctx, anim),
                   ),
           ),
@@ -4477,7 +4481,14 @@ class _HeroPanelModal extends StatelessWidget {
                     child: RepaintBoundary(
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: body),
+                        // Keep the content as a readable centred column on wide
+                        // tablets/laptops instead of stretching edge-to-edge.
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 760),
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: body),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -4758,11 +4769,11 @@ class _ResumeCardState extends State<_ResumeCard> {
     return _Entrance(
       index: widget.index,
       child: MouseRegion(
-        cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
+        // The card itself is NOT tappable — the video resumes only from the
+        // "Continue" button below, nowhere else.
         child: GestureDetector(
-          onTap: go,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOutCubic,
@@ -4816,24 +4827,27 @@ class _ResumeCardState extends State<_ResumeCard> {
               const SizedBox(height: 7),
               _GlowProgress(value: pct, height: 6),
               const SizedBox(height: 12),
-              // Compact, pill-shaped — sized to its content, pushed to the right.
+              // Compact, pill-shaped — the ONLY thing that resumes the video.
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Container(
-                    height: 38,
-                    padding: const EdgeInsets.symmetric(horizontal: 18),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      gradient: _orangeGrad,
-                      borderRadius: BorderRadius.circular(19),
-                      boxShadow: [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 6, offset: const Offset(0, 2))],
+                  _Pressable(
+                    onTap: go,
+                    child: Container(
+                      height: 38,
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        gradient: _orangeGrad,
+                        borderRadius: BorderRadius.circular(19),
+                        boxShadow: [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 6, offset: const Offset(0, 2))],
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        const Icon(CupertinoIcons.play_fill, color: Colors.white, size: 14),
+                        const SizedBox(width: 7),
+                        Text('Continue', style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white)),
+                      ]),
                     ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(CupertinoIcons.play_fill, color: Colors.white, size: 14),
-                      const SizedBox(width: 7),
-                      Text('Continue', style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white)),
-                    ]),
                   ),
                 ],
               ),
