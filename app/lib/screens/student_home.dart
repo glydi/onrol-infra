@@ -1676,14 +1676,14 @@ class _CertCardState extends State<_CertCard> {
           decoration: BoxDecoration(
             gradient: filled ? _orangeGrad : null,
             color: filled ? null : _orange.withOpacity(0.10),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(8),
             border: filled ? null : Border.all(color: _orange.withOpacity(0.30)),
-            boxShadow: filled ? [BoxShadow(color: _orange.withOpacity(0.32), blurRadius: 12, offset: const Offset(0, 5))] : const [],
+            boxShadow: filled ? [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 6, offset: const Offset(0, 2))] : const [],
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(icon, size: 16, color: filled ? Colors.white : _orange),
             const SizedBox(width: 7),
-            Text(label, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: filled ? Colors.white : _orange)),
+            Text(label, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w600, color: filled ? Colors.white : _orange)),
           ]),
         ),
       );
@@ -2002,7 +2002,7 @@ class _StudyHubState extends State<_StudyHub> {
           onTap: () => setState(() => _open = null),
           child: Container(
             width: 34, height: 34, alignment: Alignment.center,
-            decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(10), border: Border.all(color: _orange.withOpacity(0.25))),
+            decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(8), border: Border.all(color: _orange.withOpacity(0.25))),
             child: const Icon(CupertinoIcons.chevron_back, size: 18, color: _orange),
           ),
         ),
@@ -2639,6 +2639,32 @@ class _ForumViewState extends State<_ForumView> {
 
   void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
 
+  // Delete a discussion the caller owns (the backend enforces author-only).
+  Future<void> _deleteThread(String id) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Delete discussion?', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: _navy, fontSize: 16)),
+        content: Text('This removes it (and its replies) for everyone. This cannot be undone.', style: GoogleFonts.poppins(fontSize: 13, color: _grey, height: 1.35)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: GoogleFonts.poppins(color: _grey, fontWeight: FontWeight.w600))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Delete', style: GoogleFonts.poppins(color: _danger, fontWeight: FontWeight.w800))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      ApiClient.decode(await widget.auth.apiDelete('/api/v1/me/forum/$id'));
+      if (_openId == id) setState(() => _openId = null);
+      _reload();
+      _toast('Discussion deleted');
+    } catch (_) {
+      _toast("Couldn't delete — try again");
+    }
+  }
+
   Future<void> _post() async {
     if (_title.text.trim().isEmpty || _body.text.trim().isEmpty) return _toast('Add a title and message');
     setState(() => _busy = true);
@@ -2883,7 +2909,17 @@ class _ForumViewState extends State<_ForumView> {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 14.5, fontWeight: FontWeight.w700, color: _navy, height: 1.25)),
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(child: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 14.5, fontWeight: FontWeight.w700, color: _navy, height: 1.25))),
+                if (m['can_delete'] == true)
+                  _Pressable(
+                    onTap: () => _deleteThread(m['id']?.toString() ?? ''),
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 8, top: 1),
+                      child: Icon(CupertinoIcons.trash, size: 15, color: _danger.withOpacity(0.8)),
+                    ),
+                  ),
+              ]),
               if (snippet.isNotEmpty) ...[
                 const SizedBox(height: 3),
                 Text(snippet, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12.5, color: _grey, height: 1.3)),
@@ -3002,7 +3038,7 @@ class _ForumThreadState extends State<_ForumThread> {
           onTap: widget.onBack,
           child: Container(
             width: 34, height: 34, alignment: Alignment.center,
-            decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(10), border: Border.all(color: _orange.withOpacity(0.25))),
+            decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(8), border: Border.all(color: _orange.withOpacity(0.25))),
             child: const Icon(CupertinoIcons.chevron_back, size: 18, color: _orange),
           ),
         ),

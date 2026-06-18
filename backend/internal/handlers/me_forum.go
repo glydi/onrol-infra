@@ -13,10 +13,11 @@ import (
 // ListForum returns recent threads across the courses the caller is enrolled in,
 // newest-activity first, with author, course, reply count and a snippet.
 func (h *Handlers) ListForum(c *fiber.Ctx) error {
+	caller := callerID(c)
 	rows, err := h.Pool.Query(c.Context(), `
 		SELECT t.id, t.title, t.course_id, COALESCE(c.title,'General'),
 		       COALESCE(u.full_name,'Someone'), COALESCE(u.avatar,''),
-		       t.created_at,
+		       t.created_at, t.author_id,
 		       (SELECT count(*) FROM forum_posts p WHERE p.thread_id=t.id) AS posts,
 		       COALESCE((SELECT max(created_at) FROM forum_posts p WHERE p.thread_id=t.id), t.created_at) AS last_at,
 		       COALESCE((SELECT body FROM forum_posts p WHERE p.thread_id=t.id ORDER BY created_at LIMIT 1),'') AS snippet
@@ -27,18 +28,19 @@ func (h *Handlers) ListForum(c *fiber.Ctx) error {
 		   OR EXISTS (SELECT 1 FROM course_enrollments ce WHERE ce.course_id=t.course_id AND ce.user_id=$1)
 		   OR $2 <> 'student'
 		ORDER BY last_at DESC
-		LIMIT 100`, callerID(c), callerRole(c))
+		LIMIT 100`, caller, callerRole(c))
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
 	}
 	defer rows.Close()
+	staffMod := callerRole(c) == "instructor" || callerRole(c) == "manager" || callerRole(c) == "superadmin"
 	out := []fiber.Map{}
 	for rows.Next() {
 		var id, title, course, author, avatar, snippet string
-		var courseID *string
+		var courseID, authorID *string
 		var createdAt, lastAt any
 		var posts int
-		if err := rows.Scan(&id, &title, &courseID, &course, &author, &avatar, &createdAt, &posts, &lastAt, &snippet); err != nil {
+		if err := rows.Scan(&id, &title, &courseID, &course, &author, &avatar, &createdAt, &authorID, &posts, &lastAt, &snippet); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		// posts includes the opening post; replies = posts-1 (never negative).
@@ -46,10 +48,13 @@ func (h *Handlers) ListForum(c *fiber.Ctx) error {
 		if replies < 0 {
 			replies = 0
 		}
+		// "mine" → the caller authored it, so they (and staff) may delete it.
+		mine := authorID != nil && *authorID == caller
 		out = append(out, fiber.Map{
 			"id": id, "title": title, "course_id": derefStr(courseID), "course": course,
 			"author": author, "avatar": avatar, "snippet": snippet,
 			"replies": replies, "created_at": createdAt, "last_at": lastAt,
+			"mine": mine, "can_delete": mine || staffMod,
 		})
 	}
 	return c.JSON(fiber.Map{"forum": out})
@@ -58,11 +63,11 @@ func (h *Handlers) ListForum(c *fiber.Ctx) error {
 // GetForumThread returns a thread and all its posts (oldest first).
 func (h *Handlers) GetForumThread(c *fiber.Ctx) error {
 	threadID := c.Params("id")
-	var title, course string
+	var title, course, authorID string
 	var courseID *string
 	if err := h.Pool.QueryRow(c.Context(),
-		`SELECT t.title, t.course_id, COALESCE(c.title,'General') FROM forum_threads t LEFT JOIN courses c ON c.id=t.course_id WHERE t.id=$1`,
-		threadID).Scan(&title, &courseID, &course); err != nil {
+		`SELECT t.title, t.course_id, COALESCE(c.title,'General'), t.author_id FROM forum_threads t LEFT JOIN courses c ON c.id=t.course_id WHERE t.id=$1`,
+		threadID).Scan(&title, &courseID, &course, &authorID); err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "thread not found")
 	}
 	// General threads (course_id NULL) are open to everyone; course threads gate on enrolment.
@@ -87,7 +92,10 @@ func (h *Handlers) GetForumThread(c *fiber.Ctx) error {
 		staff := role == "instructor" || role == "manager" || role == "superadmin"
 		posts = append(posts, fiber.Map{"id": id, "body": body, "at": at, "author": author, "avatar": avatar, "staff": staff})
 	}
-	return c.JSON(fiber.Map{"id": threadID, "title": title, "course": course, "course_id": courseID, "posts": posts})
+	role := callerRole(c)
+	staffMod := role == "instructor" || role == "manager" || role == "superadmin"
+	canDelete := authorID == callerID(c) || staffMod
+	return c.JSON(fiber.Map{"id": threadID, "title": title, "course": course, "course_id": courseID, "posts": posts, "can_delete": canDelete})
 }
 
 // CreateForumThread starts a new thread (with its opening post) in a course.
@@ -113,18 +121,48 @@ func (h *Handlers) CreateForumThread(c *fiber.Ctx) error {
 		}
 		courseArg = req.CourseID
 	}
+	// Create the thread AND its opening post atomically, so a discussion is
+	// never half-saved (a thread with no body).
+	tx, err := h.Pool.Begin(c.Context())
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "thread failed")
+	}
+	defer tx.Rollback(c.Context()) //nolint:errcheck // no-op after commit
 	var threadID string
-	if err := h.Pool.QueryRow(c.Context(),
+	if err := tx.QueryRow(c.Context(),
 		`INSERT INTO forum_threads (course_id, author_id, title) VALUES ($1,$2,$3) RETURNING id`,
 		courseArg, callerID(c), req.Title).Scan(&threadID); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "thread failed")
 	}
-	if _, err := h.Pool.Exec(c.Context(),
+	if _, err := tx.Exec(c.Context(),
 		`INSERT INTO forum_posts (thread_id, author_id, body) VALUES ($1,$2,$3)`,
 		threadID, callerID(c), req.Body); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "post failed")
 	}
+	if err := tx.Commit(c.Context()); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "save failed")
+	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"thread_id": threadID})
+}
+
+// DeleteForumThread removes a thread (and its posts, via FK cascade). Only the
+// thread's author may delete it; course/platform staff may also moderate.
+func (h *Handlers) DeleteForumThread(c *fiber.Ctx) error {
+	threadID := c.Params("id")
+	var authorID string
+	if err := h.Pool.QueryRow(c.Context(),
+		`SELECT author_id FROM forum_threads WHERE id=$1`, threadID).Scan(&authorID); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "thread not found")
+	}
+	role := callerRole(c)
+	staffMod := role == "instructor" || role == "manager" || role == "superadmin"
+	if authorID != callerID(c) && !staffMod {
+		return fiber.NewError(fiber.StatusForbidden, "you can only delete your own discussions")
+	}
+	if _, err := h.Pool.Exec(c.Context(), `DELETE FROM forum_threads WHERE id=$1`, threadID); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "delete failed")
+	}
+	return c.JSON(fiber.Map{"deleted": true})
 }
 
 // ReplyForum appends a reply to a thread.
