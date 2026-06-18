@@ -3035,13 +3035,18 @@ class _ForumThreadState extends State<_ForumThread> {
     return ok == true;
   }
 
-  // Delete one of the caller's own replies (backend enforces author-only).
+  // Delete one of the caller's own messages (backend enforces author-only). If
+  // it was the last message, the discussion is removed and we return to the list.
   Future<void> _deletePost(String id) async {
-    if (!await _confirm('Delete reply?', 'This removes your reply for everyone. This cannot be undone.')) return;
+    if (!await _confirm('Delete message?', 'This removes your message for everyone. This cannot be undone.')) return;
     try {
-      ApiClient.decode(await widget.auth.apiDelete('/api/v1/me/forum/posts/$id'));
-      if (mounted) setState(() => _future = _load());
-      _toast('Reply deleted');
+      final res = ApiClient.decode(await widget.auth.apiDelete('/api/v1/me/forum/posts/$id'));
+      if (res['thread_deleted'] == true) {
+        widget.onBack(); // discussion is now empty → back to the list (it reloads)
+      } else if (mounted) {
+        setState(() => _future = _load());
+      }
+      _toast('Message deleted');
     } catch (_) {
       _toast("Couldn't delete — try again");
     }

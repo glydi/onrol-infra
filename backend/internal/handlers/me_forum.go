@@ -86,7 +86,6 @@ func (h *Handlers) GetForumThread(c *fiber.Ctx) error {
 	role := callerRole(c)
 	staffMod := role == "instructor" || role == "manager" || role == "superadmin"
 	posts := []fiber.Map{}
-	idx := 0
 	for rows.Next() {
 		var id, body, author, avatar, prole, postAuthor string
 		var at any
@@ -95,11 +94,11 @@ func (h *Handlers) GetForumThread(c *fiber.Ctx) error {
 		}
 		staff := prole == "instructor" || prole == "manager" || prole == "superadmin"
 		mine := postAuthor == caller
-		// The opening post (idx 0) is deleted by deleting the whole discussion;
-		// replies are individually deletable by their author (or staff).
-		canDel := idx > 0 && (mine || staffMod)
+		// Every message is individually deletable by its own author (or staff) —
+		// including the opening message. (If deleting it empties the thread, the
+		// whole discussion is removed.)
+		canDel := mine || staffMod
 		posts = append(posts, fiber.Map{"id": id, "body": body, "at": at, "author": author, "avatar": avatar, "staff": staff, "mine": mine, "can_delete": canDel})
-		idx++
 	}
 	canDelete := authorID == caller || staffMod
 	return c.JSON(fiber.Map{"id": threadID, "title": title, "course": course, "course_id": courseID, "posts": posts, "can_delete": canDelete})
@@ -185,20 +184,24 @@ func (h *Handlers) DeleteForumPost(c *fiber.Ctx) error {
 	role := callerRole(c)
 	staffMod := role == "instructor" || role == "manager" || role == "superadmin"
 	if authorID != callerID(c) && !staffMod {
-		return fiber.NewError(fiber.StatusForbidden, "you can only delete your own replies")
-	}
-	// Guard the opening post.
-	var openingID string
-	if err := h.Pool.QueryRow(c.Context(),
-		`SELECT id FROM forum_posts WHERE thread_id=$1 ORDER BY created_at LIMIT 1`, threadID).Scan(&openingID); err == nil {
-		if openingID == postID {
-			return fiber.NewError(fiber.StatusBadRequest, "this is the original message — delete the whole discussion instead")
-		}
+		return fiber.NewError(fiber.StatusForbidden, "you can only delete your own messages")
 	}
 	if _, err := h.Pool.Exec(c.Context(), `DELETE FROM forum_posts WHERE id=$1`, postID); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "delete failed")
 	}
-	return c.JSON(fiber.Map{"deleted": true})
+	// If that was the last message, remove the now-empty discussion too.
+	var remaining int
+	if err := h.Pool.QueryRow(c.Context(),
+		`SELECT count(*) FROM forum_posts WHERE thread_id=$1`, threadID).Scan(&remaining); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "delete failed")
+	}
+	threadDeleted := false
+	if remaining == 0 {
+		if _, err := h.Pool.Exec(c.Context(), `DELETE FROM forum_threads WHERE id=$1`, threadID); err == nil {
+			threadDeleted = true
+		}
+	}
+	return c.JSON(fiber.Map{"deleted": true, "thread_deleted": threadDeleted})
 }
 
 // ReplyForum appends a reply to a thread.
