@@ -218,6 +218,14 @@ func (h *Handlers) bindDevice(ctx context.Context, user models.User, deviceID, p
 	// is race-free here.
 	adminExempt := user.Role == "manager" || user.Role == "superadmin" || user.Role == "instructor"
 	if !adminExempt {
+		// Hard cap: non-staff users may bind at most 2 devices, regardless of
+		// the per-user max_devices column or MAX_DEVICES_PER_USER config — so the
+		// limit can never be silently raised above 2.
+		const hardCap = 2
+		limit := user.MaxDevices
+		if limit > hardCap || limit < 1 {
+			limit = hardCap
+		}
 		var activeCount int
 		if err := tx.QueryRow(ctx,
 			`SELECT count(*) FROM devices WHERE user_id=$1 AND is_active`,
@@ -225,7 +233,7 @@ func (h *Handlers) bindDevice(ctx context.Context, user models.User, deviceID, p
 		).Scan(&activeCount); err != nil {
 			return err
 		}
-		if activeCount >= user.MaxDevices {
+		if activeCount >= limit {
 			devices, _ := listActiveDevices(ctx, tx, user.ID)
 			return deviceLimitError{devices: devices}
 		}
