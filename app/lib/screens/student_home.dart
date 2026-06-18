@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -84,16 +85,58 @@ Widget _glass({
 
 /// Full-bleed backdrop: a base gradient plus a few large, heavily-blurred
 /// colour blobs so the glass panels have something rich to refract.
-class _GlassBackdrop extends StatelessWidget {
+/// How many panel/modal routes are currently open. While > 0 the animated
+/// backdrop pauses, so an open popup's glass isn't re-blurring a moving
+/// background every frame (keeps popups perfectly smooth).
+final ValueNotifier<int> _panelDepth = ValueNotifier(0);
+
+class _GlassBackdrop extends StatefulWidget {
   const _GlassBackdrop();
+  @override
+  State<_GlassBackdrop> createState() => _GlassBackdropState();
+}
+
+class _GlassBackdropState extends State<_GlassBackdrop> with SingleTickerProviderStateMixin {
+  // Very slow, perpetual drift so the ambient glow feels alive (same colours,
+  // same positions — just a soft breathing motion).
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 24))..repeat();
+
+  @override
+  void initState() {
+    super.initState();
+    _panelDepth.addListener(_syncRunning);
+  }
+
+  // Pause the drift while a panel is open; resume when back on the dashboard.
+  void _syncRunning() {
+    if (_panelDepth.value > 0) {
+      if (_c.isAnimating) _c.stop();
+    } else if (!_c.isAnimating) {
+      _c.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _panelDepth.removeListener(_syncRunning);
+    _c.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final blob = ui.ImageFilter.blur(sigmaX: 90, sigmaY: 90);
-    Widget circle(Color c, double d) => ImageFiltered(
-          imageFilter: blob,
-          child: Container(width: d, height: d, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+    // Each blurred circle is cached in a RepaintBoundary so the blur rasterizes
+    // once and the animation only *moves* the cached texture — stays smooth.
+    Widget circle(Color c, double d) => RepaintBoundary(
+          child: ImageFiltered(
+            imageFilter: blob,
+            child: Container(width: d, height: d, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+          ),
         );
+    final c1 = circle(_orange.withOpacity(_isDark ? 0.22 : 0.30), 380);
+    final c2 = circle(const Color(0xFFFF7A4D).withOpacity(_isDark ? 0.18 : 0.28), 420);
+    final c3 = circle(const Color(0xFF7C5CFF).withOpacity(_isDark ? 0.16 : 0.18), 460);
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -104,11 +147,18 @@ class _GlassBackdrop extends StatelessWidget {
               : const [Color(0xFFFFF1EA), Color(0xFFFDEAF6)],
         ),
       ),
-      child: Stack(children: [
-        Positioned(top: -120, left: -100, child: circle(_orange.withOpacity(_isDark ? 0.22 : 0.30), 380)),
-        Positioned(top: 80, right: -140, child: circle(const Color(0xFFFF7A4D).withOpacity(_isDark ? 0.18 : 0.28), 420)),
-        Positioned(bottom: -160, left: 120, child: circle(const Color(0xFF7C5CFF).withOpacity(_isDark ? 0.16 : 0.18), 460)),
-      ]),
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (context, _) {
+          final t = _c.value * 2 * math.pi;
+          Offset drift(double phase, double ax, double ay) => Offset(ax * math.sin(t + phase), ay * math.cos(t + phase));
+          return Stack(children: [
+            Positioned(top: -120, left: -100, child: Transform.translate(offset: drift(0, 26, 20), child: c1)),
+            Positioned(top: 80, right: -140, child: Transform.translate(offset: drift(2.1, -30, 24), child: c2)),
+            Positioned(bottom: -160, left: 120, child: Transform.translate(offset: drift(4.2, 28, -22), child: c3)),
+          ]);
+        },
+      ),
     );
   }
 }
@@ -387,7 +437,7 @@ class _StudentHomeState extends State<StudentHome> {
                   onEnter: (_) {
                     if (_focused != 0) setState(() => _focused = 0);
                   },
-                  child: _matrix(side),
+                  child: _Entrance(index: 0, child: _matrix(side)),
                 );
               }),
             ),
@@ -397,9 +447,9 @@ class _StudentHomeState extends State<StudentHome> {
             width: 440,
             // Profile card stays pinned; only the AI-news list inside scrolls.
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              _focusable(1, child: _profileCard()),
+              _Entrance(index: 1, child: _focusable(1, child: _profileCard())),
               const SizedBox(height: 12),
-              Expanded(child: _focusable(2, child: _AiNewsCard(auth: widget.auth, scrollable: true))),
+              Expanded(child: _Entrance(index: 2, child: _focusable(2, child: _AiNewsCard(auth: widget.auth, scrollable: true)))),
             ]),
           ),
         ]),
@@ -409,9 +459,9 @@ class _StudentHomeState extends State<StudentHome> {
   Widget _narrowLayout() => SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
         child: Column(children: [
-          _topBar(),
+          _Entrance(index: 0, child: _topBar()),
           const SizedBox(height: 14),
-          _focusable(1, child: _profileCard()),
+          _Entrance(index: 1, child: _focusable(1, child: _profileCard())),
           const SizedBox(height: 14),
           LayoutBuilder(builder: (context, c) {
             return MouseRegion(
@@ -420,16 +470,19 @@ class _StudentHomeState extends State<StudentHome> {
               },
               // Centre the grid so it doesn't hug the left on wider phones,
               // tablets and iPads (where this single-column layout is used).
-              child: Center(child: _matrix(c.maxWidth.clamp(260.0, 480.0).toDouble())),
+              child: _Entrance(index: 2, child: Center(child: _matrix(c.maxWidth.clamp(260.0, 480.0).toDouble()))),
             );
           }),
           const SizedBox(height: 18),
           // Give the live AI-news box its own internal scroll (like desktop)
           // with a bounded height, so it doesn't stretch the page forever on
           // phones / tablets / iPads.
-          SizedBox(
-            height: (MediaQuery.of(context).size.height * 0.62).clamp(360.0, 640.0).toDouble(),
-            child: _focusable(2, child: _AiNewsCard(auth: widget.auth, scrollable: true)),
+          _Entrance(
+            index: 3,
+            child: SizedBox(
+              height: (MediaQuery.of(context).size.height * 0.62).clamp(360.0, 640.0).toDouble(),
+              child: _focusable(2, child: _AiNewsCard(auth: widget.auth, scrollable: true)),
+            ),
           ),
         ]),
       );
@@ -4393,6 +4446,19 @@ class _PanelRoute<T> extends PageRouteBuilder<T> {
           // Motion is handled by the Hero + the in-page animations.
           transitionsBuilder: (ctx, anim, sec, c) => c,
         );
+
+  // Bracket the route's lifetime so the animated backdrop pauses while open.
+  @override
+  void install() {
+    super.install();
+    _panelDepth.value++;
+  }
+
+  @override
+  void dispose() {
+    if (_panelDepth.value > 0) _panelDepth.value--;
+    super.dispose();
+  }
 }
 
 /// Shared fade + gentle vertical slide for in-popup view changes (grid↔detail,
