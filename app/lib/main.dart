@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import 'app_mode.dart';
 import 'services/api_client.dart';
 import 'services/auth_service.dart';
 import 'services/device_service.dart';
@@ -24,11 +25,6 @@ void main() {
   runApp(const OnrolApp());
 }
 
-/// When built with --dart-define=STUDENT_APP=true (the Windows student app),
-/// the app is a dedicated, light student LMS: it always lands on the student
-/// home and never shows the staff console or the per-portal subdomain screens.
-const bool kStudentApp = bool.fromEnvironment('STUDENT_APP');
-
 class OnrolApp extends StatefulWidget {
   const OnrolApp({super.key});
 
@@ -49,6 +45,10 @@ class _OnrolAppState extends State<OnrolApp> {
       builder: (context, mode, _) => ValueListenableBuilder<double>(
         valueListenable: textScaleNotifier,
         builder: (context, scale, __) => MaterialApp(
+        // Re-key on theme mode so switching light/dark rebuilds the whole app
+        // (a fresh Navigator) — every screen + any open popup reopens cleanly in
+        // the new theme, with no stale cached-blur/colour left behind.
+        key: ValueKey(mode),
         title: 'ONROL Learn',
         debugShowCheckedModeBanner: false,
         theme: AppleTheme.light(),
@@ -67,8 +67,9 @@ class _OnrolAppState extends State<OnrolApp> {
             }
             final hasSession = snap.data == true && _auth.user != null;
             if (!hasSession) return LoginScreen(auth: _auth);
-            // Dedicated student app (Windows): always the student LMS, nothing else.
-            if (kStudentApp) return HomeScreen(auth: _auth);
+            // User-only apps (mobile, or the dedicated student build): always the
+            // user home — never the staff console or per-portal screens.
+            if (kUserOnlyApp) return HomeScreen(auth: _auth);
             // Per-portal subdomains route to their own portal.
             if (isCrmHost()) return CrmPortalScreen(auth: _auth);
             if (isAmbassadorHost()) return AmbassadorPortalScreen(auth: _auth);
