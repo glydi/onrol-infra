@@ -52,7 +52,20 @@ class _LiveScreenState extends State<LiveScreen> {
             mediaPlaybackRequiresUserGesture: false,
             allowsInlineMediaPlayback: true,
             javaScriptEnabled: true,
+            // Keep popups (window.open / target=_blank — Zoho uses these to open
+            // the actual meeting) inside the app instead of the system browser.
+            javaScriptCanOpenWindowsAutomatically: true,
+            supportMultipleWindows: true,
           ),
+          // A new-window request (popup) is loaded into THIS WebView so the
+          // student never leaves the app.
+          onCreateWindow: (controller, req) async {
+            final u = req.request.url;
+            if (u != null) controller.loadUrl(urlRequest: URLRequest(url: u));
+            return false;
+          },
+          // Every navigation stays in the WebView — never hand off to a browser.
+          shouldOverrideUrlLoading: (_, __) async => NavigationActionPolicy.ALLOW,
           onProgressChanged: (_, p) => setState(() => _progress = p / 100),
         ),
       ),
