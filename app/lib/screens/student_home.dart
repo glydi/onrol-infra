@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image/image.dart' as img;
@@ -15,6 +16,7 @@ import '../config.dart' as appcfg;
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../theme_controller.dart';
+import 'live_screen.dart';
 import 'login_screen.dart';
 import 'video_player_screen.dart';
 
@@ -990,10 +992,21 @@ class _StudentHomeState extends State<StudentHome> {
     );
   }
 
-  // Opens an external URL (Zoho live link, etc.) in a new tab / browser.
+  // Joins a live class (Zoho / Meet / Jitsi link). On mobile we load it inside
+  // the app via LiveScreen — a WebView that follows Zoho's register→session
+  // redirect and keeps the student in-app under their forensic watermark — so
+  // tapping Join always opens the session instead of silently bouncing out to
+  // Safari. On web (no in-app WebView) we open it in a new tab.
   Future<void> _openUrl(String url) async {
     final uri = Uri.tryParse(url);
-    if (uri == null) return;
+    if (uri == null || url.isEmpty) return;
+    if (!kIsWeb) {
+      if (!mounted) return;
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => LiveScreen(url: url, watermark: widget.auth.user?.email ?? 'student'),
+      ));
+      return;
+    }
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
     } catch (_) {}
@@ -5124,7 +5137,7 @@ class _GridCellState extends State<_GridCell> {
             curve: Curves.easeOutCubic,
             width: s, height: s,
             alignment: Alignment.center,
-            padding: EdgeInsets.all(s * 0.08),
+            padding: EdgeInsets.all(s * 0.06),
             // Tinted-glass tile: translucent orange so the backdrop glows
             // through, a hairline highlight edge, and an orange lift on hover.
             decoration: BoxDecoration(
@@ -5153,30 +5166,35 @@ class _GridCellState extends State<_GridCell> {
                 stops: const [0.0, 0.55],
               ),
             ),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Icon nudges up and grows a touch on hover.
-                  AnimatedSlide(
-                    offset: _hover ? const Offset(0, -0.05) : Offset.zero,
+            // Icon is a fixed fraction of the (uniform) tile, so every tile's
+            // icon is the same size; only the label scales down to fit width.
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Icon nudges up and grows a touch on hover.
+                AnimatedSlide(
+                  offset: _hover ? const Offset(0, -0.05) : Offset.zero,
+                  duration: const Duration(milliseconds: 240),
+                  curve: Curves.easeOutCubic,
+                  child: AnimatedScale(
+                    scale: _hover ? 1.12 : 1.0,
                     duration: const Duration(milliseconds: 240),
                     curve: Curves.easeOutCubic,
-                    child: AnimatedScale(
-                      scale: _hover ? 1.12 : 1.0,
-                      duration: const Duration(milliseconds: 240),
-                      curve: Curves.easeOutCubic,
-                      child: Icon(t.icon, color: Colors.white, size: 30),
-                    ),
+                    child: Icon(t.icon, color: Colors.white, size: s * 0.5),
                   ),
-                  const SizedBox(height: 8),
-                  Text(t.label,
-                      maxLines: 1,
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
-                ],
-              ),
+                ),
+                SizedBox(height: s * 0.06),
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(t.label,
+                        maxLines: 1,
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
