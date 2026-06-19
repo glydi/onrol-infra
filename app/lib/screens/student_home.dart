@@ -5153,30 +5153,37 @@ class _GridCellState extends State<_GridCell> {
                 stops: const [0.0, 0.55],
               ),
             ),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Icon nudges up and grows a touch on hover.
-                  AnimatedSlide(
-                    offset: _hover ? const Offset(0, -0.05) : Offset.zero,
+            // The icon is a fixed size on every tile (proportional to the cell,
+            // so it's uniform across the grid) — only the label scales to fit, so
+            // a long label never shrinks its icon. This keeps the icons even.
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Icon nudges up and grows a touch on hover.
+                AnimatedSlide(
+                  offset: _hover ? const Offset(0, -0.05) : Offset.zero,
+                  duration: const Duration(milliseconds: 240),
+                  curve: Curves.easeOutCubic,
+                  child: AnimatedScale(
+                    scale: _hover ? 1.12 : 1.0,
                     duration: const Duration(milliseconds: 240),
                     curve: Curves.easeOutCubic,
-                    child: AnimatedScale(
-                      scale: _hover ? 1.12 : 1.0,
-                      duration: const Duration(milliseconds: 240),
-                      curve: Curves.easeOutCubic,
-                      child: Icon(t.icon, color: Colors.white, size: 30),
-                    ),
+                    child: Icon(t.icon, color: Colors.white, size: (s * 0.40).clamp(24.0, 52.0)),
                   ),
-                  const SizedBox(height: 8),
-                  Text(t.label,
-                      maxLines: 1,
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
-                ],
-              ),
+                ),
+                SizedBox(height: s * 0.05),
+                SizedBox(
+                  width: double.infinity,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.center,
+                    child: Text(t.label,
+                        maxLines: 1,
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
