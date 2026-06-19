@@ -5137,7 +5137,7 @@ class _GridCellState extends State<_GridCell> {
             curve: Curves.easeOutCubic,
             width: s, height: s,
             alignment: Alignment.center,
-            padding: EdgeInsets.all(s * 0.06),
+            padding: EdgeInsets.all(s * 0.08),
             // Tinted-glass tile: translucent orange so the backdrop glows
             // through, a hairline highlight edge, and an orange lift on hover.
             decoration: BoxDecoration(
@@ -5166,11 +5166,11 @@ class _GridCellState extends State<_GridCell> {
                 stops: const [0.0, 0.55],
               ),
             ),
-            // Icon is a fixed fraction of the (uniform) tile, so every tile's
-            // icon is the same size; only the label scales down to fit width.
+            // The icon is a fixed size on every tile (proportional to the cell,
+            // so it's uniform across the grid) — only the label scales to fit, so
+            // a long label never shrinks its icon. This keeps the icons even.
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // Icon nudges up and grows a touch on hover.
                 AnimatedSlide(
@@ -5181,17 +5181,19 @@ class _GridCellState extends State<_GridCell> {
                     scale: _hover ? 1.12 : 1.0,
                     duration: const Duration(milliseconds: 240),
                     curve: Curves.easeOutCubic,
-                    child: Icon(t.icon, color: Colors.white, size: s * 0.5),
+                    child: Icon(t.icon, color: Colors.white, size: (s * 0.40).clamp(24.0, 52.0)),
                   ),
                 ),
-                SizedBox(height: s * 0.06),
-                Flexible(
+                SizedBox(height: s * 0.05),
+                SizedBox(
+                  width: double.infinity,
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
+                    alignment: Alignment.center,
                     child: Text(t.label,
                         maxLines: 1,
                         textAlign: TextAlign.center,
-                        style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)),
+                        style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
                   ),
                 ),
               ],

@@ -40,6 +40,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   double _speed = 1.0;
   Timer? _hideTimer;
   int _lastSaved = 0; // last position (s) reported, for throttling
+  double? _scrub; // position (ms) while dragging the scrubber, else null
   bool _completed = false;
   bool _webHint = true; // brief keyboard-shortcuts hint on the web player
 
@@ -341,15 +342,39 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              VideoProgressIndicator(
-                c,
-                allowScrubbing: true,
-                colors: const VideoProgressColors(playedColor: _accent, bufferedColor: Colors.white30, backgroundColor: Colors.white12),
-                padding: const EdgeInsets.symmetric(vertical: 8),
-              ),
+              // Draggable scrubber with a visible thumb + generous touch target
+              // (the thin default indicator was hard to grab on a phone).
+              Builder(builder: (_) {
+                final durMs = c.value.duration.inMilliseconds.toDouble();
+                final maxMs = durMs <= 0 ? 1.0 : durMs;
+                final posMs = (_scrub ?? c.value.position.inMilliseconds.toDouble()).clamp(0.0, maxMs);
+                return SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 4,
+                    activeTrackColor: _accent,
+                    inactiveTrackColor: Colors.white24,
+                    thumbColor: Colors.white,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7, elevation: 2),
+                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+                    overlayColor: _accent.withOpacity(0.3),
+                    trackShape: const RoundedRectSliderTrackShape(),
+                  ),
+                  child: Slider(
+                    value: posMs,
+                    max: maxMs,
+                    onChangeStart: (_) => _hideTimer?.cancel(),
+                    onChanged: (v) => setState(() => _scrub = v),
+                    onChangeEnd: (v) {
+                      _c?.seekTo(Duration(milliseconds: v.round()));
+                      setState(() => _scrub = null);
+                      _flashControls();
+                    },
+                  ),
+                );
+              }),
               Row(
                 children: [
-                  Text(_fmt(c.value.position), style: const TextStyle(color: Colors.white, fontSize: 12)),
+                  Text(_fmt(_scrub != null ? Duration(milliseconds: _scrub!.round()) : c.value.position), style: const TextStyle(color: Colors.white, fontSize: 12)),
                   const Text('  /  ', style: TextStyle(color: Colors.white38, fontSize: 12)),
                   Text(_fmt(c.value.duration), style: const TextStyle(color: Colors.white70, fontSize: 12)),
                   const Spacer(),
