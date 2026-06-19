@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../app_mode.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../theme.dart';
@@ -96,17 +97,21 @@ class _LoginScreenState extends State<LoginScreen> {
   void _goHome() {
     final staff = widget.auth.user?.isStaff ?? false;
     Navigator.of(context).pushReplacement(MaterialPageRoute(
-      builder: (_) => isCrmHost()
-          ? CrmPortalScreen(auth: widget.auth)
-          : isAmbassadorHost()
-              ? AmbassadorPortalScreen(auth: widget.auth)
-              : isAccountsHost()
-                  ? AccountsPortalScreen(auth: widget.auth)
-                  : isCollegeHost()
-                      ? CollegePortalScreen(auth: widget.auth)
-                      : isFranchiseHost()
-                          ? FranchisePortalScreen(auth: widget.auth)
-                          : (staff ? ConsoleScreen(auth: widget.auth) : HomeScreen(auth: widget.auth)),
+      // User-only apps (mobile / student build) always land on the user home —
+      // no console or portal screens, whatever the role.
+      builder: (_) => kUserOnlyApp
+          ? HomeScreen(auth: widget.auth)
+          : isCrmHost()
+              ? CrmPortalScreen(auth: widget.auth)
+              : isAmbassadorHost()
+                  ? AmbassadorPortalScreen(auth: widget.auth)
+                  : isAccountsHost()
+                      ? AccountsPortalScreen(auth: widget.auth)
+                      : isCollegeHost()
+                          ? CollegePortalScreen(auth: widget.auth)
+                          : isFranchiseHost()
+                              ? FranchisePortalScreen(auth: widget.auth)
+                              : (staff ? ConsoleScreen(auth: widget.auth) : HomeScreen(auth: widget.auth)),
     ));
   }
 

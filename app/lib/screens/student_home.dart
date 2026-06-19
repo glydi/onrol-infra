@@ -461,7 +461,7 @@ class _StudentHomeState extends State<StudentHome> {
         child: Column(children: [
           _Entrance(index: 0, child: _topBar()),
           const SizedBox(height: 14),
-          _Entrance(index: 1, child: _focusable(1, child: _profileCard())),
+          _Entrance(index: 1, child: _focusable(1, child: _profileCard(compact: true))),
           const SizedBox(height: 14),
           LayoutBuilder(builder: (context, c) {
             return MouseRegion(
@@ -571,8 +571,13 @@ class _StudentHomeState extends State<StudentHome> {
 
   // ---- Profile card (right sidebar, top) -----------------------------------
 
-  Widget _profileCard() {
+  // [compact] = the phone (narrow) dashboard, where a smaller avatar + title
+  // keep the card proportionate and leave room for the chips.
+  Widget _profileCard({bool compact = false}) {
     final initials = _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S';
+    final avatar = compact ? 68.0 : 88.0;
+    final hi = compact ? 21.0 : 25.0;
+    final pad = compact ? 18.0 : 22.0;
     // Tapping the card opens Profile & settings; tapping the avatar (inner
     // GestureDetector) still opens the picture picker.
     return MouseRegion(
@@ -580,34 +585,39 @@ class _StudentHomeState extends State<StudentHome> {
       child: GestureDetector(
         onTap: () => _openPanel('profile'),
         child: _glass(
-      padding: const EdgeInsets.all(22),
+      padding: EdgeInsets.all(pad),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         // Display-only here; the picture is edited inside the Profile popup.
         ValueListenableBuilder<String>(
           valueListenable: avatarNotifier,
-          builder: (ctx, av, _) => _avatarBox(av, 88, initials),
+          builder: (ctx, av, _) => _avatarBox(av, avatar, initials),
         ),
-        const SizedBox(width: 18),
+        SizedBox(width: compact ? 14 : 18),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             RichText(
               text: TextSpan(children: [
-                TextSpan(text: 'Hi, ', style: GoogleFonts.poppins(fontSize: 25, fontWeight: FontWeight.w800, color: _navy)),
-                TextSpan(text: _firstName, style: GoogleFonts.poppins(fontSize: 25, fontWeight: FontWeight.w800, color: _orange)),
+                TextSpan(text: 'Hi, ', style: GoogleFonts.poppins(fontSize: hi, fontWeight: FontWeight.w800, color: _navy)),
+                TextSpan(text: _firstName, style: GoogleFonts.poppins(fontSize: hi, fontWeight: FontWeight.w800, color: _orange)),
               ]),
             ),
             const SizedBox(height: 3),
             Text(_roleLabel, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _grey)),
             const SizedBox(height: 10),
-            Row(children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
-                child: Text('ONROL Learner', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
-              ),
-              const SizedBox(width: 8),
-              _streakChip(),
-            ]),
+            // Wrap (not Row) so the two chips drop to a second line on narrow
+            // phones instead of overflowing the card's right edge.
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
+                  child: Text('ONROL Learner', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
+                ),
+                _streakChip(),
+              ],
+            ),
           ]),
         ),
         // Settings affordance — the whole card opens Profile & settings.
@@ -4462,10 +4472,11 @@ class _HeroPanelModal extends StatelessWidget {
                     ),
                   )
                 : SizedBox(
-                    // Full-bleed on phones; on tablets / laptops / desktops cap
-                    // the sheet and centre it so content isn't stretched wide.
-                    width: (size.width * 0.97).clamp(0.0, 1180.0),
-                    height: (size.height * 0.97).clamp(0.0, 960.0),
+                    // Phones: edge-to-edge, aligned to the screen border. Tablets
+                    // / laptops / desktops: cap the sheet and centre it so content
+                    // isn't stretched too wide.
+                    width: size.width < 700 ? size.width : (size.width * 0.97).clamp(0.0, 1180.0),
+                    height: size.width < 700 ? size.height : (size.height * 0.97).clamp(0.0, 960.0),
                     child: _card(ctx, anim),
                   ),
           ),
