@@ -7,7 +7,6 @@ import 'dart:async';
 import 'dart:html' as html;
 import 'dart:js' as js;
 import 'dart:math' as math;
-import 'dart:svg' as svg;
 import 'dart:ui_web' as ui_web;
 
 import 'package:flutter/widgets.dart';
@@ -21,14 +20,16 @@ const _icVolUp = 'M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.
 const _icVolOff = 'M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z';
 const _icFullscreen = 'M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z';
 
-// Build a fresh white SVG icon (each call returns a new element).
-svg.SvgSvgElement _vicon(String path, {double size = 22}) {
-  final s = svg.SvgSvgElement()
+// Build a fresh white SVG icon (each call returns a new element). Built with
+// createElementNS so it works without the (removed) dart:svg library.
+const _svgNs = 'http://www.w3.org/2000/svg';
+html.Element _vicon(String path, {double size = 22}) {
+  final s = html.document.createElementNS(_svgNs, 'svg')
     ..setAttribute('viewBox', '0 0 24 24')
     ..setAttribute('width', size.toString())
     ..setAttribute('height', size.toString())
     ..setAttribute('fill', 'white');
-  s.append(svg.PathElement()..setAttribute('d', path));
+  s.append(html.document.createElementNS(_svgNs, 'path')..setAttribute('d', path));
   return s;
 }
 
@@ -48,7 +49,7 @@ String _fmt(double secs) {
   final s = secs.floor();
   final h = s ~/ 3600, m = (s % 3600) ~/ 60, sec = s % 60;
   String two(int n) => n.toString().padLeft(2, '0');
-  return h > 0 ? '$h:${two(m)}:${two(sec)}' : '${m}:${two(sec)}';
+  return h > 0 ? '$h:${two(m)}:${two(sec)}' : '$m:${two(sec)}';
 }
 
 Widget hlsVideoElement(
@@ -116,7 +117,7 @@ Widget hlsVideoElement(
 
     // ---- Feedback badge -----------------------------------------------------
     Timer? badgeTimer;
-    void _show() {
+    void showBadge() {
       badge.style.opacity = '1';
       badgeTimer?.cancel();
       badgeTimer = Timer(const Duration(milliseconds: 560), () => badge.style.opacity = '0');
@@ -125,15 +126,15 @@ Widget hlsVideoElement(
     // Plain-text flash (play/pause symbols, %, speed) — no emojis.
     void flash(String text) {
       badge.text = text;
-      _show();
+      showBadge();
     }
 
     // Icon (+ optional label) flash — clean SVG, Netflix-style.
-    void flashIcon(svg.SvgSvgElement ic, [String? label]) {
+    void flashIcon(html.Element ic, [String? label]) {
       badge.children.clear();
       badge.append(ic);
       if (label != null) badge.append(html.SpanElement()..text = label);
-      _show();
+      showBadge();
     }
 
     // ===================== Control bar =======================================

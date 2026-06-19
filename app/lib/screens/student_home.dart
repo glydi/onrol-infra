@@ -1108,7 +1108,7 @@ class _StudentHomeState extends State<StudentHome> {
     ]);
   }
 
-  void _showPanel(IconData icon, String title, String sub, List<Widget> body, {Offset? origin, String? heroTag, bool compact = false}) {
+  void _showPanel(IconData icon, String title, String sub, List<Widget> body, {String? heroTag, bool compact = false}) {
     // iOS-style shared-element expansion: push a transparent route so the
     // dashboard stays visible (blurred) behind, and let a Hero morph the tapped
     // tile into the card. See [_PanelRoute] / [_HeroPanelModal].
@@ -1467,12 +1467,6 @@ class _StudentHomeState extends State<StudentHome> {
           _notif('New course launched: Advanced React Patterns — enroll now!', '1 day ago'),
           _notif('Scheduled maintenance Sunday 2 AM–4 AM IST.', '2 days ago', read: true),
           _notif('Win prizes in the June coding challenge.', '3 days ago', read: true),
-        ]);
-      case 'forum':
-        return (CupertinoIcons.bubble_left_bubble_right_fill, 'Discussion Forum', 'Join the conversation', [
-          _row(CupertinoIcons.chat_bubble_2_fill, 'How do I center a div?', 'Web Development · 24 replies', 'Hot', badgeBg: const Color(0xFFFFF0EC), badgeFg: const Color(0xFFE05A2A)),
-          _row(CupertinoIcons.paintbrush_fill, 'Best Figma plugins in 2026?', 'UI/UX Design · 12 replies', 'Open'),
-          _row(CupertinoIcons.chart_bar_fill, 'Pandas vs NumPy — when?', 'Data Science · 8 replies', 'Open'),
         ]);
       case 'search':
         return (CupertinoIcons.search, 'Search', 'Find courses & lessons', [
@@ -3476,84 +3470,12 @@ class _LeaderRowState extends State<_LeaderRow> {
   }
 }
 
-String _dayLabel(DateTime d) {
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
-  final day = DateTime(d.year, d.month, d.day);
-  final diff = day.difference(today).inDays;
-  if (diff == 0) return 'Today';
-  if (diff == 1) return 'Tomorrow';
-  if (diff == -1) return 'Yesterday';
-  const wd = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const mo = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return '${wd[d.weekday - 1]}, ${d.day} ${mo[d.month - 1]}';
-}
-
 String _timeLabel(DateTime d) {
   final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
   final m = d.minute.toString().padLeft(2, '0');
   return '$h:$m ${d.hour < 12 ? 'AM' : 'PM'}';
 }
 
-Widget _calendarAgenda(List items) {
-  // Group by calendar day, preserving the (already date-sorted) order.
-  final groups = <String, List<Map<String, dynamic>>>{};
-  final order = <String>[];
-  final now = DateTime.now();
-  for (final e in items) {
-    final m = e as Map<String, dynamic>;
-    final dt = DateTime.tryParse(m['at']?.toString() ?? '')?.toLocal();
-    if (dt == null) continue;
-    final key = '${dt.year}-${dt.month}-${dt.day}';
-    if (!groups.containsKey(key)) {
-      groups[key] = [];
-      order.add(key);
-    }
-    groups[key]!.add({...m, '_dt': dt});
-  }
-  if (order.isEmpty) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 22),
-      child: Text('Nothing scheduled yet.', textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 13, color: _grey)),
-    );
-  }
-
-  final out = <Widget>[];
-  for (final key in order) {
-    final dt0 = groups[key]!.first['_dt'] as DateTime;
-    final isPast = DateTime(dt0.year, dt0.month, dt0.day).isBefore(DateTime(now.year, now.month, now.day));
-    out.add(Padding(
-      padding: const EdgeInsets.only(top: 14, bottom: 8),
-      child: Text(_dayLabel(dt0).toUpperCase(),
-          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, color: isPast ? _grey : _orange, letterSpacing: 0.5)),
-    ));
-    for (final m in groups[key]!) {
-      final k = _calKind(m['kind']?.toString() ?? 'event');
-      final dt = m['_dt'] as DateTime;
-      final course = m['course']?.toString() ?? '';
-      out.add(Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(
-            width: 40, height: 40, alignment: Alignment.center,
-            decoration: BoxDecoration(color: k.color.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
-            child: Icon(k.icon, size: 19, color: k.color),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(m['title']?.toString() ?? 'Event', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
-              Text([k.label, if (course.isNotEmpty) course].join(' · '), style: GoogleFonts.inter(fontSize: 12, color: _grey)),
-            ]),
-          ),
-          const SizedBox(width: 8),
-          Text(_timeLabel(dt), style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: _grey)),
-        ]),
-      ));
-    }
-  }
-  return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: out);
-}
 
 const _monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const _weekdayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -3882,15 +3804,6 @@ Widget _orangeButton(String label, VoidCallback onTap) => _Pressable(
         width: double.infinity, height: 44, alignment: Alignment.center,
         decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(8)),
         child: Text(label, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
-      ),
-    );
-
-Widget _outlineButton(String label, VoidCallback onTap) => _Pressable(
-      onTap: onTap,
-      child: Container(
-        height: 44, alignment: Alignment.center,
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), border: Border.all(color: _orange, width: 1.5)),
-        child: Text(label, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _orange)),
       ),
     );
 
