@@ -4436,6 +4436,11 @@ class _HeroPanelModal extends StatelessWidget {
       builder: (ctx, mode, _) {
         _isDark = mode == ThemeMode.dark || (mode == ThemeMode.system && MediaQuery.platformBrightnessOf(ctx) == Brightness.dark);
         final size = MediaQuery.of(ctx).size;
+        // Keyboard height (0 when hidden). The sheet shrinks by this so its form
+        // stays above the keyboard and the focused field scrolls into view.
+        final kb = MediaQuery.of(ctx).viewInsets.bottom;
+        // Phone = edge-to-edge sheet (kept in sync with _card's `fill`).
+        final phone = size.shortestSide < 600;
         return Stack(children: [
           // Blur + dim the dashboard behind (animated with the route). Tap to close.
           // Isolated in a RepaintBoundary so the heavy blur layer is cached and
@@ -4462,23 +4467,30 @@ class _HeroPanelModal extends StatelessWidget {
               ),
             ),
           ),
-          Center(
-            child: compact
-                ? Padding(
-                    padding: EdgeInsets.symmetric(horizontal: size.width < 480 ? 24 : 0, vertical: 40),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(maxWidth: 420, maxHeight: size.height * 0.85),
+          // Reserve the keyboard's space, then place the sheet in what's left —
+          // top-aligned on phones (so it fills, edge-to-edge) and centred on
+          // tablets/desktop.
+          Padding(
+            padding: EdgeInsets.only(bottom: kb),
+            child: Align(
+              alignment: (phone && !compact) ? Alignment.topCenter : Alignment.center,
+              child: compact
+                  ? Padding(
+                      padding: EdgeInsets.symmetric(horizontal: size.width < 480 ? 24 : 0, vertical: 40),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: 420, maxHeight: (size.height - kb) * 0.85),
+                        child: _card(ctx, anim),
+                      ),
+                    )
+                  : SizedBox(
+                      // Phones: edge-to-edge, aligned to the screen border (kept in
+                      // sync with _card's `fill`). Tablets / laptops / desktops:
+                      // cap the sheet and centre it so content isn't stretched wide.
+                      width: phone ? size.width : (size.width * 0.97).clamp(0.0, 1180.0),
+                      height: phone ? (size.height - kb) : ((size.height - kb) * 0.97).clamp(0.0, 960.0),
                       child: _card(ctx, anim),
                     ),
-                  )
-                : SizedBox(
-                    // Phones: edge-to-edge, aligned to the screen border (kept in
-                    // sync with _card's `fill`). Tablets / laptops / desktops:
-                    // cap the sheet and centre it so content isn't stretched wide.
-                    width: size.shortestSide < 600 ? size.width : (size.width * 0.97).clamp(0.0, 1180.0),
-                    height: size.shortestSide < 600 ? size.height : (size.height * 0.97).clamp(0.0, 960.0),
-                    child: _card(ctx, anim),
-                  ),
+            ),
           ),
         ]);
       },
