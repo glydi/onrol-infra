@@ -599,13 +599,12 @@ class _StudentHomeState extends State<StudentHome> {
             const SizedBox(height: 3),
             Text(_roleLabel, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _grey)),
             const SizedBox(height: 10),
-            Row(children: [
+            Wrap(spacing: 8, runSpacing: 8, children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                 decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
                 child: Text('ONROL Learner', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
               ),
-              const SizedBox(width: 8),
               _streakChip(),
             ]),
           ]),
@@ -4549,10 +4548,10 @@ class _HeroPanelModal extends StatelessWidget {
                     ),
                   )
                 : SizedBox(
-                    // Full-bleed on phones; on tablets / laptops / desktops cap
+                    // Edge-to-edge on phones; on tablets / laptops / desktops cap
                     // the sheet and centre it so content isn't stretched wide.
-                    width: (size.width * 0.97).clamp(0.0, 1180.0),
-                    height: (size.height * 0.97).clamp(0.0, 960.0),
+                    width: size.shortestSide < 600 ? size.width : (size.width * 0.97).clamp(0.0, 1180.0),
+                    height: size.shortestSide < 600 ? size.height : (size.height * 0.97).clamp(0.0, 960.0),
                     child: _card(ctx, anim),
                   ),
           ),
@@ -4562,11 +4561,18 @@ class _HeroPanelModal extends StatelessWidget {
   }
 
   Widget _card(BuildContext ctx, Animation<double> anim) {
+    // On phones a full panel fills the screen edge-to-edge (flush, square
+    // corners); on tablets/desktops it stays a centred, rounded, floating card.
+    final mq = MediaQuery.of(ctx);
+    final bool fill = !compact && mq.size.shortestSide < 600;
+    final double r = fill ? 0.0 : 24.0;
     // The gradient header is the shared element that morphs from the tile.
     final header = Material(
       type: MaterialType.transparency,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 16, 18, 16),
+        // When the panel meets the screen top, inset the header by the device
+        // safe area (Dynamic Island / notch) so the title clears it.
+        padding: EdgeInsets.fromLTRB(14, 16 + (fill ? mq.padding.top : 0), 18, 16),
         // Frosted-glass header (no bold orange): translucent gradient + a
         // hairline edge, with the accent used only on the icon/back chip.
         decoration: BoxDecoration(
@@ -4577,7 +4583,7 @@ class _HeroPanelModal extends StatelessWidget {
                 ? [Colors.white.withOpacity(0.10), Colors.white.withOpacity(0.04)]
                 : [Colors.white.withOpacity(0.55), Colors.white.withOpacity(0.28)],
           ),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(r)),
           border: Border(bottom: BorderSide(color: _isDark ? Colors.white.withOpacity(0.10) : Colors.white.withOpacity(0.6))),
         ),
         child: Row(children: [
@@ -4608,11 +4614,11 @@ class _HeroPanelModal extends StatelessWidget {
         key: ValueKey(_isDark),
         child: Container(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.5 : 0.25), blurRadius: 48, offset: const Offset(0, 22))],
+            borderRadius: BorderRadius.circular(r),
+            boxShadow: fill ? const [] : [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.5 : 0.25), blurRadius: 48, offset: const Offset(0, 22))],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(r),
             child: BackdropFilter(
               filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
               child: Container(
@@ -4627,7 +4633,7 @@ class _HeroPanelModal extends StatelessWidget {
                         ? [const Color(0xFF22242D).withOpacity(0.82), const Color(0xFF181A22).withOpacity(0.70)]
                         : [Colors.white.withOpacity(0.74), Colors.white.withOpacity(0.60)],
                   ),
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(r),
                   border: Border.all(color: _isDark ? Colors.white.withOpacity(0.12) : Colors.white.withOpacity(0.70), width: 1.2),
                 ),
                 child: Column(
@@ -4646,7 +4652,7 @@ class _HeroPanelModal extends StatelessWidget {
                     // isolate it so those repaints never reach the glass layers.
                     child: RepaintBoundary(
                       child: SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
+                        padding: EdgeInsets.fromLTRB(20, 18, 20, 22 + (fill ? mq.padding.bottom : 0)),
                         // Keep the content as a readable centred column on wide
                         // tablets/laptops instead of stretching edge-to-edge.
                         child: Center(
