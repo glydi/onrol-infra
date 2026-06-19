@@ -277,6 +277,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     return Positioned(
       top: 0, left: 0, right: 0,
       child: SafeArea(
+        // Only inset for the notch / Dynamic Island in fullscreen, where the
+        // video meets the screen top. Embedded, the player is a 16:9 box centred
+        // mid-screen, so a top inset would shove the title down off its top edge.
+        top: _fullscreen,
         bottom: false,
         child: Container(
           padding: const EdgeInsets.fromLTRB(4, 4, 12, 20),
