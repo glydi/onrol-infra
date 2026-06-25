@@ -58,6 +58,27 @@ func RequireAuth(jwtm *auth.Manager, pool *pgxpool.Pool) fiber.Handler {
 	}
 }
 
+// RequireToken validates the JWT and sets the caller, but SKIPS the per-request
+// X-Device-UUID header check. It's for sub-resources the in-browser player fetches
+// itself (the AES-128 HLS key), where hls.js can only attach the bearer token, not
+// our device header — without this the key request 401s and encrypted HLS won't
+// play. The key is a deterrent, not DRM, so a valid logged-in token suffices.
+func RequireToken(jwtm *auth.Manager) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		raw := c.Get("Authorization")
+		if !strings.HasPrefix(raw, "Bearer ") {
+			return fiber.NewError(fiber.StatusUnauthorized, "missing bearer token")
+		}
+		claims, err := jwtm.Parse(strings.TrimPrefix(raw, "Bearer "))
+		if err != nil {
+			return fiber.NewError(fiber.StatusUnauthorized, "invalid token")
+		}
+		c.Locals(LocalUserID, claims.UserID)
+		c.Locals(LocalDeviceID, claims.DeviceID)
+		return c.Next()
+	}
+}
+
 // roleRank orders roles for "at least" checks.
 var roleRank = map[string]int{"student": 0, "instructor": 1, "manager": 2, "superadmin": 3}
 

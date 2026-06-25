@@ -28,9 +28,12 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	// Per-route middleware (NOT an empty-prefix group: that would mount the
 	// auth middleware at /api/v1 and leak onto the admin routes too).
 	auth := middleware.RequireAuth(jwtm, pool)
+	// Token-only (no X-Device-UUID header check): the in-browser player fetches
+	// HLS keys itself via hls.js, which can't attach our device header.
+	tokenAuth := middleware.RequireToken(jwtm)
 	api.Get("/devices", auth, h.ListDevices)
 	api.Delete("/devices/:id", auth, h.RevokeDevice)
-	api.Get("/hls/key/:video_id", auth, h.HLSKey)
+	api.Get("/hls/key/:video_id", tokenAuth, h.HLSKey)
 	api.Post("/live/:webinar_id/join", auth, h.LiveJoin)
 
 	// Admin (shared-secret header). Disabled if ADMIN_API_KEY is unset.
@@ -251,7 +254,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 
 	api.Get("/catalog", auth, h.Catalog)
 	api.Get("/me/profile", auth, h.GetMyProfile)
-	api.Get("/me/videos/:id/hls.key", auth, h.MediaHLSKey) // AES-128 key for encrypted video-store HLS
+	api.Get("/me/videos/:id/hls.key", tokenAuth, h.MediaHLSKey) // AES-128 key for encrypted video-store HLS (player fetches via hls.js — no device header)
 	api.Patch("/me/profile", auth, h.UpdateMyProfile)
 	api.Get("/me/preferences", auth, h.GetPreferences)
 	api.Put("/me/preferences", auth, h.UpdatePreferences)
