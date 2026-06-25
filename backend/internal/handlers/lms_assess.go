@@ -180,6 +180,14 @@ func (h *Handlers) AddQuestion(c *fiber.Ctx) error {
 	if req.Points == 0 {
 		req.Points = 1
 	}
+	// The console doesn't send a position — append after the last question so
+	// manually-added questions keep their insertion order (not all stacked at 0).
+	if req.Position == 0 {
+		var maxPos int
+		_ = h.Pool.QueryRow(c.Context(),
+			`SELECT COALESCE(MAX(position),0) FROM questions WHERE assessment_id=$1`, assessID).Scan(&maxPos)
+		req.Position = maxPos + 1
+	}
 	opts, _ := json.Marshal(req.Options)
 	var id string
 	if err := h.Pool.QueryRow(c.Context(),
