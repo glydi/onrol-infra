@@ -103,6 +103,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Post("/manage/courses/:id/assessments", auth, inst, h.CreateAssessment)
 	api.Get("/manage/assessments/:id/questions", auth, inst, h.ListQuestions)
 	api.Post("/manage/assessments/:id/questions", auth, inst, h.AddQuestion)
+	api.Post("/manage/assessments/:id/generate", auth, inst, h.GenerateQuizQuestions) // AI-drafted questions
 	api.Delete("/manage/questions/:id", auth, inst, h.DeleteQuestion)
 	api.Delete("/manage/assessments/:id", auth, inst, h.DeleteAssessment)
 	api.Get("/manage/assessments/:id/submissions", auth, inst, h.ListSubmissions)

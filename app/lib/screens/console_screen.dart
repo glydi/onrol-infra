@@ -1168,6 +1168,45 @@ class _QuizBuilderState extends State<_QuizBuilder> {
     } catch (_) {}
   }
 
+  // Draft questions with AI from a topic/source — they're inserted for review.
+  Future<void> _generate() async {
+    final topic = TextEditingController();
+    final count = TextEditingController(text: '5');
+    int diff = 1; // easy / medium / hard
+    int kind = 0; // mixed / mcq / short / essay
+    const diffs = ['easy', 'intermediate', 'hard'];
+    const kindVals = ['a sensible mix of mcq, truefalse, short, and essay', 'mcq', 'short', 'essay'];
+    final ok = await showFormSheet(context, square: true, title: 'Generate with AI', builder: (setS) => [
+      Text('Describe the topic or paste source material — AI drafts questions you can edit or delete.', style: AppleTheme.footnote(context)),
+      const SizedBox(height: 10),
+      sheetField(topic, 'Topic or source material', CupertinoIcons.text_quote),
+      const SizedBox(height: 10),
+      sheetField(count, 'How many (1–20)', CupertinoIcons.number, keyboard: TextInputType.number),
+      const SizedBox(height: 12),
+      _label(context, 'Difficulty'),
+      const SizedBox(height: 6),
+      AppleSegmented(square: true, labels: const ['Easy', 'Medium', 'Hard'], selected: diff, onChanged: (i) => setS(() => diff = i)),
+      const SizedBox(height: 12),
+      _label(context, 'Question types'),
+      const SizedBox(height: 6),
+      AppleSegmented(square: true, labels: const ['Mixed', 'MCQ', 'Short', 'Essay'], selected: kind, onChanged: (i) => setS(() => kind = i)),
+    ], onSubmit: () async {
+      if (topic.text.trim().isEmpty) return 'Enter a topic';
+      try {
+        await widget.auth.apiPost('/api/v1/manage/assessments/${widget.assessmentId}/generate', {
+          'topic': topic.text.trim(),
+          'count': int.tryParse(count.text.trim()) ?? 5,
+          'difficulty': diffs[diff],
+          'types': kindVals[kind],
+        });
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) _load();
+  }
+
   Future<void> _add() async {
     final prompt = TextEditingController();
     final points = TextEditingController(text: '1');
@@ -1288,6 +1327,13 @@ class _QuizBuilderState extends State<_QuizBuilder> {
           Text(widget.isQuiz ? 'Quiz builder' : 'Assignment questions', style: AppleTheme.headline(context)),
           Text(widget.title, style: AppleTheme.footnote(context)),
         ]),
+        actions: [
+          IconButton(
+            tooltip: 'Generate with AI',
+            icon: Icon(CupertinoIcons.sparkles, color: p.accent),
+            onPressed: _generate,
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: p.accent,
