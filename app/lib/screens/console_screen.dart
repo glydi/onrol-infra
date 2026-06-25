@@ -1146,6 +1146,7 @@ class _QuizBuilder extends StatefulWidget {
 class _QuizBuilderState extends State<_QuizBuilder> {
   List<dynamic> _questions = [];
   bool _loading = true;
+  String? _error; // why the list is empty, if loading failed
 
   @override
   void initState() {
@@ -1154,11 +1155,19 @@ class _QuizBuilderState extends State<_QuizBuilder> {
   }
 
   Future<void> _load() async {
+    if (mounted) setState(() { _loading = true; _error = null; });
     try {
       final r = await widget.auth.apiGet('/api/v1/manage/assessments/${widget.assessmentId}/questions');
-      _questions = (ApiClient.decode(r)['questions'] as List?) ?? [];
-    } catch (_) {}
-    if (mounted) setState(() => _loading = false);
+      final list = (ApiClient.decode(r)['questions'] as List?) ?? [];
+      if (!mounted) return;
+      setState(() { _questions = list; _loading = false; _error = null; });
+    } on ApiException catch (e) {
+      // Surface the reason instead of silently showing an empty list — an admin
+      // who just added questions needs to know if the reload failed (auth, etc).
+      if (mounted) setState(() { _loading = false; _error = e.message; });
+    } catch (_) {
+      if (mounted) setState(() { _loading = false; _error = "Couldn't load questions — check your connection and retry."; });
+    }
   }
 
   Future<void> _delete(String id) async {
@@ -1364,14 +1373,42 @@ class _QuizBuilderState extends State<_QuizBuilder> {
       ),
       body: _loading
           ? const Center(child: CupertinoActivityIndicator())
-          : ListView(
-              padding: EdgeInsets.fromLTRB(hp, 12, hp, 96),
-              children: [
-                if (_questions.isEmpty)
-                  AppleCard(square: true, child: Text('No questions yet. Tap “Add question” to build this ${widget.isQuiz ? 'quiz' : 'assignment'}.', style: AppleTheme.footnote(context)))
-                else
-                  ..._questions.asMap().entries.map((e) => _questionCard(e.key + 1, e.value as Map<String, dynamic>)),
-              ],
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: EdgeInsets.fromLTRB(hp, 12, hp, 96),
+                children: [
+                  if (_error != null)
+                    AppleCard(square: true, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        const Icon(CupertinoIcons.exclamationmark_triangle_fill, size: 18, color: AppleColors.red),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(_error!, style: AppleTheme.footnote(context).copyWith(color: AppleColors.red))),
+                      ]),
+                      const SizedBox(height: 10),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: GestureDetector(
+                          onTap: _load,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(color: Palette.of(context).accent.withOpacity(0.12), borderRadius: BorderRadius.zero),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(CupertinoIcons.refresh, size: 15, color: Palette.of(context).accent),
+                              const SizedBox(width: 4),
+                              Text('Try again', style: TextStyle(color: Palette.of(context).accent, fontSize: 13, fontWeight: FontWeight.w600)),
+                            ]),
+                          ),
+                        ),
+                      ),
+                    ]))
+                  else if (_questions.isEmpty)
+                    AppleCard(square: true, child: Text('No questions yet. Tap “Add question” to build this ${widget.isQuiz ? 'quiz' : 'assignment'}.', style: AppleTheme.footnote(context)))
+                  else
+                    ..._questions.asMap().entries.map((e) => _questionCard(e.key + 1, e.value as Map<String, dynamic>)),
+                ],
+              ),
             ),
     );
   }

@@ -46,6 +46,12 @@ QID=$(curl -s -X POST "$BASE/api/v1/manage/assessments/$AID/questions" "${mauth[
   -d '{"prompt":"2+2?","type":"mcq","options":["3","4","5"],"correct":"4","points":10}' | jq id)
 pass "assessment $AID + question $QID"
 
+# The builder reads questions back via ListQuestions — assert the round-trip so a
+# saved question is always visible in the console (regression guard).
+QN=$(curl -s "$BASE/api/v1/manage/assessments/$AID/questions" "${mauth[@]}" \
+  | python3 -c 'import sys,json;print(len(json.load(sys.stdin).get("questions",[])))')
+[ "$QN" -ge 1 ] && pass "ListQuestions returns the added question ($QN)"
+
 echo "[7] manager enrolls the student in the course"
 curl -s -X POST "$BASE/api/v1/manage/courses/$CID/enroll" "${mauth[@]}" -H 'Content-Type: application/json' -d "{\"user_id\":\"$(curl -s "$BASE/api/v1/manage/users" "${mauth[@]}" | python3 -c "import sys,json;us=json.load(sys.stdin)['users'];print(next(u['id'] for u in us if u['email']=='$STU'))")\"}" >/dev/null
 pass "student enrolled"
