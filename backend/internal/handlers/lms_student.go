@@ -10,6 +10,19 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// playURLExpr resolves a lesson's stored video URL (lessons alias `l`) to the
+// CURRENT playable URL. Lessons freeze a static URL at pick time, so a video
+// "Used" before transcode finished would forever play the raw source mp4 (which
+// won't stream for large files). For a video lesson whose stored URL matches a
+// media_assets row that's finished transcoding, this returns the HLS m3u8
+// (segmented — streams at any size, incl. multi-GB); otherwise the stored body.
+const playURLExpr = `COALESCE(
+	CASE WHEN l.type='video' THEN
+		(SELECT CASE WHEN ma.status='ready' AND ma.hls_url <> '' THEN ma.hls_url ELSE l.body END
+		   FROM media_assets ma WHERE ma.url = l.body OR ma.hls_url = l.body LIMIT 1)
+	END,
+	l.body, '')`
+
 // ---- Profile & preferences -------------------------------------------------
 
 func (h *Handlers) GetMyProfile(c *fiber.Ctx) error {
@@ -218,7 +231,7 @@ func (h *Handlers) CourseContent(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusForbidden, "not enrolled in this course")
 	}
 	rows, err := h.Pool.Query(c.Context(), `
-		SELECT m.id, m.title, m.position, l.id, l.title, l.type, COALESCE(l.body,''), l.position,
+		SELECT m.id, m.title, m.position, l.id, l.title, l.type, `+playURLExpr+`, l.position,
 		       COALESCE(l.downloadable, true),
 		       EXISTS(SELECT 1 FROM lesson_progress lp WHERE lp.user_id=$2 AND lp.lesson_id=l.id)
 		FROM modules m LEFT JOIN lessons l ON l.module_id=m.id

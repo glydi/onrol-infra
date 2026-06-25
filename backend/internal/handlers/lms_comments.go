@@ -21,7 +21,7 @@ func (h *Handlers) ResumeLearning(c *fiber.Ctx) error {
 		LEFT JOIN LATERAL (
 		  -- The lesson to resume: an incomplete lesson, preferring the one most
 		  -- recently watched (so we land on "where you stopped"), else next in order.
-		  SELECT l.id, l.title, l.type, l.body, l.module_id, COALESCE(lpb.position_seconds,0) AS pos
+		  SELECT l.id, l.title, l.type, `+playURLExpr+` AS body, l.module_id, COALESCE(lpb.position_seconds,0) AS pos
 		  FROM lessons l JOIN modules m ON m.id=l.module_id
 		  LEFT JOIN lesson_playback lpb ON lpb.lesson_id=l.id AND lpb.user_id=$1
 		  WHERE m.course_id=c.id
