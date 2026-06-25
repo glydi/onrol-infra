@@ -1,6 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
@@ -83,17 +86,42 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
       final qid = Uri.encodeQueryComponent(uploadId);
       final qkey = Uri.encodeQueryComponent(key);
 
-      // 2. upload parts CONCURRENTLY with retry. Sequential uploads left the
-      //    uplink idle while the server forwarded each part to R2 (very slow) and
-      //    aborted the whole upload on a single transient failure (why big files
-      //    "didn't work"). A pool of workers keeps the connection saturated; each
-      //    part retries a few times before giving up. We still read one 8 MB slice
-      //    at a time per worker, so memory stays bounded (~_concurrency * 8 MB).
+      // 2. Ask for presigned URLs so the browser can PUT each part DIRECTLY to R2
+      //    at full bandwidth (no double hop through our server). Best-effort — if
+      //    signing/CORS isn't available we fall back to the proxy upload path.
       final numParts = (total / _chunkSize).ceil();
+      Map<String, dynamic> signed = {};
+      try {
+        final sr = await widget.auth.apiPost('/api/v1/manage/videos/upload/sign', {
+          'key': key, 'upload_id': uploadId,
+          'parts': [for (var i = 1; i <= numParts; i++) i],
+        });
+        signed = (ApiClient.decode(sr)['urls'] as Map?)?.cast<String, dynamic>() ?? {};
+      } catch (_) {/* fall back to proxy */}
+      var directEnabled = signed.isNotEmpty;
+
+      // 3. Upload parts CONCURRENTLY with retry, preferring direct-to-R2 and
+      //    falling back to the proxy. A pool keeps the link saturated; each part
+      //    survives transient failures instead of aborting the whole upload. One
+      //    8 MB slice per worker keeps memory bounded (~concurrency * 8 MB).
       final etags = List<String?>.filled(numParts, null);
       var nextIndex = 0; // next 0-based part to claim (event loop = atomic)
       var doneParts = 0, doneBytes = 0;
       Object? failure;
+
+      Future<String?> putDirect(int partNum, Uint8List chunk) async {
+        final u = signed['$partNum']?.toString();
+        if (u == null || u.isEmpty) return null;
+        final resp = await http.put(Uri.parse(u), body: chunk);
+        if (resp.statusCode == 200) return (resp.headers['etag'] ?? '').replaceAll('"', '');
+        return null;
+      }
+
+      Future<String?> putProxy(int partNum, Uint8List chunk) async {
+        final pr = await widget.auth.apiPostBytes(
+            '/api/v1/manage/videos/upload/part?upload_id=$qid&key=$qkey&part=$partNum', chunk);
+        return ApiClient.decode(pr)['etag']?.toString();
+      }
 
       Future<void> worker() async {
         while (failure == null) {
@@ -106,16 +134,20 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
           try {
             final chunk = await picked.read(off, end);
             String? etag;
-            for (var attempt = 0;; attempt++) {
-              try {
-                final pr = await widget.auth.apiPostBytes(
-                    '/api/v1/manage/videos/upload/part?upload_id=$qid&key=$qkey&part=$partNum', chunk);
-                etag = ApiClient.decode(pr)['etag']?.toString();
-                break;
-              } catch (_) {
-                if (attempt >= 3) rethrow; // 4 attempts total
-                await Future.delayed(Duration(milliseconds: 600 * (attempt + 1)));
+            if (directEnabled) {
+              for (var a = 0; a < 2 && (etag == null || etag.isEmpty); a++) {
+                try { etag = await putDirect(partNum, chunk); } catch (_) {}
+                if (etag == null || etag.isEmpty) await Future.delayed(Duration(milliseconds: 400 * (a + 1)));
               }
+              if (etag == null || etag.isEmpty) directEnabled = false; // give up on direct for the rest
+            }
+            for (var a = 0; a < 3 && (etag == null || etag.isEmpty); a++) {
+              try { etag = await putProxy(partNum, chunk); } catch (_) {}
+              if (etag == null || etag.isEmpty) await Future.delayed(Duration(milliseconds: 600 * (a + 1)));
+            }
+            if (etag == null || etag.isEmpty) {
+              failure = Exception('Part $partNum failed to upload');
+              return;
             }
             etags[i] = etag;
             doneParts++;

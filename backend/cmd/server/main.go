@@ -65,6 +65,10 @@ func main() {
 		log.Printf("web push ready (VAPID keypair loaded)")
 	}
 
+	// Allow the browser to upload video parts directly to R2 (fast path). Async
+	// + best-effort; the client falls back to the proxy upload if this isn't set.
+	go h.EnsureR2Cors(ctx)
+
 	app := fiber.New(fiber.Config{
 		AppName:               "onrol-api",
 		ErrorHandler:          router.ErrorHandler,

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
+	"net/url"
 	"path"
 	"strconv"
 	"strings"
@@ -12,6 +14,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/cors"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
@@ -92,6 +95,69 @@ func (h *Handlers) UploadVideoPart(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "part upload failed: "+err.Error())
 	}
 	return c.JSON(fiber.Map{"part_number": partNum, "etag": part.ETag})
+}
+
+// EnsureR2Cors sets a CORS policy on the bucket so the browser can upload parts
+// DIRECTLY to R2 (PUT) and read the part ETag back — this is what lets multi-GB
+// uploads run at the user's full bandwidth instead of being throttled by a
+// double hop through this server. Best-effort: if it fails, the client falls
+// back to the proxy upload path. Run once at startup.
+func (h *Handlers) EnsureR2Cors(ctx context.Context) {
+	if !h.Cfg.R2.Enabled() {
+		return
+	}
+	cl, err := h.r2client()
+	if err != nil {
+		log.Printf("r2 cors: client: %v", err)
+		return
+	}
+	cfg := cors.NewConfig([]cors.Rule{{
+		AllowedOrigin: []string{"*"}, // presigned URL + admin auth are the real gate
+		AllowedMethod: []string{"GET", "PUT", "HEAD"},
+		AllowedHeader: []string{"*"},
+		ExposeHeader:  []string{"ETag"},
+		MaxAgeSeconds: 3600,
+	}})
+	if err := cl.SetBucketCors(ctx, h.Cfg.R2.Bucket, cfg); err != nil {
+		log.Printf("r2 cors: set failed (direct browser upload will fall back to proxy): %v", err)
+		return
+	}
+	log.Printf("r2 cors configured for direct browser uploads")
+}
+
+// SignUploadParts returns short-lived presigned PUT URLs, one per requested part
+// number, so the browser can upload each chunk straight to R2.
+func (h *Handlers) SignUploadParts(c *fiber.Ctx) error {
+	if !h.Cfg.R2.Enabled() {
+		return fiber.NewError(fiber.StatusServiceUnavailable, "video storage (R2) is not configured")
+	}
+	var req struct {
+		Key      string `json:"key"`
+		UploadID string `json:"upload_id"`
+		Parts    []int  `json:"parts"`
+	}
+	if err := c.BodyParser(&req); err != nil || req.Key == "" || req.UploadID == "" || len(req.Parts) == 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "key, upload_id, parts required")
+	}
+	cl, err := h.r2client()
+	if err != nil {
+		return fiber.NewError(fiber.StatusServiceUnavailable, "R2 unavailable")
+	}
+	urls := make(map[string]string, len(req.Parts))
+	for _, pn := range req.Parts {
+		if pn < 1 {
+			continue
+		}
+		vals := url.Values{}
+		vals.Set("partNumber", strconv.Itoa(pn))
+		vals.Set("uploadId", req.UploadID)
+		u, perr := cl.Presign(c.Context(), "PUT", h.Cfg.R2.Bucket, req.Key, 6*time.Hour, vals)
+		if perr != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "presign failed: "+perr.Error())
+		}
+		urls[strconv.Itoa(pn)] = u.String()
+	}
+	return c.JSON(fiber.Map{"urls": urls})
 }
 
 // CompleteVideoUpload finalises the multipart upload (R2 stitches the pieces into
