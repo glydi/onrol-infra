@@ -1207,16 +1207,32 @@ class _QuizBuilderState extends State<_QuizBuilder> {
     if (ok == true) _load();
   }
 
-  Future<void> _add() async {
-    final prompt = TextEditingController();
-    final points = TextEditingController(text: '1');
-    final shortAns = TextEditingController();
-    final opts = <TextEditingController>[TextEditingController(), TextEditingController()];
-    int type = 0; // mcq, truefalse, short, essay
-    int correctIdx = 0; // for mcq + truefalse
+  // Add a new question, or edit an existing one when [edit] is passed.
+  Future<void> _questionForm([Map<String, dynamic>? edit]) async {
     const types = ['mcq', 'truefalse', 'short', 'essay'];
+    final existing = ((edit?['options'] as List?) ?? const []).map((e) => e.toString()).toList();
+    final correctStr = edit?['correct']?.toString() ?? '';
+    int type = edit == null ? 0 : types.indexOf(edit['type']?.toString() ?? 'mcq');
+    if (type < 0) type = 0;
+    final prompt = TextEditingController(text: edit?['prompt']?.toString() ?? '');
+    final points = TextEditingController(text: edit == null ? '1' : '${edit['points'] ?? 1}');
+    final shortAns = TextEditingController(text: type == 2 ? correctStr : '');
+    final opts = <TextEditingController>[];
+    int correctIdx = 0; // for mcq + truefalse
+    if (type == 0 && existing.isNotEmpty) {
+      for (final o in existing) {
+        opts.add(TextEditingController(text: o));
+      }
+      final ci = existing.indexOf(correctStr);
+      correctIdx = ci >= 0 ? ci : 0;
+    } else if (type == 1) {
+      correctIdx = correctStr == 'false' ? 1 : 0;
+    }
+    while (opts.length < 2) {
+      opts.add(TextEditingController());
+    }
 
-    final ok = await showFormSheet(context, square: true, title: 'Add Question', builder: (setS) {
+    final ok = await showFormSheet(context, square: true, title: edit == null ? 'Add Question' : 'Edit Question', builder: (setS) {
       final rows = <Widget>[
         sheetField(prompt, 'Question prompt', CupertinoIcons.text_quote),
         const SizedBox(height: 10),
@@ -1295,14 +1311,19 @@ class _QuizBuilderState extends State<_QuizBuilder> {
         options = [];
         correct = '';
       }
+      final payload = <String, dynamic>{
+        'prompt': prompt.text.trim(),
+        'type': types[type],
+        'options': options,
+        'correct': correct,
+        'points': double.tryParse(points.text.trim()) ?? 1,
+      };
       try {
-        await widget.auth.apiPost('/api/v1/manage/assessments/${widget.assessmentId}/questions', {
-          'prompt': prompt.text.trim(),
-          'type': types[type],
-          'options': options,
-          'correct': correct,
-          'points': double.tryParse(points.text.trim()) ?? 1,
-        });
+        if (edit == null) {
+          await widget.auth.apiPost('/api/v1/manage/assessments/${widget.assessmentId}/questions', payload);
+        } else {
+          await widget.auth.apiPatch('/api/v1/manage/questions/${edit['id']}', payload);
+        }
         return null;
       } on ApiException catch (e) {
         return e.message;
@@ -1337,7 +1358,7 @@ class _QuizBuilderState extends State<_QuizBuilder> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: p.accent,
-        onPressed: _add,
+        onPressed: () => _questionForm(),
         icon: const Icon(CupertinoIcons.add, color: Colors.white),
         label: const Text('Add question', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
       ),
@@ -1366,7 +1387,12 @@ class _QuizBuilderState extends State<_QuizBuilder> {
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(child: Text('$n. ${q['prompt'] ?? ''}', style: AppleTheme.body(context).copyWith(fontWeight: FontWeight.w700))),
             Text('${q['points'] ?? 1} pt', style: AppleTheme.footnote(context)),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
+            GestureDetector(
+              onTap: () => _questionForm(q),
+              child: Icon(CupertinoIcons.pencil, size: 18, color: Palette.of(context).secondary),
+            ),
+            const SizedBox(width: 12),
             GestureDetector(
               onTap: () => _delete(q['id'].toString()),
               child: const Icon(CupertinoIcons.trash, size: 18, color: AppleColors.red),
@@ -1685,6 +1711,13 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                     ),
                   ]),
                 ),
+                const SizedBox(height: 12),
+                PrimaryButton(
+                  label: 'Edit course details',
+                  icon: CupertinoIcons.pencil,
+                  square: true,
+                  onPressed: _editCourseDetails,
+                ),
                 const SizedBox(height: 14),
                 // Admission control — how students get into this course.
                 AppleCard(square: true, 
@@ -1880,11 +1913,14 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     }
   }
 
-  // Group assessments under "Day N" headers (day-less ones fall under "Unscheduled").
+  // Date-wise list: assessments grouped under "Day N" (day-less ones under
+  // "Unscheduled"). Module-scoped assessments are EXCLUDED here — they live inside
+  // their module's card, so module-wise and date-wise stay cleanly separate.
   List<Widget> _assessmentsByDay() {
     final groups = <int?, List<Map<String, dynamic>>>{};
     for (final a in _assessments) {
       final m = a as Map<String, dynamic>;
+      if ((m['module_id']?.toString() ?? '').isNotEmpty) continue; // shown in its module
       final d = (m['day_number'] as num?)?.toInt();
       groups.putIfAbsent(d, () => []).add(m);
     }
@@ -1933,6 +1969,11 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
             _smallButton('Questions', CupertinoIcons.list_bullet, () => _openQuizBuilder(id, title, isQuiz: isQuiz)),
             const SizedBox(width: 6),
             GestureDetector(
+              onTap: () => _editAssessment(a),
+              child: Icon(CupertinoIcons.pencil, size: 18, color: Palette.of(context).secondary),
+            ),
+            const SizedBox(width: 10),
+            GestureDetector(
               onTap: () => _deleteAssessment(id, title),
               child: const Icon(CupertinoIcons.trash, size: 18, color: AppleColors.red),
             ),
@@ -1966,6 +2007,94 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       _toast(e.message);
     } catch (_) {
       _toast('Could not delete');
+    }
+  }
+
+  // Edit an assessment: title, type, score, due date, publish, and its scope —
+  // organised by Day (date-wise) OR Module (module-wise), kept mutually exclusive.
+  Future<void> _editAssessment(Map<String, dynamic> a) async {
+    final id = a['id'].toString();
+    final title = TextEditingController(text: a['title']?.toString() ?? '');
+    final maxScore = TextEditingController(text: '${a['max_score'] ?? 100}');
+    final day = TextEditingController(text: a['day_number'] == null ? '' : '${a['day_number']}');
+    int type = a['type'] == 'quiz' ? 1 : 0;
+    bool published = a['is_published'] != false;
+    final modules = (_course?['modules'] as List?) ?? [];
+    int scope = (a['module_id']?.toString() ?? '').isNotEmpty ? 1 : 0; // 0=day, 1=module
+    String moduleId = a['module_id']?.toString() ?? (modules.isNotEmpty ? modules.first['id'].toString() : '');
+    DateTime due = DateTime.tryParse(a['due_at']?.toString() ?? '')?.toLocal() ?? DateTime.now().add(const Duration(days: 7));
+    final ok = await showFormSheet(context, square: true, title: 'Edit ${type == 1 ? 'Quiz' : 'Assignment'}', builder: (setS) => [
+      sheetField(title, 'Title', CupertinoIcons.doc_text),
+      const SizedBox(height: 10),
+      AppleSegmented(square: true, labels: const ['Assignment', 'Quiz'], selected: type, onChanged: (i) => setS(() => type = i)),
+      const SizedBox(height: 12),
+      Text('Organize by', style: AppleTheme.footnote(context)),
+      const SizedBox(height: 6),
+      AppleSegmented(square: true, labels: const ['Day', 'Module'], selected: scope, onChanged: (i) => setS(() => scope = i)),
+      if (scope == 0) ...[
+        const SizedBox(height: 10),
+        sheetField(day, 'Day number (blank = unscheduled)', CupertinoIcons.calendar, keyboard: TextInputType.number),
+      ] else if (modules.isEmpty) ...[
+        const SizedBox(height: 8),
+        Text('Add a module first to scope it module-wise.', style: AppleTheme.footnote(context)),
+      ] else ...[
+        const SizedBox(height: 8),
+        ...modules.map((mm) {
+          final mid = (mm as Map)['id'].toString();
+          final sel = mid == moduleId;
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setS(() => moduleId = mid),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Row(children: [
+                Icon(sel ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle, size: 20, color: sel ? Palette.of(context).accent : Palette.of(context).secondary),
+                const SizedBox(width: 10),
+                Expanded(child: Text(mm['title']?.toString() ?? 'Module', style: AppleTheme.body(context))),
+              ]),
+            ),
+          );
+        }),
+      ],
+      const SizedBox(height: 10),
+      sheetField(maxScore, 'Max score', CupertinoIcons.number, keyboard: TextInputType.number),
+      const SizedBox(height: 12),
+      _DateTimeRow(value: due, onPick: (d) => setS(() => due = d)),
+      const SizedBox(height: 10),
+      Row(children: [
+        Expanded(child: Text('Published', style: AppleTheme.body(context))),
+        CupertinoSwitch(value: published, onChanged: (v) => setS(() => published = v)),
+      ]),
+    ], onSubmit: () async {
+      if (title.text.trim().isEmpty) return 'Title required';
+      final body = <String, dynamic>{
+        'title': title.text.trim(),
+        'type': type == 1 ? 'quiz' : 'assignment',
+        'max_score': double.tryParse(maxScore.text.trim()) ?? 100,
+        'is_published': published,
+        'due_at': due.toUtc().toIso8601String(),
+      };
+      if (scope == 1 && moduleId.isNotEmpty) {
+        body['module_id'] = moduleId; // server clears day_number
+      } else {
+        body['module_id'] = ''; // clear module scope
+        final dn = int.tryParse(day.text.trim());
+        if (dn != null) {
+          body['day_number'] = dn;
+        } else {
+          body['clear_day'] = true;
+        }
+      }
+      try {
+        await widget.auth.apiPatch('/api/v1/manage/assessments/$id', body);
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) {
+      _toast('Saved');
+      _load();
     }
   }
 
@@ -2006,7 +2135,15 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       child: AppleCard(square: true, 
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            Expanded(child: Text(m['title']?.toString() ?? 'Module', style: AppleTheme.headline(context))),
+            Expanded(child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _editModule(m),
+              child: Row(children: [
+                Flexible(child: Text(m['title']?.toString() ?? 'Module', style: AppleTheme.headline(context))),
+                const SizedBox(width: 6),
+                Icon(CupertinoIcons.pencil, size: 15, color: Palette.of(context).secondary),
+              ]),
+            )),
             _smallButton('Lesson', CupertinoIcons.add, () => _addLesson(m['id'].toString())),
             const SizedBox(width: 6),
             _smallButton('Quiz', CupertinoIcons.doc_text_fill, () => _addAssignment(moduleId: m['id'].toString(), moduleTitle: m['title']?.toString())),
@@ -2027,6 +2164,11 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                   Icon(_iconFor(ll['type']?.toString() ?? 'text'), size: 17, color: Palette.of(context).secondary),
                   const SizedBox(width: 10),
                   Expanded(child: Text(ll['title']?.toString() ?? '', style: AppleTheme.body(context).copyWith(fontSize: 15))),
+                  GestureDetector(
+                    onTap: () => _editLesson(ll),
+                    child: Icon(CupertinoIcons.pencil, size: 16, color: Palette.of(context).secondary),
+                  ),
+                  const SizedBox(width: 12),
                   GestureDetector(
                     onTap: () => _confirmDelete('Delete this lesson?', () =>
                         widget.auth.apiDelete('/api/v1/manage/lessons/${ll['id']}')),
@@ -2061,8 +2203,13 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
             Icon(isQuiz ? CupertinoIcons.question_square_fill : CupertinoIcons.doc_text_fill, size: 16, color: isQuiz ? AppleColors.purple : AppleColors.blue),
             const SizedBox(width: 10),
             Expanded(child: Text('${m['title']}${(m['questions'] ?? 0) != 0 ? ' · ${m['questions']} Qs' : ''}', style: AppleTheme.body(context).copyWith(fontSize: 14))),
-            if (isQuiz) _smallButton('Build', CupertinoIcons.slider_horizontal_3, () => _openQuizBuilder(m['id'].toString(), m['title']?.toString() ?? 'Quiz')),
+            _smallButton('Questions', CupertinoIcons.list_bullet, () => _openQuizBuilder(m['id'].toString(), m['title']?.toString() ?? 'Quiz', isQuiz: isQuiz)),
             const SizedBox(width: 6),
+            GestureDetector(
+              onTap: () => _editAssessment(m),
+              child: Icon(CupertinoIcons.pencil, size: 16, color: Palette.of(context).secondary),
+            ),
+            const SizedBox(width: 8),
             GestureDetector(
               onTap: () => _confirmDelete('Delete this ${isQuiz ? 'quiz' : 'assignment'}?', () => widget.auth.apiDelete('/api/v1/manage/assessments/${m['id']}')),
               child: Icon(CupertinoIcons.minus_circle, size: 16, color: AppleColors.red.withOpacity(0.8)),
@@ -2196,6 +2343,105 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       return null;
     });
     if (ok == true) _load();
+  }
+
+  // Edit the course's own details — title, ID/label, description, cover image.
+  Future<void> _editCourseDetails() async {
+    final c = _course ?? <String, dynamic>{};
+    final title = TextEditingController(text: c['title']?.toString() ?? widget.title);
+    final courseId = TextEditingController(text: c['label']?.toString() ?? '');
+    final desc = TextEditingController(text: c['description']?.toString() ?? '');
+    final imageUrl = TextEditingController(text: c['image_url']?.toString() ?? '');
+    final ok = await showFormSheet(context, square: true, title: 'Edit Course Details', builder: (_) => [
+      sheetField(title, 'Display title (shown to students)', CupertinoIcons.textformat),
+      const SizedBox(height: 10),
+      sheetField(courseId, 'Course ID — unique label (e.g. aiarchitect)', CupertinoIcons.tag),
+      const SizedBox(height: 10),
+      sheetField(desc, 'Description', CupertinoIcons.text_alignleft),
+      const SizedBox(height: 10),
+      sheetField(imageUrl, 'Cover image URL (optional)', CupertinoIcons.photo),
+    ], onSubmit: () async {
+      if (title.text.trim().isEmpty) return 'Title required';
+      final body = <String, dynamic>{'title': title.text.trim(), 'description': desc.text.trim()};
+      if (courseId.text.trim().isNotEmpty) body['label'] = courseId.text.trim();
+      if (imageUrl.text.trim().isNotEmpty) body['image_url'] = imageUrl.text.trim();
+      try {
+        await widget.auth.apiPatch('/api/v1/manage/courses/${widget.courseId}', body);
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) {
+      _toast('Saved');
+      _load();
+    }
+  }
+
+  // Rename a module.
+  Future<void> _editModule(Map<String, dynamic> m) async {
+    final title = TextEditingController(text: m['title']?.toString() ?? '');
+    final ok = await showFormSheet(context, square: true, title: 'Edit Module',
+        builder: (_) => [sheetField(title, 'Module title', CupertinoIcons.folder)],
+        onSubmit: () async {
+      if (title.text.trim().isEmpty) return 'Title required';
+      try {
+        await widget.auth.apiPatch('/api/v1/manage/modules/${m['id']}', {'title': title.text.trim()});
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) {
+      _toast('Saved');
+      _load();
+    }
+  }
+
+  // Edit a lesson's title, type, content/URL, and (for documents) download flag.
+  Future<void> _editLesson(Map<String, dynamic> l) async {
+    final title = TextEditingController(text: l['title']?.toString() ?? '');
+    final body = TextEditingController(text: (l['body'] ?? l['url'] ?? '').toString());
+    const types = ['text', 'video', 'link', 'file'];
+    int type = types.indexOf(l['type']?.toString() ?? 'text');
+    if (type < 0) type = 0;
+    bool downloadable = l['downloadable'] != false;
+    final ok = await showFormSheet(context, square: true, title: 'Edit Lesson', builder: (setS) => [
+      sheetField(title, 'Lesson title', CupertinoIcons.doc_text),
+      const SizedBox(height: 10),
+      AppleSegmented(square: true, labels: const ['Text', 'Video', 'Link', 'Document'], selected: type, onChanged: (i) => setS(() => type = i)),
+      const SizedBox(height: 10),
+      sheetField(
+        body,
+        type == 0 ? 'Content' : (type == 1 ? 'Video URL' : (type == 3 ? 'Document URL' : 'URL')),
+        type == 1 ? CupertinoIcons.play_rectangle : (type == 3 ? CupertinoIcons.doc_richtext : CupertinoIcons.link),
+      ),
+      if (type == 3) ...[
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(child: Text('Allow learners to download', style: AppleTheme.body(context))),
+          CupertinoSwitch(value: downloadable, activeTrackColor: AppleColors.green, onChanged: (v) => setS(() => downloadable = v)),
+        ]),
+      ],
+    ], onSubmit: () async {
+      if (title.text.trim().isEmpty) return 'Title required';
+      if (type != 0 && body.text.trim().isEmpty) return 'URL required';
+      try {
+        await widget.auth.apiPatch('/api/v1/manage/lessons/${l['id']}', {
+          'title': title.text.trim(),
+          'type': types[type],
+          'body': body.text.trim(),
+          if (type == 3) 'downloadable': downloadable,
+        });
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) {
+      _toast('Saved');
+      _load();
+    }
   }
 
   Future<void> _enroll() async {

@@ -1884,6 +1884,7 @@ class _StudyHubState extends State<_StudyHub> {
   static const _courses = ['AI Architect', 'AI Generalist'];
 
   static const _resources = <_StudyResource>[
+    _StudyResource('focus', CupertinoIcons.timer_fill, 'Focus Timer', 'Pomodoro sessions — study, break, repeat', [Color(0xFFFF4F2B), Color(0xFFFF8A5B)]),
     _StudyResource('guides', CupertinoIcons.book_fill, 'Study Guides', 'Structured notes for every topic', [Color(0xFFFF6B35), Color(0xFFFF9166)]),
     _StudyResource('cheats', CupertinoIcons.doc_text_fill, 'Cheat Sheets', 'Quick-reference summaries', [Color(0xFFE0A12A), Color(0xFFF6C453)]),
     _StudyResource('mindmap', CupertinoIcons.rectangle_3_offgrid_fill, 'Mind Maps', 'See how concepts connect', [Color(0xFF18A999), Color(0xFF4FD1C5)]),
@@ -2097,6 +2098,8 @@ class _StudyHubState extends State<_StudyHub> {
 
   Widget _content(String id) {
     switch (id) {
+      case 'focus':
+        return const _FocusTimer();
       case 'guides':
         final items = _guides[_courseName] ?? const [];
         return Column(children: [for (var i = 0; i < items.length; i++) _StudyExpandable(index: i, title: items[i].$1, points: items[i].$2)]);
@@ -2336,6 +2339,155 @@ class _StudyExpandableState extends State<_StudyExpandable> {
         ]),
       ),
     );
+  }
+}
+
+/// Interactive Pomodoro study timer — focus / break cycles with a progress ring,
+/// start/pause/reset and a session counter. Keeps students on task.
+class _FocusTimer extends StatefulWidget {
+  const _FocusTimer();
+  @override
+  State<_FocusTimer> createState() => _FocusTimerState();
+}
+
+class _FocusTimerState extends State<_FocusTimer> {
+  static const _durations = [25 * 60, 5 * 60, 15 * 60]; // focus, short, long
+  static const _labels = ['Focus', 'Short break', 'Long break'];
+  int _mode = 0;
+  int _remaining = _durations[0];
+  bool _running = false;
+  int _completed = 0;
+  Timer? _t;
+
+  @override
+  void dispose() {
+    _t?.cancel();
+    super.dispose();
+  }
+
+  void _setMode(int m) {
+    _t?.cancel();
+    setState(() {
+      _mode = m;
+      _remaining = _durations[m];
+      _running = false;
+    });
+  }
+
+  void _toggle() {
+    if (_running) {
+      _t?.cancel();
+      setState(() => _running = false);
+      return;
+    }
+    if (_remaining == 0) _remaining = _durations[_mode];
+    setState(() => _running = true);
+    _t = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (_remaining <= 1) {
+        _t?.cancel();
+        setState(() {
+          _remaining = 0;
+          _running = false;
+          if (_mode == 0) _completed++;
+        });
+      } else {
+        setState(() => _remaining--);
+      }
+    });
+  }
+
+  void _reset() {
+    _t?.cancel();
+    setState(() {
+      _remaining = _durations[_mode];
+      _running = false;
+    });
+  }
+
+  String get _fmt {
+    final m = _remaining ~/ 60, s = _remaining % 60;
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = _durations[_mode];
+    final progress = total == 0 ? 0.0 : (1 - _remaining / total).clamp(0.0, 1.0);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        for (var i = 0; i < _labels.length; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Expanded(
+            child: _Pressable(
+              onTap: () => _setMode(i),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  gradient: _mode == i ? _orangeGrad : null,
+                  color: _mode == i ? null : _orange.withOpacity(0.07),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _mode == i ? Colors.transparent : _cardBorder),
+                ),
+                child: Text(_labels[i], style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _mode == i ? Colors.white : _navy)),
+              ),
+            ),
+          ),
+        ],
+      ]),
+      const SizedBox(height: 24),
+      Center(
+        child: SizedBox(
+          width: 200,
+          height: 200,
+          child: Stack(alignment: Alignment.center, children: [
+            SizedBox(
+              width: 200,
+              height: 200,
+              child: CircularProgressIndicator(
+                value: progress,
+                strokeWidth: 10,
+                backgroundColor: _orange.withOpacity(0.12),
+                valueColor: const AlwaysStoppedAnimation(_orange),
+              ),
+            ),
+            Column(mainAxisSize: MainAxisSize.min, children: [
+              Text(_fmt, style: GoogleFonts.poppins(fontSize: 46, fontWeight: FontWeight.w800, color: _navy)),
+              Text(_labels[_mode], style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: _orange)),
+            ]),
+          ]),
+        ),
+      ),
+      const SizedBox(height: 26),
+      Row(children: [
+        Expanded(
+          child: _Pressable(
+            onTap: _toggle,
+            child: Container(
+              height: 50,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: _orange.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))]),
+              child: Text(_running ? 'Pause' : (_remaining == 0 ? 'Restart' : 'Start'), style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        _Pressable(
+          onTap: _reset,
+          child: Container(
+            height: 50,
+            width: 50,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: _orange.withOpacity(0.08), borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
+            child: const Icon(CupertinoIcons.arrow_counterclockwise, color: _orange, size: 20),
+          ),
+        ),
+      ]),
+      const SizedBox(height: 18),
+      Center(child: Text('$_completed focus session${_completed == 1 ? '' : 's'} done this visit', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: _grey))),
+    ]);
   }
 }
 
