@@ -406,7 +406,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
                   if (batch || manage) ...[
                     const SizedBox(width: 12),
                     HoverTap(
-                      onTap: () => _personActions(u['id'].toString(), u['full_name']?.toString() ?? 'User'),
+                      onTap: () => _personActions(u),
                       child: Icon(CupertinoIcons.ellipsis, color: Palette.of(context).secondary, size: 20),
                     ),
                   ],
@@ -418,16 +418,89 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     ]);
   }
 
-  // Per-person action menu (students & instructors): deactivate or delete.
-  Future<void> _personActions(String userId, String name) async {
-    final v = await showSquareMenu(context, title: name, items: const [
-      SquareMenuItem('Set / change password', value: 'password', icon: CupertinoIcons.lock),
-      SquareMenuItem('Deactivate (block sign-in)', value: 'deactivate', icon: CupertinoIcons.nosign),
-      SquareMenuItem('Delete permanently', value: 'delete', icon: CupertinoIcons.trash, destructive: true),
+  // Per-person action hub. For a student this is the "do everything for one
+  // student" menu — enroll in a course, set batch, issue a certificate, reset
+  // the password, manage devices, view the originating lead, deactivate or
+  // delete. Instructors/admins get just the account actions.
+  Future<void> _personActions(Map<String, dynamic> u) async {
+    final userId = u['id'].toString();
+    final name = u['full_name']?.toString() ?? 'User';
+    final email = u['email']?.toString() ?? '';
+    final isStudent = u['role'] == 'student';
+    final batch = (u['batch'] is int) ? u['batch'] as int : int.tryParse('${u['batch'] ?? ''}');
+    final v = await showSquareMenu(context, title: name, items: [
+      if (isStudent) const SquareMenuItem('Enroll in a course', value: 'enroll', icon: CupertinoIcons.book),
+      if (isStudent) const SquareMenuItem('Set / change batch', value: 'batch', icon: CupertinoIcons.number),
+      if (isStudent) const SquareMenuItem('Issue certificate', value: 'certificate', icon: CupertinoIcons.checkmark_seal),
+      const SquareMenuItem('Set / change password', value: 'password', icon: CupertinoIcons.lock),
+      const SquareMenuItem('Manage devices', value: 'devices', icon: CupertinoIcons.device_phone_portrait),
+      if (isStudent) const SquareMenuItem('View converted lead', value: 'lead', icon: CupertinoIcons.info_circle),
+      const SquareMenuItem('Deactivate (block sign-in)', value: 'deactivate', icon: CupertinoIcons.nosign),
+      const SquareMenuItem('Delete permanently', value: 'delete', icon: CupertinoIcons.trash, destructive: true),
     ]);
+    if (v == 'enroll') _enrollInCourse(name, email);
+    if (v == 'batch') _setBatch(userId, name, batch);
+    if (v == 'certificate') _issueCertificate(userId, name, u['course_label']?.toString() ?? '');
     if (v == 'password') _setPassword(userId, name);
+    if (v == 'devices') _manageDevices(userId, name, email);
+    if (v == 'lead') _showConvertedLead(userId, name);
     if (v == 'deactivate') _deactivatePerson(userId, name);
     if (v == 'delete') _deletePerson(userId, name);
+  }
+
+  // Enroll a student into a course the admin picks from the loaded list.
+  Future<void> _enrollInCourse(String name, String email) async {
+    if (email.isEmpty) { _toast('This student has no email on file'); return; }
+    if (_courses.isEmpty) { _toast('No courses to enroll in'); return; }
+    final items = _courses
+        .map((c) => SquareMenuItem((c as Map)['title']?.toString() ?? 'Course',
+            value: c['id'].toString(), icon: CupertinoIcons.book))
+        .toList();
+    final courseId = await showSquareMenu(context, title: 'Enroll $name in…', items: items);
+    if (courseId == null) return;
+    try {
+      await widget.auth.apiPost('/api/v1/manage/courses/$courseId/enroll', {'email': email});
+      _toast('Enrolled');
+      _load();
+    } on ApiException catch (e) {
+      _toast(e.message);
+    } catch (_) {
+      _toast('Could not enroll');
+    }
+  }
+
+  // Issue a completion certificate to a single student. Uses the student's own
+  // course (matched by course_label) when known, else asks which course.
+  Future<void> _issueCertificate(String userId, String name, String courseLabel) async {
+    var course = _courseForLabel(courseLabel);
+    if (course == null) {
+      if (_courses.isEmpty) { _toast('No courses to certify'); return; }
+      final items = _courses
+          .map((c) => SquareMenuItem((c as Map)['title']?.toString() ?? 'Course',
+              value: c['id'].toString(), icon: CupertinoIcons.book))
+          .toList();
+      final picked = await showSquareMenu(context, title: 'Certificate for $name — which course?', items: items);
+      if (picked == null) return;
+      for (final c in _courses) {
+        if ((c as Map)['id'].toString() == picked.toString()) { course = c.cast<String, dynamic>(); break; }
+      }
+      if (course == null) return;
+    }
+    final courseId = course['id'].toString();
+    final title = course['title']?.toString() ?? 'this course';
+    final yes = await showSquareConfirm(context,
+        title: 'Issue certificate',
+        message: 'Issue a "$title" completion certificate to $name?',
+        confirmLabel: 'Issue');
+    if (!yes) return;
+    try {
+      await widget.auth.apiPost('/api/v1/manage/courses/$courseId/certificates', {'user_ids': [userId]});
+      _toast('Certificate issued');
+    } on ApiException catch (e) {
+      _toast(e.message);
+    } catch (_) {
+      _toast('Could not issue certificate');
+    }
   }
 
   // Admin sets/changes a user's login password (min 8 chars).
@@ -2376,6 +2449,57 @@ class _CourseBatchesScreenState extends State<CourseBatchesScreen> {
     if (ok == true) { _toast('Student moved'); _load(); }
   }
 
+  // Per-student hub inside a course — everything an admin needs for one student
+  // here: move them to another batch, issue this course's certificate, or reset
+  // their password.
+  Future<void> _studentActions(Map<String, dynamic> s, dynamic batch) async {
+    final userId = s['id'].toString();
+    final name = s['name']?.toString() ?? 'Student';
+    final v = await showSquareMenu(context, title: name, items: const [
+      SquareMenuItem('Move to another batch', value: 'move', icon: CupertinoIcons.arrow_right_arrow_left),
+      SquareMenuItem('Issue certificate', value: 'certificate', icon: CupertinoIcons.checkmark_seal),
+      SquareMenuItem('Set / change password', value: 'password', icon: CupertinoIcons.lock),
+    ]);
+    if (v == 'move') _reassign(userId, name, batch);
+    if (v == 'certificate') _issueCertificate(userId, name);
+    if (v == 'password') _setPassword(userId, name);
+  }
+
+  // Issue this course's completion certificate to a single student.
+  Future<void> _issueCertificate(String userId, String name) async {
+    final yes = await showSquareConfirm(context,
+        title: 'Issue certificate',
+        message: 'Issue a "${widget.title}" completion certificate to $name?',
+        confirmLabel: 'Issue');
+    if (!yes) return;
+    try {
+      await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/certificates', {'user_ids': [userId]});
+      _toast('Certificate issued');
+    } on ApiException catch (e) {
+      _toast(e.message);
+    } catch (_) {
+      _toast('Could not issue certificate');
+    }
+  }
+
+  // Set/change a student's login password (min 8 chars).
+  Future<void> _setPassword(String userId, String name) async {
+    final ctrl = TextEditingController();
+    final ok = await showFormSheet(context, square: true, title: 'Set Password — $name',
+        builder: (_) => [sheetField(ctrl, 'New password (min 8)', CupertinoIcons.lock, obscure: true)],
+        onSubmit: () async {
+      final pwd = ctrl.text.trim();
+      if (pwd.length < 8) return 'Password must be at least 8 characters';
+      try {
+        await widget.auth.apiPost('/api/v1/manage/users/$userId/password', {'password': pwd});
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) _toast('Password updated');
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
@@ -2440,8 +2564,8 @@ class _CourseBatchesScreenState extends State<CourseBatchesScreen> {
               leading: Avatar(name: s['name']?.toString() ?? '?', size: 36),
               title: Text(s['name']?.toString() ?? '', style: AppleTheme.body(context)),
               subtitle: Text(s['email']?.toString() ?? '', style: AppleTheme.footnote(context)),
-              trailing: Icon(CupertinoIcons.arrow_right_arrow_left, size: 18, color: Palette.of(context).secondary),
-              onTap: () => _reassign(s['id'].toString(), s['name']?.toString() ?? 'Student', batch),
+              trailing: Icon(CupertinoIcons.ellipsis, size: 18, color: Palette.of(context).secondary),
+              onTap: () => _studentActions(s, batch),
             ),
           ]);
         })),
