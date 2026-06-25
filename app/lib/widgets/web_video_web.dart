@@ -143,16 +143,16 @@ Widget hlsVideoElement(
       ..style.left = '0'
       ..style.right = '0'
       ..style.bottom = '0'
-      ..style.padding = '20px 14px 10px'
+      ..style.padding = '34px 20px 16px'
       ..style.boxSizing = 'border-box'
       ..style.display = 'flex'
       ..style.flexDirection = 'column'
-      ..style.gap = '4px'
-      ..style.background = 'linear-gradient(to top, rgba(0,0,0,0.75), rgba(0,0,0,0))'
+      ..style.gap = '6px'
+      ..style.background = 'linear-gradient(to top, rgba(0,0,0,0.78), rgba(0,0,0,0))'
       ..style.opacity = '1'
       ..style.transition = 'opacity 0.25s ease'
       ..style.zIndex = '7'
-      ..style.font = '500 13px -apple-system, Segoe UI, Roboto, sans-serif';
+      ..style.font = '500 15px -apple-system, Segoe UI, Roboto, sans-serif';
 
     // Seek scrubber (0..1000 for fine granularity).
     final seek = html.RangeInputElement()
@@ -161,7 +161,7 @@ Widget hlsVideoElement(
       ..value = '0'
       ..style.width = '100%'
       ..style.cursor = 'pointer'
-      ..style.height = '16px';
+      ..style.height = '22px';
     seek.style.setProperty('accent-color', _accent);
 
     // Button factory.
@@ -169,7 +169,7 @@ Widget hlsVideoElement(
       final b = html.SpanElement()
         ..text = label
         ..style.cursor = 'pointer'
-        ..style.padding = '5px 8px'
+        ..style.padding = '7px 11px'
         ..style.borderRadius = '8px'
         ..style.color = 'white'
         ..style.userSelect = 'none'
@@ -224,11 +224,45 @@ Widget hlsVideoElement(
       }
     }
 
+    // YouTube-style large center play/pause button (tap target on top of video).
+    final centerBtn = html.DivElement()
+      ..style.position = 'absolute'
+      ..style.top = '50%'
+      ..style.left = '50%'
+      ..style.transform = 'translate(-50%, -50%)'
+      ..style.width = '88px'
+      ..style.height = '88px'
+      ..style.borderRadius = '50%'
+      ..style.background = 'rgba(0,0,0,0.5)'
+      ..style.display = 'flex'
+      ..style.alignItems = 'center'
+      ..style.justifyContent = 'center'
+      ..style.cursor = 'pointer'
+      ..style.zIndex = '9'
+      ..style.transition = 'opacity 0.2s ease';
+    centerBtn.append(_vicon(_icPlay, size: 46));
+    centerBtn.onClick.listen((e) {
+      e.stopPropagation();
+      togglePlay();
+    });
+    void showCenter(String icon) {
+      centerBtn.children.clear();
+      centerBtn.append(_vicon(icon, size: 46));
+      centerBtn.style.opacity = '1';
+      centerBtn.style.pointerEvents = 'auto';
+    }
+    void hideCenter() {
+      centerBtn.style.opacity = '0';
+      centerBtn.style.pointerEvents = 'none';
+    }
+    container.append(centerBtn);
+    hideCenter(); // autoplay starts playing; the button is revealed on pause/end
+
     // Icon-button factory (clean SVG, no emojis).
     html.SpanElement iconBtn(String path, void Function() onTap, {double size = 22}) {
       final b = html.SpanElement()
         ..style.cursor = 'pointer'
-        ..style.padding = '5px 7px'
+        ..style.padding = '8px 10px'
         ..style.borderRadius = '8px'
         ..style.display = 'flex'
         ..style.alignItems = 'center'
@@ -250,17 +284,18 @@ Widget hlsVideoElement(
     }
 
     // Buttons.
-    final playBtn = iconBtn(_icPlay, togglePlay, size: 24);
-    final back10 = iconBtn(_icReplay, () => seekBy(-10), size: 22);
-    final fwd10 = iconBtn(_icForward, () => seekBy(10), size: 22);
+    final playBtn = iconBtn(_icPlay, togglePlay, size: 34);
+    final back10 = iconBtn(_icReplay, () => seekBy(-10), size: 30);
+    final fwd10 = iconBtn(_icForward, () => seekBy(10), size: 30);
     final timeLabel = html.SpanElement()
       ..text = '0:00 / 0:00'
       ..style.color = 'white'
-      ..style.fontSize = '12.5px'
-      ..style.padding = '0 6px'
+      ..style.fontSize = '15px'
+      ..style.fontWeight = '600'
+      ..style.padding = '0 8px'
       ..style.whiteSpace = 'nowrap';
 
-    final speedBtn = btn('1×', () {}, size: 13);
+    final speedBtn = btn('1×', () {}, size: 17);
     var speedIdx = 1;
     speedBtn.onClick.listen((e) {
       e.stopPropagation();
@@ -271,8 +306,8 @@ Widget hlsVideoElement(
       flash('${speedBtn.text}');
     });
 
-    final muteBtn = iconBtn(_icVolUp, () {}, size: 21);
-    void refreshMute() => setBtnIcon(muteBtn, (video.muted || video.volume == 0) ? _icVolOff : _icVolUp, size: 21);
+    final muteBtn = iconBtn(_icVolUp, () {}, size: 28);
+    void refreshMute() => setBtnIcon(muteBtn, (video.muted || video.volume == 0) ? _icVolOff : _icVolUp, size: 28);
     muteBtn.onClick.listen((e) {
       e.stopPropagation();
       video.muted = !video.muted;
@@ -284,9 +319,9 @@ Widget hlsVideoElement(
       ..min = '0'
       ..max = '100'
       ..value = '100'
-      ..style.width = '78px'
+      ..style.width = '92px'
       ..style.cursor = 'pointer'
-      ..style.height = '14px';
+      ..style.height = '18px';
     volRange.style.setProperty('accent-color', _accent);
     volRange.onInput.listen((e) {
       e.stopPropagation();
@@ -295,13 +330,13 @@ Widget hlsVideoElement(
       refreshMute();
     });
 
-    final fsBtn = iconBtn(_icFullscreen, toggleFullscreen, size: 22);
+    final fsBtn = iconBtn(_icFullscreen, toggleFullscreen, size: 30);
 
     final spacer = html.DivElement()..style.flex = '1';
     final row = html.DivElement()
       ..style.display = 'flex'
       ..style.alignItems = 'center'
-      ..style.gap = '4px';
+      ..style.gap = '8px';
     row.append(playBtn);
     row.append(back10);
     row.append(fwd10);
@@ -336,8 +371,15 @@ Widget hlsVideoElement(
     });
 
     // ---- Play/pause icon sync ----------------------------------------------
-    video.onPlay.listen((_) => setBtnIcon(playBtn, _icPause, size: 24));
-    video.onPause.listen((_) => setBtnIcon(playBtn, _icPlay, size: 24));
+    video.onPlay.listen((_) {
+      setBtnIcon(playBtn, _icPause, size: 34);
+      hideCenter();
+    });
+    video.onPause.listen((_) {
+      setBtnIcon(playBtn, _icPlay, size: 34);
+      showCenter(_icPlay);
+    });
+    video.onEnded.listen((_) => showCenter(_icReplay));
 
     // ---- Auto-hide on inactivity (Netflix style) ---------------------------
     Timer? hideTimer;
