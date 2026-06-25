@@ -24,13 +24,15 @@ func (h *Handlers) MyLeaderboard(c *fiber.Ctx) error {
 		WITH per_user AS (
 		  SELECT u.id, u.full_name, COALESCE(u.username,'') AS username,
 		         COALESCE(u.avatar,'') AS avatar,
-		         COUNT(lp.lesson_id) AS lessons
+		         COUNT(lp.lesson_id) AS lessons,
+		         COALESCE((SELECT ROUND(SUM(s.score)) FROM submissions s
+		                   WHERE s.user_id = u.id AND s.score IS NOT NULL),0)::int AS quiz_xp
 		  FROM users u
 		  LEFT JOIN lesson_progress lp ON lp.user_id = u.id
 		  WHERE u.role = 'student'
 		  GROUP BY u.id, u.full_name, u.username, u.avatar
 		)
-		SELECT pu.id, pu.full_name, pu.username, pu.avatar, pu.lessons,
+		SELECT pu.id, pu.full_name, pu.username, pu.avatar, pu.lessons, pu.quiz_xp,
 		  COALESCE((
 		    SELECT c.title FROM course_enrollments ce JOIN courses c ON c.id = ce.course_id
 		    WHERE ce.user_id = pu.id
@@ -44,7 +46,7 @@ func (h *Handlers) MyLeaderboard(c *fiber.Ctx) error {
 		  ), '') AS top_course,
 		  (SELECT count(*) FROM course_enrollments ce WHERE ce.user_id = pu.id) AS courses
 		FROM per_user pu
-		ORDER BY pu.lessons DESC, pu.full_name ASC
+		ORDER BY (pu.lessons * 10 + pu.quiz_xp) DESC, pu.full_name ASC
 		LIMIT 25`)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "leaderboard failed")
@@ -56,8 +58,8 @@ func (h *Handlers) MyLeaderboard(c *fiber.Ctx) error {
 	rank := 0
 	for rows.Next() {
 		var id, name, username, avatar, topCourse string
-		var lessons, courses int
-		if err := rows.Scan(&id, &name, &username, &avatar, &lessons, &topCourse, &courses); err != nil {
+		var lessons, quizXP, courses int
+		if err := rows.Scan(&id, &name, &username, &avatar, &lessons, &quizXP, &topCourse, &courses); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		rank++
@@ -65,43 +67,52 @@ func (h *Handlers) MyLeaderboard(c *fiber.Ctx) error {
 		if isMe {
 			myRank = rank
 		}
-		out = append(out, leaderRow(rank, name, username, avatar, topCourse, lessons, courses, isMe))
+		out = append(out, leaderRow(rank, name, username, avatar, topCourse, lessons, courses, quizXP, isMe))
 	}
 
 	// If the caller isn't in the top slice, append their own row with their true
 	// rank so they can always see where they stand.
 	if myRank == 0 {
 		var name, username, avatar, topCourse string
-		var lessons, courses, rnk int
+		var lessons, quizXP, courses, rnk int
 		err := h.Pool.QueryRow(c.Context(), `
 			SELECT u.full_name, COALESCE(u.username,''), COALESCE(u.avatar,''),
 			  (SELECT count(*) FROM lesson_progress lp WHERE lp.user_id = u.id),
+			  COALESCE((SELECT ROUND(SUM(s.score)) FROM submissions s
+			            WHERE s.user_id = u.id AND s.score IS NOT NULL),0)::int,
 			  (SELECT count(*) FROM course_enrollments ce WHERE ce.user_id = u.id),
 			  1 + (SELECT count(*) FROM (
-			        SELECT u2.id, count(lp2.lesson_id) AS l FROM users u2
+			        SELECT u2.id,
+			               count(lp2.lesson_id)*10 + COALESCE((SELECT ROUND(SUM(s2.score))
+			                 FROM submissions s2 WHERE s2.user_id = u2.id AND s2.score IS NOT NULL),0) AS xp
+			        FROM users u2
 			        LEFT JOIN lesson_progress lp2 ON lp2.user_id = u2.id
 			        WHERE u2.role = 'student' GROUP BY u2.id
-			      ) t WHERE t.l > (SELECT count(*) FROM lesson_progress WHERE user_id = u.id)),
+			      ) t WHERE t.xp > (
+			        (SELECT count(*) FROM lesson_progress WHERE user_id = u.id)*10
+			        + COALESCE((SELECT ROUND(SUM(s3.score)) FROM submissions s3
+			                    WHERE s3.user_id = u.id AND s3.score IS NOT NULL),0))),
 			  COALESCE((
 			    SELECT c.title FROM course_enrollments ce JOIN courses c ON c.id = ce.course_id
 			    WHERE ce.user_id = u.id ORDER BY ce.enrolled_at DESC LIMIT 1
 			  ), '')
 			FROM users u WHERE u.id = $1`, me).
-			Scan(&name, &username, &avatar, &lessons, &courses, &rnk, &topCourse)
+			Scan(&name, &username, &avatar, &lessons, &quizXP, &courses, &rnk, &topCourse)
 		if err == nil && name != "" {
 			myRank = rnk
-			out = append(out, leaderRow(rnk, name, username, avatar, topCourse, lessons, courses, true))
+			out = append(out, leaderRow(rnk, name, username, avatar, topCourse, lessons, courses, quizXP, true))
 		}
 	}
 
 	return c.JSON(fiber.Map{"leaderboard": out, "my_rank": myRank})
 }
 
-func leaderRow(rank int, name, username, avatar, course string, lessons, courses int, isMe bool) fiber.Map {
+func leaderRow(rank int, name, username, avatar, course string, lessons, courses, quizXP int, isMe bool) fiber.Map {
 	return fiber.Map{
 		"rank": rank, "name": name, "username": username, "avatar": avatar,
 		"course": course, "courses": courses,
-		"lessons": lessons, "xp": lessons * xpPerLesson, "is_me": isMe,
+		"lessons": lessons, "quiz_xp": quizXP,
+		"xp": lessons*xpPerLesson + quizXP, "is_me": isMe,
 	}
 }
 
@@ -117,11 +128,16 @@ func (h *Handlers) courseLeaderboard(c *fiber.Ctx, me, courseID string) error {
 		  (SELECT count(*) FROM lesson_progress lp
 		     JOIN lessons l ON l.id = lp.lesson_id
 		     JOIN modules m ON m.id = l.module_id
-		     WHERE m.course_id = $1 AND lp.user_id = u.id) AS lessons
+		     WHERE m.course_id = $1 AND lp.user_id = u.id) AS lessons,
+		  COALESCE((SELECT ROUND(SUM(s.score)) FROM submissions s
+		     JOIN assessments a ON a.id = s.assessment_id
+		     WHERE a.course_id = $1 AND s.user_id = u.id AND s.score IS NOT NULL),0)::int AS quiz_xp
 		FROM users u
 		WHERE u.role = 'student'
 		  AND EXISTS (SELECT 1 FROM course_enrollments ce WHERE ce.course_id = $1 AND ce.user_id = u.id)
-		ORDER BY lessons DESC, u.full_name ASC
+		ORDER BY (lessons * 10 + (SELECT COALESCE(ROUND(SUM(s.score)),0) FROM submissions s
+		     JOIN assessments a ON a.id = s.assessment_id
+		     WHERE a.course_id = $1 AND s.user_id = u.id AND s.score IS NOT NULL)) DESC, u.full_name ASC
 		LIMIT 25`, courseID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "leaderboard failed")
@@ -133,8 +149,8 @@ func (h *Handlers) courseLeaderboard(c *fiber.Ctx, me, courseID string) error {
 	rank := 0
 	for rows.Next() {
 		var id, name, username, avatar string
-		var lessons int
-		if err := rows.Scan(&id, &name, &username, &avatar, &lessons); err != nil {
+		var lessons, quizXP int
+		if err := rows.Scan(&id, &name, &username, &avatar, &lessons, &quizXP); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		rank++
@@ -142,36 +158,47 @@ func (h *Handlers) courseLeaderboard(c *fiber.Ctx, me, courseID string) error {
 		if isMe {
 			myRank = rank
 		}
-		out = append(out, leaderRow(rank, name, username, avatar, title, lessons, 1, isMe))
+		out = append(out, leaderRow(rank, name, username, avatar, title, lessons, 1, quizXP, isMe))
 	}
 
 	// Append the caller with their true in-course rank if they're enrolled but
 	// fell outside the top slice.
 	if myRank == 0 {
 		var name, username, avatar string
-		var lessons, rnk int
+		var lessons, quizXP, rnk int
 		err := h.Pool.QueryRow(c.Context(), `
 			SELECT u.full_name, COALESCE(u.username,''), COALESCE(u.avatar,''),
 			  (SELECT count(*) FROM lesson_progress lp
 			     JOIN lessons l ON l.id = lp.lesson_id JOIN modules m ON m.id = l.module_id
 			     WHERE m.course_id = $2 AND lp.user_id = u.id),
+			  COALESCE((SELECT ROUND(SUM(s.score)) FROM submissions s
+			     JOIN assessments a ON a.id = s.assessment_id
+			     WHERE a.course_id = $2 AND s.user_id = u.id AND s.score IS NOT NULL),0)::int,
 			  1 + (SELECT count(*) FROM (
-			        SELECT u2.id, (SELECT count(*) FROM lesson_progress lp2
-			               JOIN lessons l2 ON l2.id = lp2.lesson_id JOIN modules m2 ON m2.id = l2.module_id
-			               WHERE m2.course_id = $2 AND lp2.user_id = u2.id) AS l
+			        SELECT u2.id,
+			          (SELECT count(*) FROM lesson_progress lp2
+			             JOIN lessons l2 ON l2.id = lp2.lesson_id JOIN modules m2 ON m2.id = l2.module_id
+			             WHERE m2.course_id = $2 AND lp2.user_id = u2.id)*10
+			          + COALESCE((SELECT ROUND(SUM(s2.score)) FROM submissions s2
+			             JOIN assessments a2 ON a2.id = s2.assessment_id
+			             WHERE a2.course_id = $2 AND s2.user_id = u2.id AND s2.score IS NOT NULL),0) AS xp
 			        FROM users u2
 			        WHERE u2.role = 'student'
 			          AND EXISTS (SELECT 1 FROM course_enrollments ce WHERE ce.course_id = $2 AND ce.user_id = u2.id)
-			      ) t WHERE t.l > (SELECT count(*) FROM lesson_progress lp3
-			               JOIN lessons l3 ON l3.id = lp3.lesson_id JOIN modules m3 ON m3.id = l3.module_id
-			               WHERE m3.course_id = $2 AND lp3.user_id = u.id))
+			      ) t WHERE t.xp > (
+			        (SELECT count(*) FROM lesson_progress lp3
+			           JOIN lessons l3 ON l3.id = lp3.lesson_id JOIN modules m3 ON m3.id = l3.module_id
+			           WHERE m3.course_id = $2 AND lp3.user_id = u.id)*10
+			        + COALESCE((SELECT ROUND(SUM(s3.score)) FROM submissions s3
+			           JOIN assessments a3 ON a3.id = s3.assessment_id
+			           WHERE a3.course_id = $2 AND s3.user_id = u.id AND s3.score IS NOT NULL),0)))
 			FROM users u
 			WHERE u.id = $1
 			  AND EXISTS (SELECT 1 FROM course_enrollments ce WHERE ce.course_id = $2 AND ce.user_id = u.id)`,
-			me, courseID).Scan(&name, &username, &avatar, &lessons, &rnk)
+			me, courseID).Scan(&name, &username, &avatar, &lessons, &quizXP, &rnk)
 		if err == nil && name != "" {
 			myRank = rnk
-			out = append(out, leaderRow(rnk, name, username, avatar, title, lessons, 1, true))
+			out = append(out, leaderRow(rnk, name, username, avatar, title, lessons, 1, quizXP, true))
 		}
 	}
 

@@ -1111,10 +1111,25 @@ class _StudentHomeState extends State<StudentHome> {
             _Pressable(
               onTap: () async {
                 try {
-                  await widget.auth.apiPost('/api/v1/me/assessments/$id/submit', {'answers': answers});
+                  final res = await widget.auth.apiPost('/api/v1/me/assessments/$id/submit', {'answers': answers});
                   if (!mounted) return;
                   Navigator.of(ctx).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Submitted ✓')));
+                  // Show the auto-graded result (and XP earned) right away.
+                  String msg = 'Submitted ✓';
+                  try {
+                    final r = jsonDecode(res.body) as Map<String, dynamic>;
+                    if (r['needs_manual_grading'] == true) {
+                      msg = 'Submitted ✓ — written answers will be graded soon.';
+                    } else {
+                      final score = (r['score'] as num?)?.round() ?? 0;
+                      final totalP = (r['total_points'] as num?)?.round() ?? 0;
+                      final pct = (r['percent'] as num?)?.toInt() ?? 0;
+                      msg = 'Scored $score/$totalP ($pct%)  ·  +$score XP 🎉';
+                    }
+                  } catch (_) {}
+                  // Refresh the dashboard so the new quiz XP shows immediately.
+                  setState(() {});
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
                 } catch (_) {
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't submit — try again.")));
                 }
@@ -1234,7 +1249,7 @@ class _StudentHomeState extends State<StudentHome> {
                 _Entrance(
                   index: 3,
                   child: Row(children: [
-                    Expanded(child: _statCard('${_xpFromCourses(courses)}', 'XP earned', icon: CupertinoIcons.bolt_fill, onTap: () => _openPanel('achievements'))),
+                    Expanded(child: _statCard('${_xpFromCourses(courses) + ((t['quiz_xp'] ?? 0) as num).toInt()}', 'XP earned', icon: CupertinoIcons.bolt_fill, onTap: () => _openPanel('achievements'))),
                     const SizedBox(width: 14),
                     Expanded(child: _statCard('${t['certificates'] ?? 0}', 'Certificates', icon: CupertinoIcons.rosette, onTap: () => _openPanel('certificates'))),
                   ]),
@@ -1399,15 +1414,40 @@ class _StudentHomeState extends State<StudentHome> {
                 final isQuiz = m['type'] == 'quiz';
                 final submitted = m['submitted'] == true;
                 final course = m['course']?.toString() ?? '';
+                final status = m['status']?.toString() ?? '';
+                final score = m['score'];
+                final maxScore = (m['max_score'] as num?)?.round() ?? 100;
+                // Badge: graded → "8/10 pts" (green), awaiting human grading →
+                // "Grading…" (amber), submitted-but-unknown → "Submitted",
+                // otherwise the call-to-action.
+                String badge;
+                Color? badgeBg, badgeFg;
+                if (submitted) {
+                  if (status == 'graded' && score != null) {
+                    badge = '${(score as num).round()}/$maxScore pts';
+                    badgeBg = _greenBg;
+                    badgeFg = _green;
+                  } else if (status == 'submitted') {
+                    badge = 'Grading…';
+                    badgeBg = _orange.withOpacity(0.12);
+                    badgeFg = _orange;
+                  } else {
+                    badge = 'Submitted';
+                    badgeBg = _greenBg;
+                    badgeFg = _green;
+                  }
+                } else {
+                  badge = isQuiz ? 'Start' : 'Pending';
+                }
                 children.add(GestureDetector(
                   onTap: isQuiz && !submitted ? () => _openAssessment(m) : null,
                   child: _row(
                     isQuiz ? CupertinoIcons.question_square_fill : CupertinoIcons.doc_text_fill,
                     m['title']?.toString() ?? 'Assessment',
-                    '$course · ${isQuiz ? 'Quiz' : 'Assignment'} · ${m['max_score'] ?? 100} pts',
-                    submitted ? 'Submitted' : (isQuiz ? 'Start' : 'Pending'),
-                    badgeBg: submitted ? _greenBg : null,
-                    badgeFg: submitted ? _green : null,
+                    '$course · ${isQuiz ? 'Quiz' : 'Assignment'} · $maxScore pts',
+                    badge,
+                    badgeBg: badgeBg,
+                    badgeFg: badgeFg,
                   ),
                 ));
               }

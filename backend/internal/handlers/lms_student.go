@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"math"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -366,7 +367,8 @@ func (h *Handlers) SubmitAssessment(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "grade load failed")
 	}
 	defer rows.Close()
-	var autoScore float64
+	var autoScore, totalPoints float64
+	total, correctCount := 0, 0
 	needsManual := false
 	for rows.Next() {
 		var id, qtype, correct string
@@ -374,12 +376,22 @@ func (h *Handlers) SubmitAssessment(c *fiber.Ctx) error {
 		if err := rows.Scan(&id, &qtype, &correct, &points); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
+		total++
+		totalPoints += points
 		switch qtype {
 		case "mcq", "truefalse":
 			if strings.EqualFold(strings.TrimSpace(req.Answers[id]), strings.TrimSpace(correct)) {
 				autoScore += points
+				correctCount++
 			}
-		default:
+		case "short":
+			// Auto-correct short answers too: case-insensitive, and the answer key
+			// may list several accepted answers separated by "|".
+			if matchShortAnswer(req.Answers[id], correct) {
+				autoScore += points
+				correctCount++
+			}
+		default: // essay — needs a human
 			needsManual = true
 		}
 	}
@@ -399,8 +411,31 @@ func (h *Handlers) SubmitAssessment(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "submit failed")
 	}
-	return c.JSON(fiber.Map{"assessment_id": assessID, "status": status,
-		"auto_score": autoScore, "needs_manual_grading": needsManual})
+	percent := 0
+	if totalPoints > 0 {
+		percent = int(math.Round(autoScore / totalPoints * 100))
+	}
+	return c.JSON(fiber.Map{
+		"assessment_id": assessID, "status": status,
+		"auto_score": autoScore, "needs_manual_grading": needsManual,
+		"score": autoScore, "total_points": totalPoints,
+		"correct": correctCount, "total": total, "percent": percent,
+	})
+}
+
+// matchShortAnswer compares a short answer case-insensitively; the answer key may
+// list several accepted answers separated by "|".
+func matchShortAnswer(ans, correct string) bool {
+	a := strings.ToLower(strings.TrimSpace(ans))
+	if a == "" {
+		return false
+	}
+	for _, acc := range strings.Split(correct, "|") {
+		if a == strings.ToLower(strings.TrimSpace(acc)) {
+			return true
+		}
+	}
+	return false
 }
 
 // MyGrades: the caller's graded submissions.
@@ -426,14 +461,16 @@ func (h *Handlers) MyGrades(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"grades": out})
 }
 
-// MyTranscript: dashboard summary (counts + certificates).
+// MyTranscript: dashboard summary (counts + certificates + quiz XP).
 func (h *Handlers) MyTranscript(c *fiber.Ctx) error {
-	var enrolled, completed, certs int
+	var enrolled, completed, certs, quizXP int
 	_ = h.Pool.QueryRow(c.Context(), `
 		SELECT (SELECT count(*) FROM course_enrollments WHERE user_id=$1),
 		       (SELECT count(*) FROM course_enrollments WHERE user_id=$1 AND status='completed'),
-		       (SELECT count(*) FROM certificates WHERE user_id=$1)`, callerID(c)).Scan(&enrolled, &completed, &certs)
-	return c.JSON(fiber.Map{"enrolled": enrolled, "completed": completed, "certificates": certs})
+		       (SELECT count(*) FROM certificates WHERE user_id=$1),
+		       COALESCE((SELECT ROUND(SUM(score)) FROM submissions WHERE user_id=$1 AND score IS NOT NULL),0)::int`,
+		callerID(c)).Scan(&enrolled, &completed, &certs, &quizXP)
+	return c.JSON(fiber.Map{"enrolled": enrolled, "completed": completed, "certificates": certs, "quiz_xp": quizXP})
 }
 
 func (h *Handlers) MyCertificates(c *fiber.Ctx) error {
@@ -508,10 +545,12 @@ func (h *Handlers) MyAssessments(c *fiber.Ctx) error {
 		SELECT a.id, a.title, a.type, a.max_score, a.day_number,
 		       COALESCE(a.due_at::text,''), c.title AS course,
 		       (SELECT count(*) FROM questions q WHERE q.assessment_id=a.id) AS qcount,
-		       EXISTS (SELECT 1 FROM submissions s WHERE s.assessment_id=a.id AND s.user_id=$1) AS submitted
+		       s.id IS NOT NULL AS submitted,
+		       s.score, COALESCE(s.status,'') AS sub_status
 		FROM assessments a
 		JOIN courses c ON c.id=a.course_id
 		JOIN course_enrollments ce ON ce.course_id=c.id AND ce.user_id=$1
+		LEFT JOIN submissions s ON s.assessment_id=a.id AND s.user_id=$1
 		WHERE a.is_published
 		ORDER BY a.day_number NULLS LAST, c.title, a.created_at`, callerID(c))
 	if err != nil {
@@ -520,16 +559,18 @@ func (h *Handlers) MyAssessments(c *fiber.Ctx) error {
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var id, title, typ, due, course string
+		var id, title, typ, due, course, subStatus string
 		var maxScore float64
 		var day *int
 		var qc int
 		var submitted bool
-		if err := rows.Scan(&id, &title, &typ, &maxScore, &day, &due, &course, &qc, &submitted); err != nil {
+		var score *float64
+		if err := rows.Scan(&id, &title, &typ, &maxScore, &day, &due, &course, &qc, &submitted, &score, &subStatus); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		out = append(out, fiber.Map{"id": id, "title": title, "type": typ, "max_score": maxScore,
-			"day_number": day, "due_at": due, "course": course, "questions": qc, "submitted": submitted})
+			"day_number": day, "due_at": due, "course": course, "questions": qc, "submitted": submitted,
+			"score": score, "status": subStatus})
 	}
 	return c.JSON(fiber.Map{"assessments": out})
 }
