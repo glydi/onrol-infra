@@ -39,11 +39,6 @@ func (h *Handlers) transcodeToHLS(assetID, sourceKey string) {
 	}
 	defer os.RemoveAll(tmp)
 
-	src := filepath.Join(tmp, "src"+path.Ext(sourceKey))
-	if err := cl.FGetObject(ctx, h.Cfg.R2.Bucket, sourceKey, src, minio.GetObjectOptions{}); err != nil {
-		fail("download", err)
-		return
-	}
 	out := filepath.Join(tmp, "hls")
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		fail("mkdir", err)
@@ -69,6 +64,30 @@ func (h *Handlers) transcodeToHLS(assetID, sourceKey string) {
 		return
 	}
 
+	// Choose the ffmpeg input. Prefer streaming the source straight from R2's
+	// public URL: for multi-GB videos this avoids first downloading the whole file
+	// to the box (peak local disk = HLS output only, not source+output), and ffmpeg
+	// starts immediately. ffmpeg reads it over HTTP range requests. If the bucket
+	// isn't public (probe fails) we fall back to downloading the source first.
+	var input string
+	var pr srcProbe
+	var ok bool
+	if h.Cfg.R2.PublicBase != "" {
+		u := strings.TrimRight(h.Cfg.R2.PublicBase, "/") + "/" + sourceKey
+		if pr, ok = ffprobeSource(u); ok {
+			input = u
+		}
+	}
+	if input == "" {
+		src := filepath.Join(tmp, "src"+path.Ext(sourceKey))
+		if err := cl.FGetObject(ctx, h.Cfg.R2.Bucket, sourceKey, src, minio.GetObjectOptions{}); err != nil {
+			fail("download", err)
+			return
+		}
+		input = src
+		pr, ok = ffprobeSource(input)
+	}
+
 	// The HLS muxer args are the same whichever way we feed it: 6-second
 	// AES-128-encrypted VOD segments.
 	hlsTail := []string{
@@ -81,7 +100,7 @@ func (h *Handlers) transcodeToHLS(assetID, sourceKey string) {
 	// capped at 6 Mbps so it streams smoothly anywhere. This is the expensive path
 	// (minutes of CPU on libx264) and only runs when the source isn't already a
 	// web-ready H.264 file.
-	encodeArgs := append([]string{"-y", "-i", src,
+	encodeArgs := append([]string{"-y", "-i", input,
 		"-map", "0:v:0", "-map", "0:a:0?",
 		"-vf", "scale='min(1920,iw)':'-2'",
 		"-c:v", "libx264", "-preset", "veryfast", "-profile:v", "high", "-pix_fmt", "yuv420p",
@@ -92,12 +111,11 @@ func (h *Handlers) transcodeToHLS(assetID, sourceKey string) {
 	// just stream-copy it into HLS (near-instant, I/O bound) instead of burning
 	// minutes re-encoding. Audio is copied when already AAC, else re-encoded (cheap).
 	// An unreadable probe falls through to the full encode.
-	pr, ok := ffprobeSource(src)
 	copyMode := ok && pr.canStreamCopy()
 
 	var args []string
 	if copyMode {
-		args = []string{"-y", "-i", src, "-map", "0:v:0"}
+		args = []string{"-y", "-i", input, "-map", "0:v:0"}
 		if pr.hasAudio {
 			args = append(args, "-map", "0:a:0?", "-c:v", "copy")
 			if pr.aCodec == "aac" {
