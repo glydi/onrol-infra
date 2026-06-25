@@ -4455,7 +4455,11 @@ class _HeroPanelModal extends StatelessWidget {
         final kb = MediaQuery.of(ctx).viewInsets.bottom;
         // Phone = edge-to-edge sheet (kept in sync with _card's `fill`).
         final phone = size.shortestSide < 600;
-        return Stack(children: [
+        // Own ScaffoldMessenger so SnackBars from panel content (settings, 2FA,
+        // push) render on top of the panel instead of behind it (the dashboard's
+        // messenger sits under this pushed route). Transparent Scaffold; the panel
+        // does its own keyboard inset handling, so don't double it.
+        return ScaffoldMessenger(child: Scaffold(backgroundColor: Colors.transparent, resizeToAvoidBottomInset: false, body: Stack(children: [
           // Blur + dim the dashboard behind (animated with the route). Tap to close.
           // Isolated in a RepaintBoundary so the heavy blur layer is cached and
           // the card's own glass blur (which samples this) doesn't force the
@@ -4506,7 +4510,7 @@ class _HeroPanelModal extends StatelessWidget {
                     ),
             ),
           ),
-        ]);
+        ])));
       },
     );
   }
@@ -5227,6 +5231,8 @@ class _SettingsViewState extends State<_SettingsView> {
   bool _twoFA = false; // current enabled status (from /me/2fa)
   bool _savingPw = false;
   bool _pushBusy = false; // enabling Web Push
+  String? _pwErr; // inline password error (shown in the form, not a toast)
+  bool _pwSaved = false; // inline success after a password change
   final _cur = TextEditingController();
   final _new = TextEditingController();
   final _conf = TextEditingController();
@@ -5347,25 +5353,35 @@ class _SettingsViewState extends State<_SettingsView> {
 
   Future<void> _savePassword() async {
     final cur = _cur.text, nw = _new.text, cf = _conf.text;
-    if (cur.isEmpty || nw.isEmpty) return _toast('Fill in all fields');
-    if (nw.length < 8) return _toast('New password must be at least 8 characters');
-    if (nw != cf) return _toast('New passwords do not match');
-    setState(() => _savingPw = true);
+    // Validation errors render inline in the form — a SnackBar here would slide
+    // up behind the panel and never be seen.
+    if (cur.isEmpty || nw.isEmpty) return _setPwErr('Fill in all fields');
+    if (nw.length < 8) return _setPwErr('New password must be at least 8 characters');
+    if (nw != cf) return _setPwErr('New passwords do not match');
+    setState(() {
+      _savingPw = true;
+      _pwErr = null;
+      _pwSaved = false;
+    });
     try {
       ApiClient.decode(await widget.auth.apiPost('/api/v1/me/password', {'current_password': cur, 'new_password': nw}));
       _cur.clear();
       _new.clear();
       _conf.clear();
-      if (mounted) setState(() => _pwOpen = false);
-      _toast('Password updated');
+      if (mounted) setState(() => _pwSaved = true); // keep the form open so the ✓ shows
     } on ApiException catch (e) {
-      _toast(e.message);
+      if (mounted) setState(() => _pwErr = e.message);
     } catch (_) {
-      _toast("Couldn't update password");
+      if (mounted) setState(() => _pwErr = "Couldn't update password");
     } finally {
       if (mounted) setState(() => _savingPw = false);
     }
   }
+
+  void _setPwErr(String m) => setState(() {
+        _pwErr = m;
+        _pwSaved = false;
+      });
 
   Future<void> _loadDevices() async {
     try {
@@ -5564,7 +5580,11 @@ class _SettingsViewState extends State<_SettingsView> {
   Widget _passwordRow() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _tapRow(
           CupertinoIcons.lock_fill, 'Update password', 'Change your account password',
-          () => setState(() => _pwOpen = !_pwOpen),
+          () => setState(() {
+            _pwOpen = !_pwOpen;
+            _pwErr = null;
+            _pwSaved = false;
+          }),
           trailing: AnimatedRotation(turns: _pwOpen ? 0.5 : 0, duration: const Duration(milliseconds: 200), child: Icon(CupertinoIcons.chevron_down, size: 15, color: _grey)),
         ),
         AnimatedSize(
@@ -5580,6 +5600,21 @@ class _SettingsViewState extends State<_SettingsView> {
                     _pwField('New password', _new),
                     const SizedBox(height: 10),
                     _pwField('Confirm new password', _conf),
+                    if (_pwErr != null) ...[
+                      const SizedBox(height: 10),
+                      Row(children: [
+                        const Icon(CupertinoIcons.exclamationmark_circle_fill, size: 15, color: Color(0xFFD23B3B)),
+                        const SizedBox(width: 6),
+                        Expanded(child: Text(_pwErr!, style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFFD23B3B)))),
+                      ]),
+                    ] else if (_pwSaved) ...[
+                      const SizedBox(height: 10),
+                      Row(children: [
+                        const Icon(CupertinoIcons.checkmark_alt_circle_fill, size: 15, color: Color(0xFF1E9E5A)),
+                        const SizedBox(width: 6),
+                        Expanded(child: Text('Password updated', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF1E9E5A)))),
+                      ]),
+                    ],
                     const SizedBox(height: 12),
                     _Pressable(
                       onTap: _savingPw ? () {} : _savePassword,
