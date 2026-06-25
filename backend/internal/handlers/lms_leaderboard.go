@@ -178,19 +178,38 @@ func (h *Handlers) courseLeaderboard(c *fiber.Ctx, me, courseID string) error {
 	return c.JSON(fiber.Map{"leaderboard": out, "my_rank": myRank, "course": title})
 }
 
-// MyStreak computes the caller's current daily learning streak from real
-// lesson-completion dates: the run of consecutive days (ending today, or
-// yesterday if nothing's done yet today) on which they completed ≥1 lesson.
+// MyStreak records today's check-in (the caller just opened the app) and returns
+// the current daily streak: the run of consecutive days — in the user's OWN
+// timezone, not UTC — on which they checked in, ending today. This is a real
+// "show up every day" streak backed by the user_checkins table, not tied to
+// completing a lesson.
 func (h *Handlers) MyStreak(c *fiber.Ctx) error {
+	uid := callerID(c)
+
+	// "Today" in the user's timezone (default Asia/Kolkata) so the day boundary
+	// is their real midnight, not UTC's.
+	tz := "Asia/Kolkata"
+	_ = h.Pool.QueryRow(c.Context(), `SELECT timezone FROM user_preferences WHERE user_id=$1`, uid).Scan(&tz)
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		loc = time.UTC
+	}
+	now := time.Now().In(loc)
+	const layout = "2006-01-02"
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+
+	// Record today's check-in (idempotent: one row per user per local day).
+	_, _ = h.Pool.Exec(c.Context(),
+		`INSERT INTO user_checkins (user_id, day) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+		uid, today.Format(layout))
+
 	rows, err := h.Pool.Query(c.Context(),
-		`SELECT DISTINCT (completed_at AT TIME ZONE 'UTC')::date
-		   FROM lesson_progress WHERE user_id = $1 ORDER BY 1 DESC`, callerID(c))
+		`SELECT day FROM user_checkins WHERE user_id = $1 ORDER BY day DESC`, uid)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "streak failed")
 	}
 	defer rows.Close()
 
-	const layout = "2006-01-02"
 	done := map[string]bool{}
 	for rows.Next() {
 		var d time.Time
@@ -200,10 +219,10 @@ func (h *Handlers) MyStreak(c *fiber.Ctx) error {
 		done[d.Format(layout)] = true
 	}
 
-	now := time.Now().UTC()
-	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	day := today
 	todayDone := done[day.Format(layout)]
-	// A streak stays alive until midnight even before today's lesson is done.
+	// A streak stays alive until midnight even if they haven't checked in yet
+	// (defensive — we just inserted today, so this is normally true).
 	if !todayDone {
 		day = day.AddDate(0, 0, -1)
 	}
