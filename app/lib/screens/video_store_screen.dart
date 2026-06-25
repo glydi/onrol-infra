@@ -83,22 +83,61 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
       final qid = Uri.encodeQueryComponent(uploadId);
       final qkey = Uri.encodeQueryComponent(key);
 
-      // 2. upload each chunk as a part — read just this slice from disk/blob so
-      //    we never hold more than one 8 MB chunk in memory (multi-GB safe).
-      final parts = <Map<String, dynamic>>[];
-      var part = 1;
-      for (var off = 0; off < total; off += _chunkSize) {
-        final end = (off + _chunkSize < total) ? off + _chunkSize : total;
-        final chunk = await picked.read(off, end);
-        final pr = await widget.auth.apiPostBytes(
-            '/api/v1/manage/videos/upload/part?upload_id=$qid&key=$qkey&part=$part', chunk);
-        final pd = ApiClient.decode(pr);
-        parts.add({'part_number': part, 'etag': pd['etag']});
-        if (mounted) setState(() {
-          _upPart = part; _upDone = end; _progress = end / total;
-        });
-        part++;
+      // 2. upload parts CONCURRENTLY with retry. Sequential uploads left the
+      //    uplink idle while the server forwarded each part to R2 (very slow) and
+      //    aborted the whole upload on a single transient failure (why big files
+      //    "didn't work"). A pool of workers keeps the connection saturated; each
+      //    part retries a few times before giving up. We still read one 8 MB slice
+      //    at a time per worker, so memory stays bounded (~_concurrency * 8 MB).
+      final numParts = (total / _chunkSize).ceil();
+      final etags = List<String?>.filled(numParts, null);
+      var nextIndex = 0; // next 0-based part to claim (event loop = atomic)
+      var doneParts = 0, doneBytes = 0;
+      Object? failure;
+
+      Future<void> worker() async {
+        while (failure == null) {
+          final i = nextIndex;
+          if (i >= numParts) return;
+          nextIndex++;
+          final off = i * _chunkSize;
+          final end = (off + _chunkSize < total) ? off + _chunkSize : total;
+          final partNum = i + 1;
+          try {
+            final chunk = await picked.read(off, end);
+            String? etag;
+            for (var attempt = 0;; attempt++) {
+              try {
+                final pr = await widget.auth.apiPostBytes(
+                    '/api/v1/manage/videos/upload/part?upload_id=$qid&key=$qkey&part=$partNum', chunk);
+                etag = ApiClient.decode(pr)['etag']?.toString();
+                break;
+              } catch (_) {
+                if (attempt >= 3) rethrow; // 4 attempts total
+                await Future.delayed(Duration(milliseconds: 600 * (attempt + 1)));
+              }
+            }
+            etags[i] = etag;
+            doneParts++;
+            doneBytes += end - off;
+            if (mounted) setState(() {
+              _upPart = doneParts; _upDone = doneBytes; _progress = doneBytes / total;
+            });
+          } catch (e) {
+            failure = e; // stop the pool; surfaced below
+            return;
+          }
+        }
       }
+
+      const concurrency = 6; // browsers cap at ~6 connections per host
+      await Future.wait(List.generate(concurrency, (_) => worker()));
+      if (failure != null) throw failure!;
+      if (etags.any((e) => e == null || e.isEmpty)) throw Exception('A part failed to upload');
+
+      final parts = <Map<String, dynamic>>[
+        for (var i = 0; i < numParts; i++) {'part_number': i + 1, 'etag': etags[i]},
+      ];
 
       // 3. complete — R2 reassembles into one object
       final cr = await widget.auth.apiPost('/api/v1/manage/videos/upload/complete', {
