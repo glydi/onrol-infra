@@ -7,6 +7,7 @@ import '../services/auth_service.dart';
 import '../theme.dart';
 import '../widgets/file_pick_stub.dart' if (dart.library.html) '../widgets/file_pick_web.dart';
 import '../widgets/ui.dart';
+import 'video_player_screen.dart';
 
 /// Admin video store: upload videos to Cloudflare R2 and reuse them in lessons.
 class VideoStoreScreen extends StatefulWidget {
@@ -66,11 +67,11 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
   Future<void> _upload() async {
     final picked = await pickVideoFile();
     if (picked == null) return; // cancelled
-    final bytes = picked.bytes;
+    final total = picked.size;
     setState(() {
       _uploading = true; _progress = 0;
-      _upName = picked.name; _upDone = 0; _upTotal = bytes.length;
-      _upPart = 0; _upTotalParts = (bytes.length / _chunkSize).ceil();
+      _upName = picked.name; _upDone = 0; _upTotal = total;
+      _upPart = 0; _upTotalParts = (total / _chunkSize).ceil();
     });
     try {
       // 1. init multipart upload
@@ -82,25 +83,26 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
       final qid = Uri.encodeQueryComponent(uploadId);
       final qkey = Uri.encodeQueryComponent(key);
 
-      // 2. upload each chunk as a part
+      // 2. upload each chunk as a part — read just this slice from disk/blob so
+      //    we never hold more than one 8 MB chunk in memory (multi-GB safe).
       final parts = <Map<String, dynamic>>[];
       var part = 1;
-      for (var off = 0; off < bytes.length; off += _chunkSize) {
-        final end = (off + _chunkSize < bytes.length) ? off + _chunkSize : bytes.length;
-        final chunk = bytes.sublist(off, end);
+      for (var off = 0; off < total; off += _chunkSize) {
+        final end = (off + _chunkSize < total) ? off + _chunkSize : total;
+        final chunk = await picked.read(off, end);
         final pr = await widget.auth.apiPostBytes(
             '/api/v1/manage/videos/upload/part?upload_id=$qid&key=$qkey&part=$part', chunk);
         final pd = ApiClient.decode(pr);
         parts.add({'part_number': part, 'etag': pd['etag']});
         if (mounted) setState(() {
-          _upPart = part; _upDone = end; _progress = end / bytes.length;
+          _upPart = part; _upDone = end; _progress = end / total;
         });
         part++;
       }
 
       // 3. complete — R2 reassembles into one object
       final cr = await widget.auth.apiPost('/api/v1/manage/videos/upload/complete', {
-        'upload_id': uploadId, 'key': key, 'title': picked.name, 'size': bytes.length, 'parts': parts,
+        'upload_id': uploadId, 'key': key, 'title': picked.name, 'size': total, 'parts': parts,
       });
       ApiClient.decode(cr);
       _toast('Uploaded "${picked.name}"');
@@ -150,6 +152,20 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
         Text('Part $_upPart of $_upTotalParts · ${_size(_upDone)} / ${_size(_upTotal)}', style: AppleTheme.footnote(context)),
       ]),
     );
+  }
+
+  // Preview the video in the full player (HLS once ready, else the source mp4) so
+  // an admin can actually watch what's in the store. authToken signs the
+  // encrypted-HLS key requests; the watermark carries the admin's identity.
+  Future<void> _play(String url, String title) async {
+    if (url.isEmpty) { _toast('No video URL yet'); return; }
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => VideoPlayerScreen(
+        url: url,
+        watermark: widget.auth.user?.email ?? 'admin',
+        title: title,
+        authToken: widget.auth.token,
+      )));
   }
 
   Future<void> _delete(String id, String title) async {
@@ -221,12 +237,15 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
       child: AppleCard(
         square: true,
         child: Row(children: [
-          Container(
-            width: 40, height: 40, alignment: Alignment.center,
-            decoration: BoxDecoration(color: p.accent.withOpacity(0.14)),
-            child: processing
-                ? const CupertinoActivityIndicator(radius: 9)
-                : Icon(CupertinoIcons.play_rectangle_fill, color: p.accent, size: 20),
+          HoverTap(
+            onTap: () => _play(url, title),
+            child: Container(
+              width: 40, height: 40, alignment: Alignment.center,
+              decoration: BoxDecoration(color: p.accent.withOpacity(0.14)),
+              child: processing
+                  ? const CupertinoActivityIndicator(radius: 9)
+                  : Icon(CupertinoIcons.play_rectangle_fill, color: p.accent, size: 20),
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -252,6 +271,11 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
               ),
             )
           else ...[
+            HoverTap(
+              onTap: () => _play(url, title),
+              child: Icon(CupertinoIcons.play_circle, size: 22, color: p.accent),
+            ),
+            const SizedBox(width: 14),
             HoverTap(
               onTap: () { Clipboard.setData(ClipboardData(text: url)); _toast('URL copied'); },
               child: Icon(CupertinoIcons.doc_on_doc, size: 20, color: p.secondary),
