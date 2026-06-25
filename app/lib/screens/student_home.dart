@@ -15,6 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../config.dart' as appcfg;
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
+import '../services/push.dart';
 import '../theme_controller.dart';
 import 'live_screen.dart';
 import 'login_screen.dart';
@@ -5225,6 +5226,7 @@ class _SettingsViewState extends State<_SettingsView> {
   bool _actOpen = false;
   bool _twoFA = false; // current enabled status (from /me/2fa)
   bool _savingPw = false;
+  bool _pushBusy = false; // enabling Web Push
   final _cur = TextEditingController();
   final _new = TextEditingController();
   final _conf = TextEditingController();
@@ -5332,6 +5334,17 @@ class _SettingsViewState extends State<_SettingsView> {
 
   void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
 
+  // Ask the browser for notification permission and subscribe this device.
+  Future<void> _enablePush() async {
+    setState(() => _pushBusy = true);
+    final ok = await Push.enable(widget.auth, prompt: true);
+    if (!mounted) return;
+    setState(() => _pushBusy = false);
+    _toast(ok
+        ? 'Push notifications enabled on this device'
+        : 'Could not enable push — allow notifications in your browser settings');
+  }
+
   Future<void> _savePassword() async {
     final cur = _cur.text, nw = _new.text, cf = _conf.text;
     if (cur.isEmpty || nw.isEmpty) return _toast('Fill in all fields');
@@ -5393,9 +5406,27 @@ class _SettingsViewState extends State<_SettingsView> {
           _fontRow(),
         ]),
       ),
+      // Web Push enable (browser/PWA only — no-op on native, so hidden there).
+      if (kIsWeb) ...[
+        const SizedBox(height: 14),
+        _Entrance(
+          index: 1,
+          child: _section('Notifications', CupertinoIcons.bell_fill, [
+            _tapRow(
+              CupertinoIcons.bell_circle_fill,
+              'Push notifications',
+              'Get announcements & alerts on this device',
+              _pushBusy ? () {} : _enablePush,
+              trailing: _pushBusy
+                  ? const CupertinoActivityIndicator(radius: 9)
+                  : null,
+            ),
+          ]),
+        ),
+      ],
       const SizedBox(height: 14),
       _Entrance(
-        index: 1,
+        index: 2,
         child: _section('Security', CupertinoIcons.lock_shield_fill, [
           _passwordRow(),
           _div(),

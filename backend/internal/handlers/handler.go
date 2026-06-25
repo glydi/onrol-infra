@@ -10,6 +10,7 @@ import (
 	"github.com/onrol/lms-backend/internal/auth"
 	"github.com/onrol/lms-backend/internal/config"
 	"github.com/onrol/lms-backend/internal/middleware"
+	"github.com/onrol/lms-backend/internal/push"
 	"github.com/onrol/lms-backend/internal/zoho"
 )
 
@@ -25,7 +26,8 @@ type Handlers struct {
 	Pool     *pgxpool.Pool
 	JWT      *auth.Manager
 	Attestor middleware.Attestor
-	Zoho     *zoho.Client // may be nil if Zoho isn't configured
+	Zoho     *zoho.Client  // may be nil if Zoho isn't configured
+	Push     *push.Service // may be nil if Web Push failed to initialise
 }
 
 func New(cfg config.Config, pool *pgxpool.Pool, jwtm *auth.Manager, att middleware.Attestor, z *zoho.Client) *Handlers {

@@ -288,6 +288,10 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Get("/me/announcements", auth, h.MyAnnouncements)
 	api.Get("/me/notifications", auth, h.MyNotifications)
 	api.Post("/me/notifications/read", auth, h.MarkNotificationsRead)
+	// Self-hosted Web Push: VAPID public key + per-browser subscription.
+	api.Get("/push/public-key", auth, h.PushPublicKey)
+	api.Post("/me/push/subscribe", auth, h.PushSubscribe)
+	api.Post("/me/push/unsubscribe", auth, h.PushUnsubscribe)
 	api.Post("/me/messages", auth, h.SendMessage)
 	api.Get("/me/messages", auth, h.Inbox)
 }

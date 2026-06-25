@@ -5,6 +5,7 @@ import 'app_mode.dart';
 import 'services/api_client.dart';
 import 'services/auth_service.dart';
 import 'services/device_service.dart';
+import 'services/push.dart';
 import 'screens/accounts_portal.dart';
 import 'screens/ambassador_portal.dart';
 import 'screens/college_portal.dart';
@@ -37,6 +38,19 @@ class _OnrolAppState extends State<OnrolApp> {
   late final ApiClient _api = ApiClient(_device);
   late final AuthService _auth = AuthService(_api, _device);
   late final Future<bool> _restored = _auth.restore();
+
+  @override
+  void initState() {
+    super.initState();
+    // On web, silently (re)subscribe this browser to push once a session is
+    // restored — only if the user already granted permission (no prompt here;
+    // the prompt lives behind the Settings toggle). No-op on mobile/desktop.
+    _restored.then((ok) {
+      if (ok && _auth.user != null) {
+        Push.enable(_auth, prompt: false);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

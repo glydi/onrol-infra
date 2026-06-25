@@ -33,17 +33,25 @@
   <title>ONROL Learn</title>
   <link rel="manifest" href="manifest.json">
   <script>
-    // Always-fresh: we build with --pwa-strategy=none (no service worker), and
-    // this kills any previously-installed worker + its caches so a deploy is
-    // never served stale. Reloads once if it found a stale worker to evict.
+    // Always-fresh: we build with --pwa-strategy=none (no app service worker), so
+    // we evict any previously-installed Flutter worker + its caches so a deploy is
+    // never served stale. We KEEP our dedicated push worker (push-sw.js) — it
+    // never intercepts fetches/caches, so it can't serve stale assets. Reload once
+    // only if a stale (non-push) worker was actually evicted.
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(function (regs) {
-        var had = regs.length > 0;
-        regs.forEach(function (r) { r.unregister(); });
+        var evicted = false;
+        regs.forEach(function (r) {
+          var sw = r.active || r.waiting || r.installing;
+          var url = (sw && sw.scriptURL) || '';
+          if (url.indexOf('push-sw.js') !== -1) return; // keep the push worker
+          r.unregister();
+          evicted = true;
+        });
         if (window.caches && caches.keys) {
           caches.keys().then(function (ks) { ks.forEach(function (k) { caches.delete(k); }); });
         }
-        if (had) location.reload();
+        if (evicted) location.reload();
       }).catch(function () {});
     }
   </script>

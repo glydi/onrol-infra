@@ -20,6 +20,7 @@ import (
 	"github.com/onrol/lms-backend/internal/database"
 	"github.com/onrol/lms-backend/internal/handlers"
 	"github.com/onrol/lms-backend/internal/middleware"
+	"github.com/onrol/lms-backend/internal/push"
 	"github.com/onrol/lms-backend/internal/router"
 	"github.com/onrol/lms-backend/internal/zoho"
 )
@@ -53,6 +54,15 @@ func main() {
 	zClient := zoho.New(zoho.Config{WebinarBase: cfg.Zoho.WebinarBase})
 
 	h := handlers.New(cfg, pool, jwtm, attestor, zClient)
+
+	// Self-hosted Web Push: load (or generate + persist) the VAPID keypair. On
+	// failure we log and carry on — push endpoints then report disabled.
+	if pushSvc, perr := push.New(ctx, pool, cfg.AppBaseURL); perr != nil {
+		log.Printf("web push: init failed, push disabled: %v", perr)
+	} else {
+		h.Push = pushSvc
+		log.Printf("web push ready (VAPID keypair loaded)")
+	}
 
 	app := fiber.New(fiber.Config{
 		AppName:               "onrol-api",

@@ -132,6 +132,7 @@ func (h *Handlers) CreateAnnouncement(c *fiber.Ctx) error {
 			req.CourseID, callerID(c), req.Title, req.Body).Scan(&id); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "create failed")
 		}
+		go h.pushAnnouncement(req.CourseID, "all", req.Title, req.Body, nil, "")
 		return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": req.Title})
 	}
 	// Targeted broadcast (all / batch / role).
@@ -164,6 +165,7 @@ func (h *Handlers) CreateAnnouncement(c *fiber.Ctx) error {
 		callerID(c), req.Title, req.Body, req.Audience, req.BatchNumber, roleVal).Scan(&id); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
 	}
+	go h.pushAnnouncement("", req.Audience, req.Title, req.Body, req.BatchNumber, req.Role)
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": req.Title})
 }
 

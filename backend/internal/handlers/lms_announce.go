@@ -1,7 +1,11 @@
 package handlers
 
 import (
+	"context"
+
 	"github.com/gofiber/fiber/v2"
+
+	"github.com/onrol/lms-backend/internal/push"
 )
 
 // ListAnnouncements returns every announcement (staff view, newest first).
@@ -46,11 +50,15 @@ func (h *Handlers) MyAnnouncements(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"announcements": scanAnnouncements(rows)})
 }
 
-// notify inserts a per-user notification (best-effort — never fails the caller).
+// notify inserts a per-user notification (best-effort — never fails the caller)
+// and fires a Web Push to that user's devices in the background.
 func (h *Handlers) notify(c *fiber.Ctx, userID, title, body, kind string) {
 	_, _ = h.Pool.Exec(c.Context(),
 		`INSERT INTO notifications (user_id, title, body, kind) VALUES ($1,$2,$3,$4)`,
 		userID, title, body, kind)
+	if h.Push != nil {
+		go h.Push.SendToUser(context.Background(), userID, push.Payload{Title: title, Body: body, URL: "/", Tag: kind})
+	}
 }
 
 // MyNotifications returns the caller's personal notifications (newest first).
