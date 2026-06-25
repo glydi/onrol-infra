@@ -1134,10 +1134,11 @@ class _IssueCertificatesState extends State<_IssueCertificates> {
 /// marked), add questions (MCQ with real options + pick-the-correct, true/false,
 /// short answer), and delete questions.
 class _QuizBuilder extends StatefulWidget {
-  const _QuizBuilder({required this.auth, required this.assessmentId, required this.title});
+  const _QuizBuilder({required this.auth, required this.assessmentId, required this.title, this.isQuiz = true});
   final AuthService auth;
   final String assessmentId;
   final String title;
+  final bool isQuiz;
   @override
   State<_QuizBuilder> createState() => _QuizBuilderState();
 }
@@ -1172,15 +1173,15 @@ class _QuizBuilderState extends State<_QuizBuilder> {
     final points = TextEditingController(text: '1');
     final shortAns = TextEditingController();
     final opts = <TextEditingController>[TextEditingController(), TextEditingController()];
-    int type = 0; // mcq, truefalse, short
+    int type = 0; // mcq, truefalse, short, essay
     int correctIdx = 0; // for mcq + truefalse
-    const types = ['mcq', 'truefalse', 'short'];
+    const types = ['mcq', 'truefalse', 'short', 'essay'];
 
     final ok = await showFormSheet(context, square: true, title: 'Add Question', builder: (setS) {
       final rows = <Widget>[
         sheetField(prompt, 'Question prompt', CupertinoIcons.text_quote),
         const SizedBox(height: 10),
-        AppleSegmented(square: true, labels: const ['MCQ', 'True/False', 'Short'], selected: type, onChanged: (i) => setS(() {
+        AppleSegmented(square: true, labels: const ['MCQ', 'True/False', 'Short', 'Essay'], selected: type, onChanged: (i) => setS(() {
           type = i;
           correctIdx = 0;
         })),
@@ -1228,8 +1229,10 @@ class _QuizBuilderState extends State<_QuizBuilder> {
         rows.add(_label(context, 'Correct answer'));
         rows.add(const SizedBox(height: 6));
         rows.add(AppleSegmented(square: true, labels: const ['True', 'False'], selected: correctIdx, onChanged: (i) => setS(() => correctIdx = i)));
-      } else {
+      } else if (type == 2) {
         rows.add(sheetField(shortAns, 'Correct answer', CupertinoIcons.checkmark_alt_circle));
+      } else {
+        rows.add(_label(context, 'Long answer — students write a response and you grade it manually. No answer key needed.'));
       }
       rows.add(const SizedBox(height: 12));
       rows.add(sheetField(points, 'Points', CupertinoIcons.number, keyboard: TextInputType.number));
@@ -1246,9 +1249,12 @@ class _QuizBuilderState extends State<_QuizBuilder> {
       } else if (type == 1) {
         options = ['true', 'false'];
         correct = correctIdx == 0 ? 'true' : 'false';
-      } else {
+      } else if (type == 2) {
         options = [];
         correct = shortAns.text.trim();
+      } else {
+        options = [];
+        correct = '';
       }
       try {
         await widget.auth.apiPost('/api/v1/manage/assessments/${widget.assessmentId}/questions', {
@@ -1279,7 +1285,7 @@ class _QuizBuilderState extends State<_QuizBuilder> {
         scrolledUnderElevation: 0,
         leading: IconButton(icon: const Icon(CupertinoIcons.chevron_left), onPressed: () => Navigator.pop(context)),
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Quiz builder', style: AppleTheme.headline(context)),
+          Text(widget.isQuiz ? 'Quiz builder' : 'Assignment questions', style: AppleTheme.headline(context)),
           Text(widget.title, style: AppleTheme.footnote(context)),
         ]),
       ),
@@ -1295,7 +1301,7 @@ class _QuizBuilderState extends State<_QuizBuilder> {
               padding: EdgeInsets.fromLTRB(hp, 12, hp, 96),
               children: [
                 if (_questions.isEmpty)
-                  AppleCard(square: true, child: Text('No questions yet. Tap “Add question” to build this quiz.', style: AppleTheme.footnote(context)))
+                  AppleCard(square: true, child: Text('No questions yet. Tap “Add question” to build this ${widget.isQuiz ? 'quiz' : 'assignment'}.', style: AppleTheme.footnote(context)))
                 else
                   ..._questions.asMap().entries.map((e) => _questionCard(e.key + 1, e.value as Map<String, dynamic>)),
               ],
@@ -1326,6 +1332,12 @@ class _QuizBuilderState extends State<_QuizBuilder> {
               const Icon(CupertinoIcons.checkmark_alt_circle_fill, size: 16, color: AppleColors.green),
               const SizedBox(width: 6),
               Expanded(child: Text('Answer: $correct', style: AppleTheme.footnote(context))),
+            ])
+          else if (type == 'essay')
+            Row(children: [
+              const Icon(CupertinoIcons.text_alignleft, size: 16, color: AppleColors.blue),
+              const SizedBox(width: 6),
+              Expanded(child: Text('Long answer — graded manually', style: AppleTheme.footnote(context))),
             ])
           else
             ...options.map((o) {
@@ -1851,34 +1863,64 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   Widget _assessmentCard(Map<String, dynamic> a) {
     final isQuiz = a['type'] == 'quiz';
     final qCount = a['questions'] ?? 0;
+    final id = a['id'].toString();
+    final title = a['title']?.toString() ?? 'Assessment';
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: AppleCard(square: true, 
-        child: Row(children: [
-          Container(
-            width: 40, height: 40,
-            decoration: BoxDecoration(color: (isQuiz ? AppleColors.purple : AppleColors.blue).withOpacity(0.12), borderRadius: BorderRadius.zero),
-            child: Icon(isQuiz ? CupertinoIcons.question_square_fill : CupertinoIcons.doc_text_fill, color: isQuiz ? AppleColors.purple : AppleColors.blue, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(a['title']?.toString() ?? 'Assessment', style: AppleTheme.headline(context)),
-              Text('${isQuiz ? 'Quiz' : 'Assignment'} · ${a['max_score'] ?? 100} pts${isQuiz ? ' · $qCount questions' : ''}', style: AppleTheme.footnote(context)),
-            ]),
-          ),
-          if (isQuiz) _smallButton('Build', CupertinoIcons.slider_horizontal_3, () => _openQuizBuilder(a['id'].toString(), a['title']?.toString() ?? 'Quiz')),
-        ]),
+      child: GestureDetector(
+        onTap: () => _openQuizBuilder(id, title, isQuiz: isQuiz),
+        behavior: HitTestBehavior.opaque,
+        child: AppleCard(square: true,
+          child: Row(children: [
+            Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(color: (isQuiz ? AppleColors.purple : AppleColors.blue).withOpacity(0.12), borderRadius: BorderRadius.zero),
+              child: Icon(isQuiz ? CupertinoIcons.question_square_fill : CupertinoIcons.doc_text_fill, color: isQuiz ? AppleColors.purple : AppleColors.blue, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title, style: AppleTheme.headline(context)),
+                Text('${isQuiz ? 'Quiz' : 'Assignment'} · ${a['max_score'] ?? 100} pts · $qCount question${qCount == 1 ? '' : 's'}', style: AppleTheme.footnote(context)),
+              ]),
+            ),
+            _smallButton('Questions', CupertinoIcons.list_bullet, () => _openQuizBuilder(id, title, isQuiz: isQuiz)),
+            const SizedBox(width: 6),
+            GestureDetector(
+              onTap: () => _deleteAssessment(id, title),
+              child: const Icon(CupertinoIcons.trash, size: 18, color: AppleColors.red),
+            ),
+          ]),
+        ),
       ),
     );
   }
 
-  // Open the full quiz builder (list questions, add with real options + correct
-  // selection, delete). Reloads the course on return so question counts refresh.
-  Future<void> _openQuizBuilder(String assessmentId, String title) async {
+  // Open the question builder for a quiz OR assignment (list questions, add with
+  // real options + correct selection, delete). Reloads the course on return so
+  // question counts refresh.
+  Future<void> _openQuizBuilder(String assessmentId, String title, {bool isQuiz = true}) async {
     await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => _QuizBuilder(auth: widget.auth, assessmentId: assessmentId, title: title)));
+      builder: (_) => _QuizBuilder(auth: widget.auth, assessmentId: assessmentId, title: title, isQuiz: isQuiz)));
     _load();
+  }
+
+  // Delete an assessment and everything under it (questions + submissions).
+  Future<void> _deleteAssessment(String id, String title) async {
+    final yes = await showSquareConfirm(context,
+        title: 'Delete assessment',
+        message: 'Delete "$title" and all its questions and submissions? This cannot be undone.',
+        confirmLabel: 'Delete', destructive: true);
+    if (!yes) return;
+    try {
+      await widget.auth.apiDelete('/api/v1/manage/assessments/$id');
+      _toast('Deleted');
+      _load();
+    } on ApiException catch (e) {
+      _toast(e.message);
+    } catch (_) {
+      _toast('Could not delete');
+    }
   }
 
   Future<void> _addSession() async {
