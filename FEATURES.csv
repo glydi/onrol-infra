@@ -1,86 +1,171 @@
-Area,Feature,Description,Student,Instructor,Admin,Platform,API
-Auth & Account,Self-register,Public sign-up for a new account,Yes,Public,Public,Both,POST /auth/register
-Auth & Account,Login (device-bound),Sign in; JWT bound to device UUID,Yes,Yes,Yes,Both,POST /auth/login
-Auth & Account,Forgot / reset password,Email OTP then set new password,Yes,Yes,Yes,Both,POST /auth/forgot; /auth/reset
-Auth & Account,View / edit own profile,"Name, username, phone, occupation, location, LinkedIn, GitHub, avatar",Yes,Yes,Yes,Both,GET/PATCH /me/profile
-Auth & Account,Change own password,Current + new password,Yes,Yes,Yes,Both,POST /me/password
-Auth & Account,Two-factor auth (TOTP),Enable / verify / disable 2FA,Yes,Yes,Yes,Both,/me/2fa*
-Auth & Account,Manage own devices,List active sessions; sign out one/all,Yes,Yes,Yes,Both,GET /devices; DELETE /devices/:id
-Auth & Account,Theme & text scale,Light/Dark/System + font size,Yes,Yes,Yes,Both,(local)
-Catalog & Enrollment,Browse catalog,See published courses to enroll,Yes,Yes,Yes,Both,GET /catalog
-Catalog & Enrollment,Self-enroll / request,Enroll in open course or request approval,Yes,Yes,Yes,Both,POST /me/courses/:id/enroll
-Catalog & Enrollment,My courses,Enrolled courses with progress %,Yes,Yes,Yes,Both,GET /me/courses
-Catalog & Enrollment,Manually enroll a student,Add a student to a course,No,Own,All,Web,POST /manage/courses/:id/enroll
-Catalog & Enrollment,Enrollment requests queue,Approve / reject pending requests,No,Own,All,Web,/manage/enrollment-requests
-Catalog & Enrollment,View enrolled students,List students in a course,No,Own,All,Web,GET /manage/courses/:id/students
-Learning,View course content,Modules and lessons,Yes,Yes,Yes,Both,GET /me/courses/:id/content
-Learning,Resume learning,Jump to last-watched lesson,Yes,Yes,Yes,Both,GET /me/resume
-Learning,Video player,"HLS/MP4, resume, watermark, no download",Yes,Yes,Yes,Both,/me/videos/:id/hls.key
-Learning,Save lesson progress,Persist watch position,Yes,Yes,Yes,Both,POST /me/lessons/:id/progress
-Learning,Mark lesson complete,Complete a lesson,Yes,Yes,Yes,Both,POST /me/lessons/:id/complete
-Courses (manage),Create course,Create a course and assign instructor,No,No,Yes,Web,POST /manage/courses
-Courses (manage),Edit course,"Title, description, cover, admission mode",No,Own,All,Web,PATCH /manage/courses/:id
-Courses (manage),Publish / draft / archive,Toggle visibility to students,No,Own,All,Web,PATCH /manage/courses/:id
-Courses (manage),Delete course,Remove a course,No,Own,All,Web,DELETE /manage/courses/:id
-Curriculum,Add / delete module,Course modules,No,Own,All,Web,/manage/courses/:id/modules
-Curriculum,Add / delete lesson,"Video, text, link or document lesson",No,Own,All,Web,/manage/modules/:id/lessons
-Curriculum,Prerequisites,Require another course first,No,Own,All,Web,POST /manage/courses/:id/prerequisites
-Video Library,Upload videos,Simple + chunked upload,No,Own,All,Web,/manage/videos/upload*
-Video Library,Retranscode / delete video,Media management,No,Own,All,Web,/manage/videos/:id*
-Assessments,Build quiz / assignment,"MCQ, true/false, short answer, points, due",No,Own,All,Web,/manage/courses/:id/assessments
-Assessments,Manage questions,Add / delete questions,No,Own,All,Web,/manage/assessments/:id/questions
-Assessments,View submissions,See student submissions,No,Own,All,Web,GET /manage/assessments/:id/submissions
-Assessments,Grade + feedback,Score a submission,No,Own,All,Web,POST /manage/submissions/:id/grade
-Assessments,Take assessment,Open and submit a quiz/assignment,Yes,Yes,Yes,Both,/me/assessments/:id/submit
-Assessments,View grades,Scores on submitted work,Yes,Yes,Yes,Both,GET /me/grades
-Assessments,Transcript,All grades across courses,Yes,Yes,Yes,Both,GET /me/transcript
-Live Classes,Schedule session,Create live class with join link,No,Own,All,Web,POST /manage/courses/:id/sessions
-Live Classes,Edit session,Update title / link / time,No,Own,All,Web,PATCH /manage/sessions/:id
-Live Classes,Record attendance,Mark attendance for a session,No,Own,All,Web,POST /manage/sessions/:id/attendance
-Live Classes,Join live class,Open scheduled session,Yes,Yes,Yes,Both,GET /me/live
-Calendar,Calendar,Classes / deadlines / activities by date,Yes,Yes,Yes,Both,GET /me/calendar
-Certificates,Issue certificates,Whole course / by batch / selected,No,Own,All,Web,POST /manage/courses/:id/certificates
-Certificates,Revoke certificate,Remove an issued certificate,No,Own,All,Web,DELETE /manage/courses/:id/certificates/:uid
-Certificates,View / download own,Earned certificates,Yes,Yes,Yes,Both,GET /me/certificates
-Certificates,Public verify,Verify a certificate by serial,Public,Public,Public,Both,GET /certificates/:serial
-Community,Course discussion / doubts,Threads & module comments,Yes,Own,All,Both,/courses/:id/discussion
-Community,Global forum,Create / reply threads,Yes,Yes,Yes,Both,/me/forum
-Community,Delete any forum post,Moderation,No,Yes,Yes,Both,DELETE /me/forum/posts/:id
-Community,Announcements (post),To all / batch / role,No,Own,All,Web,POST /manage/announcements
-Community,Announcements (receive),Filtered announcements,Yes,Yes,Yes,Both,GET /me/announcements
-Community,Notifications,Personal notifications; mark read,Yes,Yes,Yes,Both,/me/notifications
-Community,Messages inbox,Direct messages,Yes,Yes,Yes,Both,/me/messages
-Engagement,Dashboard overview,XP / progress / certificates / activity,Yes,n/a,n/a,Both,(aggregate)
-Engagement,Leaderboard,Overall and per-course XP rank,Yes,Yes,Yes,Both,GET /me/leaderboard
-Engagement,Streak,Consecutive-day learning streak,Yes,Yes,Yes,Both,GET /me/streak
-Engagement,Achievements / badges,Earned badges,Yes,n/a,n/a,Both,(local)
-Engagement,Study Hub,Guides / cheat sheets / flashcards (static),Yes,n/a,n/a,Both,(static)
-Reports,Completion report,% lessons done per student,No,Own,All,Web,GET /manage/courses/:id/report/completion
-Reports,Grades report,Assessment stats,No,Own,All,Web,GET /manage/courses/:id/report/grades
-Reports,Attendance report,Session attendance,No,Own,All,Web,GET /manage/courses/:id/report/attendance
-People (admin),Create instructor,Add instructor account,No,No,Yes,Web,POST /manage/users
-People (admin),Create student,Add student (course label + batch),No,No,Yes,Web,POST /manage/users
-People (admin),Search users,By name/email/phone/role/course,No,No,Yes,Web,GET /manage/users
-People (admin),Change user role,Promote / demote,No,No,Yes,Web,POST /manage/users/:id/role
-People (admin),Reset user password,Set another user's password,No,No,Yes,Web,POST /manage/users/:id/password
-People (admin),Deactivate user,Soft delete (block sign-in),No,No,Yes,Web,DELETE /manage/users/:id
-People (admin),Delete user permanently,Hard delete + cascade,No,No,Yes,Web,DELETE /manage/users/:id/permanent
-People (admin),Batches / groups,"Manual, auto-split, reassign, batch-enroll",No,No,Yes,Web,/manage/groups; /manage/users/auto-batch
-People (admin),Manage user devices,View / revoke / reset all,No,No,Yes,Web,/manage/users/:id/devices
-People (admin),Converted leads,See CRM origin of a user,No,No,Yes,Web,GET /manage/converted-leads
-CRM,Leads,Pipeline status / activities / tasks / message,No,No,Yes,Web,/manage/crm/leads
-CRM,Accounts,Companies / organizations,No,No,Yes,Web,/manage/crm/accounts
-CRM,Deals,Sales pipeline,No,No,Yes,Web,/manage/crm/deals
-CRM,Invoices & payments,"Invoices, payments, payment links",No,No,Yes,Web,/manage/crm/invoices
-CRM,Broadcasts,Email / SMS campaigns,No,No,Yes,Web,/manage/crm/broadcasts
-CRM,Forms & surveys,Public intake + responses,No,No,Yes,Web,/manage/crm/forms; /surveys
-CRM,Reviews / events / feed,"Reviews, events, social feed",No,No,Yes,Web,/manage/crm/*
-CRM,Support tickets,Help desk,No,No,Yes,Web,/manage/crm/tickets
-CRM,Webhooks & automation,Outbound webhooks + rules,No,No,Yes,Web,/manage/crm/webhooks; /automation
-CRM,Analytics & funnel,Dashboard / funnel / my-day,No,No,Yes,Web,/manage/crm/analytics
-CRM,Affiliates,Accounts / commissions / payouts,No,No,Yes,Web,/manage/crm/affiliates
-Programs,Ambassadors,Manage referrals (approve/reject),No,No,Yes,Web,/manage/ambassadors
-Programs,Franchise partners,Manage partner enrollments,No,No,Yes,Web,/manage/franchises
-Programs,Accounting,Ledger / expense approvals / staff,No,No,Yes,Web,/manage/accounts/*
-Programs,College partners,Colleges / cohorts,No,No,Yes,Web,/college/*
-Ops (superadmin),Bootstrap endpoints,Bulk user/video/webinar/enroll; nuke courses,No,No,Yes,Web,/admin/* (shared secret)
+role,section,sub features
+Student,Auth & Account,Self-register
+Student,Auth & Account,Login (device-bound)
+Student,Auth & Account,Forgot / reset password
+Student,Auth & Account,View / edit own profile
+Student,Auth & Account,Change own password
+Student,Auth & Account,Two-factor auth (TOTP)
+Student,Auth & Account,Manage own devices
+Student,Auth & Account,Theme & text scale
+Student,Catalog & Enrollment,Browse catalog
+Student,Catalog & Enrollment,Self-enroll / request
+Student,Catalog & Enrollment,My courses
+Student,Learning,View course content
+Student,Learning,Resume learning
+Student,Learning,Video player
+Student,Learning,Save lesson progress
+Student,Learning,Mark lesson complete
+Student,Assessments,Take assessment
+Student,Assessments,View grades
+Student,Assessments,Transcript
+Student,Live Classes,Join live class
+Student,Calendar,Calendar
+Student,Certificates,View / download own
+Student,Certificates,Public verify
+Student,Community,Course discussion / doubts
+Student,Community,Global forum
+Student,Community,Announcements (receive)
+Student,Community,Notifications
+Student,Community,Messages inbox
+Student,Engagement,Dashboard overview
+Student,Engagement,Leaderboard
+Student,Engagement,Streak
+Student,Engagement,Achievements / badges
+Student,Engagement,Study Hub
+Instructor,Auth & Account,Self-register
+Instructor,Auth & Account,Login (device-bound)
+Instructor,Auth & Account,Forgot / reset password
+Instructor,Auth & Account,View / edit own profile
+Instructor,Auth & Account,Change own password
+Instructor,Auth & Account,Two-factor auth (TOTP)
+Instructor,Auth & Account,Manage own devices
+Instructor,Auth & Account,Theme & text scale
+Instructor,Catalog & Enrollment,Browse catalog
+Instructor,Catalog & Enrollment,Self-enroll / request
+Instructor,Catalog & Enrollment,My courses
+Instructor,Catalog & Enrollment,Manually enroll a student (own courses)
+Instructor,Catalog & Enrollment,Enrollment requests queue (own courses)
+Instructor,Catalog & Enrollment,View enrolled students (own courses)
+Instructor,Learning,View course content
+Instructor,Learning,Resume learning
+Instructor,Learning,Video player
+Instructor,Learning,Save lesson progress
+Instructor,Learning,Mark lesson complete
+Instructor,Courses (manage),Edit course (own courses)
+Instructor,Courses (manage),Publish / draft / archive (own courses)
+Instructor,Courses (manage),Delete course (own courses)
+Instructor,Curriculum,Add / delete module (own courses)
+Instructor,Curriculum,Add / delete lesson (own courses)
+Instructor,Curriculum,Prerequisites (own courses)
+Instructor,Video Library,Upload videos (own courses)
+Instructor,Video Library,Retranscode / delete video (own courses)
+Instructor,Assessments,Build quiz / assignment (own courses)
+Instructor,Assessments,Manage questions (own courses)
+Instructor,Assessments,View submissions (own courses)
+Instructor,Assessments,Grade + feedback (own courses)
+Instructor,Assessments,Take assessment
+Instructor,Assessments,View grades
+Instructor,Assessments,Transcript
+Instructor,Live Classes,Schedule session (own courses)
+Instructor,Live Classes,Edit session (own courses)
+Instructor,Live Classes,Record attendance (own courses)
+Instructor,Live Classes,Join live class
+Instructor,Calendar,Calendar
+Instructor,Certificates,Issue certificates (own courses)
+Instructor,Certificates,Revoke certificate (own courses)
+Instructor,Certificates,View / download own
+Instructor,Certificates,Public verify
+Instructor,Community,Course discussion / doubts (own courses)
+Instructor,Community,Global forum
+Instructor,Community,Delete any forum post (moderation)
+Instructor,Community,Announcements (post) (own courses)
+Instructor,Community,Announcements (receive)
+Instructor,Community,Notifications
+Instructor,Community,Messages inbox
+Instructor,Engagement,Leaderboard
+Instructor,Engagement,Streak
+Instructor,Reports,Completion report (own courses)
+Instructor,Reports,Grades report (own courses)
+Instructor,Reports,Attendance report (own courses)
+Admin,Auth & Account,Self-register
+Admin,Auth & Account,Login (device-bound)
+Admin,Auth & Account,Forgot / reset password
+Admin,Auth & Account,View / edit own profile
+Admin,Auth & Account,Change own password
+Admin,Auth & Account,Two-factor auth (TOTP)
+Admin,Auth & Account,Manage own devices
+Admin,Auth & Account,Theme & text scale
+Admin,Catalog & Enrollment,Browse catalog
+Admin,Catalog & Enrollment,Self-enroll / request
+Admin,Catalog & Enrollment,My courses
+Admin,Catalog & Enrollment,Manually enroll a student
+Admin,Catalog & Enrollment,Enrollment requests queue
+Admin,Catalog & Enrollment,View enrolled students
+Admin,Learning,View course content
+Admin,Learning,Resume learning
+Admin,Learning,Video player
+Admin,Learning,Save lesson progress
+Admin,Learning,Mark lesson complete
+Admin,Courses (manage),Create course
+Admin,Courses (manage),Edit course
+Admin,Courses (manage),Publish / draft / archive
+Admin,Courses (manage),Delete course
+Admin,Curriculum,Add / delete module
+Admin,Curriculum,Add / delete lesson
+Admin,Curriculum,Prerequisites
+Admin,Video Library,Upload videos
+Admin,Video Library,Retranscode / delete video
+Admin,Assessments,Build quiz / assignment
+Admin,Assessments,Manage questions
+Admin,Assessments,View submissions
+Admin,Assessments,Grade + feedback
+Admin,Assessments,Take assessment
+Admin,Assessments,View grades
+Admin,Assessments,Transcript
+Admin,Live Classes,Schedule session
+Admin,Live Classes,Edit session
+Admin,Live Classes,Record attendance
+Admin,Live Classes,Join live class
+Admin,Calendar,Calendar
+Admin,Certificates,Issue certificates
+Admin,Certificates,Revoke certificate
+Admin,Certificates,View / download own
+Admin,Certificates,Public verify
+Admin,Community,Course discussion / doubts
+Admin,Community,Global forum
+Admin,Community,Delete any forum post (moderation)
+Admin,Community,Announcements (post)
+Admin,Community,Announcements (receive)
+Admin,Community,Notifications
+Admin,Community,Messages inbox
+Admin,Engagement,Leaderboard
+Admin,Engagement,Streak
+Admin,Reports,Completion report
+Admin,Reports,Grades report
+Admin,Reports,Attendance report
+Admin,People (admin),Create instructor
+Admin,People (admin),Create student
+Admin,People (admin),Search users
+Admin,People (admin),Change user role
+Admin,People (admin),Reset user password
+Admin,People (admin),Deactivate user
+Admin,People (admin),Delete user permanently
+Admin,People (admin),Batches / groups
+Admin,People (admin),Manage user devices
+Admin,People (admin),Converted leads
+Admin,CRM,Leads
+Admin,CRM,Accounts
+Admin,CRM,Deals
+Admin,CRM,Invoices & payments
+Admin,CRM,Broadcasts
+Admin,CRM,Forms & surveys
+Admin,CRM,Reviews / events / feed
+Admin,CRM,Support tickets
+Admin,CRM,Webhooks & automation
+Admin,CRM,Analytics & funnel
+Admin,CRM,Affiliates
+Admin,Programs,Ambassadors
+Admin,Programs,Franchise partners
+Admin,Programs,Accounting
+Admin,Programs,College partners
+Admin,Ops (superadmin),Bootstrap endpoints
