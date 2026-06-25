@@ -3,11 +3,13 @@ package handlers
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"log"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/minio/minio-go/v7"
@@ -67,23 +69,75 @@ func (h *Handlers) transcodeToHLS(assetID, sourceKey string) {
 		return
 	}
 
-	// Map exactly one video + (optional) one audio stream — ignores junk/data
-	// tracks. Scale down to <=1080p, CRF 21 for near-transparent quality, capped at
-	// 6 Mbps so it streams smoothly anywhere. 6-second AES-128-encrypted segments.
-	cmd := exec.Command("ffmpeg", "-y", "-i", src,
+	// The HLS muxer args are the same whichever way we feed it: 6-second
+	// AES-128-encrypted VOD segments.
+	hlsTail := []string{
+		"-f", "hls", "-hls_time", "6", "-hls_playlist_type", "vod", "-hls_flags", "independent_segments",
+		"-hls_key_info_file", keyInfo,
+		"-hls_segment_filename", filepath.Join(out, "seg_%03d.ts"),
+		filepath.Join(out, "index.m3u8"),
+	}
+	// Full re-encode: scale down to <=1080p, CRF 21 for near-transparent quality,
+	// capped at 6 Mbps so it streams smoothly anywhere. This is the expensive path
+	// (minutes of CPU on libx264) and only runs when the source isn't already a
+	// web-ready H.264 file.
+	encodeArgs := append([]string{"-y", "-i", src,
 		"-map", "0:v:0", "-map", "0:a:0?",
 		"-vf", "scale='min(1920,iw)':'-2'",
 		"-c:v", "libx264", "-preset", "veryfast", "-profile:v", "high", "-pix_fmt", "yuv420p",
 		"-crf", "21", "-maxrate", "6M", "-bufsize", "12M",
-		"-c:a", "aac", "-b:a", "128k", "-ac", "2",
-		"-f", "hls", "-hls_time", "6", "-hls_playlist_type", "vod", "-hls_flags", "independent_segments",
-		"-hls_key_info_file", keyInfo,
-		"-hls_segment_filename", filepath.Join(out, "seg_%03d.ts"),
-		filepath.Join(out, "index.m3u8"))
-	if logBytes, err := cmd.CombinedOutput(); err != nil {
-		log.Printf("transcode %s ffmpeg output: %s", assetID, tail(string(logBytes), 600))
-		fail("ffmpeg", err)
-		return
+		"-c:a", "aac", "-b:a", "128k", "-ac", "2"}, hlsTail...)
+
+	// Cheap path: if the upload is already H.264 within our size/bitrate limits we
+	// just stream-copy it into HLS (near-instant, I/O bound) instead of burning
+	// minutes re-encoding. Audio is copied when already AAC, else re-encoded (cheap).
+	// An unreadable probe falls through to the full encode.
+	pr, ok := ffprobeSource(src)
+	copyMode := ok && pr.canStreamCopy()
+
+	var args []string
+	if copyMode {
+		args = []string{"-y", "-i", src, "-map", "0:v:0"}
+		if pr.hasAudio {
+			args = append(args, "-map", "0:a:0?", "-c:v", "copy")
+			if pr.aCodec == "aac" {
+				args = append(args, "-c:a", "copy")
+			} else {
+				args = append(args, "-c:a", "aac", "-b:a", "128k", "-ac", "2")
+			}
+		} else {
+			args = append(args, "-c:v", "copy", "-an")
+		}
+		args = append(args, hlsTail...)
+	} else {
+		args = encodeArgs
+	}
+
+	mode := "encode"
+	if copyMode {
+		mode = "stream-copy"
+	}
+	log.Printf("transcode %s: %s (codec=%q %dx%d bitrate=%d audio=%q)", assetID, mode, pr.vCodec, pr.width, pr.height, pr.bitRate, pr.aCodec)
+
+	if logBytes, err := exec.Command("ffmpeg", args...).CombinedOutput(); err != nil {
+		// A stream-copy attempt can still trip on an exotic container or odd
+		// keyframe layout — fall back to a clean full re-encode before giving up.
+		if !copyMode {
+			log.Printf("transcode %s ffmpeg output: %s", assetID, tail(string(logBytes), 600))
+			fail("ffmpeg", err)
+			return
+		}
+		log.Printf("transcode %s stream-copy failed, retrying with encode: %s", assetID, tail(string(logBytes), 300))
+		_ = os.RemoveAll(out)
+		if err := os.MkdirAll(out, 0o755); err != nil {
+			fail("mkdir retry", err)
+			return
+		}
+		if logBytes, err := exec.Command("ffmpeg", encodeArgs...).CombinedOutput(); err != nil {
+			log.Printf("transcode %s ffmpeg output: %s", assetID, tail(string(logBytes), 600))
+			fail("ffmpeg", err)
+			return
+		}
 	}
 
 	entries, err := os.ReadDir(out)
@@ -116,4 +170,81 @@ func tail(s string, n int) string {
 		return s[len(s)-n:]
 	}
 	return s
+}
+
+// srcProbe is the slice of ffprobe output we use to decide whether the source can
+// be stream-copied into HLS instead of re-encoded.
+type srcProbe struct {
+	vCodec   string
+	aCodec   string
+	width    int
+	height   int
+	hasAudio bool
+	bitRate  int64 // overall bits/sec, 0 if unknown
+}
+
+// ffprobeSource inspects the downloaded file. Returns ok=false on any failure
+// (e.g. ffprobe missing or unreadable file) so the caller safely falls back to a
+// full re-encode.
+func ffprobeSource(src string) (srcProbe, bool) {
+	out, err := exec.Command("ffprobe", "-v", "error",
+		"-show_entries", "stream=codec_type,codec_name,width,height:format=bit_rate",
+		"-of", "json", src).Output()
+	if err != nil {
+		return srcProbe{}, false
+	}
+	var raw struct {
+		Streams []struct {
+			CodecType string `json:"codec_type"`
+			CodecName string `json:"codec_name"`
+			Width     int    `json:"width"`
+			Height    int    `json:"height"`
+		} `json:"streams"`
+		Format struct {
+			BitRate string `json:"bit_rate"`
+		} `json:"format"`
+	}
+	if err := json.Unmarshal(out, &raw); err != nil {
+		return srcProbe{}, false
+	}
+	var p srcProbe
+	for _, s := range raw.Streams {
+		switch s.CodecType {
+		case "video":
+			if p.vCodec == "" { // first video stream wins
+				p.vCodec = s.CodecName
+				p.width = s.Width
+				p.height = s.Height
+			}
+		case "audio":
+			if !p.hasAudio {
+				p.hasAudio = true
+				p.aCodec = s.CodecName
+			}
+		}
+	}
+	if p.vCodec == "" {
+		return srcProbe{}, false
+	}
+	if v, err := strconv.ParseInt(strings.TrimSpace(raw.Format.BitRate), 10, 64); err == nil {
+		p.bitRate = v
+	}
+	return p, true
+}
+
+// canStreamCopy reports whether the source is already a web-ready H.264 stream we
+// can segment without re-encoding: H.264 video, neither dimension above 1920, and
+// a known overall bitrate already within a streamable range. Unknown or very high
+// bitrate takes the capped re-encode instead.
+func (p srcProbe) canStreamCopy() bool {
+	if p.vCodec != "h264" {
+		return false
+	}
+	if p.width > 1920 || p.height > 1920 {
+		return false
+	}
+	if p.bitRate <= 0 || p.bitRate > 8_000_000 {
+		return false
+	}
+	return true
 }
