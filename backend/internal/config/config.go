@@ -72,6 +72,8 @@ type Integrations struct {
 	VoiceToken     string // VOICE_AUTH_TOKEN
 	SMSAPIKey      string // SMS_API_KEY         — SMS provider
 	AIAPIKey       string // AI_API_KEY          — LLM provider (Anthropic/OpenAI)
+	GroqAPIKey     string // GROQ_API_KEY        — Groq (OpenAI-compatible) for study-material drafting
+	GroqModel      string // GROQ_MODEL          — override the default Groq model
 }
 
 func (c Config) IsProduction() bool { return c.Env == "production" }
@@ -103,6 +105,8 @@ func Load() (Config, error) {
 			VoiceToken:     os.Getenv("VOICE_AUTH_TOKEN"),
 			SMSAPIKey:      os.Getenv("SMS_API_KEY"),
 			AIAPIKey:       os.Getenv("AI_API_KEY"),
+			GroqAPIKey:     os.Getenv("GROQ_API_KEY"),
+			GroqModel:      getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
 		},
 		R2: R2{
 			AccountID:  os.Getenv("R2_ACCOUNT_ID"),

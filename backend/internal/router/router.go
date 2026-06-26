@@ -115,6 +115,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	// Study Hub material (course-scoped, instructor-edited).
 	api.Get("/manage/courses/:id/study", auth, inst, h.ListCourseStudy)
 	api.Post("/manage/courses/:id/study", auth, inst, h.AddStudyMaterial)
+	api.Post("/manage/courses/:id/study/generate", auth, inst, h.GenerateStudyMaterial) // Groq-drafted material
 	api.Patch("/manage/study/:id", auth, inst, h.UpdateStudyMaterial)
 	api.Delete("/manage/study/:id", auth, inst, h.DeleteStudyMaterial)
 	api.Get("/manage/courses/:id/report/completion", auth, inst, h.CompletionReport)

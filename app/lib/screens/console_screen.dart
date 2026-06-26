@@ -3370,6 +3370,71 @@ class _StudyHubEditorScreenState extends State<StudyHubEditorScreen> {
     if (ok == true) _load();
   }
 
+  // Draft material with AI (Groq) — inserts drafts the admin can edit/delete.
+  // Manual adding is unaffected.
+  Future<void> _generate() async {
+    final topic = TextEditingController();
+    final count = TextEditingController(text: '5');
+    int diff = 1;
+    const diffs = ['easy', 'intermediate', 'hard'];
+    final kinds = {for (final k in _kinds) k.$1: true}; // all selected by default
+    final ok = await showFormSheet(context, square: true, title: 'Generate with AI', builder: (setS) {
+      final p = Palette.of(context);
+      return [
+        Text('Type a topic — AI drafts study material you can edit or delete. Manual adding still works.', style: AppleTheme.footnote(context)),
+        const SizedBox(height: 10),
+        sheetField(topic, 'Topic or source material', CupertinoIcons.text_quote),
+        const SizedBox(height: 10),
+        sheetField(count, 'How many of each (1–12)', CupertinoIcons.number, keyboard: TextInputType.number),
+        const SizedBox(height: 12),
+        _label(context, 'Difficulty'),
+        const SizedBox(height: 6),
+        AppleSegmented(square: true, labels: const ['Easy', 'Medium', 'Hard'], selected: diff, onChanged: (i) => setS(() => diff = i)),
+        const SizedBox(height: 12),
+        _label(context, 'What to generate'),
+        const SizedBox(height: 6),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final k in _kinds)
+            GestureDetector(
+              onTap: () => setS(() => kinds[k.$1] = !(kinds[k.$1] ?? false)),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: (kinds[k.$1] ?? false) ? p.accent.withOpacity(0.14) : p.card2,
+                  border: Border.all(color: (kinds[k.$1] ?? false) ? p.accent : p.separator),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon((kinds[k.$1] ?? false) ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle,
+                      size: 15, color: (kinds[k.$1] ?? false) ? p.accent : p.secondary),
+                  const SizedBox(width: 6),
+                  Text(k.$2, style: AppleTheme.footnote(context)),
+                ]),
+              ),
+            ),
+        ]),
+      ];
+    }, onSubmit: () async {
+      if (topic.text.trim().isEmpty) return 'Enter a topic';
+      final selected = kinds.entries.where((e) => e.value).map((e) => e.key).toList();
+      if (selected.isEmpty) return 'Pick at least one type';
+      try {
+        await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/study/generate', {
+          'topic': topic.text.trim(),
+          'count': int.tryParse(count.text.trim()) ?? 5,
+          'difficulty': diffs[diff],
+          'kinds': selected,
+        });
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Material generated ✓ — review & edit below'), behavior: SnackBarBehavior.floating));
+      _load();
+    }
+  }
+
   // One-line summary of a card for its list row.
   String _summary(String kind, Map<String, dynamic> m) {
     switch (kind) {
@@ -3425,6 +3490,13 @@ class _StudyHubEditorScreenState extends State<StudyHubEditorScreen> {
           Text('Study Hub material', style: AppleTheme.headline(context)),
           Text(widget.title, style: AppleTheme.footnote(context)),
         ]),
+        actions: [
+          IconButton(
+            tooltip: 'Generate with AI',
+            icon: Icon(CupertinoIcons.sparkles, color: p.accent),
+            onPressed: _generate,
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CupertinoActivityIndicator())

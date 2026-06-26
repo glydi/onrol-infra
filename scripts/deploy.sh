@@ -27,6 +27,29 @@ command -v flutter >/dev/null || export PATH="$PATH:$HOME/flutter/bin:/opt/flutt
 
 log() { printf '\n\033[1;36m==>\033[0m \033[1m%s\033[0m\n' "$*"; }
 
+# Upsert secret env vars (GROQ_API_KEY, etc.) from a local, gitignored file into
+# the server's /opt/onrol/.env so the systemd EnvironmentFile picks them up on
+# restart. The file never enters git (matched by *.env in .gitignore), so the
+# keys ride to the VPS over the existing deploy SSH without being committed.
+sync_secret_env() {
+  local f="$ROOT/scripts/deploy.env"
+  [ -f "$f" ] || return 0
+  log "Syncing secret env → $HOST:$APP_DIR/.env"
+  scp -o ConnectTimeout=10 "$f" "$HOST:$APP_DIR/.env.incoming"
+  ssh "$HOST" "set -e
+    touch $APP_DIR/.env
+    while IFS= read -r line || [ -n \"\$line\" ]; do
+      case \"\$line\" in ''|\#*) continue;; esac
+      key=\${line%%=*}
+      grep -v -E \"^\${key}=\" $APP_DIR/.env > $APP_DIR/.env.tmp 2>/dev/null || true
+      printf '%s\n' \"\$line\" >> $APP_DIR/.env.tmp
+      mv $APP_DIR/.env.tmp $APP_DIR/.env
+    done < $APP_DIR/.env.incoming
+    rm -f $APP_DIR/.env.incoming
+    chown onrol:onrol $APP_DIR/.env; chmod 600 $APP_DIR/.env
+    echo '    .env updated'"
+}
+
 deploy_backend() {
   log "Building API (linux/amd64)"
   ( cd "$ROOT/backend" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
@@ -35,6 +58,7 @@ deploy_backend() {
   LOCAL_MD5="$(md5sum /tmp/onrol-server-linux | awk '{print $1}')"
   log "Shipping API → $HOST"
   scp -o ConnectTimeout=10 /tmp/onrol-server-linux "$HOST:$APP_DIR/onrol-server.new"
+  sync_secret_env
   # Stop BEFORE swapping: replacing a running binary in place races with the
   # restart ("Text file busy", exit 203/EXEC) and can leave a stale binary.
   ssh "$HOST" "set -e
