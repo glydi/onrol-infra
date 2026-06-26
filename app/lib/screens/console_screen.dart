@@ -9,6 +9,8 @@ import 'package:image_picker/image_picker.dart';
 
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 import '../theme.dart';
 import '../widgets/app_shell.dart';
 import '../widgets/profile_view.dart';
@@ -1863,12 +1865,13 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   Widget _sessionCard(Map<String, dynamic> s) {
     final p = Palette.of(context);
     final hasLink = (s['join_url']?.toString() ?? '').isNotEmpty;
+    final hostUrl = s['host_url']?.toString() ?? '';
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: GestureDetector(
         onTap: () => _editSession(s),
         behavior: HitTestBehavior.opaque,
-        child: AppleCard(square: true, 
+        child: AppleCard(square: true,
           child: Row(children: [
             Container(
               width: 40, height: 40,
@@ -1883,6 +1886,11 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                     style: AppleTheme.footnote(context)),
               ]),
             ),
+            // Host & record — opens the instructor's Zoho host link (staff only).
+            if (hostUrl.isNotEmpty) ...[
+              _smallButton('Host & record', CupertinoIcons.videocam_circle_fill, () => _openLink(hostUrl)),
+              const SizedBox(width: 6),
+            ],
             _smallButton('Edit link', CupertinoIcons.link, () => _editSession(s)),
             const SizedBox(width: 6),
             Icon(hasLink ? CupertinoIcons.link : CupertinoIcons.exclamationmark_circle,
@@ -1893,20 +1901,36 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     );
   }
 
+  Future<void> _openLink(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+    } catch (_) {
+      if (mounted) _toast("Couldn't open the link");
+    }
+  }
+
   // Update a live session's video (join) link — and optionally its title.
   Future<void> _editSession(Map<String, dynamic> s) async {
     final title = TextEditingController(text: s['title']?.toString() ?? '');
     final url = TextEditingController(text: s['join_url']?.toString() ?? '');
+    final host = TextEditingController(text: s['host_url']?.toString() ?? '');
     final ok = await showFormSheet(context, square: true, title: 'Update Live Link', builder: (setS) => [
       sheetField(title, 'Title', CupertinoIcons.textformat),
       const SizedBox(height: 10),
-      sheetField(url, 'Live link (Zoho / Meet / Jitsi URL)', CupertinoIcons.link),
+      sheetField(url, 'Join link — students attend (Zoho / Meet / Jitsi)', CupertinoIcons.link),
+      const SizedBox(height: 10),
+      sheetField(host, 'Host link — instructor starts & records (Zoho host URL)', CupertinoIcons.videocam_circle),
+      const SizedBox(height: 6),
+      _label(context, 'The host link is shown only to staff via “Host & record”. Students never see it.'),
     ], onSubmit: () async {
-      if (url.text.trim().isEmpty) return 'Live link required';
+      if (url.text.trim().isEmpty && host.text.trim().isEmpty) return 'Add a join or host link';
       try {
         await widget.auth.apiPatch('/api/v1/manage/sessions/${s['id']}', {
           'title': title.text.trim(),
           'join_url': url.text.trim(),
+          'host_url': host.text.trim(),
         });
         return null;
       } on ApiException catch (e) {
@@ -2146,20 +2170,24 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   Future<void> _addSession() async {
     final title = TextEditingController();
     final url = TextEditingController();
+    final host = TextEditingController();
     DateTime when = DateTime.now().add(const Duration(hours: 1));
     final ok = await showFormSheet(context, square: true, title: 'Add Live Class', builder: (setS) => [
       sheetField(title, 'Title (e.g. Lecture 1)', CupertinoIcons.textformat),
       const SizedBox(height: 10),
-      sheetField(url, 'Live link (Zoho / Meet / Jitsi URL)', CupertinoIcons.link),
+      sheetField(url, 'Join link — students attend', CupertinoIcons.link),
+      const SizedBox(height: 10),
+      sheetField(host, 'Host link — instructor records (Zoho host URL, optional)', CupertinoIcons.videocam_circle),
       const SizedBox(height: 12),
       _DateTimeRow(value: when, onPick: (d) => setS(() => when = d)),
     ], onSubmit: () async {
       if (title.text.trim().isEmpty) return 'Title required';
-      if (url.text.trim().isEmpty) return 'Live link required';
+      if (url.text.trim().isEmpty) return 'Join link required';
       try {
         await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/sessions', {
           'title': title.text.trim(),
           'join_url': url.text.trim(),
+          'host_url': host.text.trim(),
           'starts_at': when.toUtc().toIso8601String(),
         });
         return null;

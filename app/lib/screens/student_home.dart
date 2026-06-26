@@ -1558,7 +1558,9 @@ class _StudentHomeState extends State<StudentHome> {
                   badge = isQuiz ? 'Start' : 'Pending';
                 }
                 children.add(GestureDetector(
-                  onTap: isQuiz && !submitted ? () => _openAssessment(m) : null,
+                  // Quizzes can be retaken — we keep the best score. Tapping a
+                  // graded quiz reopens it; the badge keeps showing the best.
+                  onTap: isQuiz ? () => _openAssessment(m) : null,
                   child: _row(
                     isQuiz ? CupertinoIcons.question_square_fill : CupertinoIcons.doc_text_fill,
                     m['title']?.toString() ?? 'Assessment',

@@ -146,6 +146,26 @@ func (h *Handlers) PostForumMessage(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id})
 }
 
+// DeleteForumMessage lets a member delete their own message; staff can delete
+// any message (moderation).
+func (h *Handlers) DeleteForumMessage(c *fiber.Ctx) error {
+	id := c.Params("id")
+	q := `DELETE FROM forum_messages WHERE id=$1 AND user_id=$2`
+	args := []any{id, callerID(c)}
+	if isStaffRole(callerRole(c)) { // staff may remove anyone's message
+		q = `DELETE FROM forum_messages WHERE id=$1`
+		args = []any{id}
+	}
+	ct, err := h.Pool.Exec(c.Context(), q, args...)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "delete failed")
+	}
+	if ct.RowsAffected() == 0 {
+		return fiber.NewError(fiber.StatusForbidden, "not allowed")
+	}
+	return c.JSON(fiber.Map{"deleted": true})
+}
+
 // ---- Admin: manage servers + channels (staff) ------------------------------
 
 // ListForumServers returns every server (with channels) for management.

@@ -451,10 +451,24 @@ class _ForumScreenState extends State<ForumScreen> {
     ]);
   }
 
+  Future<void> _deleteMessage(String id) async {
+    final yes = await showSquareConfirm(context, title: 'Delete message', message: 'Remove this message?', confirmLabel: 'Delete', destructive: true);
+    if (!yes) return;
+    try {
+      await widget.auth.apiDelete('/api/v1/me/community/messages/$id');
+      await _loadMessages(silent: true);
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't delete")));
+    }
+  }
+
   Widget _bubble(Map<String, dynamic> m) {
     final mine = m['mine'] == true;
     final name = m['name']?.toString().trim().isNotEmpty == true ? m['name'].toString() : 'Member';
-    return Padding(
+    return GestureDetector(
+      // Author can delete their own; staff can moderate anyone's.
+      onLongPress: (mine || _staff) ? () => _deleteMessage(m['id'].toString()) : null,
+      child: Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Avatar(name: name, size: 34),
@@ -471,6 +485,7 @@ class _ForumScreenState extends State<ForumScreen> {
           ]),
         ),
       ]),
+    ),
     );
   }
 

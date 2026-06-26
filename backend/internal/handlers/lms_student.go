@@ -402,11 +402,15 @@ func (h *Handlers) SubmitAssessment(c *fiber.Ctx) error {
 		status = "submitted"
 		score = nil // pending manual grading
 	}
+	// Retakes are allowed; we keep the BEST score. GREATEST ignores NULLs, so an
+	// essay retake (score pending) never wipes a previous graded score.
 	_, err = h.Pool.Exec(c.Context(), `
 		INSERT INTO submissions (assessment_id, user_id, answers, score, status)
 		VALUES ($1,$2,$3,$4,$5)
 		ON CONFLICT (assessment_id, user_id)
-		DO UPDATE SET answers=EXCLUDED.answers, score=EXCLUDED.score, status=EXCLUDED.status, submitted_at=now()`,
+		DO UPDATE SET answers=EXCLUDED.answers, submitted_at=now(),
+		   score  = GREATEST(submissions.score, EXCLUDED.score),
+		   status = CASE WHEN 'graded' IN (submissions.status, EXCLUDED.status) THEN 'graded' ELSE EXCLUDED.status END`,
 		assessID, callerID(c), string(answersJSON), score, status)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "submit failed")

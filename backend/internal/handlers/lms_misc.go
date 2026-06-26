@@ -183,7 +183,8 @@ func (h *Handlers) CreateSession(c *fiber.Ctx) error {
 		Location  string `json:"location"`
 		Capacity  int    `json:"capacity"`
 		WebinarID string `json:"webinar_id"`
-		JoinURL   string `json:"join_url"` // direct live link (Zoho/Meet/etc.)
+		JoinURL   string `json:"join_url"` // direct live link (Zoho/Meet/etc.) students join
+		HostURL   string `json:"host_url"` // host/start link instructors use to run + record
 	}
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Title) == "" || req.StartsAt == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "title and starts_at required")
@@ -197,9 +198,9 @@ func (h *Handlers) CreateSession(c *fiber.Ctx) error {
 	}
 	var id string
 	if err := h.Pool.QueryRow(c.Context(),
-		`INSERT INTO class_sessions (course_id, title, starts_at, ends_at, location, instructor_id, capacity, webinar_id, join_url)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-		courseID, req.Title, req.StartsAt, ends, req.Location, callerID(c), req.Capacity, webinar, req.JoinURL).Scan(&id); err != nil {
+		`INSERT INTO class_sessions (course_id, title, starts_at, ends_at, location, instructor_id, capacity, webinar_id, join_url, host_url)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+		courseID, req.Title, req.StartsAt, ends, req.Location, callerID(c), req.Capacity, webinar, req.JoinURL, req.HostURL).Scan(&id); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": req.Title})
@@ -219,6 +220,7 @@ func (h *Handlers) UpdateSession(c *fiber.Ctx) error {
 	var req struct {
 		Title    *string `json:"title"`
 		JoinURL  *string `json:"join_url"`
+		HostURL  *string `json:"host_url"`
 		StartsAt *string `json:"starts_at"`
 	}
 	if err := c.BodyParser(&req); err != nil {
@@ -233,8 +235,9 @@ func (h *Handlers) UpdateSession(c *fiber.Ctx) error {
 		UPDATE class_sessions
 		SET title    = COALESCE($2, title),
 		    join_url = COALESCE($3, join_url),
-		    starts_at = COALESCE($4, starts_at)
-		WHERE id=$1`, sessionID, req.Title, req.JoinURL, starts); err != nil {
+		    host_url = COALESCE($4, host_url),
+		    starts_at = COALESCE($5, starts_at)
+		WHERE id=$1`, sessionID, req.Title, req.JoinURL, req.HostURL, starts); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "update failed")
 	}
 	return c.JSON(fiber.Map{"id": sessionID, "updated": true})
@@ -247,7 +250,7 @@ func (h *Handlers) ListCourseSessions(c *fiber.Ctx) error {
 		return err
 	}
 	rows, err := h.Pool.Query(c.Context(),
-		`SELECT id, title, starts_at, COALESCE(join_url,''), COALESCE(location,'')
+		`SELECT id, title, starts_at, COALESCE(join_url,''), COALESCE(host_url,''), COALESCE(location,'')
 		 FROM class_sessions WHERE course_id=$1 ORDER BY starts_at`, courseID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
@@ -255,12 +258,12 @@ func (h *Handlers) ListCourseSessions(c *fiber.Ctx) error {
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var id, title, joinURL, loc string
+		var id, title, joinURL, hostURL, loc string
 		var startsAt any
-		if err := rows.Scan(&id, &title, &startsAt, &joinURL, &loc); err != nil {
+		if err := rows.Scan(&id, &title, &startsAt, &joinURL, &hostURL, &loc); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
-		out = append(out, fiber.Map{"id": id, "title": title, "starts_at": startsAt, "join_url": joinURL, "location": loc})
+		out = append(out, fiber.Map{"id": id, "title": title, "starts_at": startsAt, "join_url": joinURL, "host_url": hostURL, "location": loc})
 	}
 	return c.JSON(fiber.Map{"sessions": out})
 }
