@@ -3068,6 +3068,21 @@ class _ConvertedLeadsScreenState extends State<ConvertedLeadsScreen> {
     if (mounted) setState(() => _loading = false);
   }
 
+  Future<void> _delete(String leadId, String name) async {
+    final yes = await showSquareConfirm(context,
+        title: 'Delete converted lead',
+        message: 'Remove "$name" from converted leads? Any student account already created from it stays — manage accounts under Users.',
+        confirmLabel: 'Delete', destructive: true);
+    if (!yes) return;
+    try {
+      await widget.auth.apiDelete('/api/v1/manage/converted-leads/$leadId');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted'), behavior: SnackBarBehavior.floating));
+      _load();
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not delete')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
@@ -3097,7 +3112,8 @@ class _ConvertedLeadsScreenState extends State<ConvertedLeadsScreen> {
                   Text('Converted Leads', style: AppleTheme.largeTitle(context)),
                   Text('${_leads.length} total · grouped by course ID', style: AppleTheme.subhead(context)),
                   const SizedBox(height: 16),
-                  // Flag (don't delete) leads with no course_id — they need review.
+                  // Leads with no course_id were never enrolled — set a course to
+                  // enrol them, or delete the ones you don't need (trash icon).
                   if ((byCourse['']?.length ?? 0) > 0) ...[
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -3109,7 +3125,7 @@ class _ConvertedLeadsScreenState extends State<ConvertedLeadsScreen> {
                         const Icon(CupertinoIcons.exclamationmark_triangle_fill, color: AppleColors.orange, size: 20),
                         const SizedBox(width: 10),
                         Expanded(child: Text(
-                          '${byCourse['']!.length} lead${byCourse['']!.length == 1 ? '' : 's'} have no course_id — kept, not deleted. Set a course_id to enrol them.',
+                          '${byCourse['']!.length} lead${byCourse['']!.length == 1 ? '' : 's'} have no course_id, so they were never enrolled in a course. Set a course_id to enrol them, or delete the ones you don\'t need.',
                           style: AppleTheme.footnote(context),
                         )),
                       ]),
@@ -3169,12 +3185,24 @@ class _ConvertedLeadsScreenState extends State<ConvertedLeadsScreen> {
                       style: AppleTheme.footnote(context).copyWith(color: AppleColors.green, fontWeight: FontWeight.w600),
                       maxLines: 1, overflow: TextOverflow.ellipsis),
               ]),
-              trailing: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: (prov ? AppleColors.green : p.secondary).withOpacity(0.15)),
-                child: Text(prov ? 'Student' : 'No account',
-                    style: TextStyle(color: prov ? AppleColors.green : p.secondary, fontSize: 11, fontWeight: FontWeight.w600)),
-              ),
+              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(color: (prov ? AppleColors.green : p.secondary).withOpacity(0.15)),
+                  child: Text(prov ? 'Student' : 'No account',
+                      style: TextStyle(color: prov ? AppleColors.green : p.secondary, fontSize: 11, fontWeight: FontWeight.w600)),
+                ),
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: () => _delete(l['lead_id'].toString(),
+                      l['name']?.toString().trim().isNotEmpty == true ? l['name'].toString() : 'this lead'),
+                  behavior: HitTestBehavior.opaque,
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(CupertinoIcons.trash, size: 18, color: AppleColors.red),
+                  ),
+                ),
+              ]),
             ),
           ]);
         }),

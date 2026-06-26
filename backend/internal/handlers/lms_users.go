@@ -422,6 +422,26 @@ func (h *Handlers) ConvertedLeads(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"leads": out})
 }
 
+// DeleteConvertedLead removes a converted-lead record from converted_leads_backup
+// (e.g. test/junk leads, or ones that converted with no course and were never
+// enrolled). The auto-provisioning loop reads this table, so deleting the row
+// also stops it from being re-provisioned. Any student account already created
+// from this lead is left intact — accounts are managed separately under Users.
+func (h *Handlers) DeleteConvertedLead(c *fiber.Ctx) error {
+	leadID := strings.TrimSpace(c.Params("leadId"))
+	if leadID == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "lead id required")
+	}
+	ct, err := h.Pool.Exec(c.Context(), `DELETE FROM converted_leads_backup WHERE lead_id::text = $1`, leadID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "delete failed")
+	}
+	if ct.RowsAffected() == 0 {
+		return fiber.NewError(fiber.StatusNotFound, "lead not found")
+	}
+	return c.JSON(fiber.Map{"deleted": true})
+}
+
 // UserConvertedLead returns the original converted-lead record for a student, so
 // an admin can see where the student came from (source, campaign, program, score,
 // UTM, etc.). The student is matched back to converted_leads_backup by email or

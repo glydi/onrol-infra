@@ -60,6 +60,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Post("/manage/users/auto-batch", auth, mgr, h.AutoBatch)
 	api.Get("/manage/users/:id/converted-lead", auth, mgr, h.UserConvertedLead)
 	api.Get("/manage/converted-leads", auth, mgr, h.ConvertedLeads)
+	api.Delete("/manage/converted-leads/:leadId", auth, mgr, h.DeleteConvertedLead)
 
 	// ---- Video store (R2-backed media library) ---------------------------
 	api.Get("/manage/videos", auth, mgr, h.ListVideos)
