@@ -114,6 +114,13 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Delete("/manage/assessments/:id", auth, inst, h.DeleteAssessment)
 	api.Get("/manage/assessments/:id/submissions", auth, inst, h.ListSubmissions)
 	api.Post("/manage/submissions/:id/grade", auth, inst, h.GradeSubmission)
+	// Community forum (Discord-like servers/channels) — staff manage.
+	api.Get("/manage/community/servers", auth, inst, h.ListForumServers)
+	api.Post("/manage/community/servers", auth, inst, h.CreateForumServer)
+	api.Delete("/manage/community/servers/:id", auth, inst, h.DeleteForumServer)
+	api.Post("/manage/community/servers/:id/channels", auth, inst, h.AddForumChannel)
+	api.Delete("/manage/community/channels/:id", auth, inst, h.DeleteForumChannel)
+
 	// Study Hub material (course-scoped, instructor-edited).
 	api.Get("/manage/courses/:id/study", auth, inst, h.ListCourseStudy)
 	api.Post("/manage/courses/:id/study", auth, inst, h.AddStudyMaterial)
@@ -285,6 +292,10 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Post("/me/forum/:id/reply", auth, h.ReplyForum)
 	api.Delete("/me/forum/:id", auth, h.DeleteForumThread)
 	api.Delete("/me/forum/posts/:postId", auth, h.DeleteForumPost)
+	// Community forum (Discord-like): servers I can see + channel messages.
+	api.Get("/me/community/servers", auth, h.MyForumServers)
+	api.Get("/me/community/channels/:id/messages", auth, h.ForumMessages)
+	api.Post("/me/community/channels/:id/messages", auth, h.PostForumMessage)
 	api.Post("/me/lessons/:id/complete", auth, h.CompleteLesson)
 	api.Post("/me/lessons/:id/progress", auth, h.SaveLessonProgress)
 	api.Get("/me/resume", auth, h.ResumeLearning)

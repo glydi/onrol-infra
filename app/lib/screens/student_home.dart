@@ -17,6 +17,7 @@ import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/push.dart';
 import '../theme_controller.dart';
+import 'forum_screen.dart';
 import 'live_screen.dart';
 import 'login_screen.dart';
 import 'video_player_screen.dart';
@@ -825,6 +826,11 @@ class _StudentHomeState extends State<StudentHome> {
   // ---- Modal panels --------------------------------------------------------
 
   void _openPanel(String key, {Offset? origin}) {
+    // The community forum is a full-screen Discord-like experience.
+    if (key == 'forum') {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => ForumScreen(auth: widget.auth)));
+      return;
+    }
     final d = _panel(key);
     _showPanel(d.$1, d.$2, d.$3, d.$4, heroTag: 'panel-$key', compact: key == 'logout');
   }
