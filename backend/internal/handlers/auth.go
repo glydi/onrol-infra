@@ -132,16 +132,17 @@ func (h *Handlers) bindDevice(ctx context.Context, user models.User, deviceID, p
 		return err
 	}
 
-	// Already bound? Just refresh it.
+	// Already bound AND still active? Just refresh it — it's already counted.
 	var existingID string
+	var existingActive bool
 	err = tx.QueryRow(ctx,
-		`SELECT id FROM devices WHERE user_id=$1 AND device_id=$2`,
+		`SELECT id, is_active FROM devices WHERE user_id=$1 AND device_id=$2`,
 		user.ID, deviceID,
-	).Scan(&existingID)
+	).Scan(&existingID, &existingActive)
 	switch {
-	case err == nil:
+	case err == nil && existingActive:
 		_, err = tx.Exec(ctx,
-			`UPDATE devices SET last_seen=now(), is_active=TRUE, platform=$3, model=$4,
+			`UPDATE devices SET last_seen=now(), platform=$3, model=$4,
 			       attestation_verified = attestation_verified OR $5
 			 WHERE id=$1 AND user_id=$2`,
 			existingID, user.ID, platform, model, markVerified)
@@ -149,43 +150,45 @@ func (h *Handlers) bindDevice(ctx context.Context, user models.User, deviceID, p
 			return err
 		}
 		return tx.Commit(ctx)
+	case err == nil:
+		// Existing but REVOKED: reactivating it must pass the cap check below,
+		// exactly like a new device — otherwise a previously-removed device could
+		// silently re-activate and push the user past the limit.
 	case errors.Is(err, pgx.ErrNoRows):
-		// fall through to capacity check
+		// New device: cap check below.
 	default:
 		return err
 	}
 
-	// New device: enforce the limit — except for staff (instructor/manager/
-	// superadmin), who are exempt and may sign in from any number of devices. The
-	// user-row lock above already serializes concurrent logins, so a plain count
-	// is race-free here.
-	adminExempt := user.Role == "manager" || user.Role == "superadmin" || user.Role == "instructor"
-	if !adminExempt {
-		// Hard cap: non-staff users may bind at most 2 devices, regardless of
-		// the per-user max_devices column or MAX_DEVICES_PER_USER config — so the
-		// limit can never be silently raised above 2.
-		const hardCap = 2
-		limit := user.MaxDevices
-		if limit > hardCap || limit < 1 {
-			limit = hardCap
-		}
-		var activeCount int
-		if err := tx.QueryRow(ctx,
-			`SELECT count(*) FROM devices WHERE user_id=$1 AND is_active`,
-			user.ID,
-		).Scan(&activeCount); err != nil {
-			return err
-		}
-		if activeCount >= limit {
-			devices, _ := listActiveDevices(ctx, tx, user.ID)
-			return deviceLimitError{devices: devices}
-		}
+	// STRICT cap: every account — no role is exempt — may hold at most 2 active
+	// devices. The user-row lock above serialises concurrent logins, so this
+	// count-then-bind is race-free.
+	const hardCap = 2
+	var activeCount int
+	if err := tx.QueryRow(ctx,
+		`SELECT count(*) FROM devices WHERE user_id=$1 AND is_active`,
+		user.ID,
+	).Scan(&activeCount); err != nil {
+		return err
+	}
+	if activeCount >= hardCap {
+		devices, _ := listActiveDevices(ctx, tx, user.ID)
+		return deviceLimitError{devices: devices}
 	}
 
-	_, err = tx.Exec(ctx,
-		`INSERT INTO devices (user_id, device_id, platform, model, attestation_verified)
-		 VALUES ($1, $2, $3, $4, $5)`,
-		user.ID, deviceID, platform, model, markVerified)
+	if existingID != "" {
+		// Reactivate the previously-revoked device row (now within the cap).
+		_, err = tx.Exec(ctx,
+			`UPDATE devices SET is_active=TRUE, last_seen=now(), platform=$3, model=$4,
+			       attestation_verified = attestation_verified OR $5
+			 WHERE id=$1 AND user_id=$2`,
+			existingID, user.ID, platform, model, markVerified)
+	} else {
+		_, err = tx.Exec(ctx,
+			`INSERT INTO devices (user_id, device_id, platform, model, attestation_verified)
+			 VALUES ($1, $2, $3, $4, $5)`,
+			user.ID, deviceID, platform, model, markVerified)
+	}
 	if err != nil {
 		return err
 	}

@@ -3071,7 +3071,7 @@ class _ConvertedLeadsScreenState extends State<ConvertedLeadsScreen> {
   Future<void> _delete(String leadId, String name) async {
     final yes = await showSquareConfirm(context,
         title: 'Delete converted lead',
-        message: 'Remove "$name" from converted leads? Any student account already created from it stays — manage accounts under Users.',
+        message: 'Remove "$name"? This also deletes the student account auto-created from it — along with their enrolment, progress and submissions. This cannot be undone.',
         confirmLabel: 'Delete', destructive: true);
     if (!yes) return;
     try {

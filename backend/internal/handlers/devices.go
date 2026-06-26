@@ -16,17 +16,11 @@ func (h *Handlers) ListDevices(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
 	}
 	currentDevice, _ := c.Locals(middleware.LocalDeviceID).(string)
-	role, _ := c.Locals(middleware.LocalRole).(string)
-	// Staff (instructor/manager/superadmin) are exempt → 0 means "unlimited";
-	// everyone else is hard-capped at 2 (matches bindDevice).
-	limit := 2
-	if role == "instructor" || role == "manager" || role == "superadmin" {
-		limit = 0
-	}
+	// Strict 2-device cap for everyone (matches bindDevice — no role is exempt).
 	return c.JSON(fiber.Map{
 		"devices":           devices,
 		"current_device_id": currentDevice,
-		"max_devices":       limit,
+		"max_devices":       2,
 	})
 }
 

@@ -429,40 +429,66 @@ class _StudentHomeState extends State<StudentHome> {
   }
 
   Widget _homeBody() => LayoutBuilder(builder: (context, c) {
-        final wide = c.maxWidth >= 1000;
-        // Matrix fills the available width so the buttons are big on iPad, capped
-        // so the tiles don't get oversized on a desktop monitor.
-        final side = (c.maxWidth - (wide ? 80 : 36)).clamp(260.0, wide ? 720.0 : 860.0).toDouble();
-        // After layout, learn whether the page actually scrolls (drives the FAB).
-        WidgetsBinding.instance.addPostFrameCallback((_) => _syncScrollState());
-        return SingleChildScrollView(
-          controller: _homeScroll,
-          padding: EdgeInsets.fromLTRB(wide ? 40 : 18, 8, wide ? 36 : 18, 96),
-          child: Column(children: [
-            _Entrance(index: 0, child: _topBar()),
-            const SizedBox(height: 18),
-            // The profile card was redundant with the top-bar avatar (which opens
-            // My Profile) + streak, so the menu matrix leads the home now.
-            _Entrance(index: 1, child: Center(child: _matrix(side))),
-            const SizedBox(height: 28),
-            // Live AI/tech news, below the menu — shrink-wraps so it flows with
-            // the page scroll rather than getting its own inner scrollbar.
-            _Entrance(
-              index: 3,
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 760),
-                  child: _AiNewsCard(auth: widget.auth, scrollable: false),
+        // Desktop: news pinned on the RIGHT next to the matrix.
+        // iPad / phone: one scrolling column with news BELOW the matrix.
+        return c.maxWidth >= 1000 ? _wideHome(c) : _narrowHome(c);
+      });
+
+  // Desktop: top bar across the top, the menu matrix on the left, and the AI
+  // news pinned as a right-hand sidebar (its list scrolls internally).
+  Widget _wideHome(BoxConstraints c) {
+    final side = (c.maxWidth - 380 - 96).clamp(360.0, 700.0).toDouble();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(40, 8, 36, 20),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _Entrance(index: 0, child: _topBar()),
+        const SizedBox(height: 14),
+        Expanded(
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  child: Center(child: _matrix(side)),
                 ),
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(width: 28),
+            SizedBox(width: 380, child: _Entrance(index: 1, child: _AiNewsCard(auth: widget.auth, scrollable: true))),
           ]),
-        );
-      });
+        ),
+      ]),
+    );
+  }
 
-  // Desktop / wide: matrix centered (no scroll) on the left, sidebar pinned
-  // right. Only the sidebar (profile + AI news) scrolls.
+  // iPad / phone: a single scrolling column — big matrix, then AI news below it
+  // (shrink-wrapped so it flows with the page scroll). The floating scroll
+  // button appears when this runs off-screen.
+  Widget _narrowHome(BoxConstraints c) {
+    final side = (c.maxWidth - 36).clamp(260.0, 860.0).toDouble();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncScrollState());
+    return SingleChildScrollView(
+      controller: _homeScroll,
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 96),
+      child: Column(children: [
+        _Entrance(index: 0, child: _topBar()),
+        const SizedBox(height: 18),
+        _Entrance(index: 1, child: Center(child: _matrix(side))),
+        const SizedBox(height: 28),
+        _Entrance(
+          index: 3,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: _AiNewsCard(auth: widget.auth, scrollable: false),
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+      ]),
+    );
+  }
+
   // ---- Top bar -------------------------------------------------------------
 
   Widget _topBar() {
