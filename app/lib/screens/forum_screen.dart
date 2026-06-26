@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -239,29 +240,105 @@ class _ForumScreenState extends State<ForumScreen> {
 
   // ---- UI ------------------------------------------------------------------
 
+  // Opens like the app's other panels: a frosted floating card over a blurred,
+  // dimmed dashboard (tap outside to close).
   @override
   Widget build(BuildContext context) {
-    final wide = MediaQuery.of(context).size.width >= 820;
+    final size = MediaQuery.of(context).size;
+    final kb = MediaQuery.of(context).viewInsets.bottom;
+    final phone = size.shortestSide < 600;
     return Scaffold(
-      backgroundColor: _bg,
-      appBar: AppBar(
-        backgroundColor: _panel,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(icon: const Icon(CupertinoIcons.chevron_left, color: _ink), onPressed: () => Navigator.pop(context)),
-        title: Text('Community', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: _ink)),
-        actions: [
-          if (_staff)
-            IconButton(tooltip: 'New server', icon: const Icon(CupertinoIcons.add_circled, color: _accent), onPressed: _createServer),
-        ],
-      ),
+      backgroundColor: Colors.transparent,
+      resizeToAvoidBottomInset: false,
       body: Stack(children: [
-        Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: _Grain()))),
-        _loading
-            ? const Center(child: CupertinoActivityIndicator())
-            : _servers.isEmpty
-                ? _empty()
-                : (wide ? _wide() : _narrow()),
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.of(context).maybePop(),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+              child: Container(color: Colors.black.withOpacity(0.34)),
+            ),
+          ),
+        ),
+        Padding(
+          padding: EdgeInsets.only(bottom: kb),
+          child: Align(
+            alignment: phone ? Alignment.topCenter : Alignment.center,
+            child: SizedBox(
+              width: phone ? size.width : (size.width * 0.97).clamp(0.0, 1180.0),
+              height: phone ? (size.height - kb) : ((size.height - kb) * 0.97).clamp(0.0, 960.0),
+              child: _card(phone),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _card(bool phone) {
+    final r = phone ? 0.0 : 24.0;
+    final cardW = phone ? MediaQuery.of(context).size.width : (MediaQuery.of(context).size.width * 0.97).clamp(0.0, 1180.0);
+    final wide = cardW >= 820;
+    return Material(
+      type: MaterialType.transparency,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(r),
+          boxShadow: phone ? const [] : [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 48, offset: const Offset(0, 22))],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(r),
+          child: Container(
+            color: _bg,
+            child: Column(children: [
+              _header(phone),
+              Expanded(
+                child: Stack(children: [
+                  Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: _Grain()))),
+                  _loading
+                      ? const Center(child: CupertinoActivityIndicator())
+                      : _servers.isEmpty
+                          ? _empty()
+                          : (wide ? _wide() : _narrow()),
+                ]),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Frosted gradient header matching the app's panel chrome.
+  Widget _header(bool phone) {
+    final topPad = phone ? MediaQuery.of(context).padding.top : 0.0;
+    Widget chip(IconData icon, VoidCallback onTap) => GestureDetector(
+          onTap: onTap,
+          child: Container(
+            width: 34, height: 34, alignment: Alignment.center,
+            decoration: BoxDecoration(color: _accent.withOpacity(0.12), borderRadius: BorderRadius.circular(10), border: Border.all(color: _accent.withOpacity(0.25))),
+            child: Icon(icon, size: 20, color: _accent),
+          ),
+        );
+    return Container(
+      padding: EdgeInsets.fromLTRB(14, 16 + topPad, 14, 16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Colors.white.withOpacity(0.6), Colors.white.withOpacity(0.3)]),
+        border: const Border(bottom: BorderSide(color: _line)),
+      ),
+      child: Row(children: [
+        chip(CupertinoIcons.chevron_back, () => Navigator.of(context).maybePop()),
+        const SizedBox(width: 12),
+        const Icon(CupertinoIcons.bubble_left_bubble_right_fill, size: 24, color: _accent),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Community', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: _ink)),
+            Text('Servers, channels & chat', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12, color: _muted)),
+          ]),
+        ),
+        if (_staff) chip(CupertinoIcons.add, _createServer),
       ]),
     );
   }

@@ -786,9 +786,20 @@ class _StudentHomeState extends State<StudentHome> {
   // ---- Modal panels --------------------------------------------------------
 
   void _openPanel(String key, {Offset? origin}) {
-    // The community forum is a full-screen Discord-like experience.
+    // The community forum opens like the other panels — a frosted card over the
+    // blurred dashboard. Push a transparent route so the dashboard stays behind.
     if (key == 'forum') {
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => ForumScreen(auth: widget.auth)));
+      Navigator.of(context).push(PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.transparent,
+        transitionDuration: const Duration(milliseconds: 280),
+        reverseTransitionDuration: const Duration(milliseconds: 220),
+        pageBuilder: (_, __, ___) => ForumScreen(auth: widget.auth),
+        transitionsBuilder: (_, anim, __, child) => FadeTransition(
+          opacity: anim,
+          child: ScaleTransition(scale: Tween(begin: 0.97, end: 1.0).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)), child: child),
+        ),
+      ));
       return;
     }
     final d = _panel(key);
