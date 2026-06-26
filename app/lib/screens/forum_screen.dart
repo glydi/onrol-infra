@@ -9,15 +9,15 @@ import '../services/auth_service.dart';
 import '../theme.dart';
 import '../widgets/ui.dart';
 
-// Soft, low-saturation palette + grain — matches the rest of the app.
-const _accent = Color(0xFFD2805F);
-const _accentGrad = LinearGradient(colors: [Color(0xFFE3AB94), _accent, Color(0xFFBE6B4C)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-const _bg = Color(0xFFF4EFE9);
-const _panel = Color(0xFFFBF7F2);
-const _rail = Color(0xFFEDE6DD);
-const _ink = Color(0xFF2A2A38);
+// Bright orange-peach palette + grain — matches the rest of the app.
+const _accent = Color(0xFFFF6A2C);
+const _accentGrad = LinearGradient(colors: [Color(0xFFFFB877), Color(0xFFFF7A33), Color(0xFFFF5421)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+const _bg = Color(0xFFFFF6EF);
+const _panel = Color(0xFFFFFCF8);
+const _rail = Color(0xFFFFEDE0);
+const _ink = Color(0xFF1A1A2E);
 const _muted = Color(0xFF8C8782);
-const _line = Color(0xFFE7DED4);
+const _line = Color(0xFFFFE0CC);
 
 /// Discord-like community forum: a rail of servers (global / course / batch),
 /// channels within the selected server, and a live message stream + composer.

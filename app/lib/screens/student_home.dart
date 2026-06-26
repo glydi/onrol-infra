@@ -22,24 +22,24 @@ import 'live_screen.dart';
 import 'login_screen.dart';
 import 'video_player_screen.dart';
 
-// Palette — soft terracotta accent (muted, low-saturation warm tone).
-const _orange = Color(0xFFD2805F);
-// Shared accent gradient — a soft 3-stop ambient ramp (light → mid → deep) so
-// no surface ever reads as a flat solid colour. Kept desaturated for soft tones.
+// Palette — bright, lively orange accent.
+const _orange = Color(0xFFFF6A2C);
+// Shared accent gradient — a vivid peach → orange → deep-orange ramp so every
+// surface feels warm and alive (no flat, dull colour).
 const _orangeGrad = LinearGradient(
-  colors: [Color(0xFFE3AB94), _orange, Color(0xFFBE6B4C)],
+  colors: [Color(0xFFFFB877), Color(0xFFFF7A33), Color(0xFFFF5421)],
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
 );
-const _green = Color(0xFF5E9B73); // soft sage green
-const _greenBg = Color(0xFFEDF5EF);
+const _green = Color(0xFF2D8A4E);
+const _greenBg = Color(0xFFEAFAF0);
 
 // Brightness-aware palette. `_isDark` is set at the start of each build / dialog.
 bool _isDark = false;
-Color get _navy => _isDark ? const Color(0xFFE9EAEF) : const Color(0xFF2A2A38);
-Color get _grey => _isDark ? const Color(0xFF9AA0AC) : const Color(0xFF8C8782);
-Color get _peach => _isDark ? const Color(0xFF2A241F) : const Color(0xFFF7EEE7);
-Color get _bg => _isDark ? const Color(0xFF12120F) : const Color(0xFFF7F2EC);
+Color get _navy => _isDark ? const Color(0xFFECEDF2) : const Color(0xFF1A1A2E);
+Color get _grey => _isDark ? const Color(0xFF9AA0AC) : const Color(0xFF888888);
+Color get _peach => _isDark ? const Color(0xFF2C231C) : const Color(0xFFFFF3EC);
+Color get _bg => _isDark ? const Color(0xFF0E0F14) : const Color(0xFFFFF6F1);
 Color get _surface => _isDark ? const Color(0xFF1E2027) : Colors.white;
 Color get _line => _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0F0F0);
 
@@ -138,10 +138,10 @@ class _GlassBackdropState extends State<_GlassBackdrop> with SingleTickerProvide
             child: Container(width: d, height: d, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
           ),
         );
-    // Muted, low-saturation ambient blobs — soft warm + dusty lavender.
-    final c1 = circle(_orange.withOpacity(_isDark ? 0.16 : 0.22), 380);
-    final c2 = circle(const Color(0xFFD7A98F).withOpacity(_isDark ? 0.14 : 0.22), 420);
-    final c3 = circle(const Color(0xFFAEA6C9).withOpacity(_isDark ? 0.13 : 0.16), 460);
+    // Bright, lively ambient blobs — warm orange + peach + a pop of violet.
+    final c1 = circle(_orange.withOpacity(_isDark ? 0.24 : 0.34), 380);
+    final c2 = circle(const Color(0xFFFF9A4D).withOpacity(_isDark ? 0.20 : 0.32), 420);
+    final c3 = circle(const Color(0xFF8E6BFF).withOpacity(_isDark ? 0.16 : 0.18), 460);
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -151,8 +151,8 @@ class _GlassBackdropState extends State<_GlassBackdrop> with SingleTickerProvide
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: _isDark
-                  ? const [Color(0xFF121210), Color(0xFF17171A)]
-                  : const [Color(0xFFF6F0EA), Color(0xFFF1ECEF)],
+                  ? const [Color(0xFF0E0F14), Color(0xFF14161F)]
+                  : const [Color(0xFFFFF1E6), Color(0xFFFFE9F0)],
             ),
           ),
           child: AnimatedBuilder(
@@ -1439,39 +1439,70 @@ class _StudentHomeState extends State<StudentHome> {
                     Text('$_streak day streak', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.white)),
                   ]),
                 ),
+              ]),
+              const SizedBox(height: 18),
+              // Settings + change-photo surfaced up front (not buried).
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                _Pressable(
+                  onTap: () => _openPanel('settings'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(10)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(CupertinoIcons.gear_alt_fill, size: 16, color: Colors.white),
+                      const SizedBox(width: 8),
+                      Text('Settings', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
+                    ]),
+                  ),
+                ),
                 const SizedBox(width: 10),
                 _Pressable(
-                  onTap: () => _openPanel('notifications'),
+                  onTap: _pickAvatar,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                    decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(20), border: Border.all(color: _orange.withOpacity(0.3))),
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                    decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(10), border: Border.all(color: _orange.withOpacity(0.35))),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(CupertinoIcons.bell_fill, color: _orange, size: 15),
-                      const SizedBox(width: 5),
-                      Text('Notifications', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: _orange)),
+                      Icon(CupertinoIcons.camera_fill, size: 16, color: _orange),
+                      const SizedBox(width: 8),
+                      Text('Photo', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _orange)),
                     ]),
                   ),
                 ),
               ]),
-              const SizedBox(height: 20),
-              _Pressable(
-                onTap: _pickAvatar,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-                  decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(10)),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(CupertinoIcons.camera_fill, size: 16, color: Colors.white),
-                    const SizedBox(width: 8),
-                    Text('Change photo', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
-                  ]),
-                ),
-              ),
-              const SizedBox(height: 12),
-              _Pressable(
-                onTap: () => _openPanel('settings'),
-                child: Text('Settings', style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w600, color: _orange)),
-              ),
             ]),
+          ),
+          const SizedBox(height: 22),
+          // Notifications shown in front — the user sees unseen ones directly.
+          Row(children: [
+            Icon(CupertinoIcons.bell_fill, size: 16, color: _orange),
+            const SizedBox(width: 8),
+            Text('Notifications', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800, color: _navy)),
+          ]),
+          const SizedBox(height: 8),
+          _future(
+            Future.wait([
+              _apiList('/api/v1/me/notifications', 'notifications'),
+              _apiList('/api/v1/me/announcements', 'announcements'),
+            ]),
+            (List d) {
+              // Mark personal notifications read once surfaced here.
+              widget.auth.apiPost('/api/v1/me/notifications/read', {}).ignore();
+              final entries = <Map<String, dynamic>>[];
+              for (final n in (d[0] as List)) {
+                final m = n as Map<String, dynamic>;
+                final body = m['body']?.toString() ?? '';
+                entries.add({'text': [m['title'] ?? '', if (body.isNotEmpty) '— $body'].join(' '), 'at': m['at'], 'read': m['read'] == true});
+              }
+              for (final a in (d[1] as List)) {
+                final m = a as Map<String, dynamic>;
+                final body = m['body']?.toString() ?? '';
+                final course = m['course']?.toString() ?? '';
+                entries.add({'text': [if (course.isNotEmpty) '[$course]', m['title'] ?? '', if (body.isNotEmpty) '— $body'].join(' '), 'at': m['at'], 'read': true});
+              }
+              entries.sort((a, b) => (b['at']?.toString() ?? '').compareTo(a['at']?.toString() ?? ''));
+              if (entries.isEmpty) return _emptyText('No notifications yet.');
+              return Column(children: entries.take(10).map((e) => _notif(e['text'] as String, _fmtAt(e['at']?.toString()), read: e['read'] == true)).toList());
+            },
           ),
         ]);
       case 'settings':
