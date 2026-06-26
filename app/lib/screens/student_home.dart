@@ -21,24 +21,24 @@ import 'live_screen.dart';
 import 'login_screen.dart';
 import 'video_player_screen.dart';
 
-// Palette — red-orange accent.
-const _orange = Color(0xFFFF4F2B);
+// Palette — soft terracotta accent (muted, low-saturation warm tone).
+const _orange = Color(0xFFD2805F);
 // Shared accent gradient — a soft 3-stop ambient ramp (light → mid → deep) so
-// no surface ever reads as a flat solid colour.
+// no surface ever reads as a flat solid colour. Kept desaturated for soft tones.
 const _orangeGrad = LinearGradient(
-  colors: [Color(0xFFFF9A5E), _orange, Color(0xFFE8421F)],
+  colors: [Color(0xFFE3AB94), _orange, Color(0xFFBE6B4C)],
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
 );
-const _green = Color(0xFF2D8A4E);
-const _greenBg = Color(0xFFEAFAF0);
+const _green = Color(0xFF5E9B73); // soft sage green
+const _greenBg = Color(0xFFEDF5EF);
 
 // Brightness-aware palette. `_isDark` is set at the start of each build / dialog.
 bool _isDark = false;
-Color get _navy => _isDark ? const Color(0xFFECEDF2) : const Color(0xFF1A1A2E);
-Color get _grey => _isDark ? const Color(0xFF9AA0AC) : const Color(0xFF888888);
-Color get _peach => _isDark ? const Color(0xFF2C231C) : const Color(0xFFFFF3EC);
-Color get _bg => _isDark ? const Color(0xFF0E0F14) : const Color(0xFFFFF6F1);
+Color get _navy => _isDark ? const Color(0xFFE9EAEF) : const Color(0xFF2A2A38);
+Color get _grey => _isDark ? const Color(0xFF9AA0AC) : const Color(0xFF8C8782);
+Color get _peach => _isDark ? const Color(0xFF2A241F) : const Color(0xFFF7EEE7);
+Color get _bg => _isDark ? const Color(0xFF12120F) : const Color(0xFFF7F2EC);
 Color get _surface => _isDark ? const Color(0xFF1E2027) : Colors.white;
 Color get _line => _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0F0F0);
 
@@ -137,33 +137,69 @@ class _GlassBackdropState extends State<_GlassBackdrop> with SingleTickerProvide
             child: Container(width: d, height: d, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
           ),
         );
-    final c1 = circle(_orange.withOpacity(_isDark ? 0.22 : 0.30), 380);
-    final c2 = circle(const Color(0xFFFF7A4D).withOpacity(_isDark ? 0.18 : 0.28), 420);
-    final c3 = circle(const Color(0xFF7C5CFF).withOpacity(_isDark ? 0.16 : 0.18), 460);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: _isDark
-              ? const [Color(0xFF0E0F14), Color(0xFF14161F)]
-              : const [Color(0xFFFFF1EA), Color(0xFFFDEAF6)],
+    // Muted, low-saturation ambient blobs — soft warm + dusty lavender.
+    final c1 = circle(_orange.withOpacity(_isDark ? 0.16 : 0.22), 380);
+    final c2 = circle(const Color(0xFFD7A98F).withOpacity(_isDark ? 0.14 : 0.22), 420);
+    final c3 = circle(const Color(0xFFAEA6C9).withOpacity(_isDark ? 0.13 : 0.16), 460);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: _isDark
+                  ? const [Color(0xFF121210), Color(0xFF17171A)]
+                  : const [Color(0xFFF6F0EA), Color(0xFFF1ECEF)],
+            ),
+          ),
+          child: AnimatedBuilder(
+            animation: _c,
+            builder: (context, _) {
+              final t = _c.value * 2 * math.pi;
+              Offset drift(double phase, double ax, double ay) => Offset(ax * math.sin(t + phase), ay * math.cos(t + phase));
+              return Stack(children: [
+                Positioned(top: -120, left: -100, child: Transform.translate(offset: drift(0, 26, 20), child: c1)),
+                Positioned(top: 80, right: -140, child: Transform.translate(offset: drift(2.1, -30, 24), child: c2)),
+                Positioned(bottom: -160, left: 120, child: Transform.translate(offset: drift(4.2, 28, -22), child: c3)),
+              ]);
+            },
+          ),
         ),
-      ),
-      child: AnimatedBuilder(
-        animation: _c,
-        builder: (context, _) {
-          final t = _c.value * 2 * math.pi;
-          Offset drift(double phase, double ax, double ay) => Offset(ax * math.sin(t + phase), ay * math.cos(t + phase));
-          return Stack(children: [
-            Positioned(top: -120, left: -100, child: Transform.translate(offset: drift(0, 26, 20), child: c1)),
-            Positioned(top: 80, right: -140, child: Transform.translate(offset: drift(2.1, -30, 24), child: c2)),
-            Positioned(bottom: -160, left: 120, child: Transform.translate(offset: drift(4.2, 28, -22), child: c3)),
-          ]);
-        },
-      ),
+        // Subtle film-grain texture so surfaces don't read as flat.
+        Positioned.fill(
+          child: IgnorePointer(
+            child: RepaintBoundary(child: CustomPaint(painter: _GrainPainter(_isDark))),
+          ),
+        ),
+      ],
     );
   }
+}
+
+/// A faint, static film-grain overlay — sparse 1px specks at very low opacity,
+/// painted once (cached by a RepaintBoundary) to give flat areas some texture.
+class _GrainPainter extends CustomPainter {
+  const _GrainPainter(this.dark);
+  final bool dark;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rnd = math.Random(7);
+    final base = dark ? Colors.white : const Color(0xFF5A4A40);
+    final paint = Paint();
+    final count = (size.width * size.height / 800).clamp(0, 14000).toInt();
+    for (var i = 0; i < count; i++) {
+      final dx = rnd.nextDouble() * size.width;
+      final dy = rnd.nextDouble() * size.height;
+      paint.color = base.withOpacity((dark ? 0.022 : 0.030) * rnd.nextDouble());
+      canvas.drawRect(Rect.fromLTWH(dx, dy, 1.1, 1.1), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GrainPainter old) => old.dark != dark;
 }
 
 /// A default profile picture: an emoji on a gradient square (index 0 = the
@@ -454,7 +490,15 @@ class _StudentHomeState extends State<StudentHome> {
               ),
             ),
             const SizedBox(width: 28),
-            SizedBox(width: 380, child: _Entrance(index: 1, child: _AiNewsCard(auth: widget.auth, scrollable: true))),
+            // Right sidebar: profile on top, AI news filling the rest.
+            SizedBox(
+              width: 380,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                _Entrance(index: 1, child: _profileSection()),
+                const SizedBox(height: 12),
+                Expanded(child: _Entrance(index: 2, child: _AiNewsCard(auth: widget.auth, scrollable: true))),
+              ]),
+            ),
           ]),
         ),
       ]),
@@ -472,8 +516,11 @@ class _StudentHomeState extends State<StudentHome> {
       padding: const EdgeInsets.fromLTRB(18, 8, 18, 96),
       child: Column(children: [
         _Entrance(index: 0, child: _topBar()),
+        const SizedBox(height: 14),
+        // Profile section at the top on iPad / phone.
+        _Entrance(index: 1, child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 640), child: _profileSection(compact: true)))),
         const SizedBox(height: 18),
-        _Entrance(index: 1, child: Center(child: _matrix(side))),
+        _Entrance(index: 2, child: Center(child: _matrix(side))),
         const SizedBox(height: 28),
         _Entrance(
           index: 3,
@@ -487,6 +534,83 @@ class _StudentHomeState extends State<StudentHome> {
         const SizedBox(height: 24),
       ]),
     );
+  }
+
+  // ---- Profile section (right sidebar on desktop, top on iPad/phone) --------
+
+  Widget _profileSection({bool compact = false}) {
+    final initials = _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S';
+    final avatar = compact ? 56.0 : 70.0;
+    final hi = compact ? 19.0 : 22.0;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => _openPanel('profile'),
+        child: _glass(
+          padding: const EdgeInsets.all(18),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            ValueListenableBuilder<String>(
+              valueListenable: avatarNotifier,
+              builder: (ctx, av, _) => _avatarBox(av, avatar, initials),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                RichText(
+                  text: TextSpan(children: [
+                    TextSpan(text: 'Hi, ', style: GoogleFonts.poppins(fontSize: hi, fontWeight: FontWeight.w800, color: _navy)),
+                    TextSpan(text: _firstName, style: GoogleFonts.poppins(fontSize: hi, fontWeight: FontWeight.w800, color: _orange)),
+                  ]),
+                ),
+                const SizedBox(height: 3),
+                Text(_roleLabel, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w600, color: _grey)),
+                const SizedBox(height: 10),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                    decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
+                    child: Text('ONROL Learner', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
+                  ),
+                  _streakChip(),
+                ]),
+              ]),
+            ),
+            Icon(CupertinoIcons.gear_alt_fill, size: 18, color: _orange.withOpacity(0.55)),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  // Themed day-streak chip (fire + count). Tap opens the Achievements panel.
+  Widget _streakChip() => GestureDetector(
+        onTap: () => _openPanel('achievements'),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+          decoration: BoxDecoration(
+            gradient: _orangeGrad,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [BoxShadow(color: _orange.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(CupertinoIcons.flame_fill, color: Colors.white, size: 14),
+            const SizedBox(width: 4),
+            Text('$_streak day streak', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+          ]),
+        ),
+      );
+
+  String get _roleLabel {
+    switch (widget.auth.user?.role) {
+      case 'instructor':
+        return 'ONROL Instructor';
+      case 'manager':
+        return 'ONROL Manager';
+      case 'superadmin':
+        return 'ONROL Admin';
+      default:
+        return 'ONROL Student';
+    }
   }
 
   // ---- Top bar -------------------------------------------------------------
