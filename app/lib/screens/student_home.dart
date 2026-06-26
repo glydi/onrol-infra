@@ -1471,37 +1471,66 @@ class _StudentHomeState extends State<StudentHome> {
               ]),
             ]),
           ),
-          const SizedBox(height: 22),
-          // Notifications shown in front — the user sees unseen ones directly.
-          Row(children: [
-            Icon(CupertinoIcons.bell_fill, size: 16, color: _orange),
-            const SizedBox(width: 8),
-            Text('Notifications', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800, color: _navy)),
-          ]),
-          const SizedBox(height: 8),
+          const SizedBox(height: 18),
+          // Notification button — a preview with the unseen count and the latest
+          // update; tapping opens the full notifications in a separate popup
+          // (which is where they get marked read).
           _future(
             Future.wait([
               _apiList('/api/v1/me/notifications', 'notifications'),
               _apiList('/api/v1/me/announcements', 'announcements'),
             ]),
             (List d) {
-              // Mark personal notifications read once surfaced here.
-              widget.auth.apiPost('/api/v1/me/notifications/read', {}).ignore();
-              final entries = <Map<String, dynamic>>[];
-              for (final n in (d[0] as List)) {
+              final personal = (d[0] as List);
+              final unseen = personal.where((n) => (n as Map)['read'] != true).length;
+              final all = <Map<String, dynamic>>[];
+              for (final n in personal) {
                 final m = n as Map<String, dynamic>;
-                final body = m['body']?.toString() ?? '';
-                entries.add({'text': [m['title'] ?? '', if (body.isNotEmpty) '— $body'].join(' '), 'at': m['at'], 'read': m['read'] == true});
+                final b = m['body']?.toString() ?? '';
+                all.add({'text': [m['title'] ?? '', if (b.isNotEmpty) '— $b'].join(' '), 'at': m['at']});
               }
               for (final a in (d[1] as List)) {
                 final m = a as Map<String, dynamic>;
-                final body = m['body']?.toString() ?? '';
+                final b = m['body']?.toString() ?? '';
                 final course = m['course']?.toString() ?? '';
-                entries.add({'text': [if (course.isNotEmpty) '[$course]', m['title'] ?? '', if (body.isNotEmpty) '— $body'].join(' '), 'at': m['at'], 'read': true});
+                all.add({'text': [if (course.isNotEmpty) '[$course]', m['title'] ?? '', if (b.isNotEmpty) '— $b'].join(' '), 'at': m['at']});
               }
-              entries.sort((a, b) => (b['at']?.toString() ?? '').compareTo(a['at']?.toString() ?? ''));
-              if (entries.isEmpty) return _emptyText('No notifications yet.');
-              return Column(children: entries.take(10).map((e) => _notif(e['text'] as String, _fmtAt(e['at']?.toString()), read: e['read'] == true)).toList());
+              all.sort((a, b) => (b['at']?.toString() ?? '').compareTo(a['at']?.toString() ?? ''));
+              final preview = all.isEmpty ? 'No notifications yet' : (all.first['text'] as String);
+              return _Pressable(
+                onTap: () => _openPanel('notifications'),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                  decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(16), border: Border.all(color: _cardBorder)),
+                  child: Row(children: [
+                    Stack(clipBehavior: Clip.none, children: [
+                      Container(width: 38, height: 38, alignment: Alignment.center, decoration: BoxDecoration(color: _orange.withOpacity(0.12), shape: BoxShape.circle), child: Icon(CupertinoIcons.bell_fill, size: 18, color: _orange)),
+                      if (unseen > 0)
+                        Positioned(right: -3, top: -3, child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          constraints: const BoxConstraints(minWidth: 17),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(color: const Color(0xFFE5484D), borderRadius: BorderRadius.circular(10), border: Border.all(color: _bg, width: 1.5)),
+                          child: Text(unseen > 99 ? '99+' : '$unseen', style: GoogleFonts.poppins(fontSize: 9.5, fontWeight: FontWeight.w800, color: Colors.white)),
+                        )),
+                    ]),
+                    const SizedBox(width: 12),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        Text('Notifications', style: GoogleFonts.poppins(fontSize: 14.5, fontWeight: FontWeight.w800, color: _navy)),
+                        if (unseen > 0) ...[
+                          const SizedBox(width: 6),
+                          Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1), decoration: BoxDecoration(color: _orange.withOpacity(0.14), borderRadius: BorderRadius.circular(10)), child: Text('$unseen new', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: _orange))),
+                        ],
+                      ]),
+                      const SizedBox(height: 2),
+                      Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+                    ])),
+                    const SizedBox(width: 6),
+                    Icon(CupertinoIcons.chevron_forward, size: 16, color: _grey),
+                  ]),
+                ),
+              );
             },
           ),
         ]);
