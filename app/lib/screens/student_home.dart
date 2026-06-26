@@ -545,7 +545,7 @@ class _StudentHomeState extends State<StudentHome> {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: () => _openPanel('profile'),
+        onTap: _pickAvatar, // tap to change your profile picture
         child: _glass(
           padding: const EdgeInsets.all(18),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -651,9 +651,9 @@ class _StudentHomeState extends State<StudentHome> {
               ]),
             ),
             const SizedBox(width: 12),
-            // Profile + settings — top-right corner. Opens the full profile section.
+            // Tap your avatar to change your profile picture.
             _Pressable(
-              onTap: () => _openPanel('profile'),
+              onTap: _pickAvatar,
               child: ValueListenableBuilder<String>(
                 valueListenable: avatarNotifier,
                 builder: (ctx, av, _) => _avatarBox(av, 40, _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S'),
@@ -1424,10 +1424,6 @@ class _StudentHomeState extends State<StudentHome> {
                 }),
             ]);
           }),
-        ]);
-      case 'profile':
-        return (CupertinoIcons.person_fill, 'My Profile', 'Your details — all optional', [
-          _ProfilePanel(auth: widget.auth, onEditAvatar: _pickAvatar),
         ]);
       case 'settings':
         return (CupertinoIcons.gear_alt_fill, 'Settings', 'Customize your experience', [
@@ -4068,264 +4064,6 @@ Widget _orangeButton(String label, VoidCallback onTap) => _Pressable(
       ),
     );
 
-/// Profile panel — loads the caller's profile from the API and saves edits.
-class _ProfilePanel extends StatefulWidget {
-  const _ProfilePanel({required this.auth, required this.onEditAvatar});
-  final AuthService auth;
-  final VoidCallback onEditAvatar;
-
-  @override
-  State<_ProfilePanel> createState() => _ProfilePanelState();
-}
-
-class _ProfilePanelState extends State<_ProfilePanel> {
-  final _name = TextEditingController();
-  final _username = TextEditingController();
-  final _phone = TextEditingController();
-  final _occupation = TextEditingController();
-  final _location = TextEditingController();
-  final _linkedin = TextEditingController();
-  final _github = TextEditingController();
-  String _email = '';
-  String _role = 'student';
-  bool _loading = true;
-  bool _saving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  @override
-  void dispose() {
-    for (final c in [_name, _username, _phone, _occupation, _location, _linkedin, _github]) {
-      c.dispose();
-    }
-    super.dispose();
-  }
-
-  Future<void> _load() async {
-    try {
-      final m = ApiClient.decode(await widget.auth.apiGet('/api/v1/me/profile'));
-      _name.text = m['full_name']?.toString() ?? '';
-      _username.text = m['username']?.toString() ?? '';
-      _phone.text = m['phone']?.toString() ?? '';
-      _occupation.text = m['occupation']?.toString() ?? '';
-      _location.text = m['location']?.toString() ?? '';
-      _linkedin.text = m['linkedin']?.toString() ?? '';
-      _github.text = m['github']?.toString() ?? '';
-      _email = m['email']?.toString() ?? '';
-      _role = m['role']?.toString() ?? 'student';
-    } catch (_) {}
-    if (mounted) setState(() => _loading = false);
-  }
-
-  Future<void> _save() async {
-    setState(() => _saving = true);
-    try {
-      await widget.auth.apiPatch('/api/v1/me/profile', {
-        'full_name': _name.text.trim(),
-        'username': _username.text.trim(),
-        'phone': _phone.text.trim(),
-        'occupation': _occupation.text.trim(),
-        'location': _location.text.trim(),
-        'linkedin': _linkedin.text.trim(),
-        'github': _github.text.trim(),
-      });
-      await widget.auth.refreshProfile();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile saved'), behavior: SnackBarBehavior.floating));
-        Navigator.of(context).pop();
-      }
-    } catch (_) {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  String get _roleLabel {
-    switch (_role) {
-      case 'instructor':
-        return 'Instructor';
-      case 'manager':
-        return 'Manager';
-      case 'superadmin':
-        return 'Admin';
-      default:
-        return 'Student';
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) {
-      return const Padding(padding: EdgeInsets.symmetric(vertical: 40), child: Center(child: CircularProgressIndicator(color: _orange, strokeWidth: 2.5)));
-    }
-    final initials = _name.text.trim().isNotEmpty ? _name.text.trim()[0].toUpperCase() : 'S';
-    final uname = _username.text.trim();
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      // ---- Gradient cover banner with an overlapping, animated avatar ----
-      SizedBox(
-        height: 152,
-        child: Stack(clipBehavior: Clip.none, children: [
-          Positioned(
-            top: 0, left: 0, right: 0,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(22),
-              child: Container(
-                height: 104,
-                decoration: const BoxDecoration(gradient: _orangeGrad),
-                child: Stack(children: [
-                  Positioned(top: -34, right: -12, child: Container(width: 130, height: 130, decoration: BoxDecoration(shape: BoxShape.circle, gradient: RadialGradient(colors: [Colors.white.withOpacity(0.28), Colors.white.withOpacity(0.0)])))),
-                  Positioned(bottom: -46, left: 24, child: Container(width: 120, height: 120, decoration: BoxDecoration(shape: BoxShape.circle, gradient: RadialGradient(colors: [const Color(0xFFFFD7B0).withOpacity(0.34), Colors.white.withOpacity(0.0)])))),
-                ]),
-              ),
-            ),
-          ),
-          Positioned(
-            top: 56, left: 0, right: 0,
-            child: Center(
-              child: TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0.8, end: 1),
-                duration: const Duration(milliseconds: 540),
-                curve: Curves.easeOutBack,
-                builder: (_, sc, child) => Transform.scale(scale: sc, child: child),
-                child: GestureDetector(
-                  onTap: widget.onEditAvatar,
-                  child: ValueListenableBuilder<String>(valueListenable: avatarNotifier, builder: (c, av, _) => _avatarBox(av, 96, initials, editable: true)),
-                ),
-              ),
-            ),
-          ),
-        ]),
-      ),
-      const SizedBox(height: 10),
-      Center(child: Text(_name.text.trim().isEmpty ? 'Your Name' : _name.text, style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w800, color: _navy))),
-      if (uname.isNotEmpty) ...[
-        const SizedBox(height: 1),
-        Center(child: Text('@$uname', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _orange))),
-      ],
-      const SizedBox(height: 8),
-      Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-          decoration: BoxDecoration(gradient: LinearGradient(colors: [_orange.withOpacity(0.20), _orange.withOpacity(0.08)]), borderRadius: BorderRadius.circular(20)),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(CupertinoIcons.checkmark_seal_fill, size: 13, color: _orange),
-            const SizedBox(width: 5),
-            Text('ONROL $_roleLabel', style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w700, color: _orange)),
-          ]),
-        ),
-      ),
-      const SizedBox(height: 5),
-      Center(child: Text('Tap photo to change', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w500, color: _grey))),
-      const SizedBox(height: 20),
-      _ProfileField(index: 0, icon: CupertinoIcons.person_fill, label: 'FULL NAME', controller: _name, hint: 'Your name', keyboard: TextInputType.name),
-      _ProfileField(index: 1, icon: CupertinoIcons.at, label: 'USERNAME', controller: _username, hint: '@handle'),
-      _ProfileField(index: 2, icon: CupertinoIcons.mail_solid, label: 'EMAIL', readValue: _email),
-      _ProfileField(index: 3, icon: CupertinoIcons.phone_fill, label: 'PHONE', controller: _phone, keyboard: TextInputType.phone),
-      _ProfileField(index: 4, icon: CupertinoIcons.briefcase_fill, label: 'COLLEGE / OCCUPATION', controller: _occupation),
-      _ProfileField(index: 5, icon: CupertinoIcons.location_solid, label: 'LOCATION', controller: _location),
-      _ProfileField(index: 6, icon: CupertinoIcons.link, label: 'LINKEDIN', controller: _linkedin),
-      _ProfileField(index: 7, icon: CupertinoIcons.chevron_left_slash_chevron_right, label: 'GITHUB', controller: _github),
-      const SizedBox(height: 6),
-      _Entrance(
-        index: 8,
-        child: _Pressable(
-          onTap: _saving ? () {} : _save,
-          child: Container(
-            width: double.infinity, height: 50, alignment: Alignment.center,
-            decoration: BoxDecoration(
-              gradient: _orangeGrad,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [BoxShadow(color: _orange.withOpacity(0.42), blurRadius: 16, offset: const Offset(0, 7))],
-            ),
-            child: _saving
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
-                : Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(CupertinoIcons.checkmark_alt, size: 18, color: Colors.white),
-                    const SizedBox(width: 8),
-                    Text('Save Changes', style: GoogleFonts.poppins(fontSize: 14.5, fontWeight: FontWeight.w700, color: Colors.white)),
-                  ]),
-          ),
-        ),
-      ),
-    ]);
-  }
-}
-
-/// A glassy profile field that glows (border + icon chip) on focus.
-class _ProfileField extends StatefulWidget {
-  const _ProfileField({required this.index, required this.icon, required this.label, this.controller, this.readValue, this.hint = 'Optional', this.keyboard});
-  final int index;
-  final IconData icon;
-  final String label;
-  final TextEditingController? controller;
-  final String? readValue;
-  final String hint;
-  final TextInputType? keyboard;
-
-  @override
-  State<_ProfileField> createState() => _ProfileFieldState();
-}
-
-class _ProfileFieldState extends State<_ProfileField> {
-  late final FocusNode _node = FocusNode()..addListener(_onFocus);
-  void _onFocus() => setState(() {});
-
-  @override
-  void dispose() {
-    _node.removeListener(_onFocus);
-    _node.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final f = _node.hasFocus;
-    return _Entrance(
-      index: widget.index,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          gradient: _cardGradient,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: f ? _orange.withOpacity(0.60) : _cardBorder, width: f ? 1.5 : 1),
-          boxShadow: f ? [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 14, offset: const Offset(0, 5))] : const [],
-        ),
-        child: Row(children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            width: 36, height: 36, alignment: Alignment.center,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: f ? const [_orange, Color(0xFFFF7A4D)] : [_orange.withOpacity(0.24), _orange.withOpacity(0.10)]),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(widget.icon, size: 16, color: f ? Colors.white : _orange),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-              Text(widget.label, style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w700, color: f ? _orange : _grey, letterSpacing: 0.4)),
-              widget.controller == null
-                  ? Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Text(widget.readValue ?? '', style: GoogleFonts.poppins(fontSize: 14, color: _navy)))
-                  : TextField(
-                      controller: widget.controller,
-                      focusNode: _node,
-                      keyboardType: widget.keyboard,
-                      style: GoogleFonts.poppins(fontSize: 14, color: _navy),
-                      decoration: InputDecoration(isDense: true, border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(vertical: 4), hintText: widget.hint, hintStyle: GoogleFonts.poppins(fontSize: 13, color: _grey.withOpacity(0.6))),
-                    ),
-            ]),
-          ),
-        ]),
-      ),
-    );
-  }
-}
 
 // ---- Small interactive widgets ---------------------------------------------
 
