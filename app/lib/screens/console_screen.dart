@@ -2422,11 +2422,22 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   // Edit the course's own details — title, ID/label, description, cover image.
   Future<void> _editCourseDetails() async {
     final c = _course ?? <String, dynamic>{};
+    // Load instructors so the admin can (re)assign the course instructor.
+    List<dynamic> instructors = [];
+    try {
+      instructors = (ApiClient.decode(await widget.auth.apiGet('/api/v1/manage/instructors'))['instructors'] as List?) ?? [];
+    } catch (_) {}
+    if (!mounted) return;
     final title = TextEditingController(text: c['title']?.toString() ?? widget.title);
     final courseId = TextEditingController(text: c['label']?.toString() ?? '');
     final desc = TextEditingController(text: c['description']?.toString() ?? '');
     final imageUrl = TextEditingController(text: c['image_url']?.toString() ?? '');
-    final ok = await showFormSheet(context, square: true, title: 'Edit Course Details', builder: (_) => [
+    // Preselect the current instructor (owner) if it's still an instructor.
+    String? instructorId = c['owner_id']?.toString();
+    if ((instructorId == null || instructorId.isEmpty) && instructors.isNotEmpty) {
+      instructorId = instructors.first['id'].toString();
+    }
+    final ok = await showFormSheet(context, square: true, title: 'Edit Course Details', builder: (setS) => [
       sheetField(title, 'Display title (shown to students)', CupertinoIcons.textformat),
       const SizedBox(height: 10),
       sheetField(courseId, 'Course ID — unique label (e.g. aiarchitect)', CupertinoIcons.tag),
@@ -2434,11 +2445,22 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       sheetField(desc, 'Description', CupertinoIcons.text_alignleft),
       const SizedBox(height: 10),
       sheetField(imageUrl, 'Cover image URL (optional)', CupertinoIcons.photo),
+      if (instructors.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        _label(context, 'Assign instructor'),
+        const SizedBox(height: 6),
+        _InstructorDropdown(
+          instructors: instructors,
+          selectedId: instructorId ?? instructors.first['id'].toString(),
+          onChanged: (id) => setS(() => instructorId = id),
+        ),
+      ],
     ], onSubmit: () async {
       if (title.text.trim().isEmpty) return 'Title required';
       final body = <String, dynamic>{'title': title.text.trim(), 'description': desc.text.trim()};
       if (courseId.text.trim().isNotEmpty) body['label'] = courseId.text.trim();
       if (imageUrl.text.trim().isNotEmpty) body['image_url'] = imageUrl.text.trim();
+      if (instructorId != null && instructorId!.isNotEmpty) body['instructor_id'] = instructorId;
       try {
         await widget.auth.apiPatch('/api/v1/manage/courses/${widget.courseId}', body);
         return null;

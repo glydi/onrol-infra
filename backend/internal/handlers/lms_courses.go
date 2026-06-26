@@ -151,12 +151,17 @@ func (h *Handlers) UpdateCourse(c *fiber.Ctx) error {
 		Description *string `json:"description"`
 		Status      *string `json:"status"`
 		EnrollType  *string `json:"enroll_type"` // admin controls admission mode
-		ImageURL    *string `json:"image_url"`   // cover image (data URI or URL)
-		BatchSize   *int    `json:"batch_size"`  // default students per batch
-		BatchAuto   *bool   `json:"batch_auto"`  // auto allocation is the default mode
+		ImageURL     *string `json:"image_url"`     // cover image (data URI or URL)
+		BatchSize    *int    `json:"batch_size"`    // default students per batch
+		BatchAuto    *bool   `json:"batch_auto"`    // auto allocation is the default mode
+		InstructorID *string `json:"instructor_id"` // assign/reassign the course instructor (owner)
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+	var owner *string
+	if req.InstructorID != nil && *req.InstructorID != "" {
+		owner = req.InstructorID
 	}
 	var label *string
 	if req.Label != nil {
@@ -192,9 +197,10 @@ func (h *Handlers) UpdateCourse(c *fiber.Ctx) error {
 			image_url=COALESCE($6,image_url),
 			batch_size=COALESCE($7,batch_size),
 			batch_auto=COALESCE($8,batch_auto),
-			label=COALESCE($9,label)
+			label=COALESCE($9,label),
+			owner_id=COALESCE($10,owner_id)
 		WHERE id=$1`, id, req.Title, req.Description, req.Status, req.EnrollType, req.ImageURL,
-		req.BatchSize, req.BatchAuto, label)
+		req.BatchSize, req.BatchAuto, label, owner)
 	if err != nil {
 		if strings.Contains(err.Error(), "idx_courses_label") {
 			return fiber.NewError(fiber.StatusConflict, "a course with this Course ID already exists")
@@ -565,10 +571,12 @@ func (h *Handlers) GetManagedCourse(c *fiber.Ctx) error {
 	if err := h.canManageCourse(c, id); err != nil {
 		return err
 	}
-	var title, status, enrollType, desc string
+	var title, status, enrollType, desc, ownerID, ownerName string
 	if err := h.Pool.QueryRow(c.Context(),
-		`SELECT title, status, enroll_type, description FROM courses WHERE id=$1`, id,
-	).Scan(&title, &status, &enrollType, &desc); err != nil {
+		`SELECT c.title, c.status, c.enroll_type, c.description,
+		        COALESCE(c.owner_id::text,''), COALESCE(u.full_name,'')
+		 FROM courses c LEFT JOIN users u ON u.id=c.owner_id WHERE c.id=$1`, id,
+	).Scan(&title, &status, &enrollType, &desc, &ownerID, &ownerName); err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "course not found")
 	}
 	rows, err := h.Pool.Query(c.Context(), `
@@ -602,7 +610,8 @@ func (h *Handlers) GetManagedCourse(c *fiber.Ctx) error {
 		ordered = append(ordered, mods[k])
 	}
 	return c.JSON(fiber.Map{"id": id, "title": title, "status": status,
-		"enroll_type": enrollType, "description": desc, "modules": ordered})
+		"enroll_type": enrollType, "description": desc, "modules": ordered,
+		"owner_id": ownerID, "instructor": ownerName})
 }
 
 // enrollUserInCourse upserts a course enrollment and grants entitlements to the

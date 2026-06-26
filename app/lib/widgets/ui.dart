@@ -298,12 +298,13 @@ Future<bool> showSquareConfirm(BuildContext context, {required String title, req
 
 /// iOS grouped text field. When [obscure] is set it shows a reveal (eye) toggle.
 class AppleField extends StatefulWidget {
-  const AppleField({super.key, required this.controller, required this.hint, this.icon, this.obscure = false, this.keyboard});
+  const AppleField({super.key, required this.controller, required this.hint, this.icon, this.obscure = false, this.keyboard, this.autofillHints});
   final TextEditingController controller;
   final String hint;
   final IconData? icon;
   final bool obscure;
   final TextInputType? keyboard;
+  final List<String>? autofillHints; // lets browsers / password managers offer to save & fill
 
   @override
   State<AppleField> createState() => _AppleFieldState();
@@ -323,6 +324,7 @@ class _AppleFieldState extends State<AppleField> {
             controller: widget.controller,
             obscureText: _hidden,
             keyboardType: widget.keyboard,
+            autofillHints: widget.autofillHints,
             style: AppleTheme.body(context),
             cursorColor: p.accent,
             decoration: InputDecoration(

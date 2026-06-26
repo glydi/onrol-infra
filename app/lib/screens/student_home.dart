@@ -625,42 +625,15 @@ class _StudentHomeState extends State<StudentHome> {
           // Brand on the left.
           Text('ONROL', style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 1)),
           const Spacer(),
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            // Notification bell — opens announcements/notifications.
-            _Pressable(
-              onTap: () => _openPanel('notifications'),
-              child: Container(
-                width: 40, height: 40,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(color: _orange.withOpacity(0.12), shape: BoxShape.circle),
-                child: Icon(CupertinoIcons.bell_fill, size: 19, color: _orange),
-              ),
+          // Streak, notifications and photo all live inside the Profile panel
+          // now — the avatar is the single entry point to it.
+          _Pressable(
+            onTap: () => _openPanel('profile'),
+            child: ValueListenableBuilder<String>(
+              valueListenable: avatarNotifier,
+              builder: (ctx, av, _) => _avatarBox(av, 40, _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S'),
             ),
-            const SizedBox(width: 12),
-            // Streak — fire, themed red-orange.
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-              decoration: BoxDecoration(
-                gradient: _orangeGrad,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [BoxShadow(color: _orange.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(CupertinoIcons.flame_fill, color: Colors.white, size: 16),
-                const SizedBox(width: 4),
-                Text('$_streak', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white)),
-              ]),
-            ),
-            const SizedBox(width: 12),
-            // Avatar opens the Profile panel (notifications are the separate bell).
-            _Pressable(
-              onTap: () => _openPanel('profile'),
-              child: ValueListenableBuilder<String>(
-                valueListenable: avatarNotifier,
-                builder: (ctx, av, _) => _avatarBox(av, 40, _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S'),
-              ),
-            ),
-          ]),
+          ),
         ],
       ),
     );
@@ -1454,6 +1427,32 @@ class _StudentHomeState extends State<StudentHome> {
                 const SizedBox(height: 2),
                 Text(widget.auth.user!.email, style: GoogleFonts.poppins(fontSize: 12.5, color: _grey)),
               ],
+              const SizedBox(height: 16),
+              // Streak + notifications, consolidated into the profile panel.
+              Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: _orange.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))]),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(CupertinoIcons.flame_fill, color: Colors.white, size: 15),
+                    const SizedBox(width: 5),
+                    Text('$_streak day streak', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.white)),
+                  ]),
+                ),
+                const SizedBox(width: 10),
+                _Pressable(
+                  onTap: () => _openPanel('notifications'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(20), border: Border.all(color: _orange.withOpacity(0.3))),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(CupertinoIcons.bell_fill, color: _orange, size: 15),
+                      const SizedBox(width: 5),
+                      Text('Notifications', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: _orange)),
+                    ]),
+                  ),
+                ),
+              ]),
               const SizedBox(height: 20),
               _Pressable(
                 onTap: _pickAvatar,

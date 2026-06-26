@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../app_mode.dart';
@@ -71,6 +72,9 @@ class _LoginScreenState extends State<LoginScreen> {
       } else {
         await widget.auth.clearCredentials();
       }
+      // Tell the platform the login is done so the browser / password manager
+      // offers to save these credentials.
+      TextInput.finishAutofillContext();
       if (!mounted) return;
       _goHome();
     } on ApiException catch (e) {
@@ -226,11 +230,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         children: [
                           const SizedBox(height: 14),
                           if (!_forgot) ...[
-                            AppleField(controller: _email, hint: 'Email or username', icon: CupertinoIcons.person, keyboard: TextInputType.text),
+                            AppleField(controller: _email, hint: 'Email or username', icon: CupertinoIcons.person, keyboard: TextInputType.text, autofillHints: const [AutofillHints.username, AutofillHints.email]),
                             const SizedBox(height: 12),
                             Divider(height: 1, color: p.separator),
                             const SizedBox(height: 12),
-                            AppleField(controller: _password, hint: 'Password', icon: CupertinoIcons.lock, obscure: true),
+                            AppleField(controller: _password, hint: 'Password', icon: CupertinoIcons.lock, obscure: true, autofillHints: const [AutofillHints.password]),
                           ] else if (!_otpSent) ...[
                             AppleField(controller: _fpEmail, hint: 'Your account email', icon: CupertinoIcons.mail, keyboard: TextInputType.emailAddress),
                           ] else ...[
