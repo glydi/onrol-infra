@@ -643,7 +643,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     final email = TextEditingController();
     final username = TextEditingController();
     final name = TextEditingController();
-    final pass = TextEditingController();
+    final pass = TextEditingController(text: 'onrol@ai'); // default password
     final phone = TextEditingController();
     final courseLabel = TextEditingController();
     final batch = TextEditingController();
@@ -661,7 +661,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       const SizedBox(height: 10),
       sheetField(username, 'Username (optional — for sign-in)', CupertinoIcons.at),
       const SizedBox(height: 10),
-      sheetField(pass, 'Temporary password (min 8)', CupertinoIcons.lock),
+      sheetField(pass, 'Password (default: onrol@ai)', CupertinoIcons.lock),
       if (isStudent) ...[
         const SizedBox(height: 10),
         sheetField(courseLabel, 'Course label (e.g. aigeneralist)', CupertinoIcons.book),
@@ -678,7 +678,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       sheetField(github, 'GitHub (optional)', CupertinoIcons.link),
     ], onSubmit: () async {
       if (name.text.trim().isEmpty || email.text.trim().isEmpty) return 'Name and email required';
-      if (pass.text.trim().length < 8) return 'Password must be at least 8 characters';
+      if (pass.text.trim().isNotEmpty && pass.text.trim().length < 8) return 'Password must be at least 8 characters';
       final batchN = int.tryParse(batch.text.trim());
       try {
         await widget.auth.apiPost('/api/v1/manage/users', {

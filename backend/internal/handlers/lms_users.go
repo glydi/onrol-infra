@@ -83,8 +83,13 @@ func (h *Handlers) CreateManagedUser(c *fiber.Ctx) error {
 	}
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 	req.Username = strings.ToLower(strings.TrimSpace(req.Username))
-	if req.Email == "" || req.FullName == "" || req.Password == "" {
-		return fiber.NewError(fiber.StatusBadRequest, "email, full_name, password required")
+	if req.Email == "" || req.FullName == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "email and full_name required")
+	}
+	// New users get a known default password unless one is supplied; the admin
+	// can change it later (or the user can in Settings).
+	if strings.TrimSpace(req.Password) == "" {
+		req.Password = "onrol@ai"
 	}
 	if req.Role == "" {
 		req.Role = "student"
