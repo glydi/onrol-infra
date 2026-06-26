@@ -1463,7 +1463,7 @@ class _StudentHomeState extends State<StudentHome> {
         ]);
       case 'study':
         return (CupertinoIcons.doc_richtext, 'Study Hub', 'Guides, cheat sheets, flashcards & more', [
-          const _StudyHub(),
+          _StudyHub(auth: widget.auth),
         ]);
       case 'certificates':
         return (CupertinoIcons.rosette, 'Certificates', 'Your achievements', [
@@ -1912,7 +1912,8 @@ class _StudyResource {
 }
 
 class _StudyHub extends StatefulWidget {
-  const _StudyHub();
+  const _StudyHub({required this.auth});
+  final AuthService auth;
   @override
   State<_StudyHub> createState() => _StudyHubState();
 }
@@ -1921,7 +1922,56 @@ class _StudyHubState extends State<_StudyHub> {
   int _course = 0; // index into _courses
   String? _open; // resource id, null = grid
 
-  static const _courses = ['AI Architect', 'AI Generalist'];
+  List<Map<String, dynamic>> _courses = [];   // the student's enrolled courses
+  List<Map<String, dynamic>> _materials = []; // material for the selected course
+  bool _loadingCourses = true;
+  bool _loadingMat = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCourses();
+  }
+
+  Future<void> _loadCourses() async {
+    try {
+      final list = ((ApiClient.decode(await widget.auth.apiGet('/api/v1/me/courses'))['my_courses'] as List?) ?? [])
+          .map((e) => (e as Map).cast<String, dynamic>())
+          .toList();
+      if (!mounted) return;
+      setState(() { _courses = list; _loadingCourses = false; });
+      if (_courses.isNotEmpty) _loadMaterials();
+    } catch (_) {
+      if (mounted) setState(() => _loadingCourses = false);
+    }
+  }
+
+  Future<void> _loadMaterials() async {
+    if (_courses.isEmpty) return;
+    final id = _courses[_course]['id'].toString();
+    setState(() => _loadingMat = true);
+    try {
+      final list = ((ApiClient.decode(await widget.auth.apiGet('/api/v1/me/courses/$id/study'))['materials'] as List?) ?? [])
+          .map((e) => (e as Map).cast<String, dynamic>())
+          .toList();
+      if (!mounted) return;
+      setState(() { _materials = list; _loadingMat = false; });
+    } catch (_) {
+      if (mounted) setState(() { _materials = []; _loadingMat = false; });
+    }
+  }
+
+  void _selectCourse(int i) {
+    if (i == _course) return;
+    setState(() { _course = i; _materials = []; });
+    _loadMaterials();
+  }
+
+  // Material of one kind for the selected course, plus a small list coercion.
+  List<Map<String, dynamic>> _mat(String kind) =>
+      _materials.where((m) => m['kind'] == kind).toList();
+  List<String> _strs(dynamic items) =>
+      (items as List?)?.map((e) => e.toString()).toList() ?? const [];
 
   static const _resources = <_StudyResource>[
     _StudyResource('focus', CupertinoIcons.timer_fill, 'Focus Timer', 'Pomodoro sessions — study, break, repeat', [Color(0xFFFF4F2B), Color(0xFFFF8A5B)]),
@@ -1932,121 +1982,15 @@ class _StudyHubState extends State<_StudyHub> {
     _StudyResource('formulas', CupertinoIcons.function, 'Formula Sheets', 'All key formulas in one place', [Color(0xFF7C5CFC), Color(0xFFA88BFF)]),
   ];
 
-  // ---- Example content (per course) ----------------------------------------
-  static const Map<String, List<(String, List<String>)>> _guides = {
-    'AI Architect': [
-      ('System Design for AI', ['Pipeline: ingestion → storage → features → serving.', 'Pick batch vs real-time inference per use case.', 'Design for scalability, latency and cost.', 'Add monitoring for drift, latency and accuracy.', 'Decouple components with queues and APIs.']),
-      ('MLOps & Lifecycle', ['CI/CD for models: train → test → deploy.', 'Use a model registry with versioning.', 'Trigger automated retraining on drift.', 'Track experiments (params, metrics, artifacts).', 'Always have a rollback path.']),
-      ('Vector Databases & RAG', ['Store embeddings for semantic search.', 'Index types: HNSW (graph), IVF (clusters), Flat (exact).', 'RAG = retrieve relevant chunks → feed the LLM.', 'Chunk + overlap; tune top-k and similarity threshold.', 'Trade off recall vs latency vs cost.']),
-      ('Model Serving & Scaling', ['Stateless replicas behind a load balancer.', 'Batch GPU requests to raise throughput.', 'Quantize / distill to shrink models.', 'Cache embeddings and frequent responses.', 'Autoscale on QPS, latency and queue depth.']),
-      ('LLM Architecture', ['Transformer = attention + feed-forward blocks.', 'Context window limits input + output tokens.', 'KV-cache speeds up token generation.', 'Fine-tuning vs LoRA vs prompting — pick by need.', 'Guardrails: validation, moderation, grounding.']),
-      ('Observability & Governance', ['Log inputs, outputs, latency and cost per call.', 'Monitor data + concept drift continuously.', 'Evaluate with offline + online (A/B) tests.', 'Track lineage, versions and access (audit).', 'Set SLOs for latency and availability.']),
-    ],
-    'AI Generalist': [
-      ('AI Foundations', ['AI ⊃ Machine Learning ⊃ Deep Learning.', 'Learning types: supervised, unsupervised, RL.', 'Split data: train / validation / test.', 'Watch for overfitting vs underfitting.', 'Bias–variance trade-off drives model choice.']),
-      ('The ML Workflow', ['Define the problem and a success metric.', 'Collect, clean and split the data.', 'Engineer features; scale / encode inputs.', 'Train, tune hyperparameters, then evaluate.', 'Deploy, monitor and iterate.']),
-      ('Prompt Engineering', ['Give role + task + context + format.', 'Few-shot examples beat zero-shot for hard tasks.', 'Ask for chain-of-thought to improve reasoning.', 'Constrain output (JSON, length, style).', 'Iterate and evaluate outputs systematically.']),
-      ('Generative AI', ['LLMs predict the next token.', 'Diffusion models generate images from noise.', 'Embeddings turn text into vectors of meaning.', 'Fine-tune vs prompt — start with prompting.', 'Reduce hallucinations with grounding / RAG.']),
-      ('Neural Networks', ['Neurons = weighted sum → activation.', 'Layers: input → hidden → output.', 'Backpropagation updates weights via gradients.', 'Activations: ReLU, sigmoid, tanh, softmax.', 'Regularize with dropout and weight decay.']),
-      ('Model Evaluation', ['Accuracy misleads on imbalanced data.', 'Use precision, recall and F1 together.', 'Confusion matrix shows error types.', 'ROC-AUC measures ranking quality.', 'Cross-validate to estimate real performance.']),
-    ],
-  };
-
-  static const Map<String, List<(String, List<String>)>> _cheats = {
-    'AI Architect': [
-      ('Architecture', ['RAG = retriever + LLM', 'Batch vs streaming serving', 'Microservices per model', 'Feature store = shared features', 'Queue to decouple producers/consumers']),
-      ('Scaling', ['Scale stateless services horizontally', 'Cache embeddings & responses', 'Batch GPU requests', 'Quantize / distill big models', 'Autoscale on QPS / latency']),
-      ('RAG Tuning', ['Chunk size 200–500 tokens', 'Add overlap to keep context', 'Tune top-k retrieved chunks', 'Re-rank for precision', 'Ground answers, cite sources']),
-      ('Monitoring', ['Track latency p50 / p95 / p99', 'Watch data & concept drift', 'Log cost per request', 'Alert on error-rate spikes', 'A/B test new models']),
-    ],
-    'AI Generalist': [
-      ('ML Basics', ['Classification vs regression', 'Features = inputs, labels = outputs', 'Loss measures error', 'Gradient descent minimizes loss', 'Generalization > memorization']),
-      ('Prompting', ['Role + Task + Context + Format', 'Few-shot examples help', 'Chain-of-thought for reasoning', 'Low temp = focused', 'High temp = creative']),
-      ('Neural Nets', ['Weights + bias → activation', 'ReLU for hidden layers', 'Softmax for class outputs', 'Backprop = gradients flow back', 'Dropout fights overfitting']),
-      ('Metrics', ['Accuracy = correct / total', 'Precision = TP / (TP+FP)', 'Recall = TP / (TP+FN)', 'F1 balances P & R', 'AUC = ranking quality']),
-    ],
-  };
-
-  static const Map<String, (String, List<(String, List<String>)>)> _mind = {
-    'AI Architect': ('AI System', [
-      ('Data', ['Ingestion', 'Features', 'Storage', 'Embeddings']),
-      ('Modeling', ['Train', 'Evaluate', 'Tune', 'Register']),
-      ('Serving', ['API', 'Batch', 'Stream', 'Cache']),
-      ('Ops', ['Monitor', 'Retrain', 'Rollback', 'Audit']),
-      ('Infra', ['GPU', 'Autoscale', 'Queue', 'Vector DB']),
-    ]),
-    'AI Generalist': ('Artificial Intelligence', [
-      ('Machine Learning', ['Supervised', 'Unsupervised', 'Reinforcement']),
-      ('Generative AI', ['LLMs', 'Diffusion', 'GANs', 'Embeddings']),
-      ('Applications', ['Vision', 'NLP', 'Speech', 'Agents']),
-      ('Math', ['Linear Algebra', 'Probability', 'Calculus']),
-      ('Skills', ['Python', 'Data', 'Prompting', 'Evaluation']),
-    ]),
-  };
-
-  static const Map<String, List<(String, String)>> _flash = {
-    'AI Architect': [
-      ('What is RAG?', 'Retrieval-Augmented Generation — fetch relevant documents and feed them to the LLM as context.'),
-      ('What is HNSW?', 'Hierarchical Navigable Small World — a graph index for fast approximate nearest-neighbour search.'),
-      ('What is model drift?', 'When live data drifts from training data, degrading model accuracy over time.'),
-      ('What is a feature store?', 'A central repository of curated features shared across training and serving.'),
-      ('Blue-green deployment?', 'Run the new model beside the old, switch traffic once validated, roll back instantly.'),
-      ('What is quantization?', 'Reducing model weight precision (e.g. FP16 → INT8) to shrink size and speed up inference.'),
-      ('What is a KV-cache?', 'Stores past keys/values in a transformer so each new token reuses them instead of recomputing.'),
-      ('What is the context window?', 'The max number of tokens (input + output) an LLM can attend to at once.'),
-      ('Batch vs real-time inference?', 'Batch processes many records on a schedule; real-time serves single low-latency requests.'),
-      ('What is LoRA?', 'Low-Rank Adaptation — fine-tune a few small added matrices instead of all model weights.'),
-    ],
-    'AI Generalist': [
-      ('Supervised learning?', 'Learning from labelled data — each input has a known output.'),
-      ('Unsupervised learning?', 'Finding structure (clusters, patterns) in data with no labels.'),
-      ('What is a token?', 'A chunk of text (~¾ of a word) that an LLM reads and generates.'),
-      ('What is temperature?', 'Controls randomness: low = deterministic, high = creative.'),
-      ('What is overfitting?', 'When a model memorizes training data and fails on new, unseen data.'),
-      ('Zero-shot prompting?', 'Asking a model to do a task with only instructions — no examples.'),
-      ('What is gradient descent?', 'An optimizer that nudges weights down the loss gradient to reduce error.'),
-      ('Precision vs recall?', 'Precision = how many predicted positives are right; recall = how many real positives you caught.'),
-      ('What is an embedding?', 'A dense vector that captures the meaning of text, images or items.'),
-      ('What is fine-tuning?', 'Further training a pre-trained model on task-specific data to specialize it.'),
-    ],
-  };
-
-  static const Map<String, List<(String, String, String)>> _formulas = {
-    'AI Architect': [
-      ('Cosine Similarity', 'cos θ = (A · B) / (‖A‖ ‖B‖)', 'Closeness of two embeddings (−1…1).'),
-      ('Euclidean Distance', 'd = √(Σ (aᵢ − bᵢ)²)', 'Straight-line distance between two vectors.'),
-      ('Dot Product', 'A · B = Σ aᵢ bᵢ', 'Similarity score before normalization.'),
-      ("Little's Law", 'L = λ × W', 'Concurrency = arrival rate × time in system.'),
-      ('Throughput', 'QPS = requests / second', 'Load a service handles per second.'),
-      ('Availability', 'A = MTBF / (MTBF + MTTR)', 'Uptime as a fraction of total time.'),
-      ('Cache Hit Ratio', 'Hit% = hits / (hits + misses)', 'How often the cache serves a request.'),
-      ('Precision', 'P = TP / (TP + FP)', 'Correctness of positive predictions.'),
-      ('Recall', 'R = TP / (TP + FN)', 'Coverage of actual positives.'),
-      ('F1 Score', 'F1 = 2 · (P · R) / (P + R)', 'Harmonic mean of precision and recall.'),
-      ('Recall@k', 'Recall@k = relevant in top-k / all relevant', 'Retrieval quality for the top-k results.'),
-      ('Softmax', 'softmax(zᵢ) = e^{zᵢ} / Σ e^{zⱼ}', 'Turns scores into a probability distribution.'),
-    ],
-    'AI Generalist': [
-      ('Accuracy', 'Acc = (TP + TN) / Total', 'Fraction of correct predictions.'),
-      ('Precision', 'P = TP / (TP + FP)', 'How many predicted positives are correct.'),
-      ('Recall', 'R = TP / (TP + FN)', 'How many real positives were found.'),
-      ('F1 Score', 'F1 = 2 · (P · R) / (P + R)', 'Balance between precision and recall.'),
-      ('Sigmoid', 'σ(x) = 1 / (1 + e⁻ˣ)', 'Squashes any value into (0, 1).'),
-      ('ReLU', 'f(x) = max(0, x)', 'Default hidden-layer activation.'),
-      ('Mean Squared Error', 'MSE = (1/n) Σ (y − ŷ)²', 'Average squared prediction error.'),
-      ('Cross-Entropy', 'H = −Σ y · log(ŷ)', 'Loss for classification / probabilities.'),
-      ('Gradient Descent', 'w ← w − η · ∇L', 'Update weights against the loss gradient.'),
-      ('Linear Regression', 'ŷ = w·x + b', 'Fits a straight line to the data.'),
-      ('Bayes’ Theorem', 'P(A|B) = P(B|A)·P(A) / P(B)', 'Update belief given new evidence.'),
-      ('Z-Score Normalization', 'z = (x − μ) / σ', 'Rescale features to mean 0, std 1.'),
-    ],
-  };
 
   _StudyResource get _res => _resources.firstWhere((r) => r.id == _open);
-  String get _courseName => _courses[_course];
+  String get _courseName => _courses.isEmpty ? '' : (_courses[_course]['title']?.toString() ?? '');
 
   @override
   Widget build(BuildContext context) {
+    if (_loadingCourses) {
+      return const Padding(padding: EdgeInsets.symmetric(vertical: 36), child: Center(child: CupertinoActivityIndicator()));
+    }
     // AnimatedSize glides the popup height between the (shorter) grid and the
     // (taller/variable) detail panes; the switcher cross-fades the content.
     return AnimatedSize(
@@ -2065,27 +2009,29 @@ class _StudyHubState extends State<_StudyHub> {
   }
 
   Widget _grid(Key key) => Column(key: key, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        // Course selector.
-        _Entrance(
-          index: 0,
-          child: SizedBox(
-            height: 38,
-            child: ListView(scrollDirection: Axis.horizontal, padding: EdgeInsets.zero, children: [
-              for (var i = 0; i < _courses.length; i++) ...[
-                if (i > 0) const SizedBox(width: 8),
-                _coursePill(_courses[i], i),
-              ],
-            ]),
+        // Course selector — real enrolled courses (hidden when none).
+        if (_courses.isNotEmpty) ...[
+          _Entrance(
+            index: 0,
+            child: SizedBox(
+              height: 38,
+              child: ListView(scrollDirection: Axis.horizontal, padding: EdgeInsets.zero, children: [
+                for (var i = 0; i < _courses.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  _coursePill(_courses[i]['title']?.toString() ?? 'Course', i),
+                ],
+              ]),
+            ),
           ),
-        ),
-        const SizedBox(height: 16),
+          const SizedBox(height: 16),
+        ],
         for (var i = 0; i < _resources.length; i++) _StudyCard(index: i + 1, item: _resources[i], onTap: () => setState(() => _open = _resources[i].id)),
       ]);
 
   Widget _coursePill(String label, int i) {
     final sel = _course == i;
     return _Pressable(
-      onTap: () => setState(() => _course = i),
+      onTap: () => _selectCourse(i),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         alignment: Alignment.center,
@@ -2137,26 +2083,52 @@ class _StudyHubState extends State<_StudyHub> {
   }
 
   Widget _content(String id) {
+    // The Focus Timer is built-in and course-independent.
+    if (id == 'focus') return const _FocusTimer();
+    if (_loadingMat) {
+      return const Padding(padding: EdgeInsets.symmetric(vertical: 24), child: Center(child: CupertinoActivityIndicator()));
+    }
     switch (id) {
-      case 'focus':
-        return const _FocusTimer();
       case 'guides':
-        final items = _guides[_courseName] ?? const [];
-        return Column(children: [for (var i = 0; i < items.length; i++) _StudyExpandable(index: i, title: items[i].$1, points: items[i].$2)]);
+        final items = _mat('guides');
+        if (items.isEmpty) return _studyEmpty('study guides');
+        return Column(children: [for (var i = 0; i < items.length; i++) _StudyExpandable(index: i, title: items[i]['title']?.toString() ?? '', points: _strs(items[i]['items']))]);
       case 'cheats':
-        final items = _cheats[_courseName] ?? const [];
-        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (var i = 0; i < items.length; i++) _cheatCard(i, items[i].$1, items[i].$2)]);
+        final items = _mat('cheats');
+        if (items.isEmpty) return _studyEmpty('cheat sheets');
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (var i = 0; i < items.length; i++) _cheatCard(i, items[i]['title']?.toString() ?? '', _strs(items[i]['items']))]);
       case 'mindmap':
-        final m = _mind[_courseName];
-        return m == null ? const SizedBox() : _mindMap(m.$1, m.$2);
+        final items = _mat('mindmap');
+        if (items.isEmpty) return _studyEmpty('a mind map');
+        final m = items.first;
+        final branches = <(String, List<String>)>[
+          for (final b in (m['items'] as List?) ?? const [])
+            ((b as Map)['name']?.toString() ?? '', ((b['leaves'] as List?)?.map((e) => e.toString()).toList() ?? const <String>[])),
+        ];
+        return _mindMap(m['title']?.toString() ?? '', branches);
       case 'flashcards':
-        return _Flashcards(cards: _flash[_courseName] ?? const []);
+        final items = _mat('flashcards');
+        if (items.isEmpty) return _studyEmpty('flashcards');
+        return _Flashcards(cards: [for (final c in items) (c['title']?.toString() ?? '', c['body']?.toString() ?? '')]);
       case 'formulas':
-        final items = _formulas[_courseName] ?? const [];
-        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (var i = 0; i < items.length; i++) _formulaCard(i, items[i].$1, items[i].$2, items[i].$3)]);
+        final items = _mat('formulas');
+        if (items.isEmpty) return _studyEmpty('formula sheets');
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (var i = 0; i < items.length; i++) _formulaCard(i, items[i]['title']?.toString() ?? '', items[i]['body']?.toString() ?? '', items[i]['note']?.toString() ?? '')]);
     }
     return const SizedBox();
   }
+
+  // Friendly placeholder when a course has no material of this kind yet.
+  Widget _studyEmpty(String what) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+        alignment: Alignment.center,
+        child: Column(children: [
+          Icon(CupertinoIcons.tray, size: 34, color: _grey.withOpacity(0.6)),
+          const SizedBox(height: 10),
+          Text(_courses.isEmpty ? 'Enrol in a course to see study material.' : 'No $what for $_courseName yet.',
+              textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
+        ]),
+      );
 
   Widget _cheatCard(int i, String heading, List<String> items) => _Entrance(
         index: i,

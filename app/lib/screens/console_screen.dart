@@ -1818,6 +1818,14 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                 ),
                 const SizedBox(height: 12),
                 PrimaryButton(
+                  label: 'Study Hub material',
+                  icon: CupertinoIcons.doc_richtext,
+                  square: true,
+                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => StudyHubEditorScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title))),
+                ),
+                const SizedBox(height: 12),
+                PrimaryButton(
                   label: 'Issue Certificates',
                   icon: CupertinoIcons.rosette,
                   square: true,
@@ -3171,6 +3179,304 @@ class _ConvertedLeadsScreenState extends State<ConvertedLeadsScreen> {
           ]);
         }),
       ]),
+    );
+  }
+}
+
+/// Course-scoped Study Hub editor — manage the Study Guides, Cheat Sheets, Mind
+/// Map, Flashcards and Formula Sheets that enrolled students see in their Study
+/// Hub. The Focus Timer is built-in and needs no content. Each card is one row
+/// in study_materials; the shape of `items`/`body`/`note` depends on the kind.
+class StudyHubEditorScreen extends StatefulWidget {
+  const StudyHubEditorScreen({super.key, required this.auth, required this.courseId, required this.title});
+  final AuthService auth;
+  final String courseId;
+  final String title;
+  @override
+  State<StudyHubEditorScreen> createState() => _StudyHubEditorScreenState();
+}
+
+class _StudyHubEditorScreenState extends State<StudyHubEditorScreen> {
+  List<dynamic> _materials = [];
+  bool _loading = true;
+  String? _error;
+
+  // The editable kinds, in display order: (id, label, icon).
+  static const _kinds = <(String, String, IconData)>[
+    ('guides', 'Study Guides', CupertinoIcons.book_fill),
+    ('cheats', 'Cheat Sheets', CupertinoIcons.doc_text_fill),
+    ('mindmap', 'Mind Map', CupertinoIcons.rectangle_3_offgrid_fill),
+    ('flashcards', 'Flashcards', CupertinoIcons.rectangle_stack_fill),
+    ('formulas', 'Formula Sheets', CupertinoIcons.function),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (mounted) setState(() { _loading = true; _error = null; });
+    try {
+      final r = await widget.auth.apiGet('/api/v1/manage/courses/${widget.courseId}/study');
+      final list = (ApiClient.decode(r)['materials'] as List?) ?? [];
+      if (!mounted) return;
+      setState(() { _materials = list; _loading = false; });
+    } on ApiException catch (e) {
+      if (mounted) setState(() { _loading = false; _error = e.message; });
+    } catch (_) {
+      if (mounted) setState(() { _loading = false; _error = "Couldn't load Study Hub material — retry."; });
+    }
+  }
+
+  List<Map<String, dynamic>> _of(String kind) => _materials
+      .where((m) => (m as Map)['kind'] == kind)
+      .map((m) => (m as Map).cast<String, dynamic>())
+      .toList();
+
+  List<String> _stringList(dynamic items) =>
+      (items as List?)?.map((e) => e.toString()).toList() ?? const [];
+
+  Future<void> _delete(String id) async {
+    final yes = await showSquareConfirm(context,
+        title: 'Delete', message: 'Remove this Study Hub card?', confirmLabel: 'Delete', destructive: true);
+    if (!yes) return;
+    try {
+      await widget.auth.apiDelete('/api/v1/manage/study/$id');
+      _load();
+    } catch (_) {}
+  }
+
+  // A bordered multi-line text field for list/branch inputs.
+  Widget _multiField(TextEditingController c, String hint, {int lines = 5}) {
+    final p = Palette.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.zero),
+      child: TextField(
+        controller: c,
+        minLines: lines,
+        maxLines: lines + 4,
+        style: AppleTheme.body(context),
+        cursorColor: p.accent,
+        decoration: InputDecoration(border: InputBorder.none, isDense: true, hintText: hint, hintStyle: AppleTheme.footnote(context)),
+      ),
+    );
+  }
+
+  Future<void> _form(String kind, [Map<String, dynamic>? edit]) async {
+    final title = TextEditingController(text: edit?['title']?.toString() ?? '');
+    final body = TextEditingController(text: edit?['body']?.toString() ?? '');
+    final note = TextEditingController(text: edit?['note']?.toString() ?? '');
+    final listCtrl = TextEditingController();
+    final mindCtrl = TextEditingController();
+    if (kind == 'guides' || kind == 'cheats') {
+      listCtrl.text = _stringList(edit?['items']).join('\n');
+    } else if (kind == 'mindmap') {
+      final branches = (edit?['items'] as List?) ?? const [];
+      mindCtrl.text = branches.map((b) {
+        final m = b as Map;
+        final leaves = (m['leaves'] as List?)?.map((e) => e.toString()).join(', ') ?? '';
+        return '${m['name']}: $leaves';
+      }).join('\n');
+    }
+
+    final ok = await showFormSheet(context, square: true, title: edit == null ? 'Add' : 'Edit', builder: (setS) {
+      final f = <Widget>[];
+      switch (kind) {
+        case 'guides':
+          f.addAll([
+            sheetField(title, 'Topic title', CupertinoIcons.book),
+            const SizedBox(height: 10),
+            _label(context, 'Bullet points — one per line'),
+            const SizedBox(height: 6),
+            _multiField(listCtrl, 'Pipeline: ingestion → serving\nPick batch vs real-time'),
+          ]);
+          break;
+        case 'cheats':
+          f.addAll([
+            sheetField(title, 'Heading', CupertinoIcons.doc_text),
+            const SizedBox(height: 10),
+            _label(context, 'Quick-reference items — one per line'),
+            const SizedBox(height: 6),
+            _multiField(listCtrl, 'RAG = retriever + LLM\nBatch vs streaming'),
+          ]);
+          break;
+        case 'mindmap':
+          f.addAll([
+            sheetField(title, 'Centre concept', CupertinoIcons.smallcircle_circle),
+            const SizedBox(height: 10),
+            _label(context, 'Branches — one per line, as "Branch: leaf1, leaf2, leaf3"'),
+            const SizedBox(height: 6),
+            _multiField(mindCtrl, 'Data: Ingestion, Storage, Features\nServing: API, Batch, Cache'),
+          ]);
+          break;
+        case 'flashcards':
+          f.addAll([
+            sheetField(title, 'Question (front)', CupertinoIcons.question_circle),
+            const SizedBox(height: 10),
+            _label(context, 'Answer (back)'),
+            const SizedBox(height: 6),
+            _multiField(body, 'The answer students see when they flip the card', lines: 3),
+          ]);
+          break;
+        case 'formulas':
+          f.addAll([
+            sheetField(title, 'Name', CupertinoIcons.textformat),
+            const SizedBox(height: 10),
+            sheetField(body, 'Formula (e.g. F = m·a)', CupertinoIcons.function),
+            const SizedBox(height: 10),
+            sheetField(note, 'What it means', CupertinoIcons.text_alignleft),
+          ]);
+          break;
+      }
+      return f;
+    }, onSubmit: () async {
+      if (title.text.trim().isEmpty) return 'Title required';
+      final payload = <String, dynamic>{
+        'kind': kind,
+        'title': title.text.trim(),
+        'body': body.text.trim(),
+        'note': note.text.trim(),
+      };
+      if (kind == 'guides' || kind == 'cheats') {
+        payload['items'] = listCtrl.text.split('\n').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      } else if (kind == 'mindmap') {
+        final branches = <Map<String, dynamic>>[];
+        for (final line in mindCtrl.text.split('\n')) {
+          final t = line.trim();
+          if (t.isEmpty) continue;
+          final idx = t.indexOf(':');
+          final name = idx >= 0 ? t.substring(0, idx).trim() : t;
+          final leaves = idx >= 0
+              ? t.substring(idx + 1).split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList()
+              : <String>[];
+          if (name.isNotEmpty) branches.add({'name': name, 'leaves': leaves});
+        }
+        payload['items'] = branches;
+      }
+      try {
+        if (edit == null) {
+          await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/study', payload);
+        } else {
+          await widget.auth.apiPatch('/api/v1/manage/study/${edit['id']}', payload);
+        }
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) _load();
+  }
+
+  // One-line summary of a card for its list row.
+  String _summary(String kind, Map<String, dynamic> m) {
+    switch (kind) {
+      case 'guides':
+        return '${_stringList(m['items']).length} points';
+      case 'cheats':
+        return '${_stringList(m['items']).length} items';
+      case 'mindmap':
+        return '${(m['items'] as List?)?.length ?? 0} branches';
+      case 'flashcards':
+        return m['body']?.toString() ?? '';
+      case 'formulas':
+        return m['body']?.toString() ?? '';
+    }
+    return '';
+  }
+
+  Widget _card(String kind, Map<String, dynamic> m) {
+    final p = Palette.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: AppleCard(square: true,
+        child: Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(m['title']?.toString() ?? '', style: AppleTheme.body(context).copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 2),
+              Text(_summary(kind, m), maxLines: 2, overflow: TextOverflow.ellipsis, style: AppleTheme.footnote(context)),
+            ]),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(onTap: () => _form(kind, m), child: Icon(CupertinoIcons.pencil, size: 18, color: p.secondary)),
+          const SizedBox(width: 12),
+          GestureDetector(onTap: () => _delete(m['id'].toString()), child: const Icon(CupertinoIcons.trash, size: 18, color: AppleColors.red)),
+        ]),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final w = MediaQuery.of(context).size.width;
+    final hp = (w > 760 ? (w - 720) / 2 : 14.0).clamp(14, 400).toDouble();
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: p.bg,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: IconButton(icon: const Icon(CupertinoIcons.chevron_left), onPressed: () => Navigator.pop(context)),
+        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Study Hub material', style: AppleTheme.headline(context)),
+          Text(widget.title, style: AppleTheme.footnote(context)),
+        ]),
+      ),
+      body: _loading
+          ? const Center(child: CupertinoActivityIndicator())
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: EdgeInsets.fromLTRB(hp, 12, hp, 40),
+                children: [
+                  if (_error != null)
+                    AppleCard(square: true, child: Row(children: [
+                      const Icon(CupertinoIcons.exclamationmark_triangle_fill, size: 18, color: AppleColors.red),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(_error!, style: AppleTheme.footnote(context).copyWith(color: AppleColors.red))),
+                    ])),
+                  AppleCard(square: true, child: Text(
+                    'Edit what students see in this course’s Study Hub. The Focus Timer is always available — these sections add real content on top of it.',
+                    style: AppleTheme.footnote(context))),
+                  const SizedBox(height: 14),
+                  for (final k in _kinds) ...[
+                    Row(children: [
+                      Icon(k.$3, size: 18, color: p.accent),
+                      const SizedBox(width: 8),
+                      Expanded(child: SectionHeader('${k.$2} (${_of(k.$1).length})')),
+                      _addBtn(k.$1),
+                    ]),
+                    const SizedBox(height: 8),
+                    if (_of(k.$1).isEmpty)
+                      AppleCard(square: true, child: Text('Nothing yet — tap Add.', style: AppleTheme.footnote(context)))
+                    else
+                      ..._of(k.$1).map((m) => _card(k.$1, m)),
+                    const SizedBox(height: 20),
+                  ],
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _addBtn(String kind) {
+    final p = Palette.of(context);
+    return GestureDetector(
+      onTap: () => _form(kind),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(color: p.accent.withOpacity(0.12), borderRadius: BorderRadius.zero),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(CupertinoIcons.add, size: 15, color: p.accent),
+          const SizedBox(width: 4),
+          Text('Add', style: TextStyle(color: p.accent, fontSize: 13, fontWeight: FontWeight.w600)),
+        ]),
+      ),
     );
   }
 }
