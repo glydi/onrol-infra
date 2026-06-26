@@ -618,54 +618,64 @@ class _StudentHomeState extends State<StudentHome> {
     }
   }
 
-  // Notifications shown right on the home (first view) — no panel needed. Shows
-  // the latest few with an unseen count; "View all" opens the full list.
-  Widget _homeNotifications() => _glass(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-        child: _future(
-          Future.wait([
-            _apiList('/api/v1/me/notifications', 'notifications'),
-            _apiList('/api/v1/me/announcements', 'announcements'),
-          ]),
-          (List d) {
-            final personal = (d[0] as List);
-            final unseen = personal.where((n) => (n as Map)['read'] != true).length;
-            final entries = <Map<String, dynamic>>[];
-            for (final n in personal) {
-              final m = n as Map<String, dynamic>;
-              final b = m['body']?.toString() ?? '';
-              entries.add({'text': [m['title'] ?? '', if (b.isNotEmpty) '— $b'].join(' '), 'at': m['at'], 'read': m['read'] == true});
-            }
-            for (final a in (d[1] as List)) {
-              final m = a as Map<String, dynamic>;
-              final b = m['body']?.toString() ?? '';
-              final course = m['course']?.toString() ?? '';
-              entries.add({'text': [if (course.isNotEmpty) '[$course]', m['title'] ?? '', if (b.isNotEmpty) '— $b'].join(' '), 'at': m['at'], 'read': true});
-            }
-            entries.sort((a, b) => (b['at']?.toString() ?? '').compareTo(a['at']?.toString() ?? ''));
-            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Row(children: [
-                Icon(CupertinoIcons.bell_fill, size: 16, color: _orange),
-                const SizedBox(width: 8),
-                Text('Notifications', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800, color: _navy)),
-                if (unseen > 0) ...[
-                  const SizedBox(width: 6),
-                  Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1), decoration: BoxDecoration(color: _orange.withOpacity(0.14), borderRadius: BorderRadius.circular(10)), child: Text('$unseen new', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: _orange))),
-                ],
-                const Spacer(),
-                _Pressable(
-                  onTap: () => _openPanel('notifications'),
-                  child: Text('View all', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: _orange)),
-                ),
+  // A notification BUTTON on the home (next to the profile, not inside a panel).
+  // Tapping it pops up the full Notifications panel like the other features.
+  Widget _homeNotifications() => _future(
+        Future.wait([
+          _apiList('/api/v1/me/notifications', 'notifications'),
+          _apiList('/api/v1/me/announcements', 'announcements'),
+        ]),
+        (List d) {
+          final personal = (d[0] as List);
+          final unseen = personal.where((n) => (n as Map)['read'] != true).length;
+          final all = <Map<String, dynamic>>[];
+          for (final n in personal) {
+            final m = n as Map<String, dynamic>;
+            final b = m['body']?.toString() ?? '';
+            all.add({'text': [m['title'] ?? '', if (b.isNotEmpty) '— $b'].join(' '), 'at': m['at']});
+          }
+          for (final a in (d[1] as List)) {
+            final m = a as Map<String, dynamic>;
+            final b = m['body']?.toString() ?? '';
+            final course = m['course']?.toString() ?? '';
+            all.add({'text': [if (course.isNotEmpty) '[$course]', m['title'] ?? '', if (b.isNotEmpty) '— $b'].join(' '), 'at': m['at']});
+          }
+          all.sort((a, b) => (b['at']?.toString() ?? '').compareTo(a['at']?.toString() ?? ''));
+          final preview = all.isEmpty ? 'No notifications yet' : (all.first['text'] as String);
+          return _Pressable(
+            onTap: () => _openPanel('notifications'),
+            child: _glass(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+              child: Row(children: [
+                Stack(clipBehavior: Clip.none, children: [
+                  Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: _orange.withOpacity(0.12), shape: BoxShape.circle), child: Icon(CupertinoIcons.bell_fill, size: 19, color: _orange)),
+                  if (unseen > 0)
+                    Positioned(right: -3, top: -3, child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      constraints: const BoxConstraints(minWidth: 17),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(color: const Color(0xFFE5484D), borderRadius: BorderRadius.circular(10), border: Border.all(color: _bg, width: 1.5)),
+                      child: Text(unseen > 99 ? '99+' : '$unseen', style: GoogleFonts.poppins(fontSize: 9.5, fontWeight: FontWeight.w800, color: Colors.white)),
+                    )),
+                ]),
+                const SizedBox(width: 12),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Text('Notifications', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800, color: _navy)),
+                    if (unseen > 0) ...[
+                      const SizedBox(width: 6),
+                      Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1), decoration: BoxDecoration(color: _orange.withOpacity(0.14), borderRadius: BorderRadius.circular(10)), child: Text('$unseen new', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: _orange))),
+                    ],
+                  ]),
+                  const SizedBox(height: 2),
+                  Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+                ])),
+                const SizedBox(width: 6),
+                Icon(CupertinoIcons.chevron_forward, size: 17, color: _grey),
               ]),
-              const SizedBox(height: 6),
-              if (entries.isEmpty)
-                Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text('No notifications yet', style: GoogleFonts.poppins(fontSize: 12.5, color: _grey)))
-              else
-                ...entries.take(5).map((e) => _notif(e['text'] as String, _fmtAt(e['at']?.toString()), read: e['read'] == true)),
-            ]);
-          },
-        ),
+            ),
+          );
+        },
       );
 
   // ---- Top bar -------------------------------------------------------------
