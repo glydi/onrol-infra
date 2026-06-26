@@ -278,9 +278,14 @@ class _StudentHomeState extends State<StudentHome> {
   // learner completed a lesson (from /me/streak). Tapping opens Achievements.
   int _streak = 0;
 
-  // Which of the three dashboard sections is focused: 0 = menu (matrix),
-  // 1 = profile, 2 = live news. Drives the focus highlight.
+  // Which home section is focused: 0 = menu (matrix), 1 = profile. Drives the
+  // hover focus highlight.
   int _focused = 0;
+
+  // The home is one scrollable column; this drives the floating scroll button.
+  final ScrollController _homeScroll = ScrollController();
+  bool _atBottom = false;
+  bool _canScroll = false;
 
   // XP earned grows with progress: 10 XP per completed lesson.
   static int _xpFromCourses(List courses) => courses.fold<int>(
@@ -291,6 +296,46 @@ class _StudentHomeState extends State<StudentHome> {
     super.initState();
     _loadAvatarFromServer();
     _loadStreak();
+    _homeScroll.addListener(_syncScrollState);
+  }
+
+  @override
+  void dispose() {
+    _homeScroll.removeListener(_syncScrollState);
+    _homeScroll.dispose();
+    super.dispose();
+  }
+
+  // Keep the floating scroll button in sync: show it only when the page actually
+  // scrolls, and flip its arrow at the bottom.
+  void _syncScrollState() {
+    if (!_homeScroll.hasClients) return;
+    final pos = _homeScroll.position;
+    final can = pos.maxScrollExtent > 12;
+    final atB = pos.pixels >= pos.maxScrollExtent - 12;
+    if (can != _canScroll || atB != _atBottom) {
+      setState(() {
+        _canScroll = can;
+        _atBottom = atB;
+      });
+    }
+  }
+
+  // The floating "scroll" button the home shows when content runs off-screen
+  // (e.g. the big matrix on iPad). Tapping jumps to the bottom, then back to top.
+  Widget? _scrollFab() {
+    if (!_canScroll) return null;
+    return FloatingActionButton(
+      backgroundColor: _orange,
+      foregroundColor: Colors.white,
+      onPressed: () {
+        if (!_homeScroll.hasClients) return;
+        final pos = _homeScroll.position;
+        _homeScroll.animateTo(_atBottom ? 0.0 : pos.maxScrollExtent,
+            duration: const Duration(milliseconds: 420), curve: Curves.easeInOutCubic);
+      },
+      child: Icon(_atBottom ? CupertinoIcons.chevron_up : CupertinoIcons.chevron_down),
+    );
   }
 
   // Pull the real daily streak (consecutive days with a completed lesson).
@@ -384,24 +429,58 @@ class _StudentHomeState extends State<StudentHome> {
   @override
   Widget build(BuildContext context) {
     _isDark = Theme.of(context).brightness == Brightness.dark;
-    // Two-column dashboard: the checkerboard + branding on the left, a profile
-    // card and the live AI-news feed on the right. Stacks to one column when the
-    // viewport is too narrow for the side panel (phones / small windows).
+    // One scrollable column: top bar, profile card, then the big tile matrix.
+    // The matrix fills the width (large on tablets/iPad); a floating button
+    // helps scroll when it runs past the screen.
     return Scaffold(
       backgroundColor: _bg,
+      floatingActionButton: _scrollFab(),
       body: Stack(
         children: [
           // Soft, colourful backdrop the frosted-glass panels refract.
           const Positioned.fill(child: _GlassBackdrop()),
-          SafeArea(
-            child: LayoutBuilder(builder: (context, cns) {
-              return cns.maxWidth >= 1000 ? _wideLayout() : _narrowLayout();
-            }),
-          ),
+          SafeArea(child: _homeBody()),
         ],
       ),
     );
   }
+
+  Widget _homeBody() => LayoutBuilder(builder: (context, c) {
+        final wide = c.maxWidth >= 1000;
+        // Matrix fills the available width so the buttons are big on iPad, capped
+        // so the tiles don't get oversized on a desktop monitor.
+        final side = (c.maxWidth - (wide ? 80 : 36)).clamp(260.0, wide ? 720.0 : 860.0).toDouble();
+        // After layout, learn whether the page actually scrolls (drives the FAB).
+        WidgetsBinding.instance.addPostFrameCallback((_) => _syncScrollState());
+        return SingleChildScrollView(
+          controller: _homeScroll,
+          padding: EdgeInsets.fromLTRB(wide ? 40 : 18, 8, wide ? 36 : 18, 96),
+          child: Column(children: [
+            _Entrance(index: 0, child: _topBar()),
+            const SizedBox(height: 14),
+            _Entrance(
+              index: 1,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: _focusable(1, child: _profileCard(compact: !wide)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            _Entrance(
+              index: 2,
+              child: MouseRegion(
+                onEnter: (_) {
+                  if (_focused != 0) setState(() => _focused = 0);
+                },
+                child: Center(child: _matrix(side)),
+              ),
+            ),
+            const SizedBox(height: 24),
+          ]),
+        );
+      });
 
   // Desktop / wide: matrix centered (no scroll) on the left, sidebar pinned
   // right. Only the sidebar (profile + AI news) scrolls.
@@ -426,69 +505,6 @@ class _StudentHomeState extends State<StudentHome> {
       ),
     );
   }
-
-  Widget _wideLayout() => Padding(
-        padding: const EdgeInsets.fromLTRB(40, 24, 36, 24),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(
-            child: Center(
-              child: LayoutBuilder(builder: (context, c) {
-                final side = (c.maxWidth < c.maxHeight ? c.maxWidth : c.maxHeight).clamp(280.0, 620.0).toDouble();
-                // No focus ring / boundary on the options — hovering just clears
-                // the highlight on the other sections.
-                return MouseRegion(
-                  onEnter: (_) {
-                    if (_focused != 0) setState(() => _focused = 0);
-                  },
-                  child: _Entrance(index: 0, child: _matrix(side)),
-                );
-              }),
-            ),
-          ),
-          const SizedBox(width: 28),
-          SizedBox(
-            width: 440,
-            // Profile card stays pinned; only the AI-news list inside scrolls.
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              _Entrance(index: 1, child: _focusable(1, child: _profileCard())),
-              const SizedBox(height: 12),
-              Expanded(child: _Entrance(index: 2, child: _focusable(2, child: _AiNewsCard(auth: widget.auth, scrollable: true)))),
-            ]),
-          ),
-        ]),
-      );
-
-  // Phone / narrow: a single scrolling column.
-  Widget _narrowLayout() => SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
-        child: Column(children: [
-          _Entrance(index: 0, child: _topBar()),
-          const SizedBox(height: 14),
-          _Entrance(index: 1, child: _focusable(1, child: _profileCard(compact: true))),
-          const SizedBox(height: 14),
-          LayoutBuilder(builder: (context, c) {
-            return MouseRegion(
-              onEnter: (_) {
-                if (_focused != 0) setState(() => _focused = 0);
-              },
-              // Centre the grid so it doesn't hug the left on wider phones,
-              // tablets and iPads (where this single-column layout is used).
-              child: _Entrance(index: 2, child: Center(child: _matrix(c.maxWidth.clamp(260.0, 480.0).toDouble()))),
-            );
-          }),
-          const SizedBox(height: 18),
-          // Give the live AI-news box its own internal scroll (like desktop)
-          // with a bounded height, so it doesn't stretch the page forever on
-          // phones / tablets / iPads.
-          _Entrance(
-            index: 3,
-            child: SizedBox(
-              height: (MediaQuery.of(context).size.height * 0.62).clamp(360.0, 640.0).toDouble(),
-              child: _focusable(2, child: _AiNewsCard(auth: widget.auth, scrollable: true)),
-            ),
-          ),
-        ]),
-      );
 
   // ---- Top bar -------------------------------------------------------------
 
