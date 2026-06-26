@@ -2200,28 +2200,9 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
             ),
           ]),
           if (lessons.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            ...lessons.map((l) {
-              final ll = l as Map<String, dynamic>;
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 5),
-                child: Row(children: [
-                  Icon(_iconFor(ll['type']?.toString() ?? 'text'), size: 17, color: Palette.of(context).secondary),
-                  const SizedBox(width: 10),
-                  Expanded(child: Text(ll['title']?.toString() ?? '', style: AppleTheme.body(context).copyWith(fontSize: 15))),
-                  GestureDetector(
-                    onTap: () => _editLesson(ll),
-                    child: Icon(CupertinoIcons.pencil, size: 16, color: Palette.of(context).secondary),
-                  ),
-                  const SizedBox(width: 12),
-                  GestureDetector(
-                    onTap: () => _confirmDelete('Delete this lesson?', () =>
-                        widget.auth.apiDelete('/api/v1/manage/lessons/${ll['id']}')),
-                    child: Icon(CupertinoIcons.minus_circle, size: 17, color: AppleColors.red.withOpacity(0.8)),
-                  ),
-                ]),
-              );
-            }),
+            const SizedBox(height: 8),
+            // Content grouped by day within the module (Day 1, Day 2, …).
+            ..._lessonsByDay(lessons),
           ],
           // Quizzes & assignments scoped to this module.
           ..._moduleAssessments(m['id'].toString()),
@@ -2229,6 +2210,50 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       ),
     );
   }
+
+  // Group a module's lessons by day (null day → trailing "Unscheduled").
+  List<Widget> _lessonsByDay(List lessons) {
+    final groups = <int?, List<Map<String, dynamic>>>{};
+    for (final l in lessons) {
+      final ll = l as Map<String, dynamic>;
+      groups.putIfAbsent((ll['day_number'] as num?)?.toInt(), () => []).add(ll);
+    }
+    final keys = groups.keys.toList()
+      ..sort((a, b) {
+        if (a == null) return 1;
+        if (b == null) return -1;
+        return a.compareTo(b);
+      });
+    final out = <Widget>[];
+    for (final k in keys) {
+      out.add(Padding(
+        padding: const EdgeInsets.only(top: 8, bottom: 2),
+        child: Text(k == null ? 'Unscheduled' : 'Day $k',
+            style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w800, color: Palette.of(context).accent)),
+      ));
+      out.addAll(groups[k]!.map(_lessonRow));
+    }
+    return out;
+  }
+
+  Widget _lessonRow(Map<String, dynamic> ll) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(children: [
+          Icon(_iconFor(ll['type']?.toString() ?? 'text'), size: 17, color: Palette.of(context).secondary),
+          const SizedBox(width: 10),
+          Expanded(child: Text(ll['title']?.toString() ?? '', style: AppleTheme.body(context).copyWith(fontSize: 15))),
+          GestureDetector(
+            onTap: () => _editLesson(ll),
+            child: Icon(CupertinoIcons.pencil, size: 16, color: Palette.of(context).secondary),
+          ),
+          const SizedBox(width: 12),
+          GestureDetector(
+            onTap: () => _confirmDelete('Delete this lesson?', () =>
+                widget.auth.apiDelete('/api/v1/manage/lessons/${ll['id']}')),
+            child: Icon(CupertinoIcons.minus_circle, size: 17, color: AppleColors.red.withOpacity(0.8)),
+          ),
+        ]),
+      );
 
   // Quizzes/assignments attached to a specific module (shown inside its card).
   List<Widget> _moduleAssessments(String moduleId) {
@@ -2316,11 +2341,14 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   Future<void> _addLesson(String moduleId) async {
     final title = TextEditingController();
     final body = TextEditingController();
+    final day = TextEditingController();
     int type = 0; // text, video, link
     int vsrc = 0; // 0 = R2 (MP4), 1 = HLS (.m3u8)
     bool downloadable = true; // documents: may learners download it?
     final ok = await showFormSheet(context, square: true, title: 'Add Lesson', builder: (setS) => [
       sheetField(title, 'Lesson title', CupertinoIcons.doc_text),
+      const SizedBox(height: 10),
+      sheetField(day, 'Day in module (e.g. 1) — optional', CupertinoIcons.calendar, keyboard: TextInputType.number),
       const SizedBox(height: 10),
       AppleSegmented(square: true, labels: const ['Text', 'Video', 'Link', 'Document'], selected: type, onChanged: (i) => setS(() => type = i)),
       if (type == 1) ...[
@@ -2384,6 +2412,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         'type': ['text', 'video', 'link', 'file'][type],
         'body': body.text.trim(),
         if (type == 3) 'downloadable': downloadable,
+        if (int.tryParse(day.text.trim()) != null) 'day_number': int.parse(day.text.trim()),
       });
       return null;
     });
@@ -2447,12 +2476,15 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   Future<void> _editLesson(Map<String, dynamic> l) async {
     final title = TextEditingController(text: l['title']?.toString() ?? '');
     final body = TextEditingController(text: (l['body'] ?? l['url'] ?? '').toString());
+    final day = TextEditingController(text: l['day_number'] == null ? '' : '${l['day_number']}');
     const types = ['text', 'video', 'link', 'file'];
     int type = types.indexOf(l['type']?.toString() ?? 'text');
     if (type < 0) type = 0;
     bool downloadable = l['downloadable'] != false;
     final ok = await showFormSheet(context, square: true, title: 'Edit Lesson', builder: (setS) => [
       sheetField(title, 'Lesson title', CupertinoIcons.doc_text),
+      const SizedBox(height: 10),
+      sheetField(day, 'Day in module (e.g. 1) — blank = unscheduled', CupertinoIcons.calendar, keyboard: TextInputType.number),
       const SizedBox(height: 10),
       AppleSegmented(square: true, labels: const ['Text', 'Video', 'Link', 'Document'], selected: type, onChanged: (i) => setS(() => type = i)),
       const SizedBox(height: 10),
@@ -2472,11 +2504,14 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       if (title.text.trim().isEmpty) return 'Title required';
       if (type != 0 && body.text.trim().isEmpty) return 'URL required';
       try {
+        final dn = int.tryParse(day.text.trim());
         await widget.auth.apiPatch('/api/v1/manage/lessons/${l['id']}', {
           'title': title.text.trim(),
           'type': types[type],
           'body': body.text.trim(),
           if (type == 3) 'downloadable': downloadable,
+          if (dn != null) 'day_number': dn,
+          if (dn == null) 'clear_day': true,
         });
         return null;
       } on ApiException catch (e) {

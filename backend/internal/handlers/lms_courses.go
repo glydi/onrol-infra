@@ -270,6 +270,7 @@ func (h *Handlers) AddLesson(c *fiber.Ctx) error {
 		VideoID      string `json:"video_id"`
 		Body         string `json:"body"`
 		Position     int    `json:"position"`
+		DayNumber    *int   `json:"day_number"` // which day in the module (NULL = unscheduled)
 		Downloadable *bool  `json:"downloadable"` // file lessons: may learners download it?
 	}
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Title) == "" {
@@ -288,9 +289,9 @@ func (h *Handlers) AddLesson(c *fiber.Ctx) error {
 	}
 	var id string
 	if err := h.Pool.QueryRow(c.Context(),
-		`INSERT INTO lessons (module_id, title, type, video_id, body, position, downloadable)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-		moduleID, req.Title, req.Type, vid, req.Body, req.Position, downloadable).Scan(&id); err != nil {
+		`INSERT INTO lessons (module_id, title, type, video_id, body, position, downloadable, day_number)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+		moduleID, req.Title, req.Type, vid, req.Body, req.Position, downloadable, req.DayNumber).Scan(&id); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": req.Title, "type": req.Type})
@@ -571,9 +572,9 @@ func (h *Handlers) GetManagedCourse(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, "course not found")
 	}
 	rows, err := h.Pool.Query(c.Context(), `
-		SELECT m.id, m.title, l.id, l.title, l.type
+		SELECT m.id, m.title, l.id, l.title, l.type, l.day_number
 		FROM modules m LEFT JOIN lessons l ON l.module_id=m.id
-		WHERE m.course_id=$1 ORDER BY m.position, l.position`, id)
+		WHERE m.course_id=$1 ORDER BY m.position, l.day_number NULLS LAST, l.position`, id)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "load failed")
 	}
@@ -583,7 +584,8 @@ func (h *Handlers) GetManagedCourse(c *fiber.Ctx) error {
 	for rows.Next() {
 		var mid, mtitle string
 		var lid, ltitle, ltype *string
-		if err := rows.Scan(&mid, &mtitle, &lid, &ltitle, &ltype); err != nil {
+		var day *int
+		if err := rows.Scan(&mid, &mtitle, &lid, &ltitle, &ltype, &day); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		if _, ok := mods[mid]; !ok {
@@ -592,7 +594,7 @@ func (h *Handlers) GetManagedCourse(c *fiber.Ctx) error {
 		}
 		if lid != nil {
 			m := mods[mid]
-			m["lessons"] = append(m["lessons"].([]fiber.Map), fiber.Map{"id": *lid, "title": *ltitle, "type": *ltype})
+			m["lessons"] = append(m["lessons"].([]fiber.Map), fiber.Map{"id": *lid, "title": *ltitle, "type": *ltype, "day_number": day})
 		}
 	}
 	ordered := make([]fiber.Map, 0, len(order))

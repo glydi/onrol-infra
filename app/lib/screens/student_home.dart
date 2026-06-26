@@ -862,7 +862,7 @@ class _StudentHomeState extends State<StudentHome> {
               padding: const EdgeInsets.only(top: 10, bottom: 4),
               child: Text(md['title']?.toString() ?? 'Module', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
             ),
-            if (lessons.isEmpty) _emptyText('No lessons.') else ...lessons.map((l) => _lessonRow(l as Map<String, dynamic>, () => setS(() {}))),
+            if (lessons.isEmpty) _emptyText('No lessons.') else ..._lessonsByDay(lessons, () => setS(() {})),
             Align(
               alignment: Alignment.centerLeft,
               child: _Pressable(
@@ -882,6 +882,31 @@ class _StudentHomeState extends State<StudentHome> {
         });
       }),
     ]);
+  }
+
+  // Group a module's lessons by day (Day 1, Day 2, … then "Unscheduled").
+  List<Widget> _lessonsByDay(List lessons, VoidCallback rebuild) {
+    final groups = <int?, List<Map<String, dynamic>>>{};
+    for (final l in lessons) {
+      final ll = l as Map<String, dynamic>;
+      groups.putIfAbsent((ll['day_number'] as num?)?.toInt(), () => []).add(ll);
+    }
+    final keys = groups.keys.toList()
+      ..sort((a, b) {
+        if (a == null) return 1;
+        if (b == null) return -1;
+        return a.compareTo(b);
+      });
+    final out = <Widget>[];
+    for (final k in keys) {
+      out.add(Padding(
+        padding: const EdgeInsets.only(left: 4, top: 8, bottom: 2),
+        child: Text(k == null ? 'Unscheduled' : 'Day $k',
+            style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: _grey)),
+      ));
+      out.addAll(groups[k]!.map((ll) => _lessonRow(ll, rebuild)));
+    }
+    return out;
   }
 
   // Comments & doubts thread for a module: list + post (with a "doubt" toggle).

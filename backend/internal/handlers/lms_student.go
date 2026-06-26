@@ -232,11 +232,11 @@ func (h *Handlers) CourseContent(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusForbidden, "not enrolled in this course")
 	}
 	rows, err := h.Pool.Query(c.Context(), `
-		SELECT m.id, m.title, m.position, l.id, l.title, l.type, `+playURLExpr+`, l.position,
+		SELECT m.id, m.title, m.position, l.id, l.title, l.type, `+playURLExpr+`, l.position, l.day_number,
 		       COALESCE(l.downloadable, true),
 		       EXISTS(SELECT 1 FROM lesson_progress lp WHERE lp.user_id=$2 AND lp.lesson_id=l.id)
 		FROM modules m LEFT JOIN lessons l ON l.module_id=m.id
-		WHERE m.course_id=$1 ORDER BY m.position, l.position`, courseID, callerID(c))
+		WHERE m.course_id=$1 ORDER BY m.position, l.day_number NULLS LAST, l.position`, courseID, callerID(c))
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "content failed")
 	}
@@ -247,10 +247,10 @@ func (h *Handlers) CourseContent(c *fiber.Ctx) error {
 		var mid, mtitle string
 		var mpos int
 		var lid, ltitle, ltype, lbody *string
-		var lpos *int
+		var lpos, day *int
 		var done *bool
 		var downloadable bool
-		if err := rows.Scan(&mid, &mtitle, &mpos, &lid, &ltitle, &ltype, &lbody, &lpos, &downloadable, &done); err != nil {
+		if err := rows.Scan(&mid, &mtitle, &mpos, &lid, &ltitle, &ltype, &lbody, &lpos, &day, &downloadable, &done); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		if _, ok := modules[mid]; !ok {
@@ -260,7 +260,7 @@ func (h *Handlers) CourseContent(c *fiber.Ctx) error {
 		if lid != nil {
 			m := modules[mid]
 			m["lessons"] = append(m["lessons"].([]fiber.Map), fiber.Map{
-				"id": *lid, "title": *ltitle, "type": *ltype,
+				"id": *lid, "title": *ltitle, "type": *ltype, "day_number": day,
 				"url": derefStr(lbody), "downloadable": downloadable, "completed": done != nil && *done})
 		}
 	}
