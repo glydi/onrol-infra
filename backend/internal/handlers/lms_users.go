@@ -442,6 +442,58 @@ func (h *Handlers) DeleteConvertedLead(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"deleted": true})
 }
 
+// ConvertedLeadDetail returns the full converted-lead record (every column plus
+// the raw `record` jsonb of custom fields) for the detail view, keyed by lead_id.
+func (h *Handlers) ConvertedLeadDetail(c *fiber.Ctx) error {
+	leadID := strings.TrimSpace(c.Params("leadId"))
+	if leadID == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "lead id required")
+	}
+	var (
+		name, phone, email, source, campaign, status, owner, courseID, courseTitle, tempPassword string
+		score                                                                                    *int
+		createdAt, convertedAt                                                                   *time.Time
+		provisioned                                                                              bool
+		recordRaw                                                                                []byte
+	)
+	err := h.Pool.QueryRow(c.Context(), `
+		SELECT COALESCE(b.name,''), COALESCE(b.phone,''), COALESCE(b.email,''),
+		       COALESCE(b.source,''), COALESCE(b.campaign,''), COALESCE(b.status,''),
+		       COALESCE(b.owner,''),
+		       COALESCE(NULLIF(trim(b.course_id),''),''), COALESCE(NULLIF(trim(b.course_title),''),''),
+		       b.score, b.created_at, b.converted_at, b.record,
+		       EXISTS (SELECT 1 FROM users u WHERE u.role='student' AND (
+		            (b.email IS NOT NULL AND b.email <> '' AND lower(u.email)=lower(trim(b.email)))
+		         OR (u.username = regexp_replace(COALESCE(b.phone,''), '\D', '', 'g'))
+		       )),
+		       COALESCE((SELECT pl.temp_password FROM provisioning_log pl JOIN users u2 ON u2.id=pl.user_id
+		         WHERE (b.email IS NOT NULL AND b.email <> '' AND lower(u2.email)=lower(trim(b.email)))
+		            OR (u2.username = regexp_replace(COALESCE(b.phone,''), '\D', '', 'g'))
+		         ORDER BY pl.created_at DESC LIMIT 1),'')
+		  FROM converted_leads_backup b
+		 WHERE b.lead_id::text = $1
+		 LIMIT 1`, leadID).
+		Scan(&name, &phone, &email, &source, &campaign, &status, &owner, &courseID, &courseTitle,
+			&score, &createdAt, &convertedAt, &recordRaw, &provisioned, &tempPassword)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fiber.NewError(fiber.StatusNotFound, "lead not found")
+	}
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "lookup failed")
+	}
+	var record any
+	if len(recordRaw) > 0 {
+		_ = json.Unmarshal(recordRaw, &record)
+	}
+	return c.JSON(fiber.Map{
+		"lead_id": leadID, "name": name, "phone": phone, "email": email,
+		"source": source, "campaign": campaign, "status": status, "owner": owner,
+		"course_id": courseID, "course_title": courseTitle, "score": score,
+		"created_at": createdAt, "converted_at": convertedAt,
+		"provisioned": provisioned, "temp_password": tempPassword, "record": record,
+	})
+}
+
 // UserConvertedLead returns the original converted-lead record for a student, so
 // an admin can see where the student came from (source, campaign, program, score,
 // UTM, etc.). The student is matched back to converted_leads_backup by email or

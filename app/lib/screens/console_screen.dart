@@ -3083,6 +3083,136 @@ class _ConvertedLeadsScreenState extends State<ConvertedLeadsScreen> {
     }
   }
 
+  // Tap a lead → fetch and show every detail (scalar fields + the lead's raw
+  // custom fields), the student login if provisioned, and a delete action.
+  Future<void> _showDetail(Map<String, dynamic> lead) async {
+    final id = lead['lead_id'].toString();
+    Map<String, dynamic> d;
+    try {
+      d = ApiClient.decode(await widget.auth.apiGet('/api/v1/manage/converted-leads/$id'));
+    } catch (_) {
+      d = Map<String, dynamic>.from(lead); // fall back to the row we already have
+    }
+    if (!mounted) return;
+
+    String s(dynamic v) => (v == null || v.toString().trim().isEmpty) ? '' : v.toString();
+    String dt(dynamic v) {
+      final x = s(v);
+      return x.isEmpty ? '' : x.replaceFirst('T', '  ').split('.').first;
+    }
+    final fields = <MapEntry<String, String>>[
+      MapEntry('Phone', s(d['phone'])),
+      MapEntry('Email', s(d['email'])),
+      MapEntry('Status', s(d['status'])),
+      if (d['score'] != null) MapEntry('Score', s(d['score'])),
+      MapEntry('Source', s(d['source'])),
+      MapEntry('Campaign', s(d['campaign'])),
+      MapEntry('Owner', s(d['owner'])),
+      MapEntry('Course', s(d['course_title'])),
+      MapEntry('Course ID', s(d['course_id'])),
+      MapEntry('Converted', dt(d['converted_at'])),
+      MapEntry('Created', dt(d['created_at'])),
+    ].where((e) => e.value.isNotEmpty).toList();
+
+    // Flatten the record jsonb (custom fields, UTM, program, …) one level deep.
+    final extra = <MapEntry<String, String>>[];
+    void add(String k, dynamic v) {
+      if (v == null) return;
+      final val = v is List ? v.join(', ') : v.toString();
+      if (val.trim().isEmpty || val == '{}' || val == '[]') return;
+      extra.add(MapEntry(k, val));
+    }
+    final rec = d['record'];
+    if (rec is Map) {
+      rec.forEach((k, v) {
+        if (v is Map) {
+          v.forEach((k2, v2) => add(k2.toString(), v2));
+        } else {
+          add(k.toString(), v);
+        }
+      });
+    }
+
+    final prov = d['provisioned'] == true;
+    final pwd = s(d['temp_password']);
+    final loginId = s(d['phone']).isNotEmpty ? s(d['phone']) : s(d['email']);
+    final name = s(d['name']).isNotEmpty ? s(d['name']) : '(no name)';
+
+    await showModalBottomSheet(
+      context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final p = Palette.of(ctx);
+        Widget kv(String k, String v) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 7),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                SizedBox(width: 104, child: Text(k, style: AppleTheme.footnote(ctx).copyWith(color: p.secondary))),
+                Expanded(child: SelectableText(v, style: AppleTheme.body(ctx).copyWith(fontSize: 14))),
+              ]),
+            );
+        return SquareScope(child: Container(
+          margin: const EdgeInsets.all(10),
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.85),
+          decoration: BoxDecoration(color: p.card),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 18, 14, 10),
+              child: Row(children: [
+                Avatar(name: name, size: 44),
+                const SizedBox(width: 12),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(name, style: AppleTheme.headline(ctx)),
+                  Text(prov ? 'Has student account' : 'No account',
+                      style: AppleTheme.footnote(ctx).copyWith(color: prov ? AppleColors.green : p.secondary, fontWeight: FontWeight.w600)),
+                ])),
+                GestureDetector(onTap: () => Navigator.pop(ctx), child: Icon(CupertinoIcons.xmark_circle_fill, size: 26, color: p.secondary)),
+              ]),
+            ),
+            Divider(height: 1, color: p.separator),
+            Flexible(child: ListView(padding: const EdgeInsets.fromLTRB(18, 12, 18, 12), children: [
+              if (pwd.isNotEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: AppleColors.green.withOpacity(0.10), border: Border.all(color: AppleColors.green.withOpacity(0.4))),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('STUDENT LOGIN', style: AppleTheme.footnote(ctx).copyWith(color: AppleColors.green, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                    const SizedBox(height: 4),
+                    SelectableText('Login: $loginId\nPassword: $pwd',
+                        style: AppleTheme.body(ctx).copyWith(fontSize: 13, color: AppleColors.green, fontWeight: FontWeight.w600)),
+                  ]),
+                ),
+                const SizedBox(height: 10),
+              ],
+              ...fields.map((e) => kv(e.key, e.value)),
+              if (extra.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text('LEAD FIELDS', style: AppleTheme.footnote(ctx).copyWith(fontWeight: FontWeight.w700, color: p.accent, letterSpacing: 0.5)),
+                const SizedBox(height: 2),
+                ...extra.map((e) => kv(e.key, e.value)),
+              ],
+            ])),
+            Divider(height: 1, color: p.separator),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: GestureDetector(
+                onTap: () { Navigator.pop(ctx); _delete(id, name); },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(color: AppleColors.red.withOpacity(0.12), border: Border.all(color: AppleColors.red.withOpacity(0.4))),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: const [
+                    Icon(CupertinoIcons.trash, size: 16, color: AppleColors.red),
+                    SizedBox(width: 6),
+                    Text('Delete lead', style: TextStyle(color: AppleColors.red, fontWeight: FontWeight.w700)),
+                  ]),
+                ),
+              ),
+            ),
+          ]),
+        ));
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
@@ -3176,6 +3306,7 @@ class _ConvertedLeadsScreenState extends State<ConvertedLeadsScreen> {
           return Column(children: [
             if (i > 0) Divider(height: 1, indent: 16, color: p.separator),
             ListTile(
+              onTap: () => _showDetail(l),
               leading: Avatar(name: l['name']?.toString() ?? '?', size: 36),
               title: Text(l['name']?.toString().trim().isNotEmpty == true ? l['name'].toString() : '(no name)', style: AppleTheme.body(context)),
               subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
