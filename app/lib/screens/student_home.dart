@@ -491,13 +491,15 @@ class _StudentHomeState extends State<StudentHome> {
               ),
             ),
             const SizedBox(width: 28),
-            // Right sidebar: profile on top, AI news filling the rest.
+            // Right sidebar: profile on top, notifications, then AI news.
             SizedBox(
               width: 380,
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 _Entrance(index: 1, child: _profileSection()),
                 const SizedBox(height: 12),
-                Expanded(child: _Entrance(index: 2, child: _AiNewsCard(auth: widget.auth, scrollable: true))),
+                _Entrance(index: 2, child: _homeNotifications()),
+                const SizedBox(height: 12),
+                Expanded(child: _Entrance(index: 3, child: _AiNewsCard(auth: widget.auth, scrollable: true))),
               ]),
             ),
           ]),
@@ -518,13 +520,15 @@ class _StudentHomeState extends State<StudentHome> {
       child: Column(children: [
         _Entrance(index: 0, child: _topBar()),
         const SizedBox(height: 14),
-        // Profile section at the top on iPad / phone.
+        // Profile section + notifications at the top on iPad / phone.
         _Entrance(index: 1, child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 640), child: _profileSection(compact: true)))),
+        const SizedBox(height: 14),
+        _Entrance(index: 2, child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 640), child: _homeNotifications()))),
         const SizedBox(height: 18),
-        _Entrance(index: 2, child: Center(child: _matrix(side))),
+        _Entrance(index: 3, child: Center(child: _matrix(side))),
         const SizedBox(height: 28),
         _Entrance(
-          index: 3,
+          index: 4,
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 760),
@@ -541,8 +545,8 @@ class _StudentHomeState extends State<StudentHome> {
 
   Widget _profileSection({bool compact = false}) {
     final initials = _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S';
-    final avatar = compact ? 56.0 : 70.0;
-    final hi = compact ? 19.0 : 22.0;
+    final avatar = compact ? 84.0 : 104.0; // bigger profile picture
+    final hi = compact ? 20.0 : 23.0;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
@@ -613,6 +617,56 @@ class _StudentHomeState extends State<StudentHome> {
         return 'ONROL Student';
     }
   }
+
+  // Notifications shown right on the home (first view) — no panel needed. Shows
+  // the latest few with an unseen count; "View all" opens the full list.
+  Widget _homeNotifications() => _glass(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+        child: _future(
+          Future.wait([
+            _apiList('/api/v1/me/notifications', 'notifications'),
+            _apiList('/api/v1/me/announcements', 'announcements'),
+          ]),
+          (List d) {
+            final personal = (d[0] as List);
+            final unseen = personal.where((n) => (n as Map)['read'] != true).length;
+            final entries = <Map<String, dynamic>>[];
+            for (final n in personal) {
+              final m = n as Map<String, dynamic>;
+              final b = m['body']?.toString() ?? '';
+              entries.add({'text': [m['title'] ?? '', if (b.isNotEmpty) '— $b'].join(' '), 'at': m['at'], 'read': m['read'] == true});
+            }
+            for (final a in (d[1] as List)) {
+              final m = a as Map<String, dynamic>;
+              final b = m['body']?.toString() ?? '';
+              final course = m['course']?.toString() ?? '';
+              entries.add({'text': [if (course.isNotEmpty) '[$course]', m['title'] ?? '', if (b.isNotEmpty) '— $b'].join(' '), 'at': m['at'], 'read': true});
+            }
+            entries.sort((a, b) => (b['at']?.toString() ?? '').compareTo(a['at']?.toString() ?? ''));
+            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                Icon(CupertinoIcons.bell_fill, size: 16, color: _orange),
+                const SizedBox(width: 8),
+                Text('Notifications', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800, color: _navy)),
+                if (unseen > 0) ...[
+                  const SizedBox(width: 6),
+                  Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1), decoration: BoxDecoration(color: _orange.withOpacity(0.14), borderRadius: BorderRadius.circular(10)), child: Text('$unseen new', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: _orange))),
+                ],
+                const Spacer(),
+                _Pressable(
+                  onTap: () => _openPanel('notifications'),
+                  child: Text('View all', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: _orange)),
+                ),
+              ]),
+              const SizedBox(height: 6),
+              if (entries.isEmpty)
+                Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text('No notifications yet', style: GoogleFonts.poppins(fontSize: 12.5, color: _grey)))
+              else
+                ...entries.take(5).map((e) => _notif(e['text'] as String, _fmtAt(e['at']?.toString()), read: e['read'] == true)),
+            ]);
+          },
+        ),
+      );
 
   // ---- Top bar -------------------------------------------------------------
 
@@ -1468,68 +1522,6 @@ class _StudentHomeState extends State<StudentHome> {
                 ),
               ]),
             ]),
-          ),
-          const SizedBox(height: 18),
-          // Notification button — a preview with the unseen count and the latest
-          // update; tapping opens the full notifications in a separate popup
-          // (which is where they get marked read).
-          _future(
-            Future.wait([
-              _apiList('/api/v1/me/notifications', 'notifications'),
-              _apiList('/api/v1/me/announcements', 'announcements'),
-            ]),
-            (List d) {
-              final personal = (d[0] as List);
-              final unseen = personal.where((n) => (n as Map)['read'] != true).length;
-              final all = <Map<String, dynamic>>[];
-              for (final n in personal) {
-                final m = n as Map<String, dynamic>;
-                final b = m['body']?.toString() ?? '';
-                all.add({'text': [m['title'] ?? '', if (b.isNotEmpty) '— $b'].join(' '), 'at': m['at']});
-              }
-              for (final a in (d[1] as List)) {
-                final m = a as Map<String, dynamic>;
-                final b = m['body']?.toString() ?? '';
-                final course = m['course']?.toString() ?? '';
-                all.add({'text': [if (course.isNotEmpty) '[$course]', m['title'] ?? '', if (b.isNotEmpty) '— $b'].join(' '), 'at': m['at']});
-              }
-              all.sort((a, b) => (b['at']?.toString() ?? '').compareTo(a['at']?.toString() ?? ''));
-              final preview = all.isEmpty ? 'No notifications yet' : (all.first['text'] as String);
-              return _Pressable(
-                onTap: () => _openPanel('notifications'),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                  decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(16), border: Border.all(color: _cardBorder)),
-                  child: Row(children: [
-                    Stack(clipBehavior: Clip.none, children: [
-                      Container(width: 38, height: 38, alignment: Alignment.center, decoration: BoxDecoration(color: _orange.withOpacity(0.12), shape: BoxShape.circle), child: Icon(CupertinoIcons.bell_fill, size: 18, color: _orange)),
-                      if (unseen > 0)
-                        Positioned(right: -3, top: -3, child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                          constraints: const BoxConstraints(minWidth: 17),
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(color: const Color(0xFFE5484D), borderRadius: BorderRadius.circular(10), border: Border.all(color: _bg, width: 1.5)),
-                          child: Text(unseen > 99 ? '99+' : '$unseen', style: GoogleFonts.poppins(fontSize: 9.5, fontWeight: FontWeight.w800, color: Colors.white)),
-                        )),
-                    ]),
-                    const SizedBox(width: 12),
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Row(children: [
-                        Text('Notifications', style: GoogleFonts.poppins(fontSize: 14.5, fontWeight: FontWeight.w800, color: _navy)),
-                        if (unseen > 0) ...[
-                          const SizedBox(width: 6),
-                          Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1), decoration: BoxDecoration(color: _orange.withOpacity(0.14), borderRadius: BorderRadius.circular(10)), child: Text('$unseen new', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: _orange))),
-                        ],
-                      ]),
-                      const SizedBox(height: 2),
-                      Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
-                    ])),
-                    const SizedBox(width: 6),
-                    Icon(CupertinoIcons.chevron_forward, size: 16, color: _grey),
-                  ]),
-                ),
-              );
-            },
           ),
         ]);
       case 'settings':
