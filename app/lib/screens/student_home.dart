@@ -617,25 +617,12 @@ class _StudentHomeState extends State<StudentHome> {
   // ---- Top bar -------------------------------------------------------------
 
   Widget _topBar() {
+    // Just the brand — the corner avatar is gone; the profile card opens Profile.
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // Brand on the left.
-          Text('ONROL', style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 1)),
-          const Spacer(),
-          // Streak, notifications and photo all live inside the Profile panel
-          // now — the avatar is the single entry point to it.
-          _Pressable(
-            onTap: () => _openPanel('profile'),
-            child: ValueListenableBuilder<String>(
-              valueListenable: avatarNotifier,
-              builder: (ctx, av, _) => _avatarBox(av, 40, _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S'),
-            ),
-          ),
-        ],
-      ),
+      child: Row(children: [
+        Text('ONROL', style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 1)),
+      ]),
     );
   }
 
