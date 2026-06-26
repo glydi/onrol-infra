@@ -477,6 +477,18 @@ class _StudentHomeState extends State<StudentHome> {
                 child: Center(child: _matrix(side)),
               ),
             ),
+            const SizedBox(height: 28),
+            // Live AI/tech news, below the menu — shrink-wraps so it flows with
+            // the page scroll rather than getting its own inner scrollbar.
+            _Entrance(
+              index: 3,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 760),
+                  child: _AiNewsCard(auth: widget.auth, scrollable: false),
+                ),
+              ),
+            ),
             const SizedBox(height: 24),
           ]),
         );
