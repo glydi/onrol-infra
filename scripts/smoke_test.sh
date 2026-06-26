@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end smoke test against a running API. Exercises the whole product flow:
-# register -> device-bound login -> device-limit enforcement -> admin video +
-# enrollment -> AES key delivery -> webinar -> live join.
+# admin-create user -> device-bound login -> device-limit enforcement -> admin
+# video + enrollment -> AES key delivery -> webinar -> live join.
 #
 #   BASE=http://127.0.0.1:8080 ADMIN_KEY=dev-admin-key-123 scripts/smoke_test.sh
 set -euo pipefail
@@ -15,10 +15,10 @@ info() { printf '  → %s\n' "$1"; }
 EMAIL="student+$RANDOM@onrol.test"
 PASS="hunter2pass"
 
-echo "[1] register"
-curl -s -X POST "$BASE/api/v1/auth/register" \
-  -H 'Content-Type: application/json' \
-  -d "{\"email\":\"$EMAIL\",\"full_name\":\"Asha Rao\",\"password\":\"$PASS\"}" >/dev/null
+echo "[1] admin creates a student (self-registration is disabled)"
+curl -s -X POST "$BASE/api/v1/admin/users" \
+  -H "X-Admin-Key: $ADMIN_KEY" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$EMAIL\",\"full_name\":\"Asha Rao\",\"password\":\"$PASS\",\"role\":\"student\"}" >/dev/null
 pass "user created: $EMAIL"
 
 echo "[2] login on device A (gets device-bound JWT)"

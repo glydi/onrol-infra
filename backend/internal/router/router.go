@@ -15,8 +15,8 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 
 	api := app.Group("/api/v1")
 
-	// Public.
-	api.Post("/auth/register", h.Register)
+	// Public. Self-registration is intentionally NOT exposed — accounts are
+	// created by admins/managers (/admin/users, /manage/users) or enrolment flows.
 	api.Post("/auth/login", h.Login)
 	api.Post("/auth/forgot", h.ForgotPassword)        // email an OTP to reset the password
 	api.Post("/auth/reset", h.ResetPassword)          // verify OTP + set a new password

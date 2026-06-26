@@ -14,13 +14,6 @@ import (
 	"github.com/onrol/lms-backend/internal/models"
 )
 
-type registerReq struct {
-	Email    string `json:"email"`
-	Phone    string `json:"phone"`
-	FullName string `json:"full_name"`
-	Password string `json:"password"`
-}
-
 type loginReq struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
@@ -45,41 +38,6 @@ func portalAllowsRole(portal, role string) bool {
 	default:
 		return false
 	}
-}
-
-// Register creates an account. (In production gate this behind admin/enrolment
-// flows; open self-registration is fine for early testing.)
-func (h *Handlers) Register(c *fiber.Ctx) error {
-	var req registerReq
-	if err := c.BodyParser(&req); err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
-	}
-	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
-	if req.Email == "" || req.Password == "" || req.FullName == "" {
-		return fiber.NewError(fiber.StatusBadRequest, "email, password, full_name are required")
-	}
-	if len(req.Password) < 8 {
-		return fiber.NewError(fiber.StatusBadRequest, "password must be at least 8 characters")
-	}
-
-	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-	if err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, "hash failed")
-	}
-
-	var id string
-	err = h.Pool.QueryRow(c.Context(),
-		`INSERT INTO users (email, phone, full_name, password_hash, max_devices)
-		 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-		req.Email, req.Phone, req.FullName, string(hash), h.Cfg.MaxDevices,
-	).Scan(&id)
-	if err != nil {
-		if strings.Contains(err.Error(), "users_email_key") {
-			return fiber.NewError(fiber.StatusConflict, "email already registered")
-		}
-		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
-	}
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "email": req.Email})
 }
 
 // Login authenticates, enforces the per-account device limit server-side, and

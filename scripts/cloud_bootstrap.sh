@@ -198,15 +198,18 @@ fi
 # ---- Optional: seed first admin --------------------------------------------
 if [ -n "${ADMIN_EMAIL:-}" ] && [ -n "${ADMIN_PASSWORD:-}" ]; then
   log "Seeding admin account ${ADMIN_EMAIL}"
-  # Register via the app's own endpoint, then elevate the role to superadmin.
-  curl -fsS -X POST "http://127.0.0.1:8080/api/v1/auth/register" \
+  # Self-registration is disabled, so create the first account through the
+  # admin-key endpoint (read the key back from the .env we wrote above), then
+  # elevate the role to superadmin.
+  ADMIN_API_KEY="$(grep -E '^ADMIN_API_KEY=' "$APP_DIR/.env" | cut -d= -f2-)"
+  curl -fsS -X POST "http://127.0.0.1:8080/api/v1/admin/users" \
       -H 'Content-Type: application/json' \
-      -H 'X-Device-UUID: bootstrap' \
-      -d "{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASSWORD}\",\"full_name\":\"Admin\"}" >/dev/null 2>&1 || true
+      -H "X-Admin-Key: ${ADMIN_API_KEY}" \
+      -d "{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASSWORD}\",\"full_name\":\"Admin\",\"role\":\"manager\"}" >/dev/null 2>&1 || true
   if sudo -u postgres psql onrol -c "UPDATE users SET role='superadmin' WHERE lower(email)=lower('${ADMIN_EMAIL}');" >/dev/null 2>&1; then
     echo "    admin ready: ${ADMIN_EMAIL}"
   else
-    warn "could not seed admin (register may be disabled)."
+    warn "could not seed admin."
   fi
 fi
 

@@ -24,8 +24,8 @@ Create a webinar + a test student first (admin key is in the server's
 H=https://187-127-178-100.sslip.io; AK=<ADMIN_API_KEY>
 curl -s -X POST $H/api/v1/admin/webinars -H "X-Admin-Key: $AK" -H 'Content-Type: application/json' \
   -d '{"title":"Live Class","embed_session_id":"1362481714"}'   # -> webinar id
-curl -s -X POST $H/api/v1/auth/register -H 'Content-Type: application/json' \
-  -d '{"email":"you@example.com","full_name":"You","password":"hunter2pass"}'
+curl -s -X POST $H/api/v1/admin/users -H "X-Admin-Key: $AK" -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","full_name":"You","password":"hunter2pass","role":"student"}'
 ```
 
 ## What's implemented
