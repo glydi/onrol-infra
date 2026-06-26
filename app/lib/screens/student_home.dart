@@ -545,7 +545,7 @@ class _StudentHomeState extends State<StudentHome> {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: _pickAvatar, // tap to change your profile picture
+        onTap: () => _openPanel('profile'),
         child: _glass(
           padding: const EdgeInsets.all(18),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -651,9 +651,9 @@ class _StudentHomeState extends State<StudentHome> {
               ]),
             ),
             const SizedBox(width: 12),
-            // Tap your avatar to change your profile picture.
+            // Avatar opens the Profile panel (notifications are the separate bell).
             _Pressable(
-              onTap: _pickAvatar,
+              onTap: () => _openPanel('profile'),
               child: ValueListenableBuilder<String>(
                 valueListenable: avatarNotifier,
                 builder: (ctx, av, _) => _avatarBox(av, 40, _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S'),
@@ -1424,6 +1424,50 @@ class _StudentHomeState extends State<StudentHome> {
                 }),
             ]);
           }),
+        ]);
+      case 'profile':
+        // A clean, standalone profile panel (separate from notifications):
+        // photo + identity with a change-photo action. Detail-collection fields
+        // were intentionally dropped as redundant.
+        return (CupertinoIcons.person_fill, 'Profile', _name, [
+          Center(
+            child: Column(children: [
+              const SizedBox(height: 6),
+              GestureDetector(
+                onTap: _pickAvatar,
+                child: ValueListenableBuilder<String>(
+                  valueListenable: avatarNotifier,
+                  builder: (c, av, _) => _avatarBox(av, 100, _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S', editable: true),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(_name, style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w800, color: _navy)),
+              const SizedBox(height: 3),
+              Text(_roleLabel, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w600, color: _orange)),
+              if ((widget.auth.user?.email ?? '').isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(widget.auth.user!.email, style: GoogleFonts.poppins(fontSize: 12.5, color: _grey)),
+              ],
+              const SizedBox(height: 20),
+              _Pressable(
+                onTap: _pickAvatar,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                  decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(10)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(CupertinoIcons.camera_fill, size: 16, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Text('Change photo', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
+                  ]),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _Pressable(
+                onTap: () => _openPanel('settings'),
+                child: Text('Settings', style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w600, color: _orange)),
+              ),
+            ]),
+          ),
         ]);
       case 'settings':
         return (CupertinoIcons.gear_alt_fill, 'Settings', 'Customize your experience', [
