@@ -202,6 +202,12 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
             builder: (_) => ConvertedLeadsScreen(auth: widget.auth),
           )))),
         ]),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(child: PrimaryButton(label: 'Communities', icon: CupertinoIcons.person_3_fill, square: true, onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => CommunitiesScreen(auth: widget.auth),
+          )))),
+        ]),
         const SizedBox(height: 16),
         // Search across ALL people (name/email/phone/username/role).
         Container(
@@ -3791,6 +3797,259 @@ class _StudyHubEditorScreenState extends State<StudyHubEditorScreen> {
           Icon(CupertinoIcons.add, size: 15, color: p.accent),
           const SizedBox(width: 4),
           Text('Add', style: TextStyle(color: p.accent, fontSize: 13, fontWeight: FontWeight.w600)),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Admin community manager — create/manage Discord-like communities (servers):
+/// Global (everyone), Course-wise (enrolled), or Batch-wise (enrolled + batch),
+/// each with channels. Mirrors the staff actions in the student forum.
+class CommunitiesScreen extends StatefulWidget {
+  const CommunitiesScreen({super.key, required this.auth});
+  final AuthService auth;
+  @override
+  State<CommunitiesScreen> createState() => _CommunitiesScreenState();
+}
+
+class _CommunitiesScreenState extends State<CommunitiesScreen> {
+  List<dynamic> _servers = [];
+  bool _loading = true;
+  String? _err;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (mounted) setState(() { _loading = true; _err = null; });
+    try {
+      final r = await widget.auth.apiGet('/api/v1/manage/community/servers');
+      if (!mounted) return;
+      setState(() { _servers = (ApiClient.decode(r)['servers'] as List?) ?? []; _loading = false; });
+    } on ApiException catch (e) {
+      if (mounted) setState(() { _loading = false; _err = e.message; });
+    } catch (_) {
+      if (mounted) setState(() { _loading = false; _err = "Couldn't load communities."; });
+    }
+  }
+
+  List<Map<String, dynamic>> _of(String scope) =>
+      _servers.where((s) => (s as Map)['scope'] == scope).map((s) => (s as Map).cast<String, dynamic>()).toList();
+
+  Future<void> _createServer() async {
+    final name = TextEditingController();
+    final icon = TextEditingController();
+    final batch = TextEditingController();
+    int scope = 0; // 0 global, 1 course, 2 batch
+    const scopes = ['global', 'course', 'batch'];
+    List<dynamic> courses = [];
+    String? courseId;
+    try {
+      courses = (ApiClient.decode(await widget.auth.apiGet('/api/v1/manage/courses'))['courses'] as List?) ?? [];
+    } catch (_) {}
+    if (!mounted) return;
+    final ok = await showFormSheet(context, square: true, title: 'New community', builder: (setS) => [
+      sheetField(name, 'Community name (e.g. AI Architects)', CupertinoIcons.person_3_fill),
+      const SizedBox(height: 10),
+      sheetField(icon, 'Icon — an emoji or letter (optional)', CupertinoIcons.smiley),
+      const SizedBox(height: 12),
+      _label(context, 'Who has access'),
+      const SizedBox(height: 6),
+      AppleSegmented(square: true, labels: const ['Global (all)', 'Course', 'Batch'], selected: scope, onChanged: (i) => setS(() => scope = i)),
+      const SizedBox(height: 6),
+      _label(context, scope == 0
+          ? 'Everyone on ONROL can see and post here.'
+          : scope == 1
+              ? 'Only students enrolled in the chosen course.'
+              : 'Only students enrolled in the course AND in that batch.'),
+      if (scope != 0) ...[
+        const SizedBox(height: 12),
+        _label(context, 'Course'),
+        const SizedBox(height: 6),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final c in courses)
+            GestureDetector(
+              onTap: () => setS(() => courseId = c['id'].toString()),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: courseId == c['id'].toString() ? Palette.of(context).accent.withOpacity(0.16) : Palette.of(context).card2,
+                  border: Border.all(color: courseId == c['id'].toString() ? Palette.of(context).accent : Palette.of(context).separator),
+                ),
+                child: Text(c['title']?.toString() ?? 'Course', style: AppleTheme.footnote(context)),
+              ),
+            ),
+        ]),
+      ],
+      if (scope == 2) ...[
+        const SizedBox(height: 12),
+        sheetField(batch, 'Batch number (e.g. 1)', CupertinoIcons.number, keyboard: TextInputType.number),
+      ],
+    ], onSubmit: () async {
+      if (name.text.trim().isEmpty) return 'Name required';
+      if (scope != 0 && courseId == null) return 'Pick a course';
+      if (scope == 2 && int.tryParse(batch.text.trim()) == null) return 'Batch number required';
+      try {
+        await widget.auth.apiPost('/api/v1/manage/community/servers', {
+          'name': name.text.trim(),
+          'scope': scopes[scope],
+          'icon': icon.text.trim(),
+          if (scope != 0) 'course_id': courseId,
+          if (scope == 2) 'batch_number': int.parse(batch.text.trim()),
+        });
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) _load();
+  }
+
+  Future<void> _addChannel(String serverId) async {
+    final name = TextEditingController();
+    final ok = await showFormSheet(context, square: true, title: 'New channel',
+        builder: (_) => [sheetField(name, 'Channel name (e.g. announcements)', CupertinoIcons.number_circle)],
+        onSubmit: () async {
+      if (name.text.trim().isEmpty) return 'Name required';
+      try {
+        await widget.auth.apiPost('/api/v1/manage/community/servers/$serverId/channels', {'name': name.text.trim()});
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) _load();
+  }
+
+  Future<void> _deleteServer(Map<String, dynamic> s) async {
+    final yes = await showSquareConfirm(context,
+        title: 'Delete community', message: 'Delete "${s['name']}" and all its channels & messages?',
+        confirmLabel: 'Delete', destructive: true);
+    if (!yes) return;
+    try {
+      await widget.auth.apiDelete('/api/v1/manage/community/servers/${s['id']}');
+      _load();
+    } catch (_) {}
+  }
+
+  Future<void> _deleteChannel(String id) async {
+    try {
+      await widget.auth.apiDelete('/api/v1/manage/community/channels/$id');
+      _load();
+    } catch (_) {}
+  }
+
+  Widget _smallButton(String label, IconData icon, VoidCallback onTap) {
+    final p = Palette.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(color: p.accent.withOpacity(0.12), borderRadius: BorderRadius.zero),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 15, color: p.accent),
+          const SizedBox(width: 4),
+          Text(label, style: TextStyle(color: p.accent, fontSize: 13, fontWeight: FontWeight.w600)),
+        ]),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final w = MediaQuery.of(context).size.width;
+    final hp = (w > 760 ? (w - 720) / 2 : 14.0).clamp(14, 400).toDouble();
+    return SquareScope(child: Scaffold(
+      backgroundColor: p.bg,
+      appBar: AppBar(
+        backgroundColor: p.bg, elevation: 0, surfaceTintColor: Colors.transparent,
+        title: Text('Communities', style: AppleTheme.headline(context)),
+        actions: [IconButton(tooltip: 'New community', icon: Icon(CupertinoIcons.add_circled, color: p.accent), onPressed: _createServer)],
+      ),
+      body: _loading
+          ? const Center(child: CupertinoActivityIndicator())
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: EdgeInsets.fromLTRB(hp, 12, hp, 40),
+                children: [
+                  if (_err != null)
+                    AppleCard(square: true, child: Text(_err!, style: AppleTheme.footnote(context).copyWith(color: AppleColors.red))),
+                  AppleCard(square: true, child: Text(
+                    'Communities are Discord-like servers with channels. Global is seen by everyone; Course and Batch are limited to who has access.',
+                    style: AppleTheme.footnote(context))),
+                  const SizedBox(height: 14),
+                  for (final g in const [('global', 'Global'), ('course', 'Course-wise'), ('batch', 'Batch-wise')]) ...[
+                    Row(children: [
+                      Expanded(child: SectionHeader('${g.$2} (${_of(g.$1).length})')),
+                      _smallButton('Add', CupertinoIcons.add, _createServer),
+                    ]),
+                    const SizedBox(height: 8),
+                    if (_of(g.$1).isEmpty)
+                      AppleCard(square: true, child: Text('None yet.', style: AppleTheme.footnote(context)))
+                    else
+                      ..._of(g.$1).map(_serverCard),
+                    const SizedBox(height: 18),
+                  ],
+                ],
+              ),
+            ),
+    ));
+  }
+
+  Widget _serverCard(Map<String, dynamic> s) {
+    final p = Palette.of(context);
+    final channels = (s['channels'] as List?) ?? [];
+    final scope = s['scope']?.toString() ?? 'global';
+    final sub = scope == 'global'
+        ? 'Everyone'
+        : scope == 'course'
+            ? (s['course']?.toString().isNotEmpty == true ? s['course'].toString() : 'Course')
+            : '${s['course'] ?? 'Course'} · Batch ${s['batch_number'] ?? ''}';
+    final icon = s['icon']?.toString().trim() ?? '';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: AppleCard(square: true,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(
+              width: 38, height: 38, alignment: Alignment.center,
+              decoration: BoxDecoration(color: p.accent.withOpacity(0.12), borderRadius: BorderRadius.zero),
+              child: Text(icon.isNotEmpty ? icon : (s['name']?.toString().isNotEmpty == true ? s['name'].toString()[0].toUpperCase() : '#'),
+                  style: AppleTheme.headline(context).copyWith(color: p.accent)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(s['name']?.toString() ?? 'Community', style: AppleTheme.headline(context)),
+              Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.footnote(context)),
+            ])),
+            _smallButton('Channel', CupertinoIcons.add, () => _addChannel(s['id'].toString())),
+            const SizedBox(width: 6),
+            GestureDetector(onTap: () => _deleteServer(s), child: const Icon(CupertinoIcons.trash, size: 18, color: AppleColors.red)),
+          ]),
+          if (channels.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final ch in channels)
+                Container(
+                  padding: const EdgeInsets.only(left: 10, right: 4, top: 5, bottom: 5),
+                  decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Text('#${(ch as Map)['name']}', style: AppleTheme.footnote(context)),
+                    GestureDetector(
+                      onTap: () => _deleteChannel(ch['id'].toString()),
+                      child: const Padding(padding: EdgeInsets.symmetric(horizontal: 6), child: Icon(CupertinoIcons.xmark, size: 13, color: AppleColors.red)),
+                    ),
+                  ]),
+                ),
+            ]),
+          ],
         ]),
       ),
     );

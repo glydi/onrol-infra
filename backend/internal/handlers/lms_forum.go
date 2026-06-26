@@ -168,12 +168,11 @@ func (h *Handlers) DeleteForumMessage(c *fiber.Ctx) error {
 
 // ---- Admin: manage servers + channels (staff) ------------------------------
 
-// ListForumServers returns every server (with channels) for management.
+// ListForumServers returns every server with its channels for management.
 func (h *Handlers) ListForumServers(c *fiber.Ctx) error {
 	rows, err := h.Pool.Query(c.Context(), `
 		SELECT s.id, s.name, s.scope, COALESCE(s.course_id::text,''), s.batch_number,
-		       COALESCE(s.icon,''), COALESCE(c.title,''),
-		       (SELECT count(*) FROM forum_channels ch WHERE ch.server_id=s.id)
+		       COALESCE(s.icon,''), COALESCE(c.title,'')
 		FROM forum_servers s LEFT JOIN courses c ON c.id=s.course_id
 		ORDER BY (s.scope<>'global'), s.position, s.created_at`)
 	if err != nil {
@@ -181,15 +180,35 @@ func (h *Handlers) ListForumServers(c *fiber.Ctx) error {
 	}
 	defer rows.Close()
 	out := []fiber.Map{}
+	ids := []string{}
+	byID := map[string]fiber.Map{}
 	for rows.Next() {
 		var id, name, scope, courseID, icon, course string
 		var batch *int
-		var channels int
-		if err := rows.Scan(&id, &name, &scope, &courseID, &batch, &icon, &course, &channels); err != nil {
+		if err := rows.Scan(&id, &name, &scope, &courseID, &batch, &icon, &course); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
-		out = append(out, fiber.Map{"id": id, "name": name, "scope": scope, "course_id": courseID,
-			"batch_number": batch, "icon": icon, "course": course, "channels": channels})
+		s := fiber.Map{"id": id, "name": name, "scope": scope, "course_id": courseID,
+			"batch_number": batch, "icon": icon, "course": course, "channels": []fiber.Map{}}
+		out = append(out, s)
+		byID[id] = s
+		ids = append(ids, id)
+	}
+	if len(ids) > 0 {
+		crows, err := h.Pool.Query(c.Context(),
+			`SELECT id, server_id, name FROM forum_channels WHERE server_id = ANY($1) ORDER BY position, created_at`, ids)
+		if err == nil {
+			defer crows.Close()
+			for crows.Next() {
+				var cid, sid, cname string
+				if err := crows.Scan(&cid, &sid, &cname); err != nil {
+					continue
+				}
+				if s, ok := byID[sid]; ok {
+					s["channels"] = append(s["channels"].([]fiber.Map), fiber.Map{"id": cid, "name": cname})
+				}
+			}
+		}
 	}
 	return c.JSON(fiber.Map{"servers": out})
 }
