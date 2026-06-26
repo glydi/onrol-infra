@@ -6,15 +6,28 @@ import (
 	"github.com/onrol/lms-backend/internal/middleware"
 )
 
-// ListDevices returns the caller's active devices (used to show "you're at the
-// 2-device limit, remove one" UI).
+// ListDevices returns the caller's active devices plus which one is THIS device
+// and the effective slot limit, so the UI can show "Using 2 of 2 devices",
+// badge the current device, and warn before signing it out.
 func (h *Handlers) ListDevices(c *fiber.Ctx) error {
 	userID := c.Locals(middleware.LocalUserID).(string)
 	devices, err := listActiveDevices(c.Context(), h.Pool, userID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
 	}
-	return c.JSON(fiber.Map{"devices": devices})
+	currentDevice, _ := c.Locals(middleware.LocalDeviceID).(string)
+	role, _ := c.Locals(middleware.LocalRole).(string)
+	// Staff (instructor/manager/superadmin) are exempt → 0 means "unlimited";
+	// everyone else is hard-capped at 2 (matches bindDevice).
+	limit := 2
+	if role == "instructor" || role == "manager" || role == "superadmin" {
+		limit = 0
+	}
+	return c.JSON(fiber.Map{
+		"devices":           devices,
+		"current_device_id": currentDevice,
+		"max_devices":       limit,
+	})
 }
 
 // RevokeDevice deactivates one of the caller's devices, freeing a slot. We

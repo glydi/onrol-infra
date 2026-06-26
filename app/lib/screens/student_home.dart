@@ -278,10 +278,6 @@ class _StudentHomeState extends State<StudentHome> {
   // learner completed a lesson (from /me/streak). Tapping opens Achievements.
   int _streak = 0;
 
-  // Which home section is focused: 0 = menu (matrix), 1 = profile. Drives the
-  // hover focus highlight.
-  int _focused = 0;
-
   // The home is one scrollable column; this drives the floating scroll button.
   final ScrollController _homeScroll = ScrollController();
   bool _atBottom = false;
@@ -413,19 +409,6 @@ class _StudentHomeState extends State<StudentHome> {
     return '${months[dt.month - 1]} ${dt.day}, $h:${dt.minute.toString().padLeft(2, '0')} $ampm';
   }
 
-  String get _roleLabel {
-    switch (widget.auth.user?.role) {
-      case 'instructor':
-        return 'ONROL Instructor';
-      case 'manager':
-        return 'ONROL Manager';
-      case 'superadmin':
-        return 'ONROL Admin';
-      default:
-        return 'ONROL Student';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     _isDark = Theme.of(context).brightness == Brightness.dark;
@@ -457,26 +440,10 @@ class _StudentHomeState extends State<StudentHome> {
           padding: EdgeInsets.fromLTRB(wide ? 40 : 18, 8, wide ? 36 : 18, 96),
           child: Column(children: [
             _Entrance(index: 0, child: _topBar()),
-            const SizedBox(height: 14),
-            _Entrance(
-              index: 1,
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 560),
-                  child: _focusable(1, child: _profileCard(compact: !wide)),
-                ),
-              ),
-            ),
             const SizedBox(height: 18),
-            _Entrance(
-              index: 2,
-              child: MouseRegion(
-                onEnter: (_) {
-                  if (_focused != 0) setState(() => _focused = 0);
-                },
-                child: Center(child: _matrix(side)),
-              ),
-            ),
+            // The profile card was redundant with the top-bar avatar (which opens
+            // My Profile) + streak, so the menu matrix leads the home now.
+            _Entrance(index: 1, child: Center(child: _matrix(side))),
             const SizedBox(height: 28),
             // Live AI/tech news, below the menu — shrink-wraps so it flows with
             // the page scroll rather than getting its own inner scrollbar.
@@ -496,28 +463,6 @@ class _StudentHomeState extends State<StudentHome> {
 
   // Desktop / wide: matrix centered (no scroll) on the left, sidebar pinned
   // right. Only the sidebar (profile + AI news) scrolls.
-  // Wraps a dashboard section in a focus ring. The focused section (set on
-  // hover) gets a themed accent border + glow; the others stay neutral.
-  Widget _focusable(int index, {required Widget child, double radius = 26}) {
-    final on = _focused == index;
-    return MouseRegion(
-      onEnter: (_) {
-        if (_focused != index) setState(() => _focused = index);
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 240),
-        curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.all(5),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(radius),
-          border: Border.all(color: on ? _orange.withOpacity(0.85) : Colors.transparent, width: 2),
-          boxShadow: on ? [BoxShadow(color: _orange.withOpacity(0.30), blurRadius: 26, spreadRadius: 1)] : const [],
-        ),
-        child: child,
-      ),
-    );
-  }
-
   // ---- Top bar -------------------------------------------------------------
 
   Widget _topBar() {
@@ -601,81 +546,6 @@ class _StudentHomeState extends State<StudentHome> {
   }
 
   // ---- Profile card (right sidebar, top) -----------------------------------
-
-  // [compact] = the phone (narrow) dashboard, where a smaller avatar + title
-  // keep the card proportionate and leave room for the chips.
-  Widget _profileCard({bool compact = false}) {
-    final initials = _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S';
-    final avatar = compact ? 68.0 : 88.0;
-    final hi = compact ? 21.0 : 25.0;
-    final pad = compact ? 18.0 : 22.0;
-    // Tapping the card opens Profile & settings; tapping the avatar (inner
-    // GestureDetector) still opens the picture picker.
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () => _openPanel('profile'),
-        child: _glass(
-      padding: EdgeInsets.all(pad),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Display-only here; the picture is edited inside the Profile popup.
-        ValueListenableBuilder<String>(
-          valueListenable: avatarNotifier,
-          builder: (ctx, av, _) => _avatarBox(av, avatar, initials),
-        ),
-        SizedBox(width: compact ? 14 : 18),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            RichText(
-              text: TextSpan(children: [
-                TextSpan(text: 'Hi, ', style: GoogleFonts.poppins(fontSize: hi, fontWeight: FontWeight.w800, color: _navy)),
-                TextSpan(text: _firstName, style: GoogleFonts.poppins(fontSize: hi, fontWeight: FontWeight.w800, color: _orange)),
-              ]),
-            ),
-            const SizedBox(height: 3),
-            Text(_roleLabel, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _grey)),
-            const SizedBox(height: 10),
-            // Wrap (not Row) so the two chips drop to a second line on narrow
-            // phones instead of overflowing the card's right edge.
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                  decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
-                  child: Text('ONROL Learner', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
-                ),
-                _streakChip(),
-              ],
-            ),
-          ]),
-        ),
-        // Settings affordance — the whole card opens Profile & settings.
-        Icon(CupertinoIcons.gear_alt_fill, size: 18, color: _orange.withOpacity(0.55)),
-      ]),
-    ),
-      ),
-    );
-  }
-
-  // Themed day-streak chip (fire + count). Tap opens the Achievements panel.
-  Widget _streakChip() => GestureDetector(
-        onTap: () => _openPanel('achievements'),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
-          decoration: BoxDecoration(
-            gradient: _orangeGrad,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [BoxShadow(color: _orange.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(CupertinoIcons.flame_fill, color: Colors.white, size: 14),
-            const SizedBox(width: 4),
-            Text('$_streak day streak', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
-          ]),
-        ),
-      );
 
   // A square (rounded) profile picture. [avatar] is '' / 'p:N' (preset) or a
   // 'data:' URI (uploaded photo). Shows a camera badge when [editable].
@@ -5406,7 +5276,7 @@ class _GridCellState extends State<_GridCell> {
 const _danger = Color(0xFFE0453C);
 
 /// Full Settings experience: Appearance (theme mode, accent colour, font size)
-/// and Security (update password, 2FA, login activity, logout all devices).
+/// and Security (update password, login activity, logout all devices).
 class _SettingsView extends StatefulWidget {
   const _SettingsView({required this.auth, required this.onLogout});
   final AuthService auth;
@@ -5420,7 +5290,6 @@ class _SettingsViewState extends State<_SettingsView> {
   // Expansion + form state.
   bool _pwOpen = false;
   bool _actOpen = false;
-  bool _twoFA = false; // current enabled status (from /me/2fa)
   bool _savingPw = false;
   bool _pushBusy = false; // enabling Web Push
   String? _pwErr; // inline password error (shown in the form, not a toast)
@@ -5430,12 +5299,8 @@ class _SettingsViewState extends State<_SettingsView> {
   final _conf = TextEditingController();
   final Set<TextEditingController> _shownPw = {}; // password fields revealed
   List<dynamic>? _devices; // null until first load
-
-  // 2FA setup/disable flow.
-  bool _faOpen = false;
-  bool _faBusy = false;
-  String? _faSecret; // pending secret while setting up
-  final _faCode = TextEditingController();
+  String? _currentDeviceId; // which listed device is the one we're on now
+  int _maxDevices = 2; // effective slot limit; 0 = unlimited (staff)
 
   Color get _ac => accentNotifier.value;
   LinearGradient get _acGrad => LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_ac, Color.lerp(_ac, Colors.white, 0.22)!]);
@@ -5446,73 +5311,6 @@ class _SettingsViewState extends State<_SettingsView> {
     themeNotifier.addListener(_r);
     accentNotifier.addListener(_r);
     textScaleNotifier.addListener(_r);
-    _load2FA();
-  }
-
-  Future<void> _load2FA() async {
-    try {
-      final m = ApiClient.decode(await widget.auth.apiGet('/api/v1/me/2fa'));
-      if (mounted) setState(() => _twoFA = m['enabled'] == true);
-    } catch (_) {}
-  }
-
-  Future<void> _faSetup() async {
-    setState(() => _faBusy = true);
-    try {
-      final m = ApiClient.decode(await widget.auth.apiPost('/api/v1/me/2fa/setup', {}));
-      if (mounted) setState(() {
-        _faSecret = m['secret']?.toString();
-        _faBusy = false;
-      });
-    } catch (_) {
-      if (mounted) setState(() => _faBusy = false);
-      _toast("Couldn't start setup");
-    }
-  }
-
-  Future<void> _faVerify() async {
-    final code = _faCode.text.trim();
-    if (code.length < 6) return _toast('Enter the 6-digit code');
-    setState(() => _faBusy = true);
-    try {
-      ApiClient.decode(await widget.auth.apiPost('/api/v1/me/2fa/verify', {'code': code}));
-      _faCode.clear();
-      if (mounted) setState(() {
-        _twoFA = true;
-        _faOpen = false;
-        _faSecret = null;
-        _faBusy = false;
-      });
-      _toast('Two-factor authentication enabled');
-    } on ApiException catch (e) {
-      if (mounted) setState(() => _faBusy = false);
-      _toast(e.message);
-    } catch (_) {
-      if (mounted) setState(() => _faBusy = false);
-      _toast("Couldn't verify code");
-    }
-  }
-
-  Future<void> _faDisable() async {
-    final code = _faCode.text.trim();
-    if (code.length < 6) return _toast('Enter a code to confirm');
-    setState(() => _faBusy = true);
-    try {
-      ApiClient.decode(await widget.auth.apiPost('/api/v1/me/2fa/disable', {'code': code}));
-      _faCode.clear();
-      if (mounted) setState(() {
-        _twoFA = false;
-        _faOpen = false;
-        _faBusy = false;
-      });
-      _toast('Two-factor authentication disabled');
-    } on ApiException catch (e) {
-      if (mounted) setState(() => _faBusy = false);
-      _toast(e.message);
-    } catch (_) {
-      if (mounted) setState(() => _faBusy = false);
-      _toast("Couldn't disable");
-    }
   }
 
   void _r() {
@@ -5524,7 +5322,7 @@ class _SettingsViewState extends State<_SettingsView> {
     themeNotifier.removeListener(_r);
     accentNotifier.removeListener(_r);
     textScaleNotifier.removeListener(_r);
-    for (final c in [_cur, _new, _conf, _faCode]) {
+    for (final c in [_cur, _new, _conf]) {
       c.dispose();
     }
     super.dispose();
@@ -5578,10 +5376,33 @@ class _SettingsViewState extends State<_SettingsView> {
   Future<void> _loadDevices() async {
     try {
       final m = ApiClient.decode(await widget.auth.apiGet('/api/v1/devices'));
-      if (mounted) setState(() => _devices = (m['devices'] as List?) ?? []);
+      if (mounted) {
+        setState(() {
+          _devices = (m['devices'] as List?) ?? [];
+          _currentDeviceId = m['current_device_id']?.toString();
+          _maxDevices = ((m['max_devices'] ?? 2) as num).toInt();
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _devices = []);
     }
+  }
+
+  String _deviceSummary() {
+    final n = _devices?.length ?? 0;
+    if (_maxDevices <= 0) return '$n active device${n == 1 ? '' : 's'} · no limit on your account';
+    return 'Using $n of $_maxDevices device slot${_maxDevices == 1 ? '' : 's'}';
+  }
+
+  // A friendly name from platform/model (raw model when we have it).
+  String _deviceName(String platform, String model) {
+    final p = platform.toLowerCase();
+    if (model.isNotEmpty && model.toLowerCase() != p) return model;
+    if (p.contains('android')) return 'Android device';
+    if (p.contains('ios')) return 'iPhone / iPad';
+    if (p.contains('web')) return 'Web browser';
+    if (platform.isNotEmpty) return platform[0].toUpperCase() + platform.substring(1);
+    return 'Unknown device';
   }
 
   Future<void> _confirmLogoutAll() async {
@@ -5637,8 +5458,6 @@ class _SettingsViewState extends State<_SettingsView> {
         index: 2,
         child: _section('Security', CupertinoIcons.lock_shield_fill, [
           _passwordRow(),
-          _div(),
-          _twoFARow(),
           _div(),
           _activityRow(),
           _div(),
@@ -5853,110 +5672,6 @@ class _SettingsViewState extends State<_SettingsView> {
     );
   }
 
-  Widget _twoFARow() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          child: Row(children: [
-            _iconChip(CupertinoIcons.shield_lefthalf_fill),
-            const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Text('Two-factor authentication', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
-                if (_twoFA) ...[
-                  const SizedBox(width: 6),
-                  Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: _green.withOpacity(0.14), borderRadius: BorderRadius.circular(5)), child: Text('ON', style: GoogleFonts.poppins(fontSize: 8.5, fontWeight: FontWeight.w800, color: _green, letterSpacing: 0.5))),
-                ],
-              ]),
-              Text(_twoFA ? 'Codes required at login' : 'Add a one-time code at login', style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
-            ])),
-            _switch(_twoFA, () {
-              if (_faBusy) return;
-              setState(() => _faOpen = !_faOpen);
-              if (_faOpen && !_twoFA && _faSecret == null) _faSetup();
-            }),
-          ]),
-        ),
-        AnimatedSize(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          alignment: Alignment.topCenter,
-          child: _faOpen ? _faPanel() : const SizedBox(width: double.infinity),
-        ),
-      ]);
-
-  Widget _faPanel() => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-        child: _twoFA ? _faDisablePanel() : _faSetupPanel(),
-      );
-
-  Widget _faSetupPanel() {
-    if (_faSecret == null) {
-      return const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Center(child: CupertinoActivityIndicator()));
-    }
-    final pretty = _faSecret!.replaceAllMapped(RegExp(r'.{4}'), (m) => '${m.group(0)} ').trim();
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text('1. In an authenticator app (Google Authenticator, Authy, 1Password), add an account and enter this setup key:', style: GoogleFonts.poppins(fontSize: 11.5, color: _grey, height: 1.4)),
-      const SizedBox(height: 8),
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(10), border: Border.all(color: _cardBorder)),
-        child: SelectableText(pretty, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy, letterSpacing: 1.5)),
-      ),
-      const SizedBox(height: 12),
-      Text('2. Enter the 6-digit code it shows:', style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
-      const SizedBox(height: 8),
-      _codeField(),
-      const SizedBox(height: 12),
-      _faButton('Verify & enable', _faVerify, _acGrad),
-    ]);
-  }
-
-  Widget _faDisablePanel() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('Enter a current code from your authenticator app to turn off two-factor authentication.', style: GoogleFonts.poppins(fontSize: 11.5, color: _grey, height: 1.4)),
-        const SizedBox(height: 8),
-        _codeField(),
-        const SizedBox(height: 12),
-        _faButton('Turn off 2FA', _faDisable, LinearGradient(colors: [_danger, Color.lerp(_danger, Colors.white, 0.2)!])),
-      ]);
-
-  Widget _codeField() => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
-        child: TextField(
-          controller: _faCode,
-          keyboardType: TextInputType.number,
-          maxLength: 6,
-          style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: _navy, letterSpacing: 4),
-          decoration: InputDecoration(border: InputBorder.none, isDense: true, counterText: '', contentPadding: const EdgeInsets.symmetric(vertical: 13), hintText: '000000', hintStyle: GoogleFonts.poppins(fontSize: 16, color: _grey.withOpacity(0.5), letterSpacing: 4)),
-        ),
-      );
-
-  Widget _faButton(String label, VoidCallback onTap, Gradient g) => _Pressable(
-        onTap: _faBusy ? () {} : onTap,
-        child: Container(
-          height: 44, alignment: Alignment.center,
-          decoration: BoxDecoration(gradient: g, borderRadius: BorderRadius.circular(8), boxShadow: [BoxShadow(color: _ac.withOpacity(0.16), blurRadius: 6, offset: const Offset(0, 2))]),
-          child: _faBusy
-              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
-              : Text(label, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
-        ),
-      );
-
-  Widget _switch(bool on, VoidCallback onTap) => GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          width: 44, height: 26,
-          decoration: BoxDecoration(gradient: on ? _acGrad : null, color: on ? null : _line, borderRadius: BorderRadius.circular(13)),
-          child: AnimatedAlign(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-            alignment: on ? Alignment.centerRight : Alignment.centerLeft,
-            child: Container(width: 20, height: 20, margin: const EdgeInsets.symmetric(horizontal: 3), decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
-          ),
-        ),
-      );
-
   Widget _activityRow() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _tapRow(
           CupertinoIcons.device_laptop, 'Active devices & sessions', 'Devices signed in to your account',
@@ -5976,9 +5691,20 @@ class _SettingsViewState extends State<_SettingsView> {
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                   child: _devices == null
                       ? const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Center(child: CupertinoActivityIndicator()))
-                      : _devices!.isEmpty
-                          ? Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Text('No active devices.', style: GoogleFonts.poppins(fontSize: 12.5, color: _grey)))
-                          : Column(children: [for (final d in _devices!) _deviceTile(d as Map<String, dynamic>)]),
+                      : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                          // Count + refresh.
+                          Row(children: [
+                            Expanded(child: Text(_deviceSummary(), style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: _grey))),
+                            _Pressable(
+                              onTap: () { setState(() => _devices = null); _loadDevices(); },
+                              child: Padding(padding: const EdgeInsets.all(4), child: Icon(CupertinoIcons.refresh, size: 16, color: _ac)),
+                            ),
+                          ]),
+                          if (_devices!.isEmpty)
+                            Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Text('No active devices.', style: GoogleFonts.poppins(fontSize: 12.5, color: _grey)))
+                          else
+                            for (final d in _devices!) _deviceTile(d as Map<String, dynamic>),
+                        ]),
                 ),
         ),
       ]);
@@ -5986,21 +5712,38 @@ class _SettingsViewState extends State<_SettingsView> {
   Widget _deviceTile(Map<String, dynamic> d) {
     final platform = (d['platform']?.toString() ?? '').trim();
     final model = (d['model']?.toString() ?? '').trim();
-    final name = model.isNotEmpty ? model : (platform.isNotEmpty ? platform : 'Unknown device');
+    final name = _deviceName(platform, model);
     final isMobile = platform.toLowerCase().contains('android') || platform.toLowerCase().contains('ios');
+    final isCurrent = (d['device_id']?.toString() ?? '') == _currentDeviceId && _currentDeviceId != null;
+    final added = _StudentHomeState._fmtAt(d['first_seen']?.toString());
     return Container(
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
+      decoration: BoxDecoration(
+        gradient: _cardGradient,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isCurrent ? _ac.withOpacity(0.55) : _cardBorder, width: isCurrent ? 1.4 : 1),
+      ),
       child: Row(children: [
         Icon(isMobile ? CupertinoIcons.device_phone_portrait : CupertinoIcons.desktopcomputer, size: 18, color: _ac),
         const SizedBox(width: 10),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _navy)),
-          Text('Last seen ${_StudentHomeState._fmtAt(d['last_seen']?.toString())}', style: GoogleFonts.poppins(fontSize: 11, color: _grey)),
+          Row(children: [
+            Flexible(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _navy))),
+            if (isCurrent) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(color: _ac.withOpacity(0.14), borderRadius: BorderRadius.circular(5)),
+                child: Text('THIS DEVICE', style: GoogleFonts.poppins(fontSize: 8, fontWeight: FontWeight.w800, color: _ac, letterSpacing: 0.4)),
+              ),
+            ],
+          ]),
+          Text('Last seen ${_StudentHomeState._fmtAt(d['last_seen']?.toString())}${added.isNotEmpty ? ' · added $added' : ''}',
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 11, color: _grey)),
         ])),
         _Pressable(
-          onTap: () => _signOutDevice(d['id']?.toString() ?? ''),
+          onTap: () => _signOutDevice(d),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(color: _danger.withOpacity(0.10), borderRadius: BorderRadius.circular(9), border: Border.all(color: _danger.withOpacity(0.30))),
@@ -6011,11 +5754,31 @@ class _SettingsViewState extends State<_SettingsView> {
     );
   }
 
-  Future<void> _signOutDevice(String id) async {
+  Future<void> _signOutDevice(Map<String, dynamic> d) async {
+    final id = d['id']?.toString() ?? '';
     if (id.isEmpty) return;
+    final isCurrent = (d['device_id']?.toString() ?? '') == _currentDeviceId && _currentDeviceId != null;
+    final ok = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: Text(isCurrent ? 'Sign out this device?' : 'Sign out device?'),
+        content: Text(isCurrent
+            ? "This is the device you're using now — you'll be signed out here and returned to the login screen."
+            : 'This device will be signed out and its slot freed up.'),
+        actions: [
+          CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+          CupertinoDialogAction(isDestructiveAction: true, onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Sign out')),
+        ],
+      ),
+    );
+    if (ok != true) return;
     try {
       await widget.auth.apiDelete('/api/v1/devices/$id');
-      if (mounted) setState(() => _devices?.removeWhere((d) => (d as Map)['id']?.toString() == id));
+      if (isCurrent) {
+        widget.onLogout(); // we just revoked our own session
+        return;
+      }
+      if (mounted) setState(() => _devices?.removeWhere((x) => (x as Map)['id']?.toString() == id));
       _toast('Device signed out');
     } catch (_) {
       _toast("Couldn't sign out device");
