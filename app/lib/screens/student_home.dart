@@ -2083,12 +2083,13 @@ class _ExploreListState extends State<_ExploreList> {
 /// maps, flashcards, formula sheets) filled with content. Interactive +
 /// animated; example content for "AI Architect" and "AI Generalist".
 class _StudyResource {
-  const _StudyResource(this.id, this.icon, this.title, this.sub, this.colors);
+  const _StudyResource(this.id, this.icon, this.title, this.sub, this.colors, [this.unit = 'items']);
   final String id;
   final IconData icon;
   final String title;
   final String sub;
   final List<Color> colors;
+  final String unit; // for the count chip, e.g. "6 guides"
 }
 
 class _StudyHub extends StatefulWidget {
@@ -2155,11 +2156,11 @@ class _StudyHubState extends State<_StudyHub> {
 
   static const _resources = <_StudyResource>[
     _StudyResource('focus', CupertinoIcons.timer_fill, 'Focus Timer', 'Pomodoro sessions — study, break, repeat', [Color(0xFFFF4F2B), Color(0xFFFF8A5B)]),
-    _StudyResource('guides', CupertinoIcons.book_fill, 'Study Guides', 'Structured notes for every topic', [Color(0xFFFF6B35), Color(0xFFFF9166)]),
-    _StudyResource('cheats', CupertinoIcons.doc_text_fill, 'Cheat Sheets', 'Quick-reference summaries', [Color(0xFFE0A12A), Color(0xFFF6C453)]),
-    _StudyResource('mindmap', CupertinoIcons.rectangle_3_offgrid_fill, 'Mind Maps', 'See how concepts connect', [Color(0xFF18A999), Color(0xFF4FD1C5)]),
-    _StudyResource('flashcards', CupertinoIcons.rectangle_stack_fill, 'Flashcards', 'Flip to memorize fast', [Color(0xFF2D7DF6), Color(0xFF6FA8FF)]),
-    _StudyResource('formulas', CupertinoIcons.function, 'Formula Sheets', 'All key formulas in one place', [Color(0xFF7C5CFC), Color(0xFFA88BFF)]),
+    _StudyResource('guides', CupertinoIcons.book_fill, 'Study Guides', 'Structured notes for every topic', [Color(0xFFFF6B35), Color(0xFFFF9166)], 'guides'),
+    _StudyResource('cheats', CupertinoIcons.doc_text_fill, 'Cheat Sheets', 'Quick-reference summaries', [Color(0xFFE0A12A), Color(0xFFF6C453)], 'sheets'),
+    _StudyResource('mindmap', CupertinoIcons.rectangle_3_offgrid_fill, 'Mind Maps', 'See how concepts connect', [Color(0xFF18A999), Color(0xFF4FD1C5)], 'maps'),
+    _StudyResource('flashcards', CupertinoIcons.rectangle_stack_fill, 'Flashcards', 'Flip to memorize fast', [Color(0xFF2D7DF6), Color(0xFF6FA8FF)], 'cards'),
+    _StudyResource('formulas', CupertinoIcons.function, 'Formula Sheets', 'All key formulas in one place', [Color(0xFF7C5CFC), Color(0xFFA88BFF)], 'formulas'),
   ];
 
 
@@ -2205,7 +2206,14 @@ class _StudyHubState extends State<_StudyHub> {
           ),
           const SizedBox(height: 16),
         ],
-        for (var i = 0; i < _resources.length; i++) _StudyCard(index: i + 1, item: _resources[i], onTap: () => setState(() => _open = _resources[i].id)),
+        for (var i = 0; i < _resources.length; i++)
+          _StudyCard(
+            index: i + 1,
+            item: _resources[i],
+            // Show how much material each kind has (Focus Timer has no count).
+            count: _resources[i].id == 'focus' ? null : _mat(_resources[i].id).length,
+            onTap: () => setState(() => _open = _resources[i].id),
+          ),
       ]);
 
   Widget _coursePill(String label, int i) {
@@ -2300,13 +2308,24 @@ class _StudyHubState extends State<_StudyHub> {
 
   // Friendly placeholder when a course has no material of this kind yet.
   Widget _studyEmpty(String what) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+        padding: const EdgeInsets.symmetric(vertical: 34, horizontal: 16),
         alignment: Alignment.center,
         child: Column(children: [
-          Icon(CupertinoIcons.tray, size: 34, color: _grey.withOpacity(0.6)),
-          const SizedBox(height: 10),
-          Text(_courses.isEmpty ? 'Enrol in a course to see study material.' : 'No $what for $_courseName yet.',
-              textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
+          Container(
+            width: 72, height: 72, alignment: Alignment.center,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_orange.withOpacity(0.18), _orange.withOpacity(0.06)]),
+              shape: BoxShape.circle,
+              border: Border.all(color: _orange.withOpacity(0.25)),
+            ),
+            child: Icon(CupertinoIcons.sparkles, size: 30, color: _orange),
+          ),
+          const SizedBox(height: 14),
+          Text(_courses.isEmpty ? 'Enrol in a course to see study material' : 'No $what for $_courseName yet',
+              textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
+          const SizedBox(height: 4),
+          Text(_courses.isEmpty ? '' : 'Your instructor adds these per course.',
+              textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
         ]),
       );
 
@@ -2401,10 +2420,11 @@ class _StudyHubState extends State<_StudyHub> {
 
 /// A large, colourful resource entry card (Study Guides, Flashcards, …).
 class _StudyCard extends StatefulWidget {
-  const _StudyCard({required this.index, required this.item, required this.onTap});
+  const _StudyCard({required this.index, required this.item, required this.onTap, this.count});
   final int index;
   final _StudyResource item;
   final VoidCallback onTap;
+  final int? count;
   @override
   State<_StudyCard> createState() => _StudyCardState();
 }
@@ -2414,7 +2434,9 @@ class _StudyCardState extends State<_StudyCard> {
   @override
   Widget build(BuildContext context) {
     final it = widget.item;
-    final accent = it.colors.first;
+    final c1 = it.colors.first;
+    final c2 = it.colors.length > 1 ? it.colors.last : it.colors.first;
+    final count = widget.count;
     return _Entrance(
       index: widget.index,
       child: MouseRegion(
@@ -2427,48 +2449,83 @@ class _StudyCardState extends State<_StudyCard> {
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
             margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(15),
             transform: Matrix4.translationValues(0, _hover ? -3 : 0, 0),
             decoration: BoxDecoration(
-              gradient: _cardGradient,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: _hover ? accent.withOpacity(0.45) : _cardBorder, width: 1),
-              boxShadow: [BoxShadow(color: accent.withOpacity(_hover ? 0.26 : 0.08), blurRadius: _hover ? 24 : 12, offset: Offset(0, _hover ? 10 : 5))],
+              // Each card is tinted with its own colour so the hub reads as a
+              // vibrant gallery rather than a flat list.
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: _isDark
+                    ? [c1.withOpacity(_hover ? 0.30 : 0.20), c2.withOpacity(_hover ? 0.16 : 0.10)]
+                    : [c1.withOpacity(_hover ? 0.18 : 0.12), c2.withOpacity(_hover ? 0.10 : 0.05)],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: _hover ? c1.withOpacity(0.55) : c1.withOpacity(0.22), width: 1.2),
+              boxShadow: [BoxShadow(color: c1.withOpacity(_hover ? 0.30 : 0.12), blurRadius: _hover ? 26 : 14, offset: Offset(0, _hover ? 10 : 6))],
             ),
-            child: Row(children: [
-              AnimatedScale(
-                scale: _hover ? 1.08 : 1.0,
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutBack,
-                child: Container(
-                  width: 56, height: 56, alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: it.colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [BoxShadow(color: accent.withOpacity(0.4), blurRadius: 12, offset: const Offset(0, 5))],
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Stack(children: [
+                // Decorative blob bleeding off the top-right corner.
+                Positioned(
+                  right: -24, top: -28,
+                  child: Container(
+                    width: 96, height: 96,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [c1.withOpacity(0.22), c2.withOpacity(0.04)]),
+                    ),
                   ),
-                  child: Icon(it.icon, size: 27, color: Colors.white),
                 ),
-              ),
-              const SizedBox(width: 15),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(it.title, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: _navy)),
-                  const SizedBox(height: 3),
-                  Text(it.sub, style: GoogleFonts.poppins(fontSize: 12.5, color: _grey, height: 1.25)),
-                ]),
-              ),
-              const SizedBox(width: 8),
-              AnimatedSlide(
-                offset: Offset(_hover ? 0.25 : 0, 0),
-                duration: const Duration(milliseconds: 220),
-                child: Container(
-                  width: 30, height: 30, alignment: Alignment.center,
-                  decoration: BoxDecoration(color: accent.withOpacity(_hover ? 0.16 : 0.08), shape: BoxShape.circle),
-                  child: Icon(CupertinoIcons.chevron_right, size: 15, color: accent),
+                Padding(
+                  padding: const EdgeInsets.all(15),
+                  child: Row(children: [
+                    AnimatedScale(
+                      scale: _hover ? 1.08 : 1.0,
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutBack,
+                      child: Container(
+                        width: 56, height: 56, alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(colors: it.colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [BoxShadow(color: c1.withOpacity(0.45), blurRadius: 14, offset: const Offset(0, 6))],
+                        ),
+                        child: Icon(it.icon, size: 27, color: Colors.white),
+                      ),
+                    ),
+                    const SizedBox(width: 15),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(it.title, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: _navy)),
+                        const SizedBox(height: 3),
+                        Text(it.sub, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12.5, color: _grey, height: 1.25)),
+                        if (count != null) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                            decoration: BoxDecoration(color: c1.withOpacity(0.16), borderRadius: BorderRadius.circular(20)),
+                            child: Text(count == 0 ? 'Tap to add' : '$count ${it.unit}',
+                                style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w800, color: c1)),
+                          ),
+                        ],
+                      ]),
+                    ),
+                    const SizedBox(width: 8),
+                    AnimatedSlide(
+                      offset: Offset(_hover ? 0.25 : 0, 0),
+                      duration: const Duration(milliseconds: 220),
+                      child: Container(
+                        width: 30, height: 30, alignment: Alignment.center,
+                        decoration: BoxDecoration(color: c1.withOpacity(_hover ? 0.22 : 0.12), shape: BoxShape.circle),
+                        child: Icon(CupertinoIcons.chevron_right, size: 15, color: c1),
+                      ),
+                    ),
+                  ]),
                 ),
-              ),
-            ]),
+              ]),
+            ),
           ),
         ),
       ),
