@@ -5486,25 +5486,6 @@ class _SettingsViewState extends State<_SettingsView> {
     return 'Unknown device';
   }
 
-  Future<void> _confirmLogoutAll() async {
-    final ok = await showCupertinoDialog<bool>(
-      context: context,
-      builder: (ctx) => CupertinoAlertDialog(
-        title: const Text('Logout all devices?'),
-        content: const Text('You will be signed out everywhere, including here.'),
-        actions: [
-          CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-          CupertinoDialogAction(isDestructiveAction: true, onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Logout')),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    try {
-      await widget.auth.apiDelete('/api/v1/me/devices');
-    } catch (_) {}
-    widget.onLogout();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -5541,8 +5522,6 @@ class _SettingsViewState extends State<_SettingsView> {
           _passwordRow(),
           _div(),
           _activityRow(),
-          _div(),
-          _logoutAllRow(),
         ]),
       ),
     ]);
@@ -5783,8 +5762,11 @@ class _SettingsViewState extends State<_SettingsView> {
                           ]),
                           if (_devices!.isEmpty)
                             Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Text('No active devices.', style: GoogleFonts.poppins(fontSize: 12.5, color: _grey)))
-                          else
+                          else ...[
                             for (final d in _devices!) _deviceTile(d as Map<String, dynamic>),
+                            const SizedBox(height: 8),
+                            Text('To remove a device, contact your administrator.', style: GoogleFonts.poppins(fontSize: 11, color: _grey)),
+                          ],
                         ]),
                 ),
         ),
@@ -5823,55 +5805,12 @@ class _SettingsViewState extends State<_SettingsView> {
           Text('Last seen ${_StudentHomeState._fmtAt(d['last_seen']?.toString())}${added.isNotEmpty ? ' · added $added' : ''}',
               maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 11, color: _grey)),
         ])),
-        _Pressable(
-          onTap: () => _signOutDevice(d),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(color: _danger.withOpacity(0.10), borderRadius: BorderRadius.circular(9), border: Border.all(color: _danger.withOpacity(0.30))),
-            child: Text('Sign out', style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w700, color: _danger)),
-          ),
-        ),
+        // View-only — devices are removed by an admin, not the user.
+        if (isCurrent) Icon(CupertinoIcons.checkmark_circle_fill, size: 16, color: _ac),
       ]),
     );
   }
 
-  Future<void> _signOutDevice(Map<String, dynamic> d) async {
-    final id = d['id']?.toString() ?? '';
-    if (id.isEmpty) return;
-    final isCurrent = (d['device_id']?.toString() ?? '') == _currentDeviceId && _currentDeviceId != null;
-    final ok = await showCupertinoDialog<bool>(
-      context: context,
-      builder: (ctx) => CupertinoAlertDialog(
-        title: Text(isCurrent ? 'Sign out this device?' : 'Sign out device?'),
-        content: Text(isCurrent
-            ? "This is the device you're using now — you'll be signed out here and returned to the login screen."
-            : 'This device will be signed out and its slot freed up.'),
-        actions: [
-          CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-          CupertinoDialogAction(isDestructiveAction: true, onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Sign out')),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    try {
-      await widget.auth.apiDelete('/api/v1/devices/$id');
-      if (isCurrent) {
-        widget.onLogout(); // we just revoked our own session
-        return;
-      }
-      if (mounted) setState(() => _devices?.removeWhere((x) => (x as Map)['id']?.toString() == id));
-      _toast('Device signed out');
-    } catch (_) {
-      _toast("Couldn't sign out device");
-    }
-  }
-
-  Widget _logoutAllRow() => _tapRow(
-        CupertinoIcons.square_arrow_right, 'Logout all devices', 'Sign out everywhere at once',
-        _confirmLogoutAll,
-        tint: _danger,
-        trailing: const SizedBox.shrink(),
-      );
 }
 
 /// Animated count-up + hover/tappable stat tile (dashboard).

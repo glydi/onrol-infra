@@ -31,8 +31,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	// Token-only (no X-Device-UUID header check): the in-browser player fetches
 	// HLS keys itself via hls.js, which can't attach our device header.
 	tokenAuth := middleware.RequireToken(jwtm)
-	api.Get("/devices", auth, h.ListDevices)
-	api.Delete("/devices/:id", auth, h.RevokeDevice)
+	api.Get("/devices", auth, h.ListDevices) // view-only: users can't revoke their own devices (admins do)
 	api.Get("/hls/key/:video_id", tokenAuth, h.HLSKey)
 	api.Post("/live/:webinar_id/join", auth, h.LiveJoin)
 
@@ -282,7 +281,6 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Get("/me/leaderboard", auth, h.MyLeaderboard)
 	api.Get("/me/streak", auth, h.MyStreak)
 	api.Post("/me/password", auth, h.ChangeMyPassword)
-	api.Delete("/me/devices", auth, h.RevokeAllMyDevices)
 	api.Post("/me/courses/:id/enroll", auth, h.SelfEnroll)
 	api.Get("/me/courses/:id/content", auth, h.CourseContent)
 	api.Post("/me/courses/:id/forum", auth, h.PostForum)
