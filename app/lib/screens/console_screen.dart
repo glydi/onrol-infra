@@ -2209,26 +2209,34 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     }
   }
 
-  // A selectable list of store videos (only 'ready' ones are playable).
+  // A selectable list of EVERY video in the store. Any can be picked (a session
+  // is usually scheduled ahead, so a still-processing upload will be ready by the
+  // start time); the status line just tells the admin where each one is.
   Widget _videoPicker(List<Map<String, dynamic>> videos, String? selectedId, void Function(String) onPick) {
     final p = Palette.of(context);
     if (videos.isEmpty) return _label(context, 'No videos in the store yet — upload one in the Video Store first.');
     return Container(
-      constraints: const BoxConstraints(maxHeight: 220),
+      constraints: const BoxConstraints(maxHeight: 260),
       decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
       child: ListView(shrinkWrap: true, children: [
         for (final v in videos)
           Builder(builder: (_) {
             final id = v['id']?.toString() ?? '';
-            final ready = (v['status']?.toString() ?? '') == 'ready';
+            final status = v['status']?.toString() ?? '';
             final sel = id == selectedId;
+            final label = status == 'ready'
+                ? 'Ready'
+                : status == 'processing'
+                    ? 'Processing — ready before start'
+                    : status == 'failed'
+                        ? 'Transcode failed — plays source'
+                        : status;
             return ListTile(
               dense: true,
-              enabled: ready,
-              onTap: ready ? () => onPick(id) : null,
+              onTap: () => onPick(id),
               leading: Icon(sel ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle, size: 20, color: sel ? AppleColors.green : p.secondary),
               title: Text(v['title']?.toString() ?? 'Untitled', style: AppleTheme.body(context)),
-              subtitle: Text(ready ? 'Ready' : ((v['status']?.toString() ?? '') == 'processing' ? 'Processing…' : 'Not playable'), style: AppleTheme.footnote(context)),
+              subtitle: Text(label, style: AppleTheme.footnote(context)),
             );
           }),
       ]),
