@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart' hide Config;
 
@@ -184,19 +185,22 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Show the chat/Q&A panel on the right whenever there's room; only the
-    // narrowest (phone) widths stack it under the video.
-    final wide = MediaQuery.of(context).size.width >= 720;
+    final w = MediaQuery.of(context).size.width;
     final hasPanel = _chatOn || _qaOn;
+    // Put the chat/Q&A box on the RIGHT for anything but a narrow phone — and
+    // always on web (the live stream is a desktop-first experience). The panel
+    // width scales down on smaller windows so the video still has room.
+    final sideBySide = kIsWeb || w >= 600;
+    final panelW = w < 900 ? (w * 0.34).clamp(240.0, 320.0) : 360.0;
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
         child: _fatal != null
             ? Center(child: Text(_fatal!, style: GoogleFonts.poppins(color: Colors.white70)))
-            : wide
+            : (sideBySide && hasPanel)
                 ? Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Expanded(child: Column(children: [_header(), Expanded(child: Center(child: _stage()))])),
-                    if (hasPanel) Container(width: 360, decoration: const BoxDecoration(border: Border(left: BorderSide(color: Color(0xFF222228)))), child: _sidePanel()),
+                    Container(width: panelW, decoration: const BoxDecoration(border: Border(left: BorderSide(color: Color(0xFF222228)))), child: _sidePanel()),
                   ])
                 : Column(children: [
                     _header(),
