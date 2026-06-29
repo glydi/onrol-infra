@@ -39,16 +39,38 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
 
   Future<void> _load() async {
     try {
-      final r = await widget.auth.apiGet('/api/v1/manage/calendar');
-      final events = ((ApiClient.decode(r)['events'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>());
       _byDay.clear();
-      for (final e in events) {
+      // Editable events (full detail).
+      final r = await widget.auth.apiGet('/api/v1/manage/calendar');
+      for (final e in ((ApiClient.decode(r)['events'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>())) {
         final dt = DateTime.tryParse(e['starts_at']?.toString() ?? '')?.toLocal();
         if (dt == null) continue;
-        _byDay.putIfAbsent(_dk(DateTime(dt.year, dt.month, dt.day)), () => []).add({...e, '_dt': dt});
+        _byDay.putIfAbsent(_dk(DateTime(dt.year, dt.month, dt.day)), () => []).add({...e, 'kind': 'event', '_dt': dt});
+      }
+      // Read-only items so the calendar is in sync with what students see:
+      // live classes, deadlines, announcements.
+      final f = await widget.auth.apiGet('/api/v1/manage/calendar/feed');
+      for (final m in ((ApiClient.decode(f)['items'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>())) {
+        final dt = DateTime.tryParse(m['at']?.toString() ?? '')?.toLocal();
+        if (dt == null) continue;
+        _byDay.putIfAbsent(_dk(DateTime(dt.year, dt.month, dt.day)), () => []).add({...m, '_dt': dt});
       }
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
+  }
+
+  // Icon/colour/label per calendar item kind.
+  ({IconData icon, Color color, String label}) _kindStyle(String kind) {
+    switch (kind) {
+      case 'session':
+        return (icon: CupertinoIcons.videocam_fill, color: AppleColors.red, label: 'Live class');
+      case 'assessment_due':
+        return (icon: CupertinoIcons.doc_text_fill, color: AppleColors.orange, label: 'Deadline');
+      case 'announcement':
+        return (icon: CupertinoIcons.bell_fill, color: AppleColors.green, label: 'Announcement');
+      default:
+        return (icon: CupertinoIcons.calendar, color: AppleColors.blue, label: 'Event');
+    }
   }
 
   void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
@@ -88,13 +110,13 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
           const SizedBox(height: 16),
           Row(children: [
             Expanded(child: Text('${_wd[(_selected.weekday - 1) % 7]}, ${_months[_selected.month - 1]} ${_selected.day}', style: AppleTheme.headline(context))),
-            Text('${selEvs.length} ${selEvs.length == 1 ? 'event' : 'events'}', style: AppleTheme.footnote(context).copyWith(color: p.accent)),
+            Text('${selEvs.length} ${selEvs.length == 1 ? 'item' : 'items'}', style: AppleTheme.footnote(context).copyWith(color: p.accent)),
           ]),
           const SizedBox(height: 10),
           if (selEvs.isEmpty)
             AppleCard(square: true, child: Text('Nothing on this day. Tap “Add Event”.', style: AppleTheme.footnote(context)))
           else
-            ...selEvs.map(_eventCard),
+            ...selEvs.map(_itemCard),
         ],
       ),
     );
@@ -138,7 +160,10 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                   Text('${d.day}', style: AppleTheme.body(context).copyWith(color: isSel ? Colors.white : null, fontWeight: isSel || isToday ? FontWeight.w700 : FontWeight.w500)),
                   const SizedBox(height: 3),
-                  SizedBox(height: 5, child: n == 0 ? null : Container(width: 5, height: 5, decoration: BoxDecoration(color: isSel ? Colors.white : AppleColors.blue, shape: BoxShape.circle))),
+                  SizedBox(height: 5, child: n == 0 ? null : Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
+                    for (final m in (_byDay[_dk(d)] ?? const []).take(3))
+                      Container(width: 5, height: 5, margin: const EdgeInsets.symmetric(horizontal: 1), decoration: BoxDecoration(color: isSel ? Colors.white : _kindStyle(m['kind']?.toString() ?? 'event').color, shape: BoxShape.circle)),
+                  ])),
                 ]),
               ),
             );
@@ -148,27 +173,33 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
     return Column(children: rows);
   }
 
-  Widget _eventCard(Map<String, dynamic> e) {
+  Widget _itemCard(Map<String, dynamic> e) {
+    final kind = e['kind']?.toString() ?? 'event';
+    final isEvent = kind == 'event';
+    final st = _kindStyle(kind);
     final dt = e['_dt'] as DateTime;
     final end = DateTime.tryParse(e['ends_at']?.toString() ?? '')?.toLocal();
     final loc = e['location']?.toString() ?? '';
+    final course = e['course']?.toString() ?? '';
     final desc = e['description']?.toString() ?? '';
-    final aud = _audienceLabel(e);
     final time = end == null ? _clock(dt) : '${_clock(dt)} – ${_clock(end)}';
+    final sub = isEvent
+        ? [time, if (loc.isNotEmpty) loc, _audienceLabel(e)].join(' · ')
+        : [st.label, if (course.isNotEmpty) course, time].where((x) => x.isNotEmpty).join(' · ');
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: AppleCard(
         square: true,
-        onTap: () => _addOrEdit(ev: e),
+        onTap: isEvent ? () => _addOrEdit(ev: e) : null,
         child: Row(children: [
-          Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: AppleColors.blue.withOpacity(0.12)), child: const Icon(CupertinoIcons.calendar, color: AppleColors.blue, size: 20)),
+          Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: st.color.withOpacity(0.12)), child: Icon(st.icon, color: st.color, size: 20)),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(e['title']?.toString() ?? 'Event', style: AppleTheme.headline(context)),
-            Text([time, if (loc.isNotEmpty) loc, aud].join(' · '), style: AppleTheme.footnote(context)),
-            if (desc.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text(desc, maxLines: 2, overflow: TextOverflow.ellipsis, style: AppleTheme.footnote(context))),
+            Text(e['title']?.toString() ?? st.label, style: AppleTheme.headline(context), maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text(sub, style: AppleTheme.footnote(context), maxLines: 1, overflow: TextOverflow.ellipsis),
+            if (isEvent && desc.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text(desc, maxLines: 2, overflow: TextOverflow.ellipsis, style: AppleTheme.footnote(context))),
           ])),
-          HoverTap(onTap: () => _delete(e), child: Icon(CupertinoIcons.trash, size: 18, color: Palette.of(context).secondary)),
+          if (isEvent) HoverTap(onTap: () => _delete(e), child: Icon(CupertinoIcons.trash, size: 18, color: Palette.of(context).secondary)),
         ]),
       ),
     );
