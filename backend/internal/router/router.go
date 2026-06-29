@@ -130,6 +130,11 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Get("/manage/courses/:id/report/grades", auth, inst, h.GradesReport)
 	api.Get("/manage/courses/:id/report/attendance", auth, inst, h.AttendanceReport)
 	api.Post("/manage/announcements", auth, inst, h.CreateAnnouncement)
+	// Admin calendar: view / add / edit / delete events (surface on student calendars).
+	api.Get("/manage/calendar", auth, mgr, h.ListCalendarEvents)
+	api.Post("/manage/calendar", auth, mgr, h.CreateCalendarEvent)
+	api.Patch("/manage/calendar/:id", auth, mgr, h.UpdateCalendarEvent)
+	api.Delete("/manage/calendar/:id", auth, mgr, h.DeleteCalendarEvent)
 	api.Get("/manage/courses/:id/students", auth, inst, h.ListCourseStudents)
 	api.Get("/manage/courses/:id/batches", auth, inst, h.CourseBatches)
 	api.Get("/manage/courses/:id/certificates", auth, inst, h.ListCourseCertificates)

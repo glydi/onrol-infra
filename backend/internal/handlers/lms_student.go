@@ -529,6 +529,13 @@ func (h *Handlers) MyCalendar(c *fiber.Ctx) error {
 		         OR (an.audience='role'  AND an.role = me.role)))
 		     OR (an.course_id IS NOT NULL AND EXISTS (
 		            SELECT 1 FROM course_enrollments ce WHERE ce.course_id=an.course_id AND ce.user_id=me.id)) )
+		UNION ALL
+		SELECT 'event', e.title, e.starts_at, COALESCE(e.location,''), ''::text, ''::text, ''::text
+		FROM calendar_events e JOIN users me ON me.id=$1
+		WHERE e.starts_at >= now() - interval '7 days'
+		  AND ( e.audience='all'
+		     OR (e.audience='batch' AND e.batch_number = me.batch)
+		     OR (e.audience='role'  AND e.role = me.role) )
 		ORDER BY at`, callerID(c))
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "calendar failed")

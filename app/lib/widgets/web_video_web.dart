@@ -682,20 +682,31 @@ Widget liveHlsVideoElement(
     // drifts BEHIND (a stall), skip FORWARD to "now"; the missed seconds are
     // dropped, never replayed. Tiny drifts are ignored so we don't re-seek
     // constantly. Before start (t<0) we hold at 0 and stay paused.
-    void syncToTime({bool force = false}) {
+    // seekedOnce: the first alignment is a hard seek; after that we only re-seek
+    // when we've genuinely drifted. (Forcing a seek on every canplay caused a
+    // seek→canplay→seek loop in hls.js/Chrome — Safari plays HLS natively and
+    // didn't, which is why it was fine on iPad but choppy on Windows.)
+    var seekedOnce = false;
+    void syncToTime({bool initial = false}) {
       final t = target();
       final dur = video.duration;
       final cap = (dur.isFinite && dur > 0) ? dur.toDouble() : null;
       if (t < 0) {
-        try {
-          video.currentTime = 0;
-        } catch (_) {}
+        if (video.currentTime > 0.5) {
+          try {
+            video.currentTime = 0;
+          } catch (_) {}
+        }
         video.pause();
         return;
       }
       final want = (cap != null && t > cap) ? cap : t;
       final cur = video.currentTime.toDouble();
-      if (force || (cur - want).abs() > 1.5) {
+      final drift = (cur - want).abs();
+      // Hard-seek only for the first alignment or a real drift (>2s). Never seek
+      // for sub-second noise (that's what looped on Chrome).
+      if ((initial && !seekedOnce) || drift > 2.0) {
+        seekedOnce = true;
         try {
           video.currentTime = want;
         } catch (_) {}
@@ -724,14 +735,15 @@ Widget liveHlsVideoElement(
       video.src = url; // Safari / mp4
     }
 
-    // Seek to the correct position as soon as we can, then hold it each second.
-    video.onLoadedMetadata.listen((_) => syncToTime(force: true));
-    video.onCanPlay.listen((_) => syncToTime(force: true));
+    // Align once when ready (loadedmetadata/canplay), then just hold position
+    // each second — re-seeking only on a real drift, so no seek loop on Chrome.
+    video.onLoadedMetadata.listen((_) => syncToTime(initial: true));
+    video.onCanPlay.listen((_) => syncToTime(initial: true));
     video.onPause.listen((_) {
       if (container.isConnected == true && html.document.fullscreenElement == null) syncToTime();
     });
     html.document.onVisibilityChange.listen((_) {
-      if (html.document.hidden == false) syncToTime(force: true);
+      if (html.document.hidden == false) syncToTime();
     });
     _liveGuardTimer?.cancel();
     _liveGuardTimer = Timer.periodic(const Duration(seconds: 1), (t) {
