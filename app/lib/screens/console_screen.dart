@@ -1972,7 +1972,6 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     int mode = (s['kind']?.toString() ?? 'external') == 'simulated' ? 1 : 0;
     String? videoId = (s['media_asset_id']?.toString() ?? '').isEmpty ? null : s['media_asset_id'].toString();
     String videoTitle = s['media_title']?.toString() ?? '';
-    bool chatOn = s['chat_enabled'] != false;
     bool qaOn = s['qa_enabled'] != false;
     final ok = await showFormSheet(context, square: true, title: 'Edit Live Class', builder: (setS) => [
       sheetField(title, 'Title', CupertinoIcons.textformat),
@@ -1986,12 +1985,12 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         const SizedBox(height: 6),
         _label(context, 'The host link is shown only to staff via “Host & record”. Students never see it.'),
       ] else
-        ..._simLiveFields(videoId, videoTitle, chatOn, qaOn, viewers,
+        ..._simLiveFields(videoId, videoTitle, qaOn, viewers,
             () => _pickFromStore((id, t) => setS(() {
                   videoId = id;
                   videoTitle = t;
                 })),
-            (v) => setS(() => chatOn = v), (v) => setS(() => qaOn = v)),
+            (v) => setS(() => qaOn = v)),
     ], onSubmit: () async {
       if (mode == 0 && url.text.trim().isEmpty && host.text.trim().isEmpty) return 'Add a join or host link';
       if (mode == 1 && (videoId == null || videoId!.isEmpty)) return 'Pick a video to stream';
@@ -2002,7 +2001,6 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
           body['host_url'] = host.text.trim();
         } else {
           body['media_asset_id'] = videoId;
-          body['chat_enabled'] = chatOn;
           body['qa_enabled'] = qaOn;
           body['viewer_base'] = int.tryParse(viewers.text.trim()) ?? 0;
         }
@@ -2257,9 +2255,9 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   }
 
   // The recorded-as-live form fields: a "Choose from Video Store" button (opens
-  // the full store) + the current pick + chat/Q&A toggles + the viewer floor.
-  List<Widget> _simLiveFields(String? videoId, String videoTitle, bool chatOn, bool qaOn,
-      TextEditingController viewers, VoidCallback onOpenStore, void Function(bool) onChat, void Function(bool) onQa) {
+  // the full store) + the current pick + a Q&A toggle + the viewer floor.
+  List<Widget> _simLiveFields(String? videoId, String videoTitle, bool qaOn,
+      TextEditingController viewers, VoidCallback onOpenStore, void Function(bool) onQa) {
     final p = Palette.of(context);
     final picked = videoId != null && videoId.isNotEmpty;
     return [
@@ -2277,8 +2275,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       const SizedBox(height: 8),
       PrimaryButton(label: picked ? 'Change video' : 'Choose from Video Store', icon: CupertinoIcons.film, square: true, onPressed: onOpenStore),
       const SizedBox(height: 12),
-      Row(children: [Expanded(child: _label(context, 'Live chat')), CupertinoSwitch(value: chatOn, onChanged: onChat)]),
-      Row(children: [Expanded(child: _label(context, 'Q&A / raise hand')), CupertinoSwitch(value: qaOn, onChanged: onQa)]),
+      Row(children: [Expanded(child: _label(context, 'Allow questions (Q&A to host)')), CupertinoSwitch(value: qaOn, onChanged: onQa)]),
       const SizedBox(height: 8),
       sheetField(viewers, 'Starting viewers (displayed-count floor)', CupertinoIcons.eye, keyboard: TextInputType.number),
     ];
@@ -2293,7 +2290,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     int mode = 0; // 0 = external link, 1 = recorded-as-live
     String? videoId;
     String videoTitle = '';
-    bool chatOn = true, qaOn = true;
+    bool qaOn = true;
     final ok = await showFormSheet(context, square: true, title: 'Add Live Class', builder: (setS) => [
       sheetField(title, 'Title (e.g. Lecture 1)', CupertinoIcons.textformat),
       const SizedBox(height: 10),
@@ -2304,12 +2301,12 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         const SizedBox(height: 10),
         sheetField(host, 'Host link — instructor records (Zoho host URL, optional)', CupertinoIcons.videocam_circle),
       ] else
-        ..._simLiveFields(videoId, videoTitle, chatOn, qaOn, viewers,
+        ..._simLiveFields(videoId, videoTitle, qaOn, viewers,
             () => _pickFromStore((id, t) => setS(() {
                   videoId = id;
                   videoTitle = t;
                 })),
-            (v) => setS(() => chatOn = v), (v) => setS(() => qaOn = v)),
+            (v) => setS(() => qaOn = v)),
       const SizedBox(height: 12),
       _DateTimeRow(value: when, onPick: (d) => setS(() => when = d)),
     ], onSubmit: () async {
@@ -2323,7 +2320,6 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
           body['host_url'] = host.text.trim();
         } else {
           body['media_asset_id'] = videoId;
-          body['chat_enabled'] = chatOn;
           body['qa_enabled'] = qaOn;
           body['viewer_base'] = int.tryParse(viewers.text.trim()) ?? 0;
         }

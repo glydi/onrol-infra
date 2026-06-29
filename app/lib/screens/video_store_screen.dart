@@ -36,7 +36,7 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
   List<dynamic> _videos = [];
   String? _err;
 
-  static const _chunkSize = 8 * 1024 * 1024; // 8 MB pieces
+  static const _chunkSize = 16 * 1024 * 1024; // 16 MB pieces — fewer round-trips = faster
 
   @override
   void initState() {
@@ -162,7 +162,9 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
         }
       }
 
-      const concurrency = 6; // browsers cap at ~6 connections per host
+      // Direct-to-R2 PUTs go over HTTP/2 (multiplexed), so we can push more than
+      // the classic 6-per-host limit; the proxy fallback still benefits too.
+      const concurrency = 8;
       await Future.wait(List.generate(concurrency, (_) => worker()));
       if (failure != null) throw failure!;
       if (etags.any((e) => e == null || e.isEmpty)) throw Exception('A part failed to upload');
@@ -319,12 +321,18 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
             ),
           ),
           const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: AppleTheme.body(context), maxLines: 1, overflow: TextOverflow.ellipsis),
-            const SizedBox(height: 2),
-            Text('${_size((v['size_bytes'] as num?) ?? 0)} · ',
-                style: AppleTheme.footnote(context)),
-          ])),
+          Expanded(child: HoverTap(
+            onTap: () => _showDetails(v),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: AppleTheme.body(context), maxLines: 1, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 2),
+              Row(children: [
+                Text(_metaLine(v), style: AppleTheme.footnote(context)),
+                const SizedBox(width: 5),
+                Icon(CupertinoIcons.info_circle, size: 12, color: p.secondary),
+              ]),
+            ]),
+          )),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(color: statusColor.withOpacity(0.15)),
@@ -363,6 +371,74 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
             ),
           ],
         ]),
+      ),
+    );
+  }
+
+  // One-line summary under the title (size · duration).
+  String _metaLine(Map<String, dynamic> v) {
+    final size = _size((v['size_bytes'] as num?) ?? 0);
+    final dur = (v['duration_seconds'] as num?)?.toInt() ?? 0;
+    return dur > 0 ? '$size · ${_dur(dur)}' : size;
+  }
+
+  static String _dur(int s) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return s >= 3600 ? '${s ~/ 3600}:${two((s % 3600) ~/ 60)}:${two(s % 60)}' : '${s ~/ 60}:${two(s % 60)}';
+  }
+
+  // Full metadata for a video, with copyable URLs/ID.
+  void _showDetails(Map<String, dynamic> v) {
+    final p = Palette.of(context);
+    final dur = (v['duration_seconds'] as num?)?.toInt() ?? 0;
+    final size = (v['size_bytes'] as num?)?.toInt() ?? 0;
+    final created = DateTime.tryParse(v['created_at']?.toString() ?? '')?.toLocal();
+    final status = v['status']?.toString() ?? '';
+    final rows = <(String, String, bool)>[
+      ('Title', v['title']?.toString() ?? '', false),
+      ('Status', status == 'ready' ? 'HLS ready' : (status == 'processing' ? 'Processing…' : 'Transcode failed (plays source)'), false),
+      ('Duration', dur > 0 ? _dur(dur) : '—', false),
+      ('Size', _size(size), false),
+      ('Format', (v['content_type']?.toString().isNotEmpty ?? false) ? v['content_type'].toString() : '—', false),
+      ('Encrypted', v['encrypted'] == true ? 'Yes (AES-128)' : 'No', false),
+      ('Uploaded', created != null ? '${created.day}/${created.month}/${created.year}' : '—', false),
+      ('HLS URL', v['hls_url']?.toString() ?? '', true),
+      ('Source URL', v['url']?.toString() ?? '', true),
+      ('Asset ID', v['id']?.toString() ?? '', true),
+    ];
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => SquareScope(
+        square: true,
+        child: Container(
+          margin: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(color: p.card),
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Video details', style: AppleTheme.headline(context)),
+              const SizedBox(height: 14),
+              for (final (label, val, copyable) in rows)
+                if (val.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 11),
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      SizedBox(width: 92, child: Text(label, style: AppleTheme.footnote(context))),
+                      Expanded(child: Text(val, style: AppleTheme.body(context), maxLines: copyable ? 1 : 3, overflow: TextOverflow.ellipsis)),
+                      if (copyable)
+                        HoverTap(
+                          onTap: () { Clipboard.setData(ClipboardData(text: val)); _toast('Copied'); },
+                          child: Padding(padding: const EdgeInsets.only(left: 8), child: Icon(CupertinoIcons.doc_on_doc, size: 16, color: p.secondary)),
+                        ),
+                    ]),
+                  ),
+              const SizedBox(height: 6),
+              PrimaryButton(label: 'Close', square: true, onPressed: () => Navigator.of(ctx).pop()),
+            ]),
+          ),
+        ),
       ),
     );
   }

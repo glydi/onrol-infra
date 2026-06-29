@@ -262,33 +262,72 @@ func (h *Handlers) LiveChatDelete(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"deleted": true, "id": msgID})
 }
 
-// LiveQuestionsList returns the session's Q&A, newest first.
+// LiveQuestionsList returns the Q&A. Staff (the host) get EVERY question — the
+// queue to answer, unanswered first. A student sees only their own questions,
+// each with the host's answer once given.
 func (h *Handlers) LiveQuestionsList(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
-	if _, _, _, err := h.liveAccess(c, sessionID); err != nil {
+	_, _, isStaff, err := h.liveAccess(c, sessionID)
+	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fiber.NewError(fiber.StatusForbidden, "not entitled")
 		}
 		return fiber.NewError(fiber.StatusInternalServerError, "questions load failed")
 	}
-	rows, err := h.Pool.Query(c.Context(),
-		`SELECT id, user_id, display_name, body, answered, created_at FROM live_questions
-		 WHERE session_id=$1 ORDER BY created_at DESC LIMIT 200`, sessionID)
+	var rows pgx.Rows
+	if isStaff {
+		// Queue: unanswered first (oldest first), then answered (newest first).
+		rows, err = h.Pool.Query(c.Context(),
+			`SELECT id, user_id, display_name, body, answer, answered, created_at FROM live_questions
+			 WHERE session_id=$1 ORDER BY answered ASC, (CASE WHEN answered THEN created_at END) DESC, created_at ASC LIMIT 300`, sessionID)
+	} else {
+		rows, err = h.Pool.Query(c.Context(),
+			`SELECT id, user_id, display_name, body, answer, answered, created_at FROM live_questions
+			 WHERE session_id=$1 AND user_id=$2 ORDER BY created_at DESC LIMIT 200`, sessionID, callerID(c))
+	}
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "questions load failed")
 	}
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var id, uid, name, body string
+		var id, uid, name, body, answer string
 		var answered bool
 		var at time.Time
-		if err := rows.Scan(&id, &uid, &name, &body, &answered, &at); err != nil {
+		if err := rows.Scan(&id, &uid, &name, &body, &answer, &answered, &at); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
-		out = append(out, fiber.Map{"id": id, "user_id": uid, "name": name, "body": body, "answered": answered, "at": at.UTC().Format(time.RFC3339Nano)})
+		out = append(out, fiber.Map{"id": id, "user_id": uid, "name": name, "body": body, "answer": answer, "answered": answered, "at": at.UTC().Format(time.RFC3339Nano)})
 	}
 	return c.JSON(fiber.Map{"questions": out})
+}
+
+// LiveAnswerQuestion lets the host (course staff) answer a specific question.
+// The answer is delivered to the student who asked.
+func (h *Handlers) LiveAnswerQuestion(c *fiber.Ctx) error {
+	sessionID := c.Params("id")
+	qid := c.Params("qid")
+	var courseID string
+	if err := h.Pool.QueryRow(c.Context(), `SELECT course_id FROM class_sessions WHERE id=$1`, sessionID).Scan(&courseID); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "session not found")
+	}
+	if err := h.canManageCourse(c, courseID); err != nil {
+		return fiber.NewError(fiber.StatusForbidden, "only the host can answer")
+	}
+	body, perr := parseLiveBody(c)
+	if perr != nil {
+		return perr
+	}
+	ct, err := h.Pool.Exec(c.Context(),
+		`UPDATE live_questions SET answer=$3, answered=true, answered_at=now(), answered_by=$4
+		 WHERE id=$1 AND session_id=$2`, qid, sessionID, body, callerID(c))
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "answer failed")
+	}
+	if ct.RowsAffected() == 0 {
+		return fiber.NewError(fiber.StatusNotFound, "question not found")
+	}
+	return c.JSON(fiber.Map{"id": qid, "answer": body, "answered": true})
 }
 
 // LiveQuestionPost submits a question (gated on qa_enabled).

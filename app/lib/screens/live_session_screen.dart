@@ -10,18 +10,18 @@ import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../widgets/live_player.dart';
 
-/// The "live room" for a simulated-live session: a recorded video streamed as if
-/// it were live, with a pre-start lobby + countdown, a real (polled) chat, a Q&A
-/// panel, and a (real + simulated) viewer count. The student never sees a
-/// scrubber or a "recorded" hint — it looks like a genuine live class.
+/// The "live room" for a simulated-live session (a recorded video streamed as if
+/// it were live): a pre-start lobby + countdown, a time-locked player, and a
+/// Q&A channel. Questions go PRIVATELY to the host; the host answers each asker.
+/// In host mode (admin) there's no player — just the question queue to answer.
 class LiveSessionScreen extends StatefulWidget {
   const LiveSessionScreen({super.key, required this.auth, required this.sessionId, required this.watermark, this.title = 'Live Class', this.isHost = false});
   final AuthService auth;
   final String sessionId;
   final String watermark;
   final String title;
-  // Host (admin) control view: no video player, sees ALL chat (student messages
-  // are private to the host), and replies broadcast to everyone.
+  // Host (admin) control view: no player; sees the full question queue and
+  // answers each student directly.
   final bool isHost;
 
   @override
@@ -33,28 +33,19 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   static const _bg = Color(0xFF0B0B0D);
   static const _panel = Color(0xFF15151A);
 
-  Timer? _stateTimer, _chatTimer, _qaTimer, _hbTimer, _tick;
+  Timer? _stateTimer, _qaTimer, _hbTimer, _tick;
 
   // Server state.
-  String _status = 'upcoming'; // upcoming | live | ended
+  String _status = 'upcoming'; // upcoming | preparing | live | ended
   String _title = '';
   String _course = '';
   int _viewers = 0;
-  bool _chatOn = true, _qaOn = true;
+  bool _qaOn = true;
   String? _playlistUrl; // absolute, set once live
   DateTime? _startsAt;
   int _startEpochMs = 0; // scheduled start (UTC ms) — drives time-locked playback
-  int _skewMs = 0; // server clock - device clock (ms)
   bool _loaded = false;
   String? _fatal;
-
-  // Chat.
-  final List<Map<String, dynamic>> _messages = [];
-  final Set<String> _msgIds = {};
-  String? _chatCursor;
-  final _chatCtl = TextEditingController();
-  final _chatScroll = ScrollController();
-  bool _sendingChat = false;
 
   // Q&A.
   final List<Map<String, dynamic>> _questions = [];
@@ -69,9 +60,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     _title = widget.title;
     _pollState();
     _stateTimer = Timer.periodic(const Duration(seconds: 3), (_) => _pollState());
-    _chatTimer = Timer.periodic(const Duration(milliseconds: 2500), (_) => _pollChat());
-    _qaTimer = Timer.periodic(const Duration(seconds: 6), (_) => _pollQuestions());
-    // The host isn't a viewer — don't count them in the headcount.
+    _qaTimer = Timer.periodic(const Duration(seconds: 4), (_) => _pollQuestions());
     if (!widget.isHost) {
       _hbTimer = Timer.periodic(const Duration(seconds: 20), (_) => _heartbeat());
       _heartbeat();
@@ -79,49 +68,39 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted && _status == 'upcoming') setState(() {}); // refresh countdown
     });
-    _pollChat();
     _pollQuestions();
   }
 
   @override
   void dispose() {
     _stateTimer?.cancel();
-    _chatTimer?.cancel();
     _qaTimer?.cancel();
     _hbTimer?.cancel();
     _tick?.cancel();
-    _chatCtl.dispose();
     _qaCtl.dispose();
-    _chatScroll.dispose();
     super.dispose();
   }
 
   Future<void> _pollState() async {
     try {
-      final r = await widget.auth.apiGet('$_base/state');
-      final d = ApiClient.decode(r);
+      final d = ApiClient.decode(await widget.auth.apiGet('$_base/state'));
       if (!mounted) return;
       setState(() {
         _status = d['status']?.toString() ?? _status;
         _title = (d['title']?.toString().isNotEmpty ?? false) ? d['title'].toString() : _title;
         _course = d['course']?.toString() ?? _course;
         _viewers = (d['viewers'] as num?)?.toInt() ?? _viewers;
-        _chatOn = d['chat_enabled'] == true;
         _qaOn = d['qa_enabled'] == true;
         final sa = DateTime.tryParse(d['starts_at']?.toString() ?? '');
         _startsAt = sa?.toLocal();
-        // Time-lock uses the DEVICE clock (IST) vs. the scheduled start — no
-        // dependence on the server clock.
         if (sa != null) _startEpochMs = sa.toUtc().millisecondsSinceEpoch;
         final p = d['playlist_url']?.toString();
-        if (p != null && p.isNotEmpty) {
-          _playlistUrl = p.startsWith('http') ? p : '${Config.apiBase}$p';
-        }
+        if (p != null && p.isNotEmpty) _playlistUrl = p.startsWith('http') ? p : '${Config.apiBase}$p';
         _loaded = true;
       });
     } on ApiException catch (e) {
       if (mounted && !_loaded) setState(() => _fatal = e.status == 403 ? 'You are not enrolled in this class.' : 'Could not load this session.');
-    } catch (_) {/* transient network — keep last state */}
+    } catch (_) {/* transient */}
   }
 
   Future<void> _heartbeat() async {
@@ -130,62 +109,12 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     } catch (_) {}
   }
 
-  Future<void> _pollChat() async {
-    if (!_chatOn) return;
-    try {
-      final path = _chatCursor == null ? '$_base/chat' : '$_base/chat?after=${Uri.encodeQueryComponent(_chatCursor!)}';
-      final d = ApiClient.decode(await widget.auth.apiGet(path));
-      final msgs = (d['messages'] as List?) ?? [];
-      if (msgs.isEmpty || !mounted) return;
-      var added = false;
-      for (final m in msgs) {
-        final mm = (m as Map).cast<String, dynamic>();
-        final id = mm['id']?.toString() ?? '';
-        if (id.isEmpty || _msgIds.contains(id)) continue;
-        _msgIds.add(id);
-        _messages.add(mm);
-        _chatCursor = mm['at']?.toString() ?? _chatCursor;
-        added = true;
-      }
-      if (added) {
-        setState(() {});
-        _scrollChatToEnd();
-      }
-    } catch (_) {}
-  }
-
-  Future<void> _sendChat() async {
-    final text = _chatCtl.text.trim();
-    if (text.isEmpty || _sendingChat) return;
-    setState(() => _sendingChat = true);
-    try {
-      await widget.auth.apiPost('$_base/chat', {'body': text});
-      _chatCtl.clear();
-      await _pollChat();
-    } catch (_) {} finally {
-      if (mounted) setState(() => _sendingChat = false);
-    }
-  }
-
-  Future<void> _deleteChat(String id) async {
-    // Optimistic: drop it locally, then ask the server.
-    setState(() {
-      _messages.removeWhere((m) => m['id']?.toString() == id);
-      _msgIds.remove(id);
-    });
-    try {
-      await widget.auth.apiDelete('$_base/chat/$id');
-    } catch (_) {/* if it fails the next poll will bring it back */}
-  }
-
   Future<void> _pollQuestions() async {
     if (!_qaOn) return;
     try {
       final d = ApiClient.decode(await widget.auth.apiGet('$_base/questions'));
       final qs = ((d['questions'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
-      if (mounted) setState(() => _questions
-        ..clear()
-        ..addAll(qs));
+      if (mounted) setState(() => _questions..clear()..addAll(qs));
     } catch (_) {}
   }
 
@@ -202,36 +131,63 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     }
   }
 
-  void _scrollChatToEnd() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_chatScroll.hasClients) _chatScroll.jumpTo(_chatScroll.position.maxScrollExtent);
-    });
+  // Host: answer a specific question (delivered to the student who asked).
+  Future<void> _answer(Map<String, dynamic> q) async {
+    final ctl = TextEditingController(text: q['answer']?.toString() ?? '');
+    final send = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _panel,
+        title: Text('Answer', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${q['name'] ?? 'Student'}: ${q['body'] ?? ''}', style: GoogleFonts.poppins(color: Colors.white60, fontSize: 13)),
+          const SizedBox(height: 12),
+          TextField(
+            controller: ctl,
+            autofocus: true,
+            minLines: 1,
+            maxLines: 4,
+            style: GoogleFonts.poppins(color: Colors.white, fontSize: 14),
+            decoration: InputDecoration(
+              hintText: 'Your answer…',
+              hintStyle: GoogleFonts.poppins(color: Colors.white38, fontSize: 14),
+              filled: true,
+              fillColor: Colors.white.withOpacity(0.06),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: GoogleFonts.poppins(color: Colors.white54))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Send', style: GoogleFonts.poppins(color: _orange, fontWeight: FontWeight.w700))),
+        ],
+      ),
+    );
+    if (send == true && ctl.text.trim().isNotEmpty) {
+      try {
+        await widget.auth.apiPost('$_base/questions/${q['id']}/answer', {'body': ctl.text.trim()});
+        await _pollQuestions();
+      } catch (_) {}
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
-    final hasPanel = _chatOn || _qaOn;
-    // Put the chat/Q&A box on the RIGHT for anything but a narrow phone — and
-    // always on web (the live stream is a desktop-first experience). The panel
-    // width scales down on smaller windows so the video still has room.
-    final sideBySide = kIsWeb || w >= 600;
-    final panelW = w < 900 ? (w * 0.34).clamp(240.0, 320.0) : 360.0;
+    final sideBySide = widget.isHost || kIsWeb || w >= 600; // host: panel is the point
+    final panelW = w < 900 ? (w * 0.36).clamp(260.0, 340.0) : 380.0;
+    final showPanel = _qaOn || widget.isHost;
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
         child: _fatal != null
             ? Center(child: Text(_fatal!, style: GoogleFonts.poppins(color: Colors.white70)))
-            : (sideBySide && hasPanel)
+            : (sideBySide && showPanel)
                 ? Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Expanded(child: Column(children: [_header(), Expanded(child: Center(child: _stage()))])),
-                    Container(width: panelW, decoration: const BoxDecoration(border: Border(left: BorderSide(color: Color(0xFF222228)))), child: _sidePanel()),
+                    Container(width: panelW, decoration: const BoxDecoration(border: Border(left: BorderSide(color: Color(0xFF222228)))), child: _qaPanel()),
                   ])
-                : Column(children: [
-                    _header(),
-                    _stage(),
-                    if (hasPanel) Expanded(child: _sidePanel()),
-                  ]),
+                : Column(children: [_header(), _stage(), if (showPanel) Expanded(child: _qaPanel())]),
       ),
     );
   }
@@ -242,10 +198,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
       padding: const EdgeInsets.fromLTRB(4, 6, 12, 10),
       decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFF222228)))),
       child: Row(children: [
-        IconButton(
-          icon: const Icon(CupertinoIcons.chevron_back, color: Colors.white, size: 24),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
+        IconButton(icon: const Icon(CupertinoIcons.chevron_back, color: Colors.white, size: 24), onPressed: () => Navigator.of(context).maybePop()),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Row(children: [
@@ -255,8 +208,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                 Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: _orange.withOpacity(0.2), borderRadius: BorderRadius.circular(5), border: Border.all(color: _orange.withOpacity(0.5))), child: Text('HOST', style: GoogleFonts.poppins(color: _orange, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.5))),
               ],
             ]),
-            if (_course.isNotEmpty)
-              Text(_course, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 12)),
+            if (_course.isNotEmpty) Text(_course, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 12)),
           ]),
         ),
         if (_status == 'live') ...[
@@ -281,32 +233,20 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         child: Text(text, style: GoogleFonts.poppins(color: c == Colors.white24 ? Colors.white60 : c, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.4)),
       );
 
-  // ---- Stage (player / lobby / ended) --------------------------------------
+  // ---- Stage ---------------------------------------------------------------
   Widget _stage() {
-    // The host doesn't watch the stream here — they moderate. Show a control
-    // panel instead of the player.
     if (widget.isHost) return _hostPanel();
     if (_status == 'live' && _playlistUrl != null) {
-      return LivePlayer(key: ValueKey(_playlistUrl), playlistUrl: _playlistUrl!, watermark: widget.watermark, authToken: widget.auth.token, startEpochMs: _startEpochMs, skewMs: _skewMs);
+      return LivePlayer(key: ValueKey(_playlistUrl), playlistUrl: _playlistUrl!, watermark: widget.watermark, authToken: widget.auth.token, startEpochMs: _startEpochMs);
     }
-    if (_status == 'ended') {
-      return _placeholder(CupertinoIcons.checkmark_seal_fill, 'This live class has ended', 'Thanks for joining.');
-    }
-    if (_status == 'preparing') {
-      return _preparing();
-    }
+    if (_status == 'ended') return _placeholder(CupertinoIcons.checkmark_seal_fill, 'This live class has ended', 'Thanks for joining.');
+    if (_status == 'preparing') return _preparing();
     return _lobby();
   }
 
-  // Host control panel (shown instead of the player in host mode).
   Widget _hostPanel() {
-    final statusText = _status == 'live'
-        ? 'LIVE NOW'
-        : _status == 'ended'
-            ? 'ENDED'
-            : _status == 'preparing'
-                ? 'PREPARING'
-                : 'STARTING SOON';
+    final statusText = _status == 'live' ? 'LIVE NOW' : (_status == 'ended' ? 'ENDED' : (_status == 'preparing' ? 'PREPARING' : 'STARTING SOON'));
+    final waiting = _questions.where((q) => q['answered'] != true).length;
     return AspectRatio(
       aspectRatio: 16 / 9,
       child: Container(
@@ -322,34 +262,15 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
             const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(color: Colors.white.withOpacity(0.06), borderRadius: BorderRadius.circular(10)),
-              child: Text('You are hosting. Student messages are private to you;\nyour messages broadcast to everyone.',
-                  textAlign: TextAlign.center, style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12.5, height: 1.4)),
+              decoration: BoxDecoration(color: _orange.withOpacity(waiting > 0 ? 0.18 : 0.06), borderRadius: BorderRadius.circular(10)),
+              child: Text(waiting > 0 ? '$waiting question${waiting == 1 ? '' : 's'} waiting → answer them in the panel' : 'No questions waiting. New questions appear in the panel.',
+                  textAlign: TextAlign.center, style: GoogleFonts.poppins(color: waiting > 0 ? _orange : Colors.white60, fontSize: 12.5, fontWeight: FontWeight.w600)),
             ),
           ]),
         ),
       ),
     );
   }
-
-  // Scheduled time reached but the recording is still being prepared (transcode
-  // not finished). We wait here and auto-start the moment it's ready — so it
-  // still begins at the correct time-synced position.
-  Widget _preparing() => AspectRatio(
-        aspectRatio: 16 / 9,
-        child: Container(
-          color: Colors.black,
-          child: Center(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const CupertinoActivityIndicator(color: Colors.white, radius: 16),
-              const SizedBox(height: 16),
-              Text(_title, textAlign: TextAlign.center, style: GoogleFonts.poppins(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 6),
-              Text('The live class is starting…', style: GoogleFonts.poppins(color: Colors.white54, fontSize: 13)),
-            ]),
-          ),
-        ),
-      );
 
   Widget _lobby() {
     final remain = _startsAt == null ? null : _startsAt!.difference(DateTime.now());
@@ -373,6 +294,22 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     );
   }
 
+  Widget _preparing() => AspectRatio(
+        aspectRatio: 16 / 9,
+        child: Container(
+          color: Colors.black,
+          child: Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const CupertinoActivityIndicator(color: Colors.white, radius: 16),
+              const SizedBox(height: 16),
+              Text(_title, textAlign: TextAlign.center, style: GoogleFonts.poppins(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              Text('The live class is starting…', style: GoogleFonts.poppins(color: Colors.white54, fontSize: 13)),
+            ]),
+          ),
+        ),
+      );
+
   Widget _placeholder(IconData icon, String title, String sub) => AspectRatio(
         aspectRatio: 16 / 9,
         child: Container(
@@ -389,98 +326,57 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         ),
       );
 
-  // ---- Side panel (Chat + Q&A tabs) ----------------------------------------
-  Widget _sidePanel() {
-    final tabs = <Tab>[];
-    final views = <Widget>[];
-    if (_chatOn) {
-      tabs.add(const Tab(text: 'Chat'));
-      views.add(_chatTab());
-    }
-    if (_qaOn) {
-      tabs.add(const Tab(text: 'Q&A'));
-      views.add(_qaTab());
-    }
-    if (tabs.length == 1) {
-      return Container(color: _panel, child: views.first);
-    }
-    return DefaultTabController(
-      length: tabs.length,
-      child: Container(
-        color: _panel,
-        child: Column(children: [
-          TabBar(tabs: tabs, indicatorColor: _orange, labelColor: Colors.white, unselectedLabelColor: Colors.white54, labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 13)),
-          Expanded(child: TabBarView(children: views)),
-        ]),
-      ),
-    );
+  // ---- Q&A panel (the only channel) ----------------------------------------
+  Widget _qaPanel() {
+    return Container(color: _panel, child: widget.isHost ? _hostQueue() : _studentQa());
   }
 
-  Widget _chatTab() {
+  // Student: ask the host; see your questions + the host's answers.
+  Widget _studentQa() {
     final myId = widget.auth.user?.id ?? '';
-    final staff = widget.isHost || (widget.auth.user?.isStaff ?? false);
-    final note = widget.isHost
-        ? 'Student messages are private to you. Your messages go to everyone.'
-        : 'Your messages go privately to the host.';
     return Column(children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 2),
-        child: Row(children: [
-          const Icon(CupertinoIcons.lock_fill, size: 11, color: Colors.white38),
-          const SizedBox(width: 5),
-          Expanded(child: Text(note, style: GoogleFonts.poppins(color: Colors.white38, fontSize: 11))),
-        ]),
-      ),
+      _panelHeader('Q&A', 'Ask the host — only the host sees your question.'),
       Expanded(
-        child: _messages.isEmpty
-            ? Center(child: Text(widget.isHost ? 'No messages yet.' : 'Send the host a message 👋', style: GoogleFonts.poppins(color: Colors.white38, fontSize: 13)))
+        child: _questions.isEmpty
+            ? Center(child: Text('No questions yet — ask away 👋', style: GoogleFonts.poppins(color: Colors.white38, fontSize: 13)))
             : ListView.builder(
-                controller: _chatScroll,
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-                itemCount: _messages.length,
+                padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+                itemCount: _questions.length,
                 itemBuilder: (_, i) {
-                  final m = _messages[i];
-                  final id = m['id']?.toString() ?? '';
-                  final mine = (m['user_id']?.toString() ?? '') == myId;
-                  final fromStaff = m['from_staff'] == true;
-                  final name = m['name']?.toString().isNotEmpty == true ? m['name'].toString() : 'Student';
-                  final label = fromStaff ? (mine ? 'You (Host)' : 'Host') : (mine ? 'You' : name);
-                  final color = fromStaff ? _orange : (mine ? const Color(0xFF34C759) : const Color(0xFF8AB4F8));
-                  final canDelete = id.isNotEmpty && (mine || staff);
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 9),
-                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Expanded(
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(label, style: GoogleFonts.poppins(color: color, fontSize: 11.5, fontWeight: FontWeight.w700)),
-                          const SizedBox(height: 1),
-                          Text(m['body']?.toString() ?? '', style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.92), fontSize: 13, height: 1.25)),
-                        ]),
-                      ),
-                      if (canDelete)
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => _deleteChat(id),
-                          child: const Padding(
-                            padding: EdgeInsets.only(left: 8, top: 1),
-                            child: Icon(CupertinoIcons.trash, size: 14, color: Colors.white38),
-                          ),
-                        ),
+                  final q = _questions[i];
+                  final answered = q['answered'] == true;
+                  final mine = (q['user_id']?.toString() ?? '') == myId;
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(11),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.04), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white12)),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(mine ? 'You asked' : (q['name']?.toString() ?? 'Question'), style: GoogleFonts.poppins(color: const Color(0xFF8AB4F8), fontSize: 11.5, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 2),
+                      Text(q['body']?.toString() ?? '', style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.92), fontSize: 13, height: 1.25)),
+                      const SizedBox(height: 8),
+                      if (answered) ...[
+                        Container(width: double.infinity, padding: const EdgeInsets.all(9), decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(8)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text('Host answered', style: GoogleFonts.poppins(color: _orange, fontSize: 11, fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 2),
+                          Text(q['answer']?.toString() ?? '', style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.92), fontSize: 13, height: 1.25)),
+                        ])),
+                      ] else
+                        Text('Awaiting answer…', style: GoogleFonts.poppins(color: Colors.white38, fontSize: 11.5, fontStyle: FontStyle.italic)),
                     ]),
                   );
                 },
               ),
       ),
-      _composer(_chatCtl, widget.isHost ? 'Message everyone…' : 'Message the host…', _sendChat, _sendingChat),
+      _composer(_qaCtl, 'Ask a question…', _sendQuestion, _sendingQa),
     ]);
   }
 
-  Widget _qaTab() {
+  // Host: the queue — unanswered first; answer each one (goes to the asker).
+  Widget _hostQueue() {
+    final waiting = _questions.where((q) => q['answered'] != true).length;
     return Column(children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-        child: Text('Ask the host a question. Questions are visible to everyone.', style: GoogleFonts.poppins(color: Colors.white38, fontSize: 11.5)),
-      ),
+      _panelHeader('Questions', waiting > 0 ? '$waiting waiting to be answered' : 'All caught up'),
       Expanded(
         child: _questions.isEmpty
             ? Center(child: Text('No questions yet.', style: GoogleFonts.poppins(color: Colors.white38, fontSize: 13)))
@@ -491,25 +387,57 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                   final q = _questions[i];
                   final answered = q['answered'] == true;
                   return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.04), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white12)),
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(11),
+                    decoration: BoxDecoration(
+                      color: answered ? Colors.white.withOpacity(0.03) : _orange.withOpacity(0.07),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: answered ? Colors.white10 : _orange.withOpacity(0.35)),
+                    ),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Row(children: [
                         Expanded(child: Text(q['name']?.toString().isNotEmpty == true ? q['name'].toString() : 'Student', style: GoogleFonts.poppins(color: const Color(0xFF8AB4F8), fontSize: 11.5, fontWeight: FontWeight.w700))),
-                        if (answered)
-                          Text('Answered', style: GoogleFonts.poppins(color: const Color(0xFF34C759), fontSize: 10.5, fontWeight: FontWeight.w700)),
+                        if (answered) Text('Answered ✓', style: GoogleFonts.poppins(color: const Color(0xFF34C759), fontSize: 10.5, fontWeight: FontWeight.w700)),
                       ]),
                       const SizedBox(height: 2),
                       Text(q['body']?.toString() ?? '', style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.92), fontSize: 13, height: 1.25)),
+                      const SizedBox(height: 8),
+                      if (answered)
+                        Text('You: ${q['answer'] ?? ''}', style: GoogleFonts.poppins(color: Colors.white54, fontSize: 12, height: 1.25))
+                      else
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: GestureDetector(
+                            onTap: () => _answer(q),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                              decoration: BoxDecoration(color: _orange, borderRadius: BorderRadius.circular(8)),
+                              child: Text('Answer', style: GoogleFonts.poppins(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                            ),
+                          ),
+                        ),
+                      if (answered)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: GestureDetector(onTap: () => _answer(q), child: Text('Edit answer', style: GoogleFonts.poppins(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w600))),
+                        ),
                     ]),
                   );
                 },
               ),
       ),
-      _composer(_qaCtl, 'Ask a question…', _sendQuestion, _sendingQa),
     ]);
   }
+
+  Widget _panelHeader(String title, String sub) => Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+        decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFF222228)))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: GoogleFonts.poppins(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 1),
+          Text(sub, style: GoogleFonts.poppins(color: Colors.white38, fontSize: 11)),
+        ]),
+      );
 
   Widget _composer(TextEditingController ctl, String hint, VoidCallback onSend, bool busy) {
     return Container(

@@ -319,6 +319,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Delete("/me/live/:id/chat/:msgId", auth, h.LiveChatDelete)
 	api.Get("/me/live/:id/questions", auth, h.LiveQuestionsList)
 	api.Post("/me/live/:id/questions", auth, h.LiveQuestionPost)
+	api.Post("/me/live/:id/questions/:qid/answer", auth, h.LiveAnswerQuestion)
 	// Playlist + key fetched by hls.js (no device header) → token-auth, enrollment-gated.
 	api.Get("/me/live/:id/playlist.m3u8", tokenAuth, h.LivePlaylist)
 	api.Get("/me/live/:id/hls.key", tokenAuth, h.LiveHLSKey)
