@@ -77,6 +77,17 @@
         }
       };
     };
+    // Keep a simulated-live stream from getting permanently stuck: recover from
+    // fatal network/media errors instead of dying on them.
+    window.onrolLiveGuard = function (hls) {
+      try {
+        hls.on('hlsError', function (_, data) {
+          if (!data || !data.fatal) return;
+          if (data.type === 'networkError') { try { hls.startLoad(); } catch (e) {} }
+          else { try { hls.recoverMediaError(); } catch (e) {} }
+        });
+      } catch (e) {}
+    };
   </script>
   <script>
     // Discourage downloading streamed video: block right-click "Save video as"

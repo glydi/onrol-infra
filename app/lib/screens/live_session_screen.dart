@@ -184,7 +184,9 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final wide = MediaQuery.of(context).size.width >= 900;
+    // Show the chat/Q&A panel on the right whenever there's room; only the
+    // narrowest (phone) widths stack it under the video.
+    final wide = MediaQuery.of(context).size.width >= 720;
     final hasPanel = _chatOn || _qaOn;
     return Scaffold(
       backgroundColor: _bg,
@@ -194,7 +196,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
             : wide
                 ? Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Expanded(child: Column(children: [_header(), Expanded(child: Center(child: _stage()))])),
-                    if (hasPanel) SizedBox(width: 350, child: _sidePanel()),
+                    if (hasPanel) Container(width: 360, decoration: const BoxDecoration(border: Border(left: BorderSide(color: Color(0xFF222228)))), child: _sidePanel()),
                   ])
                 : Column(children: [
                     _header(),

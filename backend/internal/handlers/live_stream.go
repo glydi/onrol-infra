@@ -31,8 +31,12 @@ import (
 // the live, enrollment-gated key endpoint). Renumbering from 0 would decrypt
 // with the wrong IV and produce garbage.
 
-// How many trailing segments the live window exposes (~6s each → ~36s of DVR).
-const liveWindowSegments = 6
+// How many trailing segments the live window exposes (~6s each → ~6 min of DVR).
+// This must comfortably exceed how far the player sits behind the live edge
+// (hls.js liveSyncDuration ≈ 18s) plus its back-buffer, or a rebuffer can push
+// the playhead off the back of the window and stall permanently. 60 is huge
+// headroom while keeping the playlist small.
+const liveWindowSegments = 60
 
 type liveSeg struct {
 	name string

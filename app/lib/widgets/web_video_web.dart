@@ -41,6 +41,9 @@ int _seq = 0;
 // cancel the previous one whenever a new player mounts.
 StreamSubscription<html.KeyboardEvent>? _keySub;
 
+// Live-stream stall watchdog (one player on screen at a time).
+Timer? _liveGuardTimer;
+
 const _accent = '#FF4F2B';
 const _speeds = [0.5, 1.0, 1.25, 1.5, 2.0];
 
@@ -660,38 +663,9 @@ Widget liveHlsVideoElement(
     controls.onClick.listen((e) => e.stopPropagation());
     container.append(controls);
 
-    // ---- Tap-to-unmute overlay (shown while muted) --------------------------
-    final unmute = html.DivElement()
-      ..style.position = 'absolute'
-      ..style.top = '50%'
-      ..style.left = '50%'
-      ..style.transform = 'translate(-50%, -50%)'
-      ..style.padding = '12px 18px'
-      ..style.borderRadius = '24px'
-      ..style.background = 'rgba(0,0,0,0.62)'
-      ..style.color = 'white'
-      ..style.cursor = 'pointer'
-      ..style.zIndex = '9'
-      ..style.display = 'flex'
-      ..style.alignItems = 'center'
-      ..style.gap = '8px'
-      ..style.font = '600 15px -apple-system, Segoe UI, Roboto, sans-serif';
-    unmute.append(_vicon(_icVolUp, size: 22));
-    unmute.append(html.SpanElement()..text = 'Tap to unmute');
-    void hideUnmute() {
-      unmute.style.display = 'none';
-    }
-    unmute.onClick.listen((e) {
-      e.stopPropagation();
-      video.muted = false;
-      setIcon(muteBtn, _icVolUp, size: 26);
-      hideUnmute();
-      video.play();
-    });
-    container.append(unmute);
-    video.onVolumeChange.listen((_) {
-      if (!video.muted) hideUnmute();
-    });
+    // Starts muted (browsers block unmuted autoplay); keep the mute-button icon
+    // in sync if the volume changes by any other means.
+    video.onVolumeChange.listen((_) => setIcon(muteBtn, video.muted ? _icVolOff : _icVolUp, size: 26));
 
     final isHls = url.toLowerCase().contains('.m3u8');
     final hlsAvailable = js.context.hasProperty('Hls');
@@ -704,13 +678,20 @@ Widget liveHlsVideoElement(
         config['xhrSetup'] = js.context.callMethod('onrolLiveXhrSetup', [authToken]);
       }
       final hls = js.JsObject(js.context['Hls'] as js.JsFunction, [config]);
+      // Recover from fatal network/media errors instead of getting stuck.
+      if (js.context.hasProperty('onrolLiveGuard')) {
+        js.context.callMethod('onrolLiveGuard', [hls]);
+      }
       hls.callMethod('loadSource', [url]);
       hls.callMethod('attachMedia', [video]);
 
       void snapToEdge() {
         try {
           final pos = hls['liveSyncPosition'];
-          if (pos != null) video.currentTime = (pos as num).toDouble();
+          if (pos != null) {
+            final p = (pos as num).toDouble();
+            if (p.isFinite && p > 0) video.currentTime = p;
+          }
         } catch (_) {}
       }
 
@@ -728,6 +709,34 @@ Widget liveHlsVideoElement(
           snapToEdge();
           video.play();
         }
+      });
+
+      // Watchdog: if playback hasn't advanced for ~4s while "playing", nudge it
+      // back to the live edge so a transient stall can't wedge the stream.
+      _liveGuardTimer?.cancel();
+      var lastT = -1.0;
+      var stalled = 0;
+      _liveGuardTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+        if (container.isConnected != true) {
+          t.cancel();
+          return;
+        }
+        if (video.paused) {
+          lastT = video.currentTime.toDouble();
+          stalled = 0;
+          return;
+        }
+        final cur = video.currentTime.toDouble();
+        if ((cur - lastT).abs() < 0.05) {
+          if (++stalled >= 4) {
+            snapToEdge();
+            video.play();
+            stalled = 0;
+          }
+        } else {
+          stalled = 0;
+        }
+        lastT = cur;
       });
     } else {
       // Safari plays live HLS natively (follows the edge; native controls off).
