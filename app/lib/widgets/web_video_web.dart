@@ -728,7 +728,7 @@ Widget liveHlsVideoElement(
         }
         final cur = video.currentTime.toDouble();
         if ((cur - lastT).abs() < 0.05) {
-          if (++stalled >= 4) {
+          if (++stalled >= 6) {
             snapToEdge();
             video.play();
             stalled = 0;

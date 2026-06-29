@@ -38,6 +38,9 @@ class _LivePlayerState extends State<LivePlayer> {
   bool _muted = false;
   bool _fullscreen = false;
   String? _error;
+  // Built ONCE so parent rebuilds (the live room polls /state every few seconds)
+  // don't recreate the <video>/hls.js element and restart the stream.
+  Widget? _webView;
 
   @override
   void initState() {
@@ -89,7 +92,8 @@ class _LivePlayerState extends State<LivePlayer> {
   }
 
   // Web: the platform view draws its own LIVE badge + mute/fullscreen controls.
-  Widget _webPlayer() => AspectRatio(
+  // Cached so it's created exactly once for this player.
+  Widget _webPlayer() => _webView ??= AspectRatio(
         aspectRatio: 16 / 9,
         child: liveHlsVideoElement(widget.playlistUrl, authToken: widget.authToken),
       );
