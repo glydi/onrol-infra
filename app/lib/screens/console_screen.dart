@@ -1574,10 +1574,13 @@ class _DateTimeRow extends StatelessWidget {
     final p = Palette.of(context);
     return GestureDetector(
       onTap: () async {
+        final defaultFirst = DateTime.now().subtract(const Duration(days: 1));
         final d = await showDatePicker(
           context: context,
           initialDate: value,
-          firstDate: DateTime.now().subtract(const Duration(days: 1)),
+          // Allow editing a session already in the past without tripping the
+          // picker's initialDate >= firstDate assertion.
+          firstDate: value.isBefore(defaultFirst) ? DateTime(value.year, value.month, value.day) : defaultFirst,
           lastDate: DateTime.now().add(const Duration(days: 365)),
         );
         if (d == null) return;
@@ -1977,6 +1980,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     String? videoId = (s['media_asset_id']?.toString() ?? '').isEmpty ? null : s['media_asset_id'].toString();
     String videoTitle = s['media_title']?.toString() ?? '';
     bool qaOn = s['qa_enabled'] != false;
+    DateTime when = DateTime.tryParse(s['starts_at']?.toString() ?? '')?.toLocal() ?? DateTime.now().add(const Duration(hours: 1));
     final ok = await showFormSheet(context, square: true, title: 'Edit Live Class', builder: (setS) => [
       sheetField(title, 'Title', CupertinoIcons.textformat),
       const SizedBox(height: 10),
@@ -1995,11 +1999,15 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                   videoTitle = t;
                 })),
             (v) => setS(() => qaOn = v)),
+      const SizedBox(height: 12),
+      _label(context, 'Date & time'),
+      const SizedBox(height: 6),
+      _DateTimeRow(value: when, onPick: (d) => setS(() => when = d)),
     ], onSubmit: () async {
       if (mode == 0 && url.text.trim().isEmpty && host.text.trim().isEmpty) return 'Add a join or host link';
       if (mode == 1 && (videoId == null || videoId!.isEmpty)) return 'Pick a video to stream';
       try {
-        final body = <String, dynamic>{'title': title.text.trim()};
+        final body = <String, dynamic>{'title': title.text.trim(), 'starts_at': when.toUtc().toIso8601String()};
         if (mode == 0) {
           body['join_url'] = url.text.trim();
           body['host_url'] = host.text.trim();
