@@ -145,6 +145,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Get("/manage/courses/:id/sessions", auth, inst, h.ListCourseSessions)
 	api.Post("/manage/courses/:id/sessions", auth, inst, h.CreateSession)
 	api.Patch("/manage/sessions/:id", auth, inst, h.UpdateSession)
+	api.Delete("/manage/sessions/:id", auth, inst, h.DeleteSession)
 	api.Post("/manage/sessions/:id/attendance", auth, inst, h.MarkAttendance)
 	api.Get("/manage/announcements", auth, inst, h.ListAnnouncements)
 

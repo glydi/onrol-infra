@@ -264,6 +264,23 @@ func (h *Handlers) UpdateSession(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"id": sessionID, "updated": true})
 }
 
+// DeleteSession removes a live class/stream (and, via FK cascade, its chat,
+// questions and presence rows). Gated to the session's course staff.
+func (h *Handlers) DeleteSession(c *fiber.Ctx) error {
+	sessionID := c.Params("id")
+	var courseID string
+	if err := h.Pool.QueryRow(c.Context(), `SELECT course_id FROM class_sessions WHERE id=$1`, sessionID).Scan(&courseID); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "session not found")
+	}
+	if err := h.canManageCourse(c, courseID); err != nil {
+		return err
+	}
+	if _, err := h.Pool.Exec(c.Context(), `DELETE FROM class_sessions WHERE id=$1`, sessionID); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "delete failed")
+	}
+	return c.JSON(fiber.Map{"id": sessionID, "deleted": true})
+}
+
 // ListCourseSessions returns a course's live sessions for staff (console).
 func (h *Handlers) ListCourseSessions(c *fiber.Ctx) error {
 	courseID := c.Params("id")

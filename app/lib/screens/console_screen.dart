@@ -15,6 +15,7 @@ import '../theme.dart';
 import '../widgets/app_shell.dart';
 import '../widgets/profile_view.dart';
 import '../widgets/ui.dart';
+import 'admin_calendar_screen.dart';
 import 'discussion_screen.dart';
 import 'login_screen.dart';
 import 'video_store_screen.dart';
@@ -153,11 +154,13 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     final dests = <NavDest>[
       const NavDest(CupertinoIcons.square_list_fill, 'Courses'),
       if (_isAdmin) const NavDest(CupertinoIcons.person_2_fill, 'People'),
+      if (_isAdmin) const NavDest(CupertinoIcons.calendar, 'Calendar'),
       const NavDest(CupertinoIcons.person_fill, 'Profile'),
     ];
     final pages = <Widget>[
       _consolePage(),
       if (_isAdmin) _peoplePage(),
+      if (_isAdmin) AdminCalendarScreen(auth: widget.auth),
       _profilePage(),
     ];
     // The whole admin console renders with squared corners.
@@ -1905,12 +1908,29 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
             ],
             _smallButton('Edit', CupertinoIcons.pencil, () => _editSession(s)),
             const SizedBox(width: 6),
+            HoverTap(onTap: () => _deleteSession(s), child: const Icon(CupertinoIcons.trash, size: 18, color: AppleColors.red)),
+            const SizedBox(width: 8),
             Icon(ready ? (simulated ? CupertinoIcons.play_rectangle : CupertinoIcons.link) : CupertinoIcons.exclamationmark_circle,
                 size: 18, color: ready ? p.secondary : AppleColors.orange),
           ]),
         ),
       ),
     );
+  }
+
+  Future<void> _deleteSession(Map<String, dynamic> s) async {
+    final yes = await showSquareConfirm(context,
+        title: 'Delete live class',
+        message: 'Delete “${s['title'] ?? 'this live class'}”? This removes it for all students (and its chat & Q&A). This cannot be undone.',
+        confirmLabel: 'Delete', destructive: true);
+    if (!yes) return;
+    try {
+      await widget.auth.apiDelete('/api/v1/manage/sessions/${s['id']}');
+      _toast('Live class deleted');
+      _load();
+    } catch (_) {
+      _toast('Could not delete');
+    }
   }
 
   Future<void> _openLink(String url) async {
