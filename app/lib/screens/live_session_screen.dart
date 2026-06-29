@@ -139,24 +139,29 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: _panel,
         title: Text('Answer', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${q['name'] ?? 'Student'}: ${q['body'] ?? ''}', style: GoogleFonts.poppins(color: Colors.white60, fontSize: 13)),
-          const SizedBox(height: 12),
-          TextField(
-            controller: ctl,
-            autofocus: true,
-            minLines: 1,
-            maxLines: 4,
-            style: GoogleFonts.poppins(color: Colors.white, fontSize: 14),
-            decoration: InputDecoration(
-              hintText: 'Your answer…',
-              hintStyle: GoogleFonts.poppins(color: Colors.white38, fontSize: 14),
-              filled: true,
-              fillColor: Colors.white.withOpacity(0.06),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+        content: SizedBox(
+          width: 560,
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${q['name'] ?? 'Student'}: ${q['body'] ?? ''}', style: GoogleFonts.poppins(color: Colors.white60, fontSize: 13)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctl,
+              autofocus: true,
+              minLines: 6,
+              maxLines: 14,
+              keyboardType: TextInputType.multiline,
+              style: GoogleFonts.poppins(color: Colors.white, fontSize: 14, height: 1.35),
+              decoration: InputDecoration(
+                hintText: 'Type your answer…',
+                hintStyle: GoogleFonts.poppins(color: Colors.white38, fontSize: 14),
+                filled: true,
+                fillColor: Colors.white.withOpacity(0.06),
+                contentPadding: const EdgeInsets.all(14),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+              ),
             ),
-          ),
-        ]),
+          ]),
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: GoogleFonts.poppins(color: Colors.white54))),
           TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Send', style: GoogleFonts.poppins(color: _orange, fontWeight: FontWeight.w700))),
