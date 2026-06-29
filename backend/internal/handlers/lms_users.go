@@ -169,7 +169,7 @@ func (h *Handlers) SetUserRole(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
 	}
 	switch req.Role {
-	case "student", "instructor", "manager", "superadmin":
+	case "student", "instructor", "manager", "superadmin", "live_host":
 	default:
 		return fiber.NewError(fiber.StatusBadRequest, "invalid role")
 	}

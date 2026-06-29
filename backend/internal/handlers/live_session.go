@@ -29,7 +29,7 @@ func (h *Handlers) liveAccess(c *fiber.Ctx, sessionID string) (chatOK, qaOK, isS
 	if err != nil {
 		return
 	}
-	isStaff = h.canManageCourse(c, courseID) == nil
+	isStaff = h.canManageCourse(c, courseID) == nil || callerRole(c) == "live_host"
 	if !enrolled && !isStaff {
 		err = pgx.ErrNoRows
 	}
@@ -63,8 +63,8 @@ func (h *Handlers) LiveSessionState(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "state load failed")
 	}
-	// Enrolled students OR course staff (the host) may view the state.
-	isStaff := h.canManageCourse(c, courseID) == nil
+	// Enrolled students OR course staff / a live host may view the state.
+	isStaff := h.canManageCourse(c, courseID) == nil || callerRole(c) == "live_host"
 	if !enrolled && !isStaff {
 		return fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
 	}
@@ -311,7 +311,7 @@ func (h *Handlers) LiveAnswerQuestion(c *fiber.Ctx) error {
 	if err := h.Pool.QueryRow(c.Context(), `SELECT course_id FROM class_sessions WHERE id=$1`, sessionID).Scan(&courseID); err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "session not found")
 	}
-	if err := h.canManageCourse(c, courseID); err != nil {
+	if h.canManageCourse(c, courseID) != nil && callerRole(c) != "live_host" {
 		return fiber.NewError(fiber.StatusForbidden, "only the host can answer")
 	}
 	body, perr := parseLiveBody(c)
@@ -358,6 +358,35 @@ func (h *Handlers) LiveQuestionPost(c *fiber.Ctx) error {
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"id": id, "user_id": callerID(c), "name": name, "body": body, "answered": false, "at": at.UTC().Format(time.RFC3339Nano)})
+}
+
+// ListLiveHostSessions lists the simulated-live sessions for the live-host
+// portal (recent + upcoming), each with its count of unanswered questions.
+func (h *Handlers) ListLiveHostSessions(c *fiber.Ctx) error {
+	rows, err := h.Pool.Query(c.Context(), `
+		SELECT cs.id, cs.title, c.title, cs.starts_at,
+		       cs.starts_at + make_interval(secs => COALESCE(ma.duration_seconds,0)) AS ends_at,
+		       (SELECT count(*) FROM live_questions q WHERE q.session_id=cs.id AND NOT q.answered) AS waiting
+		FROM class_sessions cs
+		JOIN courses c ON c.id = cs.course_id
+		JOIN media_assets ma ON ma.id = cs.media_asset_id
+		WHERE cs.media_asset_id IS NOT NULL AND cs.starts_at >= now() - interval '2 days'
+		ORDER BY cs.starts_at`)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
+	}
+	defer rows.Close()
+	out := []fiber.Map{}
+	for rows.Next() {
+		var id, title, course string
+		var startsAt, endsAt any
+		var waiting int
+		if err := rows.Scan(&id, &title, &course, &startsAt, &endsAt, &waiting); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		out = append(out, fiber.Map{"id": id, "title": title, "course": course, "starts_at": startsAt, "ends_at": endsAt, "waiting": waiting})
+	}
+	return c.JSON(fiber.Map{"sessions": out})
 }
 
 // parseLiveBody pulls a non-empty {body} from the request, capped at 1000 chars.

@@ -13,6 +13,7 @@ import 'screens/console_screen.dart';
 import 'screens/franchise_portal.dart';
 import 'screens/crm_portal.dart';
 import 'screens/home_screen.dart';
+import 'screens/live_host_portal.dart';
 import 'screens/login_screen.dart';
 import 'theme.dart';
 import 'theme_controller.dart';
@@ -90,6 +91,8 @@ class _OnrolAppState extends State<OnrolApp> {
             if (isAccountsHost()) return AccountsPortalScreen(auth: _auth);
             if (isCollegeHost()) return CollegePortalScreen(auth: _auth);
             if (isFranchiseHost()) return FranchisePortalScreen(auth: _auth);
+            // A live host only gets the restricted Live Classes portal.
+            if (_auth.user!.isLiveHost) return LiveHostPortalScreen(auth: _auth);
             return _auth.user!.isStaff ? ConsoleScreen(auth: _auth) : HomeScreen(auth: _auth);
           },
         ),

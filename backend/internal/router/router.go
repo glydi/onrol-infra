@@ -323,6 +323,9 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	// Playlist + key fetched by hls.js (no device header) → token-auth, enrollment-gated.
 	api.Get("/me/live/:id/playlist.m3u8", tokenAuth, h.LivePlaylist)
 	api.Get("/me/live/:id/hls.key", tokenAuth, h.LiveHLSKey)
+	// Live-host portal: a restricted role that only lists live sessions to host
+	// (answer Q&A + watch). Managers/superadmins are allowed by RequireAnyRole.
+	api.Get("/live-host/sessions", auth, middleware.RequireAnyRole("live_host"), h.ListLiveHostSessions)
 	api.Get("/me/grades", auth, h.MyGrades)
 	api.Get("/me/transcript", auth, h.MyTranscript)
 	api.Get("/me/certificates", auth, h.MyCertificates)

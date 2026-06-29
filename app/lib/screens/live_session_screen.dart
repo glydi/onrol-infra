@@ -235,7 +235,9 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
 
   // ---- Stage ---------------------------------------------------------------
   Widget _stage() {
-    if (widget.isHost) return _hostPanel();
+    // The host watches the live video too (when it's playing); otherwise they
+    // see the host status panel (lobby / preparing / ended / queue summary).
+    if (widget.isHost && !(_status == 'live' && _playlistUrl != null)) return _hostPanel();
     if (_status == 'live' && _playlistUrl != null) {
       return LivePlayer(key: ValueKey(_playlistUrl), playlistUrl: _playlistUrl!, watermark: widget.watermark, authToken: widget.auth.token, startEpochMs: _startEpochMs);
     }

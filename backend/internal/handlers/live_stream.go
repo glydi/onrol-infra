@@ -154,17 +154,24 @@ func (h *Handlers) LivePlaylist(c *fiber.Ctx) error {
 	var assetID, hlsURL string
 	var startsAt time.Time
 	var durDB int
+	var allowed bool
+	// Enrolled students OR staff/live-host (who aren't enrolled) may watch. Role
+	// is looked up here since token-auth doesn't carry it.
 	err := h.Pool.QueryRow(c.Context(), `
-		SELECT cs.media_asset_id, cs.starts_at, COALESCE(ma.hls_url,''), ma.duration_seconds
+		SELECT cs.media_asset_id, cs.starts_at, COALESCE(ma.hls_url,''), ma.duration_seconds,
+		       (EXISTS(SELECT 1 FROM course_enrollments ce WHERE ce.course_id=cs.course_id AND ce.user_id=$2 AND ce.status='active')
+		        OR (SELECT role FROM users WHERE id=$2) IN ('manager','superadmin','instructor','live_host'))
 		FROM class_sessions cs
 		JOIN media_assets ma ON ma.id = cs.media_asset_id
-		JOIN course_enrollments ce ON ce.course_id = cs.course_id AND ce.user_id = $2 AND ce.status = 'active'
-		WHERE cs.id = $1`, sessionID, callerID(c)).Scan(&assetID, &startsAt, &hlsURL, &durDB)
+		WHERE cs.id = $1`, sessionID, callerID(c)).Scan(&assetID, &startsAt, &hlsURL, &durDB, &allowed)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
 	}
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "session load failed")
+	}
+	if !allowed {
+		return fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
 	}
 	if hlsURL == "" {
 		return fiber.NewError(fiber.StatusConflict, "recording not ready")
@@ -230,13 +237,15 @@ func (h *Handlers) LivePlaylist(c *fiber.Ctx) error {
 func (h *Handlers) LiveHLSKey(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
 	var key []byte
+	var allowed bool
 	err := h.Pool.QueryRow(c.Context(), `
-		SELECT ma.enc_key
+		SELECT ma.enc_key,
+		       (EXISTS(SELECT 1 FROM course_enrollments ce WHERE ce.course_id=cs.course_id AND ce.user_id=$2 AND ce.status='active')
+		        OR (SELECT role FROM users WHERE id=$2) IN ('manager','superadmin','instructor','live_host'))
 		FROM class_sessions cs
 		JOIN media_assets ma ON ma.id = cs.media_asset_id
-		JOIN course_enrollments ce ON ce.course_id = cs.course_id AND ce.user_id = $2 AND ce.status = 'active'
-		WHERE cs.id = $1`, sessionID, callerID(c)).Scan(&key)
-	if err != nil || len(key) == 0 {
+		WHERE cs.id = $1`, sessionID, callerID(c)).Scan(&key, &allowed)
+	if err != nil || len(key) == 0 || !allowed {
 		return fiber.NewError(fiber.StatusForbidden, "not entitled")
 	}
 	c.Set(fiber.HeaderContentType, "application/octet-stream")

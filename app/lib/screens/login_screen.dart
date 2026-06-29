@@ -17,6 +17,7 @@ import 'console_screen.dart';
 import 'franchise_portal.dart';
 import 'crm_portal.dart';
 import 'home_screen.dart';
+import 'live_host_portal.dart';
 
 // Matches the LMS dashboard theme: orange accent + frosted glass on a soft,
 // blurred colour backdrop.
@@ -105,7 +106,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           ? CollegePortalScreen(auth: widget.auth)
                           : isFranchiseHost()
                               ? FranchisePortalScreen(auth: widget.auth)
-                              : (staff ? ConsoleScreen(auth: widget.auth) : HomeScreen(auth: widget.auth)),
+                              : (widget.auth.user?.isLiveHost == true
+                                  ? LiveHostPortalScreen(auth: widget.auth)
+                                  : (staff ? ConsoleScreen(auth: widget.auth) : HomeScreen(auth: widget.auth))),
     ));
   }
 

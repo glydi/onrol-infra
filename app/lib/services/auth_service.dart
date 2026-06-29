@@ -22,6 +22,7 @@ class AuthUser {
       );
   bool get isStaff => role == 'instructor' || role == 'manager' || role == 'superadmin';
   bool get isAdmin => role == 'manager' || role == 'superadmin';
+  bool get isLiveHost => role == 'live_host';
 }
 
 /// Login / session. Persists the JWT in the platform secure store.

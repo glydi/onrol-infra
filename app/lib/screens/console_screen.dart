@@ -211,6 +211,9 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           Expanded(child: PrimaryButton(label: 'Communities', icon: CupertinoIcons.person_3_fill, square: true, onPressed: () => Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => CommunitiesScreen(auth: widget.auth),
           )))),
+          const SizedBox(width: 12),
+          // A live host can only answer questions + watch live (no other access).
+          Expanded(child: PrimaryButton(label: 'Add Live Host', icon: CupertinoIcons.dot_radiowaves_left_right, square: true, onPressed: () => _addPerson('live_host'))),
         ]),
         const SizedBox(height: 16),
         // Search across ALL people (name/email/phone/username/role).
@@ -662,7 +665,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     final linkedin = TextEditingController();
     final github = TextEditingController();
     final isStudent = role == 'student';
-    final ok = await showFormSheet(context, square: true, title: role == 'instructor' ? 'Add Instructor' : 'Add Student', builder: (_) => [
+    final roleLabel = role == 'instructor' ? 'Instructor' : (role == 'live_host' ? 'Live Host' : 'Student');
+    final ok = await showFormSheet(context, square: true, title: 'Add $roleLabel', builder: (_) => [
       sheetField(name, 'Full name', CupertinoIcons.person),
       const SizedBox(height: 10),
       sheetField(email, 'Email', CupertinoIcons.mail),
@@ -711,7 +715,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       }
     });
     if (ok == true) {
-      _toast('${role == 'instructor' ? 'Instructor' : 'Student'} created');
+      _toast('$roleLabel created');
       _load();
     }
   }
