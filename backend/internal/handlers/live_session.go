@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"strings"
 	"time"
@@ -14,14 +15,24 @@ import (
 // (real headcount), live chat and Q&A. All gated by enrollment in the session's
 // course. Chat/Q&A are polled by the client — no WebSocket infra.
 
-// liveAccess verifies the caller is enrolled in the session's course and returns
-// the chat/Q&A toggles. pgx.ErrNoRows means not entitled.
-func (h *Handlers) liveAccess(c *fiber.Ctx, sessionID string) (chatOK, qaOK bool, err error) {
+// liveAccess authorizes the caller for a session and returns the chat/Q&A
+// toggles plus whether the caller is course STAFF (the host/admin). Access is
+// granted to an enrolled student OR to course staff. pgx.ErrNoRows means not
+// entitled (or no such session) → callers map it to 403.
+func (h *Handlers) liveAccess(c *fiber.Ctx, sessionID string) (chatOK, qaOK, isStaff bool, err error) {
+	var courseID string
+	var enrolled bool
 	err = h.Pool.QueryRow(c.Context(), `
-		SELECT cs.chat_enabled, cs.qa_enabled
-		FROM class_sessions cs
-		JOIN course_enrollments ce ON ce.course_id = cs.course_id AND ce.user_id = $2 AND ce.status = 'active'
-		WHERE cs.id = $1`, sessionID, callerID(c)).Scan(&chatOK, &qaOK)
+		SELECT cs.chat_enabled, cs.qa_enabled, cs.course_id,
+		       EXISTS(SELECT 1 FROM course_enrollments ce WHERE ce.course_id=cs.course_id AND ce.user_id=$2 AND ce.status='active')
+		FROM class_sessions cs WHERE cs.id=$1`, sessionID, callerID(c)).Scan(&chatOK, &qaOK, &courseID, &enrolled)
+	if err != nil {
+		return
+	}
+	isStaff = h.canManageCourse(c, courseID) == nil
+	if !enrolled && !isStaff {
+		err = pgx.ErrNoRows
+	}
 	return
 }
 
@@ -33,24 +44,29 @@ func (h *Handlers) LiveSessionState(c *fiber.Ctx) error {
 	var startsAt time.Time
 	var assetID *string
 	var title, course string
-	var chatOK, qaOK bool
-	var hlsURL string
+	var chatOK, qaOK, enrolled bool
+	var hlsURL, courseID string
 	var viewerBase, durationSecs int
 	err := h.Pool.QueryRow(c.Context(), `
 		SELECT cs.starts_at, cs.media_asset_id, cs.title, c.title,
 		       cs.chat_enabled, cs.qa_enabled, cs.viewer_base, COALESCE(ma.duration_seconds, 0),
-		       COALESCE(ma.hls_url,'')
+		       COALESCE(ma.hls_url,''), cs.course_id,
+		       EXISTS(SELECT 1 FROM course_enrollments ce WHERE ce.course_id=cs.course_id AND ce.user_id=$2 AND ce.status='active')
 		FROM class_sessions cs
 		JOIN courses c ON c.id = cs.course_id
 		LEFT JOIN media_assets ma ON ma.id = cs.media_asset_id
-		JOIN course_enrollments ce ON ce.course_id = cs.course_id AND ce.user_id = $2 AND ce.status = 'active'
 		WHERE cs.id = $1`, sessionID, callerID(c)).Scan(
-		&startsAt, &assetID, &title, &course, &chatOK, &qaOK, &viewerBase, &durationSecs, &hlsURL)
+		&startsAt, &assetID, &title, &course, &chatOK, &qaOK, &viewerBase, &durationSecs, &hlsURL, &courseID, &enrolled)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
 	}
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "state load failed")
+	}
+	// Enrolled students OR course staff (the host) may view the state.
+	isStaff := h.canManageCourse(c, courseID) == nil
+	if !enrolled && !isStaff {
+		return fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
 	}
 	ready := hlsURL != ""
 
@@ -102,6 +118,7 @@ func (h *Handlers) LiveSessionState(c *fiber.Ctx) error {
 		"chat_enabled":        chatOK,
 		"qa_enabled":          qaOK,
 		"viewers":             viewers,
+		"is_host":             isStaff,
 	}
 	// Serve the recording's static R2 VOD playlist directly: the player buffers
 	// ahead freely (smooth) and pins its position to the device clock. No
@@ -116,7 +133,7 @@ func (h *Handlers) LiveSessionState(c *fiber.Ctx) error {
 // LiveHeartbeat marks the caller present (drives the real viewer count).
 func (h *Handlers) LiveHeartbeat(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
-	if _, _, err := h.liveAccess(c, sessionID); err != nil {
+	if _, _, _, err := h.liveAccess(c, sessionID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fiber.NewError(fiber.StatusForbidden, "not entitled")
 		}
@@ -135,28 +152,38 @@ func (h *Handlers) LiveHeartbeat(c *fiber.Ctx) error {
 // newer messages (the client passes the last message's timestamp as the cursor).
 func (h *Handlers) LiveChatList(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
-	if _, _, err := h.liveAccess(c, sessionID); err != nil {
+	_, _, isStaff, err := h.liveAccess(c, sessionID)
+	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fiber.NewError(fiber.StatusForbidden, "not entitled")
 		}
 		return fiber.NewError(fiber.StatusInternalServerError, "chat load failed")
 	}
 	after := strings.TrimSpace(c.Query("after"))
+	// Privacy: staff (the host) see every message; a student sees only the host's
+	// broadcasts plus their own messages — never other students'.
+	args := []any{sessionID}
+	vis := ""
+	if !isStaff {
+		args = append(args, callerID(c))
+		vis = " AND (from_staff = true OR user_id = $2)"
+	}
 	out := []fiber.Map{}
 	var rows pgx.Rows
-	var err error
 	if after != "" {
-		rows, err = h.Pool.Query(c.Context(),
-			`SELECT id, user_id, display_name, body, created_at FROM live_chat_messages
-			 WHERE session_id=$1 AND created_at > $2::timestamptz ORDER BY created_at ASC LIMIT 200`,
-			sessionID, after)
+		args = append(args, after)
+		cur := len(args) // $ index of the cursor
+		rows, err = h.Pool.Query(c.Context(), fmt.Sprintf(
+			`SELECT id, user_id, display_name, body, from_staff, created_at FROM live_chat_messages
+			 WHERE session_id=$1%s AND created_at > $%d::timestamptz ORDER BY created_at ASC LIMIT 200`, vis, cur),
+			args...)
 	} else {
-		// Initial load: newest 100, returned ascending.
-		rows, err = h.Pool.Query(c.Context(),
-			`SELECT id, user_id, display_name, body, created_at FROM (
-			   SELECT id, user_id, display_name, body, created_at FROM live_chat_messages
-			   WHERE session_id=$1 ORDER BY created_at DESC LIMIT 100
-			 ) t ORDER BY created_at ASC`, sessionID)
+		rows, err = h.Pool.Query(c.Context(), fmt.Sprintf(
+			`SELECT id, user_id, display_name, body, from_staff, created_at FROM (
+			   SELECT id, user_id, display_name, body, from_staff, created_at FROM live_chat_messages
+			   WHERE session_id=$1%s ORDER BY created_at DESC LIMIT 100
+			 ) t ORDER BY created_at ASC`, vis),
+			args...)
 	}
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "chat load failed")
@@ -164,11 +191,12 @@ func (h *Handlers) LiveChatList(c *fiber.Ctx) error {
 	defer rows.Close()
 	for rows.Next() {
 		var id, uid, name, body string
+		var fromStaff bool
 		var at time.Time
-		if err := rows.Scan(&id, &uid, &name, &body, &at); err != nil {
+		if err := rows.Scan(&id, &uid, &name, &body, &fromStaff, &at); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
-		out = append(out, fiber.Map{"id": id, "user_id": uid, "name": name, "body": body, "at": at.UTC().Format(time.RFC3339Nano)})
+		out = append(out, fiber.Map{"id": id, "user_id": uid, "name": name, "body": body, "from_staff": fromStaff, "at": at.UTC().Format(time.RFC3339Nano)})
 	}
 	return c.JSON(fiber.Map{"messages": out})
 }
@@ -176,7 +204,7 @@ func (h *Handlers) LiveChatList(c *fiber.Ctx) error {
 // LiveChatPost adds a chat message (gated on chat_enabled).
 func (h *Handlers) LiveChatPost(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
-	chatOK, _, err := h.liveAccess(c, sessionID)
+	chatOK, _, isStaff, err := h.liveAccess(c, sessionID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fiber.NewError(fiber.StatusForbidden, "not entitled")
 	}
@@ -190,17 +218,19 @@ func (h *Handlers) LiveChatPost(c *fiber.Ctx) error {
 	if perr != nil {
 		return perr
 	}
+	// from_staff marks a host message (broadcast to everyone); a student message
+	// is private to the host.
 	var id, name string
 	var at time.Time
 	if err := h.Pool.QueryRow(c.Context(),
-		`INSERT INTO live_chat_messages (session_id, user_id, display_name, body)
-		 VALUES ($1, $2, COALESCE((SELECT full_name FROM users WHERE id=$2), ''), $3)
+		`INSERT INTO live_chat_messages (session_id, user_id, display_name, body, from_staff)
+		 VALUES ($1, $2, COALESCE((SELECT full_name FROM users WHERE id=$2), ''), $3, $4)
 		 RETURNING id, display_name, created_at`,
-		sessionID, callerID(c), body).Scan(&id, &name, &at); err != nil {
+		sessionID, callerID(c), body, isStaff).Scan(&id, &name, &at); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "post failed")
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-		"id": id, "user_id": callerID(c), "name": name, "body": body, "at": at.UTC().Format(time.RFC3339Nano)})
+		"id": id, "user_id": callerID(c), "name": name, "body": body, "from_staff": isStaff, "at": at.UTC().Format(time.RFC3339Nano)})
 }
 
 // LiveChatDelete removes a chat message. Allowed for its author, or for staff
@@ -235,7 +265,7 @@ func (h *Handlers) LiveChatDelete(c *fiber.Ctx) error {
 // LiveQuestionsList returns the session's Q&A, newest first.
 func (h *Handlers) LiveQuestionsList(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
-	if _, _, err := h.liveAccess(c, sessionID); err != nil {
+	if _, _, _, err := h.liveAccess(c, sessionID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fiber.NewError(fiber.StatusForbidden, "not entitled")
 		}
@@ -264,7 +294,7 @@ func (h *Handlers) LiveQuestionsList(c *fiber.Ctx) error {
 // LiveQuestionPost submits a question (gated on qa_enabled).
 func (h *Handlers) LiveQuestionPost(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
-	_, qaOK, err := h.liveAccess(c, sessionID)
+	_, qaOK, _, err := h.liveAccess(c, sessionID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fiber.NewError(fiber.StatusForbidden, "not entitled")
 	}

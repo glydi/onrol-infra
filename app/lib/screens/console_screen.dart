@@ -17,6 +17,7 @@ import '../widgets/profile_view.dart';
 import '../widgets/ui.dart';
 import 'admin_calendar_screen.dart';
 import 'discussion_screen.dart';
+import 'live_session_screen.dart';
 import 'login_screen.dart';
 import 'video_store_screen.dart';
 
@@ -1906,6 +1907,11 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
               _smallButton('Host & record', CupertinoIcons.videocam_circle_fill, () => _openLink(hostUrl)),
               const SizedBox(width: 6),
             ],
+            // Host console — only for recorded-as-live sessions.
+            if (simulated) ...[
+              _smallButton('Host', CupertinoIcons.dot_radiowaves_left_right, () => _openHost(s)),
+              const SizedBox(width: 6),
+            ],
             _smallButton('Edit', CupertinoIcons.pencil, () => _editSession(s)),
             const SizedBox(width: 6),
             HoverTap(onTap: () => _deleteSession(s), child: const Icon(CupertinoIcons.trash, size: 18, color: AppleColors.red)),
@@ -1916,6 +1922,20 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         ),
       ),
     );
+  }
+
+  // Open the live host console: the admin sees all student chats (private to
+  // them) and can broadcast to everyone.
+  void _openHost(Map<String, dynamic> s) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => LiveSessionScreen(
+        auth: widget.auth,
+        sessionId: s['id'].toString(),
+        watermark: widget.auth.user?.email ?? 'host',
+        title: s['title']?.toString() ?? 'Live Class',
+        isHost: true,
+      ),
+    ));
   }
 
   Future<void> _deleteSession(Map<String, dynamic> s) async {

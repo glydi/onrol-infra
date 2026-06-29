@@ -15,11 +15,14 @@ import '../widgets/live_player.dart';
 /// panel, and a (real + simulated) viewer count. The student never sees a
 /// scrubber or a "recorded" hint — it looks like a genuine live class.
 class LiveSessionScreen extends StatefulWidget {
-  const LiveSessionScreen({super.key, required this.auth, required this.sessionId, required this.watermark, this.title = 'Live Class'});
+  const LiveSessionScreen({super.key, required this.auth, required this.sessionId, required this.watermark, this.title = 'Live Class', this.isHost = false});
   final AuthService auth;
   final String sessionId;
   final String watermark;
   final String title;
+  // Host (admin) control view: no video player, sees ALL chat (student messages
+  // are private to the host), and replies broadcast to everyone.
+  final bool isHost;
 
   @override
   State<LiveSessionScreen> createState() => _LiveSessionScreenState();
@@ -68,11 +71,14 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     _stateTimer = Timer.periodic(const Duration(seconds: 3), (_) => _pollState());
     _chatTimer = Timer.periodic(const Duration(milliseconds: 2500), (_) => _pollChat());
     _qaTimer = Timer.periodic(const Duration(seconds: 6), (_) => _pollQuestions());
-    _hbTimer = Timer.periodic(const Duration(seconds: 20), (_) => _heartbeat());
+    // The host isn't a viewer — don't count them in the headcount.
+    if (!widget.isHost) {
+      _hbTimer = Timer.periodic(const Duration(seconds: 20), (_) => _heartbeat());
+      _heartbeat();
+    }
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted && _status == 'upcoming') setState(() {}); // refresh countdown
     });
-    _heartbeat();
     _pollChat();
     _pollQuestions();
   }
@@ -242,7 +248,13 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         ),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text(_title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w700)),
+            Row(children: [
+              Flexible(child: Text(_title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w700))),
+              if (widget.isHost) ...[
+                const SizedBox(width: 8),
+                Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: _orange.withOpacity(0.2), borderRadius: BorderRadius.circular(5), border: Border.all(color: _orange.withOpacity(0.5))), child: Text('HOST', style: GoogleFonts.poppins(color: _orange, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.5))),
+              ],
+            ]),
             if (_course.isNotEmpty)
               Text(_course, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 12)),
           ]),
@@ -271,6 +283,9 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
 
   // ---- Stage (player / lobby / ended) --------------------------------------
   Widget _stage() {
+    // The host doesn't watch the stream here — they moderate. Show a control
+    // panel instead of the player.
+    if (widget.isHost) return _hostPanel();
     if (_status == 'live' && _playlistUrl != null) {
       return LivePlayer(key: ValueKey(_playlistUrl), playlistUrl: _playlistUrl!, watermark: widget.watermark, authToken: widget.auth.token, startEpochMs: _startEpochMs, skewMs: _skewMs);
     }
@@ -281,6 +296,40 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
       return _preparing();
     }
     return _lobby();
+  }
+
+  // Host control panel (shown instead of the player in host mode).
+  Widget _hostPanel() {
+    final statusText = _status == 'live'
+        ? 'LIVE NOW'
+        : _status == 'ended'
+            ? 'ENDED'
+            : _status == 'preparing'
+                ? 'PREPARING'
+                : 'STARTING SOON';
+    return AspectRatio(
+      aspectRatio: 16 / 9,
+      child: Container(
+        color: Colors.black,
+        padding: const EdgeInsets.all(20),
+        child: Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(CupertinoIcons.dot_radiowaves_left_right, size: 48, color: _orange),
+            const SizedBox(height: 14),
+            Text(_title, textAlign: TextAlign.center, style: GoogleFonts.poppins(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            Text('$statusText · ${_fmtCount(_viewers)} watching', style: GoogleFonts.poppins(color: Colors.white60, fontSize: 13, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.06), borderRadius: BorderRadius.circular(10)),
+              child: Text('You are hosting. Student messages are private to you;\nyour messages broadcast to everyone.',
+                  textAlign: TextAlign.center, style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12.5, height: 1.4)),
+            ),
+          ]),
+        ),
+      ),
+    );
   }
 
   // Scheduled time reached but the recording is still being prepared (transcode
@@ -369,28 +418,41 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
 
   Widget _chatTab() {
     final myId = widget.auth.user?.id ?? '';
-    final staff = widget.auth.user?.isStaff ?? false;
+    final staff = widget.isHost || (widget.auth.user?.isStaff ?? false);
+    final note = widget.isHost
+        ? 'Student messages are private to you. Your messages go to everyone.'
+        : 'Your messages go privately to the host.';
     return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 2),
+        child: Row(children: [
+          const Icon(CupertinoIcons.lock_fill, size: 11, color: Colors.white38),
+          const SizedBox(width: 5),
+          Expanded(child: Text(note, style: GoogleFonts.poppins(color: Colors.white38, fontSize: 11))),
+        ]),
+      ),
       Expanded(
         child: _messages.isEmpty
-            ? Center(child: Text('Say hello 👋', style: GoogleFonts.poppins(color: Colors.white38, fontSize: 13)))
+            ? Center(child: Text(widget.isHost ? 'No messages yet.' : 'Send the host a message 👋', style: GoogleFonts.poppins(color: Colors.white38, fontSize: 13)))
             : ListView.builder(
                 controller: _chatScroll,
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
                 itemCount: _messages.length,
                 itemBuilder: (_, i) {
                   final m = _messages[i];
                   final id = m['id']?.toString() ?? '';
                   final mine = (m['user_id']?.toString() ?? '') == myId;
-                  // Author can delete their own; staff can delete any (moderation).
+                  final fromStaff = m['from_staff'] == true;
+                  final name = m['name']?.toString().isNotEmpty == true ? m['name'].toString() : 'Student';
+                  final label = fromStaff ? (mine ? 'You (Host)' : 'Host') : (mine ? 'You' : name);
+                  final color = fromStaff ? _orange : (mine ? const Color(0xFF34C759) : const Color(0xFF8AB4F8));
                   final canDelete = id.isNotEmpty && (mine || staff);
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 9),
                     child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Expanded(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(mine ? 'You' : (m['name']?.toString().isNotEmpty == true ? m['name'].toString() : 'Student'),
-                              style: GoogleFonts.poppins(color: mine ? _orange : const Color(0xFF8AB4F8), fontSize: 11.5, fontWeight: FontWeight.w700)),
+                          Text(label, style: GoogleFonts.poppins(color: color, fontSize: 11.5, fontWeight: FontWeight.w700)),
                           const SizedBox(height: 1),
                           Text(m['body']?.toString() ?? '', style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.92), fontSize: 13, height: 1.25)),
                         ]),
@@ -409,7 +471,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                 },
               ),
       ),
-      _composer(_chatCtl, 'Message…', _sendChat, _sendingChat),
+      _composer(_chatCtl, widget.isHost ? 'Message everyone…' : 'Message the host…', _sendChat, _sendingChat),
     ]);
   }
 
