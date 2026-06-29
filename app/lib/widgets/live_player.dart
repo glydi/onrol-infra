@@ -51,22 +51,29 @@ class _LivePlayerState extends State<LivePlayer> {
   Widget? _webView;
   Timer? _syncTimer;
 
-  // Exact video position "now" = (real now + skew - start), in seconds.
+  // Exact video position "now" = device wall-clock (IST) − scheduled start, in
+  // seconds. No server clock involved.
   double _target() {
     if (widget.startEpochMs <= 0) return -1;
-    return (DateTime.now().millisecondsSinceEpoch + widget.skewMs - widget.startEpochMs) / 1000.0;
+    return (DateTime.now().millisecondsSinceEpoch - widget.startEpochMs) / 1000.0;
   }
 
   // Skip FORWARD to the wall-clock position whenever playback drifts behind
-  // (buffering); never replay the missed seconds.
+  // (buffering); never replay the missed seconds. Before start, hold at 0/paused.
   void _syncMobile({bool force = false}) {
     final c = _c;
     if (c == null || !c.value.isInitialized) return;
     final t = _target();
-    if (t < 0) return;
+    final durS = c.value.duration.inMilliseconds / 1000.0;
+    if (t < 0) {
+      c.seekTo(Duration.zero);
+      c.pause();
+      return;
+    }
+    final want = (durS > 0 && t > durS) ? durS : t;
     final cur = c.value.position.inMilliseconds / 1000.0;
-    if (force || (cur - t).abs() > 2.0) {
-      c.seekTo(Duration(milliseconds: (t < 0 ? 0 : t * 1000).round()));
+    if (force || (cur - want).abs() > 1.5) {
+      c.seekTo(Duration(milliseconds: (want * 1000).round()));
     }
     if (!c.value.isPlaying) c.play();
   }

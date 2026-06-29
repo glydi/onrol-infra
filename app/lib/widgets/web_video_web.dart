@@ -670,24 +670,34 @@ Widget liveHlsVideoElement(
     // in sync if the volume changes by any other means.
     video.onVolumeChange.listen((_) => setIcon(muteBtn, video.muted ? _icVolOff : _icVolUp, size: 26));
 
-    // The exact video position "now" = (real wall-clock now - scheduled start),
-    // device clock corrected by skewMs. -1 until we know the start.
+    // Exact position "now" = device wall-clock (IST) − scheduled start, seconds.
+    // -1 until the start is known. No server clock involved.
     double target() {
       if (startEpochMs <= 0) return -1;
-      return (DateTime.now().millisecondsSinceEpoch + skewMs - startEpochMs) / 1000.0;
+      return (DateTime.now().millisecondsSinceEpoch - startEpochMs) / 1000.0;
     }
 
-    // Pin playback to wall-clock time. If we've drifted BEHIND (buffering, a slow
-    // segment, a pause), skip FORWARD to "now" — the missed seconds are dropped,
-    // never replayed — so every video-second lines up with every real second and
-    // all viewers see the same frame. Small drifts are ignored to avoid churn.
+    // Pin the playhead to wall-clock time. The recording is loaded as VOD, so
+    // hls.js buffers far ahead (smooth — no live-edge starvation). If playback
+    // drifts BEHIND (a stall), skip FORWARD to "now"; the missed seconds are
+    // dropped, never replayed. Tiny drifts are ignored so we don't re-seek
+    // constantly. Before start (t<0) we hold at 0 and stay paused.
     void syncToTime({bool force = false}) {
       final t = target();
-      if (t < 0) return;
-      final cur = video.currentTime.toDouble();
-      if (force || (cur - t).abs() > 2.0) {
+      final dur = video.duration;
+      final cap = (dur.isFinite && dur > 0) ? dur.toDouble() : null;
+      if (t < 0) {
         try {
-          video.currentTime = t < 0 ? 0 : t;
+          video.currentTime = 0;
+        } catch (_) {}
+        video.pause();
+        return;
+      }
+      final want = (cap != null && t > cap) ? cap : t;
+      final cur = video.currentTime.toDouble();
+      if (force || (cur - want).abs() > 1.5) {
+        try {
+          video.currentTime = want;
         } catch (_) {}
       }
       if (video.paused && container.isConnected == true && html.document.fullscreenElement == null) {
@@ -698,35 +708,27 @@ Widget liveHlsVideoElement(
     final isHls = url.toLowerCase().contains('.m3u8');
     final hlsAvailable = js.context.hasProperty('Hls');
     if (isHls && hlsAvailable && (js.context['Hls'].callMethod('isSupported') as bool? ?? false)) {
-      // We drive the exact position ourselves, so keep hls.js near the edge but
-      // tell it not to apply its own latency correction (which would fight us).
-      final config = js.JsObject.jsify(<String, dynamic>{
-        'liveSyncDurationCount': 1,
-        'liveMaxLatencyDurationCount': 60,
-        'backBufferLength': 30,
-      });
-      if (authToken.isNotEmpty && js.context.hasProperty('onrolLiveXhrSetup')) {
-        // Attaches the JWT to BOTH the playlist and key requests (same-origin API).
-        config['xhrSetup'] = js.context.callMethod('onrolLiveXhrSetup', [authToken]);
+      // Plain VOD config → hls.js prebuffers ahead (smooth). Only the AES key
+      // request needs the JWT (the R2 playlist + segments are public).
+      final config = js.JsObject.jsify(<String, dynamic>{'backBufferLength': 30});
+      if (authToken.isNotEmpty && js.context.hasProperty('onrolKeyXhrSetup')) {
+        config['xhrSetup'] = js.context.callMethod('onrolKeyXhrSetup', [authToken]);
       }
       final hls = js.JsObject(js.context['Hls'] as js.JsFunction, [config]);
-      // Recover from fatal network/media errors instead of getting stuck.
       if (js.context.hasProperty('onrolLiveGuard')) {
         js.context.callMethod('onrolLiveGuard', [hls]);
       }
       hls.callMethod('loadSource', [url]);
       hls.callMethod('attachMedia', [video]);
     } else {
-      // Safari plays HLS natively.
-      video.src = url;
+      video.src = url; // Safari / mp4
     }
 
-    // Align to the wall-clock position as soon as playback is possible, then hold
-    // it there every second (skipping forward whenever it falls behind).
+    // Seek to the correct position as soon as we can, then hold it each second.
     video.onLoadedMetadata.listen((_) => syncToTime(force: true));
     video.onCanPlay.listen((_) => syncToTime(force: true));
     video.onPause.listen((_) {
-      if (container.isConnected == true && html.document.fullscreenElement == null) syncToTime(force: true);
+      if (container.isConnected == true && html.document.fullscreenElement == null) syncToTime();
     });
     html.document.onVisibilityChange.listen((_) {
       if (html.document.hidden == false) syncToTime(force: true);
@@ -739,7 +741,6 @@ Widget liveHlsVideoElement(
       }
       syncToTime();
     });
-    video.play();
     return container;
   });
   return HtmlElementView(viewType: viewType);

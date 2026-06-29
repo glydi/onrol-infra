@@ -33,24 +33,26 @@ func (h *Handlers) LiveSessionState(c *fiber.Ctx) error {
 	var startsAt time.Time
 	var assetID *string
 	var title, course string
-	var chatOK, qaOK, ready bool
+	var chatOK, qaOK bool
+	var hlsURL string
 	var viewerBase, durationSecs int
 	err := h.Pool.QueryRow(c.Context(), `
 		SELECT cs.starts_at, cs.media_asset_id, cs.title, c.title,
 		       cs.chat_enabled, cs.qa_enabled, cs.viewer_base, COALESCE(ma.duration_seconds, 0),
-		       COALESCE(ma.hls_url,'') <> '' AS ready
+		       COALESCE(ma.hls_url,'')
 		FROM class_sessions cs
 		JOIN courses c ON c.id = cs.course_id
 		LEFT JOIN media_assets ma ON ma.id = cs.media_asset_id
 		JOIN course_enrollments ce ON ce.course_id = cs.course_id AND ce.user_id = $2 AND ce.status = 'active'
 		WHERE cs.id = $1`, sessionID, callerID(c)).Scan(
-		&startsAt, &assetID, &title, &course, &chatOK, &qaOK, &viewerBase, &durationSecs, &ready)
+		&startsAt, &assetID, &title, &course, &chatOK, &qaOK, &viewerBase, &durationSecs, &hlsURL)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
 	}
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "state load failed")
 	}
+	ready := hlsURL != ""
 
 	now := time.Now()
 	elapsed := now.Sub(startsAt).Seconds()
@@ -101,8 +103,12 @@ func (h *Handlers) LiveSessionState(c *fiber.Ctx) error {
 		"qa_enabled":          qaOK,
 		"viewers":             viewers,
 	}
-	if status == "live" && assetID != nil {
-		out["playlist_url"] = "/api/v1/me/live/" + sessionID + "/playlist.m3u8"
+	// Serve the recording's static R2 VOD playlist directly: the player buffers
+	// ahead freely (smooth) and pins its position to the device clock. No
+	// per-request server playlist. The AES key URI inside it is the existing
+	// auth-gated /me/videos/:id/hls.key.
+	if status == "live" && hlsURL != "" {
+		out["playlist_url"] = hlsURL
 	}
 	return c.JSON(out)
 }

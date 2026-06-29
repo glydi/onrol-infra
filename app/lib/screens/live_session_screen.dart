@@ -104,12 +104,13 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         _qaOn = d['qa_enabled'] == true;
         final sa = DateTime.tryParse(d['starts_at']?.toString() ?? '');
         _startsAt = sa?.toLocal();
+        // Time-lock uses the DEVICE clock (IST) vs. the scheduled start — no
+        // dependence on the server clock.
         if (sa != null) _startEpochMs = sa.toUtc().millisecondsSinceEpoch;
-        // Correct the device clock against the server so the time-lock is exact.
-        final sn = DateTime.tryParse(d['server_now']?.toString() ?? '');
-        if (sn != null) _skewMs = sn.toUtc().millisecondsSinceEpoch - DateTime.now().millisecondsSinceEpoch;
         final p = d['playlist_url']?.toString();
-        if (p != null && p.isNotEmpty) _playlistUrl = '${Config.apiBase}$p';
+        if (p != null && p.isNotEmpty) {
+          _playlistUrl = p.startsWith('http') ? p : '${Config.apiBase}$p';
+        }
         _loaded = true;
       });
     } on ApiException catch (e) {
