@@ -77,6 +77,22 @@
         }
       };
     };
+    // Simulated-live: stop the OS / browser media notification (lock screen,
+    // notification shade, desktop media hub) from exposing seek / skip controls
+    // or a scrubber — those reveal it's a seekable recording AND let a viewer
+    // skip from outside the page. Remove every position/seek action and show a
+    // neutral "Live" label. Re-applied on each play (the browser can reset it).
+    window.onrolNeuterMediaSession = function () {
+      try {
+        if (!('mediaSession' in navigator)) return;
+        if (window.MediaMetadata) {
+          navigator.mediaSession.metadata = new MediaMetadata({ title: 'Live', artist: '', album: '' });
+        }
+        ['seekbackward', 'seekforward', 'seekto', 'previoustrack', 'nexttrack', 'skipad', 'stop'].forEach(function (a) {
+          try { navigator.mediaSession.setActionHandler(a, null); } catch (e) {}
+        });
+      } catch (e) {}
+    };
     // Keep a simulated-live stream from getting permanently stuck: recover from
     // fatal network/media errors instead of dying on them.
     window.onrolLiveGuard = function (hls) {

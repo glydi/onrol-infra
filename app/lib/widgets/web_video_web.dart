@@ -735,10 +735,23 @@ Widget liveHlsVideoElement(
       video.src = url; // Safari / mp4
     }
 
+    // Strip seek/skip/details from the OS media notification so it looks live
+    // (and can't be scrubbed from outside the page). Re-applied on each play.
+    void neuterMediaSession() {
+      try {
+        if (js.context.hasProperty('onrolNeuterMediaSession')) js.context.callMethod('onrolNeuterMediaSession');
+      } catch (_) {}
+    }
+
+    video.onPlay.listen((_) => neuterMediaSession());
+
     // Align once when ready (loadedmetadata/canplay), then just hold position
     // each second — re-seeking only on a real drift, so no seek loop on Chrome.
     video.onLoadedMetadata.listen((_) => syncToTime(initial: true));
-    video.onCanPlay.listen((_) => syncToTime(initial: true));
+    video.onCanPlay.listen((_) {
+      syncToTime(initial: true);
+      neuterMediaSession();
+    });
     video.onPause.listen((_) {
       if (container.isConnected == true && html.document.fullscreenElement == null) syncToTime();
     });
