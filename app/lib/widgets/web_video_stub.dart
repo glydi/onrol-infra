@@ -15,5 +15,7 @@ Widget hlsVideoElement(
 Widget liveHlsVideoElement(
   String url, {
   String authToken = '',
+  int startEpochMs = 0,
+  int skewMs = 0,
 }) =>
     const SizedBox.shrink();

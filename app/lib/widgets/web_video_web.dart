@@ -543,15 +543,18 @@ void _ensureLivePulse() {
   );
 }
 
-/// Stripped-down player for a simulated-live session: a <video> driven by hls.js
-/// in LIVE mode (no scrubber, no seek, no speed, no real pause — pausing just
-/// snaps back to the live edge). Only mute/unmute + fullscreen are exposed. The
-/// sliding-window playlist on the server is what actually prevents skipping
-/// ahead; this UI simply never offers the controls. Starts muted (browsers block
-/// unmuted autoplay) with a tap-to-unmute affordance.
+/// Stripped-down player for a simulated-live session. Playback position is pinned
+/// to WALL-CLOCK TIME since the scheduled start (startEpochMs): on load it seeks
+/// to (now - start), and if it ever falls behind (buffering) it SKIPS forward to
+/// the current time instead of playing the missed part — so every second of the
+/// video lines up with every real second, and all viewers see the same frame.
+/// skewMs corrects the device clock against the server. No scrubber/seek/speed
+/// controls; only mute + fullscreen. Starts muted (browsers block unmuted autoplay).
 Widget liveHlsVideoElement(
   String url, {
   String authToken = '',
+  int startEpochMs = 0,
+  int skewMs = 0,
 }) {
   final viewType = 'onrol-live-${_seq++}';
   ui_web.platformViewRegistry.registerViewFactory(viewType, (int id) {
@@ -667,12 +670,41 @@ Widget liveHlsVideoElement(
     // in sync if the volume changes by any other means.
     video.onVolumeChange.listen((_) => setIcon(muteBtn, video.muted ? _icVolOff : _icVolUp, size: 26));
 
+    // The exact video position "now" = (real wall-clock now - scheduled start),
+    // device clock corrected by skewMs. -1 until we know the start.
+    double target() {
+      if (startEpochMs <= 0) return -1;
+      return (DateTime.now().millisecondsSinceEpoch + skewMs - startEpochMs) / 1000.0;
+    }
+
+    // Pin playback to wall-clock time. If we've drifted BEHIND (buffering, a slow
+    // segment, a pause), skip FORWARD to "now" — the missed seconds are dropped,
+    // never replayed — so every video-second lines up with every real second and
+    // all viewers see the same frame. Small drifts are ignored to avoid churn.
+    void syncToTime({bool force = false}) {
+      final t = target();
+      if (t < 0) return;
+      final cur = video.currentTime.toDouble();
+      if (force || (cur - t).abs() > 2.0) {
+        try {
+          video.currentTime = t < 0 ? 0 : t;
+        } catch (_) {}
+      }
+      if (video.paused && container.isConnected == true && html.document.fullscreenElement == null) {
+        video.play();
+      }
+    }
+
     final isHls = url.toLowerCase().contains('.m3u8');
     final hlsAvailable = js.context.hasProperty('Hls');
     if (isHls && hlsAvailable && (js.context['Hls'].callMethod('isSupported') as bool? ?? false)) {
-      // hls.js in live mode: it plays at the live edge and won't seek past it
-      // because the server playlist never names a segment beyond "now".
-      final config = js.JsObject.jsify(<String, dynamic>{'liveSyncDurationCount': 3, 'backBufferLength': 30});
+      // We drive the exact position ourselves, so keep hls.js near the edge but
+      // tell it not to apply its own latency correction (which would fight us).
+      final config = js.JsObject.jsify(<String, dynamic>{
+        'liveSyncDurationCount': 1,
+        'liveMaxLatencyDurationCount': 60,
+        'backBufferLength': 30,
+      });
       if (authToken.isNotEmpty && js.context.hasProperty('onrolLiveXhrSetup')) {
         // Attaches the JWT to BOTH the playlist and key requests (same-origin API).
         config['xhrSetup'] = js.context.callMethod('onrolLiveXhrSetup', [authToken]);
@@ -684,64 +716,29 @@ Widget liveHlsVideoElement(
       }
       hls.callMethod('loadSource', [url]);
       hls.callMethod('attachMedia', [video]);
-
-      void snapToEdge() {
-        try {
-          final pos = hls['liveSyncPosition'];
-          if (pos != null) {
-            final p = (pos as num).toDouble();
-            if (p.isFinite && p > 0) video.currentTime = p;
-          }
-        } catch (_) {}
-      }
-
-      // No real pause: if anything pauses the video, jump to the live edge and
-      // resume so every viewer stays on the same wall-clock frame.
-      video.onPause.listen((_) {
-        if (container.isConnected == true && html.document.fullscreenElement == null) {
-          snapToEdge();
-          video.play();
-        }
-      });
-      // Returning to the tab snaps forward to "now" instead of resuming behind.
-      html.document.onVisibilityChange.listen((_) {
-        if (html.document.hidden == false) {
-          snapToEdge();
-          video.play();
-        }
-      });
-
-      // Watchdog: if playback hasn't advanced for ~4s while "playing", nudge it
-      // back to the live edge so a transient stall can't wedge the stream.
-      _liveGuardTimer?.cancel();
-      var lastT = -1.0;
-      var stalled = 0;
-      _liveGuardTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-        if (container.isConnected != true) {
-          t.cancel();
-          return;
-        }
-        if (video.paused) {
-          lastT = video.currentTime.toDouble();
-          stalled = 0;
-          return;
-        }
-        final cur = video.currentTime.toDouble();
-        if ((cur - lastT).abs() < 0.05) {
-          if (++stalled >= 6) {
-            snapToEdge();
-            video.play();
-            stalled = 0;
-          }
-        } else {
-          stalled = 0;
-        }
-        lastT = cur;
-      });
     } else {
-      // Safari plays live HLS natively (follows the edge; native controls off).
+      // Safari plays HLS natively.
       video.src = url;
     }
+
+    // Align to the wall-clock position as soon as playback is possible, then hold
+    // it there every second (skipping forward whenever it falls behind).
+    video.onLoadedMetadata.listen((_) => syncToTime(force: true));
+    video.onCanPlay.listen((_) => syncToTime(force: true));
+    video.onPause.listen((_) {
+      if (container.isConnected == true && html.document.fullscreenElement == null) syncToTime(force: true);
+    });
+    html.document.onVisibilityChange.listen((_) {
+      if (html.document.hidden == false) syncToTime(force: true);
+    });
+    _liveGuardTimer?.cancel();
+    _liveGuardTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (container.isConnected != true) {
+        t.cancel();
+        return;
+      }
+      syncToTime();
+    });
     video.play();
     return container;
   });

@@ -40,6 +40,8 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   bool _chatOn = true, _qaOn = true;
   String? _playlistUrl; // absolute, set once live
   DateTime? _startsAt;
+  int _startEpochMs = 0; // scheduled start (UTC ms) — drives time-locked playback
+  int _skewMs = 0; // server clock - device clock (ms)
   bool _loaded = false;
   String? _fatal;
 
@@ -100,7 +102,12 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         _viewers = (d['viewers'] as num?)?.toInt() ?? _viewers;
         _chatOn = d['chat_enabled'] == true;
         _qaOn = d['qa_enabled'] == true;
-        _startsAt = DateTime.tryParse(d['starts_at']?.toString() ?? '')?.toLocal();
+        final sa = DateTime.tryParse(d['starts_at']?.toString() ?? '');
+        _startsAt = sa?.toLocal();
+        if (sa != null) _startEpochMs = sa.toUtc().millisecondsSinceEpoch;
+        // Correct the device clock against the server so the time-lock is exact.
+        final sn = DateTime.tryParse(d['server_now']?.toString() ?? '');
+        if (sn != null) _skewMs = sn.toUtc().millisecondsSinceEpoch - DateTime.now().millisecondsSinceEpoch;
         final p = d['playlist_url']?.toString();
         if (p != null && p.isNotEmpty) _playlistUrl = '${Config.apiBase}$p';
         _loaded = true;
@@ -151,6 +158,17 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     } catch (_) {} finally {
       if (mounted) setState(() => _sendingChat = false);
     }
+  }
+
+  Future<void> _deleteChat(String id) async {
+    // Optimistic: drop it locally, then ask the server.
+    setState(() {
+      _messages.removeWhere((m) => m['id']?.toString() == id);
+      _msgIds.remove(id);
+    });
+    try {
+      await widget.auth.apiDelete('$_base/chat/$id');
+    } catch (_) {/* if it fails the next poll will bring it back */}
   }
 
   Future<void> _pollQuestions() async {
@@ -253,7 +271,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   // ---- Stage (player / lobby / ended) --------------------------------------
   Widget _stage() {
     if (_status == 'live' && _playlistUrl != null) {
-      return LivePlayer(key: ValueKey(_playlistUrl), playlistUrl: _playlistUrl!, watermark: widget.watermark, authToken: widget.auth.token);
+      return LivePlayer(key: ValueKey(_playlistUrl), playlistUrl: _playlistUrl!, watermark: widget.watermark, authToken: widget.auth.token, startEpochMs: _startEpochMs, skewMs: _skewMs);
     }
     if (_status == 'ended') {
       return _placeholder(CupertinoIcons.checkmark_seal_fill, 'This live class has ended', 'Thanks for joining.');
@@ -350,6 +368,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
 
   Widget _chatTab() {
     final myId = widget.auth.user?.id ?? '';
+    final staff = widget.auth.user?.isStaff ?? false;
     return Column(children: [
       Expanded(
         child: _messages.isEmpty
@@ -360,14 +379,30 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                 itemCount: _messages.length,
                 itemBuilder: (_, i) {
                   final m = _messages[i];
+                  final id = m['id']?.toString() ?? '';
                   final mine = (m['user_id']?.toString() ?? '') == myId;
+                  // Author can delete their own; staff can delete any (moderation).
+                  final canDelete = id.isNotEmpty && (mine || staff);
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 9),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(mine ? 'You' : (m['name']?.toString().isNotEmpty == true ? m['name'].toString() : 'Student'),
-                          style: GoogleFonts.poppins(color: mine ? _orange : const Color(0xFF8AB4F8), fontSize: 11.5, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 1),
-                      Text(m['body']?.toString() ?? '', style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.92), fontSize: 13, height: 1.25)),
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(mine ? 'You' : (m['name']?.toString().isNotEmpty == true ? m['name'].toString() : 'Student'),
+                              style: GoogleFonts.poppins(color: mine ? _orange : const Color(0xFF8AB4F8), fontSize: 11.5, fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 1),
+                          Text(m['body']?.toString() ?? '', style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.92), fontSize: 13, height: 1.25)),
+                        ]),
+                      ),
+                      if (canDelete)
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => _deleteChat(id),
+                          child: const Padding(
+                            padding: EdgeInsets.only(left: 8, top: 1),
+                            child: Icon(CupertinoIcons.trash, size: 14, color: Colors.white38),
+                          ),
+                        ),
                     ]),
                   );
                 },

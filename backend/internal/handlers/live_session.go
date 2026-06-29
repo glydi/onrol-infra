@@ -197,6 +197,35 @@ func (h *Handlers) LiveChatPost(c *fiber.Ctx) error {
 		"id": id, "user_id": callerID(c), "name": name, "body": body, "at": at.UTC().Format(time.RFC3339Nano)})
 }
 
+// LiveChatDelete removes a chat message. Allowed for its author, or for staff
+// who can manage the session's course (moderation).
+func (h *Handlers) LiveChatDelete(c *fiber.Ctx) error {
+	sessionID := c.Params("id")
+	msgID := c.Params("msgId")
+	var authorID, courseID string
+	err := h.Pool.QueryRow(c.Context(),
+		`SELECT m.user_id, cs.course_id
+		 FROM live_chat_messages m JOIN class_sessions cs ON cs.id = m.session_id
+		 WHERE m.id = $1 AND m.session_id = $2`, msgID, sessionID).Scan(&authorID, &courseID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fiber.NewError(fiber.StatusNotFound, "message not found")
+	}
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "delete failed")
+	}
+	// The author can always delete their own; otherwise the caller must be able
+	// to manage the course (instructor/manager) to moderate someone else's.
+	if authorID != callerID(c) {
+		if cerr := h.canManageCourse(c, courseID); cerr != nil {
+			return fiber.NewError(fiber.StatusForbidden, "cannot delete this message")
+		}
+	}
+	if _, err := h.Pool.Exec(c.Context(), `DELETE FROM live_chat_messages WHERE id=$1`, msgID); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "delete failed")
+	}
+	return c.JSON(fiber.Map{"deleted": true, "id": msgID})
+}
+
 // LiveQuestionsList returns the session's Q&A, newest first.
 func (h *Handlers) LiveQuestionsList(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
