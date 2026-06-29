@@ -184,6 +184,33 @@ func (h *Handlers) transcodeToHLS(assetID, sourceKey string) {
 	log.Printf("transcode %s: ready -> %s", assetID, hlsURL)
 }
 
+// ResumeStuckTranscodes re-runs transcoding for any asset left in 'processing'.
+// A deploy/restart kills the in-flight transcode goroutine, so on a fresh boot
+// every 'processing' row is stranded — re-queue them so videos actually finish.
+func (h *Handlers) ResumeStuckTranscodes(ctx context.Context) {
+	rows, err := h.Pool.Query(ctx, `SELECT id, object_key FROM media_assets WHERE status='processing'`)
+	if err != nil {
+		log.Printf("resume transcodes: query failed: %v", err)
+		return
+	}
+	type job struct{ id, key string }
+	var jobs []job
+	for rows.Next() {
+		var j job
+		if err := rows.Scan(&j.id, &j.key); err == nil && j.key != "" {
+			jobs = append(jobs, j)
+		}
+	}
+	rows.Close()
+	if len(jobs) == 0 {
+		return
+	}
+	log.Printf("resume transcodes: re-queuing %d stuck asset(s)", len(jobs))
+	for _, j := range jobs {
+		go h.transcodeToHLS(j.id, j.key)
+	}
+}
+
 func tail(s string, n int) string {
 	if len(s) > n {
 		return s[len(s)-n:]

@@ -1931,10 +1931,9 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     final viewers = TextEditingController(text: '${s['viewer_base'] ?? 0}');
     int mode = (s['kind']?.toString() ?? 'external') == 'simulated' ? 1 : 0;
     String? videoId = (s['media_asset_id']?.toString() ?? '').isEmpty ? null : s['media_asset_id'].toString();
+    String videoTitle = s['media_title']?.toString() ?? '';
     bool chatOn = s['chat_enabled'] != false;
     bool qaOn = s['qa_enabled'] != false;
-    final videos = await _loadVideos();
-    if (!mounted) return;
     final ok = await showFormSheet(context, square: true, title: 'Edit Live Class', builder: (setS) => [
       sheetField(title, 'Title', CupertinoIcons.textformat),
       const SizedBox(height: 10),
@@ -1947,8 +1946,12 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         const SizedBox(height: 6),
         _label(context, 'The host link is shown only to staff via “Host & record”. Students never see it.'),
       ] else
-        ..._simLiveFields(videos, videoId, chatOn, qaOn, viewers,
-            (id) => setS(() => videoId = id), (v) => setS(() => chatOn = v), (v) => setS(() => qaOn = v)),
+        ..._simLiveFields(videoId, videoTitle, chatOn, qaOn, viewers,
+            () => _pickFromStore((id, t) => setS(() {
+                  videoId = id;
+                  videoTitle = t;
+                })),
+            (v) => setS(() => chatOn = v), (v) => setS(() => qaOn = v)),
     ], onSubmit: () async {
       if (mode == 0 && url.text.trim().isEmpty && host.text.trim().isEmpty) return 'Add a join or host link';
       if (mode == 1 && (videoId == null || videoId!.isEmpty)) return 'Pick a video to stream';
@@ -2199,58 +2202,41 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     }
   }
 
-  // Load the video store (for the recorded-as-live picker).
-  Future<List<Map<String, dynamic>>> _loadVideos() async {
-    try {
-      final r = await widget.auth.apiGet('/api/v1/manage/videos');
-      return ((ApiClient.decode(r)['videos'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
-    } catch (_) {
-      return [];
-    }
+  // Open the Video Store as a picker (browse / upload / choose), returning the
+  // chosen asset's id + title. Used by the recorded-as-live flow.
+  Future<void> _pickFromStore(void Function(String id, String title) onPicked) async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (sctx) => VideoStoreScreen(
+        auth: widget.auth,
+        onPick: (id, url, title) {
+          onPicked(id, title);
+          Navigator.of(sctx).pop();
+        },
+      ),
+    ));
   }
 
-  // A selectable list of EVERY video in the store. Any can be picked (a session
-  // is usually scheduled ahead, so a still-processing upload will be ready by the
-  // start time); the status line just tells the admin where each one is.
-  Widget _videoPicker(List<Map<String, dynamic>> videos, String? selectedId, void Function(String) onPick) {
+  // The recorded-as-live form fields: a "Choose from Video Store" button (opens
+  // the full store) + the current pick + chat/Q&A toggles + the viewer floor.
+  List<Widget> _simLiveFields(String? videoId, String videoTitle, bool chatOn, bool qaOn,
+      TextEditingController viewers, VoidCallback onOpenStore, void Function(bool) onChat, void Function(bool) onQa) {
     final p = Palette.of(context);
-    if (videos.isEmpty) return _label(context, 'No videos in the store yet — upload one in the Video Store first.');
-    return Container(
-      constraints: const BoxConstraints(maxHeight: 260),
-      decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
-      child: ListView(shrinkWrap: true, children: [
-        for (final v in videos)
-          Builder(builder: (_) {
-            final id = v['id']?.toString() ?? '';
-            final status = v['status']?.toString() ?? '';
-            final sel = id == selectedId;
-            final label = status == 'ready'
-                ? 'Ready'
-                : status == 'processing'
-                    ? 'Processing — ready before start'
-                    : status == 'failed'
-                        ? 'Transcode failed — plays source'
-                        : status;
-            return ListTile(
-              dense: true,
-              onTap: () => onPick(id),
-              leading: Icon(sel ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle, size: 20, color: sel ? AppleColors.green : p.secondary),
-              title: Text(v['title']?.toString() ?? 'Untitled', style: AppleTheme.body(context)),
-              subtitle: Text(label, style: AppleTheme.footnote(context)),
-            );
-          }),
-      ]),
-    );
-  }
-
-  // The recorded-as-live form fields (video picker + chat/Q&A toggles + floor).
-  List<Widget> _simLiveFields(List<Map<String, dynamic>> videos, String? videoId, bool chatOn, bool qaOn,
-      TextEditingController viewers, void Function(String) onPick, void Function(bool) onChat, void Function(bool) onQa) {
+    final picked = videoId != null && videoId.isNotEmpty;
     return [
-      _label(context, 'Pick a video from the store. It plays as a live stream from the scheduled time — viewers can’t skip ahead, pause, or tell it was recorded.'),
-      const SizedBox(height: 6),
-      _videoPicker(videos, videoId, onPick),
-      const SizedBox(height: 10),
+      _label(context, 'Choose a video from the store — it streams as a live class from the scheduled start time (no skipping, no pause).'),
+      const SizedBox(height: 8),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+        child: Row(children: [
+          Icon(picked ? CupertinoIcons.film_fill : CupertinoIcons.film, size: 18, color: picked ? AppleColors.green : p.secondary),
+          const SizedBox(width: 10),
+          Expanded(child: Text(picked ? videoTitle : 'No video chosen yet', maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.body(context))),
+        ]),
+      ),
+      const SizedBox(height: 8),
+      PrimaryButton(label: picked ? 'Change video' : 'Choose from Video Store', icon: CupertinoIcons.film, square: true, onPressed: onOpenStore),
+      const SizedBox(height: 12),
       Row(children: [Expanded(child: _label(context, 'Live chat')), CupertinoSwitch(value: chatOn, onChanged: onChat)]),
       Row(children: [Expanded(child: _label(context, 'Q&A / raise hand')), CupertinoSwitch(value: qaOn, onChanged: onQa)]),
       const SizedBox(height: 8),
@@ -2266,9 +2252,8 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     DateTime when = DateTime.now().add(const Duration(hours: 1));
     int mode = 0; // 0 = external link, 1 = recorded-as-live
     String? videoId;
+    String videoTitle = '';
     bool chatOn = true, qaOn = true;
-    final videos = await _loadVideos();
-    if (!mounted) return;
     final ok = await showFormSheet(context, square: true, title: 'Add Live Class', builder: (setS) => [
       sheetField(title, 'Title (e.g. Lecture 1)', CupertinoIcons.textformat),
       const SizedBox(height: 10),
@@ -2279,8 +2264,12 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         const SizedBox(height: 10),
         sheetField(host, 'Host link — instructor records (Zoho host URL, optional)', CupertinoIcons.videocam_circle),
       ] else
-        ..._simLiveFields(videos, videoId, chatOn, qaOn, viewers,
-            (id) => setS(() => videoId = id), (v) => setS(() => chatOn = v), (v) => setS(() => qaOn = v)),
+        ..._simLiveFields(videoId, videoTitle, chatOn, qaOn, viewers,
+            () => _pickFromStore((id, t) => setS(() {
+                  videoId = id;
+                  videoTitle = t;
+                })),
+            (v) => setS(() => chatOn = v), (v) => setS(() => qaOn = v)),
       const SizedBox(height: 12),
       _DateTimeRow(value: when, onPick: (d) => setS(() => when = d)),
     ], onSubmit: () async {
@@ -2500,7 +2489,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
             icon: CupertinoIcons.film,
             square: true,
             onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => VideoStoreScreen(auth: widget.auth, onPick: (url, t) {
+              builder: (_) => VideoStoreScreen(auth: widget.auth, onPick: (id, url, t) {
                 body.text = url;
                 if (title.text.trim().isEmpty) title.text = t;
                 setS(() {});

@@ -69,6 +69,10 @@ func main() {
 	// + best-effort; the client falls back to the proxy upload if this isn't set.
 	go h.EnsureR2Cors(ctx)
 
+	// Re-queue any transcode left stranded in 'processing' by a previous
+	// restart, so videos (incl. simulated-live recordings) finish on their own.
+	go h.ResumeStuckTranscodes(ctx)
+
 	app := fiber.New(fiber.Config{
 		AppName:               "onrol-api",
 		ErrorHandler:          router.ErrorHandler,

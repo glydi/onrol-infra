@@ -16,9 +16,9 @@ import 'video_player_screen.dart';
 class VideoStoreScreen extends StatefulWidget {
   const VideoStoreScreen({super.key, required this.auth, this.onPick});
   final AuthService auth;
-  // When provided, each video shows a "Use" button that returns its URL — lets
-  // the Add Lesson flow pick from the store.
-  final void Function(String url, String title)? onPick;
+  // When provided, each video shows a "Use" button that returns its id + URL —
+  // lets the Add Lesson / Add Live flows pick from the store.
+  final void Function(String id, String url, String title)? onPick;
 
   @override
   State<VideoStoreScreen> createState() => _VideoStoreScreenState();
@@ -334,7 +334,7 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
           if (widget.onPick != null)
             HoverTap(
               // Allow picking even while processing — it'll switch to HLS once ready.
-              onTap: () => widget.onPick!(url, title),
+              onTap: () => widget.onPick!(v['id']?.toString() ?? '', url, title),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(color: p.accent),

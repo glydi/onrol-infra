@@ -258,8 +258,30 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     if (_status == 'ended') {
       return _placeholder(CupertinoIcons.checkmark_seal_fill, 'This live class has ended', 'Thanks for joining.');
     }
+    if (_status == 'preparing') {
+      return _preparing();
+    }
     return _lobby();
   }
+
+  // Scheduled time reached but the recording is still being prepared (transcode
+  // not finished). We wait here and auto-start the moment it's ready — so it
+  // still begins at the correct time-synced position.
+  Widget _preparing() => AspectRatio(
+        aspectRatio: 16 / 9,
+        child: Container(
+          color: Colors.black,
+          child: Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const CupertinoActivityIndicator(color: Colors.white, radius: 16),
+              const SizedBox(height: 16),
+              Text(_title, textAlign: TextAlign.center, style: GoogleFonts.poppins(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              Text('The live class is starting…', style: GoogleFonts.poppins(color: Colors.white54, fontSize: 13)),
+            ]),
+          ),
+        ),
+      );
 
   Widget _lobby() {
     final remain = _startsAt == null ? null : _startsAt!.difference(DateTime.now());

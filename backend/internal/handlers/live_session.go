@@ -33,17 +33,18 @@ func (h *Handlers) LiveSessionState(c *fiber.Ctx) error {
 	var startsAt time.Time
 	var assetID *string
 	var title, course string
-	var chatOK, qaOK bool
+	var chatOK, qaOK, ready bool
 	var viewerBase, durationSecs int
 	err := h.Pool.QueryRow(c.Context(), `
 		SELECT cs.starts_at, cs.media_asset_id, cs.title, c.title,
-		       cs.chat_enabled, cs.qa_enabled, cs.viewer_base, COALESCE(ma.duration_seconds, 0)
+		       cs.chat_enabled, cs.qa_enabled, cs.viewer_base, COALESCE(ma.duration_seconds, 0),
+		       COALESCE(ma.hls_url,'') <> '' AS ready
 		FROM class_sessions cs
 		JOIN courses c ON c.id = cs.course_id
 		LEFT JOIN media_assets ma ON ma.id = cs.media_asset_id
 		JOIN course_enrollments ce ON ce.course_id = cs.course_id AND ce.user_id = $2 AND ce.status = 'active'
 		WHERE cs.id = $1`, sessionID, callerID(c)).Scan(
-		&startsAt, &assetID, &title, &course, &chatOK, &qaOK, &viewerBase, &durationSecs)
+		&startsAt, &assetID, &title, &course, &chatOK, &qaOK, &viewerBase, &durationSecs, &ready)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
 	}
@@ -57,6 +58,10 @@ func (h *Handlers) LiveSessionState(c *fiber.Ctx) error {
 	switch {
 	case elapsed < 0:
 		status = "upcoming"
+	case assetID != nil && !ready:
+		// Scheduled time reached but the recording is still transcoding — the
+		// room waits on this instead of loading a playlist that 409s.
+		status = "preparing"
 	case durationSecs > 0 && elapsed >= float64(durationSecs):
 		status = "ended"
 	}
