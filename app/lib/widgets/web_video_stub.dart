@@ -10,3 +10,10 @@ Widget hlsVideoElement(
   void Function()? onEnded,
 }) =>
     const SizedBox.shrink();
+
+// Web-only live (HLS) element; mobile plays the live playlist via video_player.
+Widget liveHlsVideoElement(
+  String url, {
+  String authToken = '',
+}) =>
+    const SizedBox.shrink();

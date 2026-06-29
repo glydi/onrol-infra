@@ -529,3 +529,212 @@ Widget hlsVideoElement(
   });
   return HtmlElementView(viewType: viewType);
 }
+
+// Inject the pulsing-dot keyframes once (used by the LIVE badge).
+bool _livePulseInjected = false;
+void _ensureLivePulse() {
+  if (_livePulseInjected) return;
+  _livePulseInjected = true;
+  html.document.head?.append(
+    html.StyleElement()..text = '@keyframes onrolLivePulse{0%,100%{opacity:1}50%{opacity:0.3}}',
+  );
+}
+
+/// Stripped-down player for a simulated-live session: a <video> driven by hls.js
+/// in LIVE mode (no scrubber, no seek, no speed, no real pause — pausing just
+/// snaps back to the live edge). Only mute/unmute + fullscreen are exposed. The
+/// sliding-window playlist on the server is what actually prevents skipping
+/// ahead; this UI simply never offers the controls. Starts muted (browsers block
+/// unmuted autoplay) with a tap-to-unmute affordance.
+Widget liveHlsVideoElement(
+  String url, {
+  String authToken = '',
+}) {
+  final viewType = 'onrol-live-${_seq++}';
+  ui_web.platformViewRegistry.registerViewFactory(viewType, (int id) {
+    _ensureLivePulse();
+    final video = html.VideoElement()
+      ..controls = false
+      ..autoplay = true
+      ..muted = true
+      ..style.width = '100%'
+      ..style.height = '100%'
+      ..style.display = 'block'
+      ..style.backgroundColor = 'black'
+      ..setAttribute('controlsList', 'nodownload noplaybackrate noremoteplayback')
+      ..setAttribute('playsinline', 'true')
+      ..setAttribute('disablePictureInPicture', 'true');
+
+    final container = html.DivElement()
+      ..style.position = 'relative'
+      ..style.width = '100%'
+      ..style.height = '100%'
+      ..style.background = 'black'
+      ..style.overflow = 'hidden';
+    container.append(video);
+    video.onContextMenu.listen((e) => e.preventDefault());
+
+    // ---- LIVE badge (top-left) ----------------------------------------------
+    final dot = html.DivElement()
+      ..style.width = '8px'
+      ..style.height = '8px'
+      ..style.borderRadius = '50%'
+      ..style.background = '#FF3B30'
+      ..style.boxShadow = '0 0 6px #FF3B30'
+      ..style.animation = 'onrolLivePulse 1.4s ease-in-out infinite';
+    final livePill = html.DivElement()
+      ..style.position = 'absolute'
+      ..style.top = '12px'
+      ..style.left = '12px'
+      ..style.display = 'flex'
+      ..style.alignItems = 'center'
+      ..style.gap = '7px'
+      ..style.padding = '5px 10px'
+      ..style.borderRadius = '6px'
+      ..style.background = 'rgba(0,0,0,0.5)'
+      ..style.color = 'white'
+      ..style.zIndex = '7'
+      ..style.font = '700 12px -apple-system, Segoe UI, Roboto, sans-serif'
+      ..style.letterSpacing = '0.6px';
+    livePill.append(dot);
+    livePill.append(html.SpanElement()..text = 'LIVE');
+    container.append(livePill);
+
+    // ---- Minimal controls (mute + fullscreen) -------------------------------
+    html.SpanElement iconBtn(String path, void Function() onTap, {double size = 24}) {
+      final b = html.SpanElement()
+        ..style.cursor = 'pointer'
+        ..style.padding = '8px 10px'
+        ..style.borderRadius = '8px'
+        ..style.display = 'flex'
+        ..style.alignItems = 'center'
+        ..style.lineHeight = '0'
+        ..style.transition = 'background 0.15s ease';
+      b.append(_vicon(path, size: size));
+      b.onClick.listen((e) {
+        e.stopPropagation();
+        onTap();
+      });
+      b.onMouseEnter.listen((_) => b.style.background = 'rgba(255,255,255,0.16)');
+      b.onMouseLeave.listen((_) => b.style.background = 'transparent');
+      return b;
+    }
+
+    void setIcon(html.SpanElement b, String path, {double size = 24}) {
+      b.children.clear();
+      b.append(_vicon(path, size: size));
+    }
+
+    final muteBtn = iconBtn(_icVolOff, () {}, size: 26); // starts muted
+    muteBtn.onClick.listen((e) {
+      e.stopPropagation();
+      video.muted = !video.muted;
+      setIcon(muteBtn, video.muted ? _icVolOff : _icVolUp, size: 26);
+    });
+
+    void toggleFullscreen() {
+      if (html.document.fullscreenElement != null) {
+        html.document.exitFullscreen();
+      } else {
+        container.requestFullscreen();
+      }
+    }
+
+    final fsBtn = iconBtn(_icFullscreen, toggleFullscreen, size: 26);
+
+    final controls = html.DivElement()
+      ..style.position = 'absolute'
+      ..style.left = '0'
+      ..style.right = '0'
+      ..style.bottom = '0'
+      ..style.padding = '24px 14px 12px'
+      ..style.display = 'flex'
+      ..style.alignItems = 'center'
+      ..style.justifyContent = 'flex-end'
+      ..style.gap = '6px'
+      ..style.zIndex = '7'
+      ..style.background = 'linear-gradient(to top, rgba(0,0,0,0.65), rgba(0,0,0,0))';
+    controls.append(muteBtn);
+    controls.append(fsBtn);
+    controls.append(html.DivElement()..style.width = '2px');
+    controls.onClick.listen((e) => e.stopPropagation());
+    container.append(controls);
+
+    // ---- Tap-to-unmute overlay (shown while muted) --------------------------
+    final unmute = html.DivElement()
+      ..style.position = 'absolute'
+      ..style.top = '50%'
+      ..style.left = '50%'
+      ..style.transform = 'translate(-50%, -50%)'
+      ..style.padding = '12px 18px'
+      ..style.borderRadius = '24px'
+      ..style.background = 'rgba(0,0,0,0.62)'
+      ..style.color = 'white'
+      ..style.cursor = 'pointer'
+      ..style.zIndex = '9'
+      ..style.display = 'flex'
+      ..style.alignItems = 'center'
+      ..style.gap = '8px'
+      ..style.font = '600 15px -apple-system, Segoe UI, Roboto, sans-serif';
+    unmute.append(_vicon(_icVolUp, size: 22));
+    unmute.append(html.SpanElement()..text = 'Tap to unmute');
+    void hideUnmute() {
+      unmute.style.display = 'none';
+    }
+    unmute.onClick.listen((e) {
+      e.stopPropagation();
+      video.muted = false;
+      setIcon(muteBtn, _icVolUp, size: 26);
+      hideUnmute();
+      video.play();
+    });
+    container.append(unmute);
+    video.onVolumeChange.listen((_) {
+      if (!video.muted) hideUnmute();
+    });
+
+    final isHls = url.toLowerCase().contains('.m3u8');
+    final hlsAvailable = js.context.hasProperty('Hls');
+    if (isHls && hlsAvailable && (js.context['Hls'].callMethod('isSupported') as bool? ?? false)) {
+      // hls.js in live mode: it plays at the live edge and won't seek past it
+      // because the server playlist never names a segment beyond "now".
+      final config = js.JsObject.jsify(<String, dynamic>{'liveSyncDurationCount': 3, 'backBufferLength': 30});
+      if (authToken.isNotEmpty && js.context.hasProperty('onrolLiveXhrSetup')) {
+        // Attaches the JWT to BOTH the playlist and key requests (same-origin API).
+        config['xhrSetup'] = js.context.callMethod('onrolLiveXhrSetup', [authToken]);
+      }
+      final hls = js.JsObject(js.context['Hls'] as js.JsFunction, [config]);
+      hls.callMethod('loadSource', [url]);
+      hls.callMethod('attachMedia', [video]);
+
+      void snapToEdge() {
+        try {
+          final pos = hls['liveSyncPosition'];
+          if (pos != null) video.currentTime = (pos as num).toDouble();
+        } catch (_) {}
+      }
+
+      // No real pause: if anything pauses the video, jump to the live edge and
+      // resume so every viewer stays on the same wall-clock frame.
+      video.onPause.listen((_) {
+        if (container.isConnected == true && html.document.fullscreenElement == null) {
+          snapToEdge();
+          video.play();
+        }
+      });
+      // Returning to the tab snaps forward to "now" instead of resuming behind.
+      html.document.onVisibilityChange.listen((_) {
+        if (html.document.hidden == false) {
+          snapToEdge();
+          video.play();
+        }
+      });
+    } else {
+      // Safari plays live HLS natively (follows the edge; native controls off).
+      video.src = url;
+    }
+    video.play();
+    return container;
+  });
+  return HtmlElementView(viewType: viewType);
+}

@@ -67,6 +67,16 @@
         }
       };
     };
+    // Simulated-live: the playlist AND the key are auth-gated same-origin API
+    // routes under /api/v1/me/live/, so attach the JWT to both. Segments live on
+    // R2 (a different path) so the token never leaks to the CDN.
+    window.onrolLiveXhrSetup = function (token) {
+      return function (xhr, url) {
+        if (token && url && url.indexOf('/api/v1/me/live/') !== -1) {
+          xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+        }
+      };
+    };
   </script>
   <script>
     // Discourage downloading streamed video: block right-click "Save video as"

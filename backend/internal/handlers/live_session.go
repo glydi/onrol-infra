@@ -1,0 +1,270 @@
+package handlers
+
+import (
+	"errors"
+	"math"
+	"strings"
+	"time"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/jackc/pgx/v5"
+)
+
+// Live-room API for simulated-live sessions: state polling, presence heartbeats
+// (real headcount), live chat and Q&A. All gated by enrollment in the session's
+// course. Chat/Q&A are polled by the client — no WebSocket infra.
+
+// liveAccess verifies the caller is enrolled in the session's course and returns
+// the chat/Q&A toggles. pgx.ErrNoRows means not entitled.
+func (h *Handlers) liveAccess(c *fiber.Ctx, sessionID string) (chatOK, qaOK bool, err error) {
+	err = h.Pool.QueryRow(c.Context(), `
+		SELECT cs.chat_enabled, cs.qa_enabled
+		FROM class_sessions cs
+		JOIN course_enrollments ce ON ce.course_id = cs.course_id AND ce.user_id = $2 AND ce.status = 'active'
+		WHERE cs.id = $1`, sessionID, callerID(c)).Scan(&chatOK, &qaOK)
+	return
+}
+
+// LiveSessionState reports whether the session is upcoming/live/ended, the live
+// playlist URL once live, and the (real + simulated) viewer count. The client
+// polls this to flip the UI and refresh the headcount.
+func (h *Handlers) LiveSessionState(c *fiber.Ctx) error {
+	sessionID := c.Params("id")
+	var startsAt time.Time
+	var assetID *string
+	var title, course string
+	var chatOK, qaOK bool
+	var viewerBase, durationSecs int
+	err := h.Pool.QueryRow(c.Context(), `
+		SELECT cs.starts_at, cs.media_asset_id, cs.title, c.title,
+		       cs.chat_enabled, cs.qa_enabled, cs.viewer_base, COALESCE(ma.duration_seconds, 0)
+		FROM class_sessions cs
+		JOIN courses c ON c.id = cs.course_id
+		LEFT JOIN media_assets ma ON ma.id = cs.media_asset_id
+		JOIN course_enrollments ce ON ce.course_id = cs.course_id AND ce.user_id = $2 AND ce.status = 'active'
+		WHERE cs.id = $1`, sessionID, callerID(c)).Scan(
+		&startsAt, &assetID, &title, &course, &chatOK, &qaOK, &viewerBase, &durationSecs)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
+	}
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "state load failed")
+	}
+
+	now := time.Now()
+	elapsed := now.Sub(startsAt).Seconds()
+	status := "live"
+	switch {
+	case elapsed < 0:
+		status = "upcoming"
+	case durationSecs > 0 && elapsed >= float64(durationSecs):
+		status = "ended"
+	}
+
+	// Real concurrent viewers = heartbeats in the last 30s.
+	var real int
+	_ = h.Pool.QueryRow(c.Context(),
+		`SELECT count(*) FROM live_presence WHERE session_id=$1 AND last_seen > now() - interval '30 seconds'`,
+		sessionID).Scan(&real)
+
+	// Simulated floor: ramp up over the first 90s ("people joining") then hold
+	// near viewer_base with a gentle wobble. Deterministic in elapsed, so it's
+	// identical across users/requests. The displayed count is max(real, sim).
+	viewers := real
+	if viewerBase > 0 && status == "live" {
+		e := math.Max(0, elapsed)
+		ramp := 1.0
+		if e < 90 {
+			ramp = 0.4 + 0.6*(e/90)
+		}
+		wobble := 1 + 0.04*math.Sin(e/30)
+		if sim := int(float64(viewerBase) * ramp * wobble); sim > viewers {
+			viewers = sim
+		}
+	}
+
+	out := fiber.Map{
+		"server_now":          now.UTC().Format(time.RFC3339),
+		"starts_at":           startsAt.UTC().Format(time.RFC3339),
+		"status":              status,
+		"seconds_until_start": int(math.Max(0, -elapsed)),
+		"elapsed":             int(math.Max(0, elapsed)),
+		"duration":            durationSecs,
+		"title":               title,
+		"course":              course,
+		"chat_enabled":        chatOK,
+		"qa_enabled":          qaOK,
+		"viewers":             viewers,
+	}
+	if status == "live" && assetID != nil {
+		out["playlist_url"] = "/api/v1/me/live/" + sessionID + "/playlist.m3u8"
+	}
+	return c.JSON(out)
+}
+
+// LiveHeartbeat marks the caller present (drives the real viewer count).
+func (h *Handlers) LiveHeartbeat(c *fiber.Ctx) error {
+	sessionID := c.Params("id")
+	if _, _, err := h.liveAccess(c, sessionID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fiber.NewError(fiber.StatusForbidden, "not entitled")
+		}
+		return fiber.NewError(fiber.StatusInternalServerError, "presence failed")
+	}
+	if _, err := h.Pool.Exec(c.Context(),
+		`INSERT INTO live_presence (session_id, user_id, last_seen) VALUES ($1,$2,now())
+		 ON CONFLICT (session_id, user_id) DO UPDATE SET last_seen=now()`,
+		sessionID, callerID(c)); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "presence failed")
+	}
+	return c.JSON(fiber.Map{"ok": true})
+}
+
+// LiveChatList returns chat ascending. With ?after=<rfc3339> it returns only
+// newer messages (the client passes the last message's timestamp as the cursor).
+func (h *Handlers) LiveChatList(c *fiber.Ctx) error {
+	sessionID := c.Params("id")
+	if _, _, err := h.liveAccess(c, sessionID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fiber.NewError(fiber.StatusForbidden, "not entitled")
+		}
+		return fiber.NewError(fiber.StatusInternalServerError, "chat load failed")
+	}
+	after := strings.TrimSpace(c.Query("after"))
+	out := []fiber.Map{}
+	var rows pgx.Rows
+	var err error
+	if after != "" {
+		rows, err = h.Pool.Query(c.Context(),
+			`SELECT id, user_id, display_name, body, created_at FROM live_chat_messages
+			 WHERE session_id=$1 AND created_at > $2::timestamptz ORDER BY created_at ASC LIMIT 200`,
+			sessionID, after)
+	} else {
+		// Initial load: newest 100, returned ascending.
+		rows, err = h.Pool.Query(c.Context(),
+			`SELECT id, user_id, display_name, body, created_at FROM (
+			   SELECT id, user_id, display_name, body, created_at FROM live_chat_messages
+			   WHERE session_id=$1 ORDER BY created_at DESC LIMIT 100
+			 ) t ORDER BY created_at ASC`, sessionID)
+	}
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "chat load failed")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, uid, name, body string
+		var at time.Time
+		if err := rows.Scan(&id, &uid, &name, &body, &at); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		out = append(out, fiber.Map{"id": id, "user_id": uid, "name": name, "body": body, "at": at.UTC().Format(time.RFC3339Nano)})
+	}
+	return c.JSON(fiber.Map{"messages": out})
+}
+
+// LiveChatPost adds a chat message (gated on chat_enabled).
+func (h *Handlers) LiveChatPost(c *fiber.Ctx) error {
+	sessionID := c.Params("id")
+	chatOK, _, err := h.liveAccess(c, sessionID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fiber.NewError(fiber.StatusForbidden, "not entitled")
+	}
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "chat failed")
+	}
+	if !chatOK {
+		return fiber.NewError(fiber.StatusForbidden, "chat is disabled")
+	}
+	body, perr := parseLiveBody(c)
+	if perr != nil {
+		return perr
+	}
+	var id, name string
+	var at time.Time
+	if err := h.Pool.QueryRow(c.Context(),
+		`INSERT INTO live_chat_messages (session_id, user_id, display_name, body)
+		 VALUES ($1, $2, COALESCE((SELECT full_name FROM users WHERE id=$2), ''), $3)
+		 RETURNING id, display_name, created_at`,
+		sessionID, callerID(c), body).Scan(&id, &name, &at); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "post failed")
+	}
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"id": id, "user_id": callerID(c), "name": name, "body": body, "at": at.UTC().Format(time.RFC3339Nano)})
+}
+
+// LiveQuestionsList returns the session's Q&A, newest first.
+func (h *Handlers) LiveQuestionsList(c *fiber.Ctx) error {
+	sessionID := c.Params("id")
+	if _, _, err := h.liveAccess(c, sessionID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fiber.NewError(fiber.StatusForbidden, "not entitled")
+		}
+		return fiber.NewError(fiber.StatusInternalServerError, "questions load failed")
+	}
+	rows, err := h.Pool.Query(c.Context(),
+		`SELECT id, user_id, display_name, body, answered, created_at FROM live_questions
+		 WHERE session_id=$1 ORDER BY created_at DESC LIMIT 200`, sessionID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "questions load failed")
+	}
+	defer rows.Close()
+	out := []fiber.Map{}
+	for rows.Next() {
+		var id, uid, name, body string
+		var answered bool
+		var at time.Time
+		if err := rows.Scan(&id, &uid, &name, &body, &answered, &at); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		out = append(out, fiber.Map{"id": id, "user_id": uid, "name": name, "body": body, "answered": answered, "at": at.UTC().Format(time.RFC3339Nano)})
+	}
+	return c.JSON(fiber.Map{"questions": out})
+}
+
+// LiveQuestionPost submits a question (gated on qa_enabled).
+func (h *Handlers) LiveQuestionPost(c *fiber.Ctx) error {
+	sessionID := c.Params("id")
+	_, qaOK, err := h.liveAccess(c, sessionID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fiber.NewError(fiber.StatusForbidden, "not entitled")
+	}
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "question failed")
+	}
+	if !qaOK {
+		return fiber.NewError(fiber.StatusForbidden, "Q&A is disabled")
+	}
+	body, perr := parseLiveBody(c)
+	if perr != nil {
+		return perr
+	}
+	var id, name string
+	var at time.Time
+	if err := h.Pool.QueryRow(c.Context(),
+		`INSERT INTO live_questions (session_id, user_id, display_name, body)
+		 VALUES ($1, $2, COALESCE((SELECT full_name FROM users WHERE id=$2), ''), $3)
+		 RETURNING id, display_name, created_at`,
+		sessionID, callerID(c), body).Scan(&id, &name, &at); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "post failed")
+	}
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"id": id, "user_id": callerID(c), "name": name, "body": body, "answered": false, "at": at.UTC().Format(time.RFC3339Nano)})
+}
+
+// parseLiveBody pulls a non-empty {body} from the request, capped at 1000 chars.
+func parseLiveBody(c *fiber.Ctx) (string, error) {
+	var req struct {
+		Body string `json:"body"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return "", fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+	body := strings.TrimSpace(req.Body)
+	if body == "" {
+		return "", fiber.NewError(fiber.StatusBadRequest, "empty message")
+	}
+	if len(body) > 1000 {
+		body = body[:1000]
+	}
+	return body, nil
+}

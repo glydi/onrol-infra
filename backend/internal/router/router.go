@@ -305,6 +305,16 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Get("/me/assessments/:id", auth, h.TakeAssessment)
 	api.Post("/me/assessments/:id/submit", auth, h.SubmitAssessment)
 	api.Get("/me/live", auth, h.MyLive)
+	// Simulated-live sessions (a recorded video served as a live stream).
+	api.Get("/me/live/:id/state", auth, h.LiveSessionState)
+	api.Post("/me/live/:id/heartbeat", auth, h.LiveHeartbeat)
+	api.Get("/me/live/:id/chat", auth, h.LiveChatList)
+	api.Post("/me/live/:id/chat", auth, h.LiveChatPost)
+	api.Get("/me/live/:id/questions", auth, h.LiveQuestionsList)
+	api.Post("/me/live/:id/questions", auth, h.LiveQuestionPost)
+	// Playlist + key fetched by hls.js (no device header) → token-auth, enrollment-gated.
+	api.Get("/me/live/:id/playlist.m3u8", tokenAuth, h.LivePlaylist)
+	api.Get("/me/live/:id/hls.key", tokenAuth, h.LiveHLSKey)
 	api.Get("/me/grades", auth, h.MyGrades)
 	api.Get("/me/transcript", auth, h.MyTranscript)
 	api.Get("/me/certificates", auth, h.MyCertificates)

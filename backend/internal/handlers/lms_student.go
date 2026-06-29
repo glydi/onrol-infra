@@ -502,18 +502,23 @@ func (h *Handlers) MyCalendar(c *fiber.Ctx) error {
 	// Aggregates everything the admin/mentor schedules for the student:
 	// live classes, assignment/quiz deadlines, and announcements (activities).
 	// Includes a short recent window so just-passed items still show.
+	// ref_id/live_kind/join_url are only meaningful for 'session' rows (so the
+	// calendar can open a live class); empty for the other event kinds.
 	rows, err := h.Pool.Query(c.Context(), `
-		SELECT 'session' AS kind, cs.title, cs.starts_at AS at, c.title AS course
+		SELECT 'session' AS kind, cs.title, cs.starts_at AS at, c.title AS course,
+		       cs.id::text AS ref_id,
+		       CASE WHEN cs.media_asset_id IS NOT NULL THEN 'simulated' ELSE 'external' END AS live_kind,
+		       COALESCE(cs.join_url,'') AS join_url
 		FROM class_sessions cs JOIN courses c ON c.id=cs.course_id
 		JOIN course_enrollments ce ON ce.course_id=c.id AND ce.user_id=$1
 		WHERE cs.starts_at >= now() - interval '7 days'
 		UNION ALL
-		SELECT 'assessment_due', a.title, a.due_at, c.title
+		SELECT 'assessment_due', a.title, a.due_at, c.title, ''::text, ''::text, ''::text
 		FROM assessments a JOIN courses c ON c.id=a.course_id
 		JOIN course_enrollments ce ON ce.course_id=c.id AND ce.user_id=$1
 		WHERE a.due_at IS NOT NULL AND a.due_at >= now() - interval '7 days' AND a.is_published
 		UNION ALL
-		SELECT 'announcement', an.title, an.created_at, COALESCE(c.title,'')
+		SELECT 'announcement', an.title, an.created_at, COALESCE(c.title,''), ''::text, ''::text, ''::text
 		FROM announcements an
 		LEFT JOIN courses c ON c.id=an.course_id
 		JOIN users me ON me.id=$1
@@ -531,12 +536,18 @@ func (h *Handlers) MyCalendar(c *fiber.Ctx) error {
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var kind, title, course string
+		var kind, title, course, refID, liveKind, joinURL string
 		var at any
-		if err := rows.Scan(&kind, &title, &at, &course); err != nil {
+		if err := rows.Scan(&kind, &title, &at, &course, &refID, &liveKind, &joinURL); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
-		out = append(out, fiber.Map{"kind": kind, "title": title, "at": at, "course": course})
+		row := fiber.Map{"kind": kind, "title": title, "at": at, "course": course}
+		if kind == "session" {
+			row["id"] = refID
+			row["live_kind"] = liveKind
+			row["join_url"] = joinURL
+		}
+		out = append(out, row)
 	}
 	return c.JSON(fiber.Map{"calendar": out})
 }

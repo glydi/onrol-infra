@@ -19,6 +19,7 @@ import '../services/push.dart';
 import '../theme_controller.dart';
 import 'forum_screen.dart';
 import 'live_screen.dart';
+import 'live_session_screen.dart';
 import 'login_screen.dart';
 import 'video_player_screen.dart';
 
@@ -1107,6 +1108,26 @@ class _StudentHomeState extends State<StudentHome> {
     );
   }
 
+  // Dispatches a live-class tap: a simulated-live session (a recorded video
+  // served as live) opens our in-app live room; an external (Zoho/Meet/Jitsi)
+  // session keeps the existing WebView/new-tab behavior.
+  void _openLive(Map<String, dynamic> session) {
+    if ((session['kind']?.toString() ?? 'external') == 'simulated') {
+      final id = session['id']?.toString() ?? '';
+      if (id.isEmpty || !mounted) return;
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => LiveSessionScreen(
+          auth: widget.auth,
+          sessionId: id,
+          watermark: widget.auth.user?.email ?? 'student',
+          title: session['title']?.toString() ?? 'Live Class',
+        ),
+      ));
+      return;
+    }
+    _openUrl(session['join_url']?.toString() ?? '');
+  }
+
   // Joins a live class (Zoho / Meet / Jitsi link). On mobile we load it inside
   // the app via LiveScreen — a WebView that follows Zoho's register→session
   // redirect and keeps the student in-app under their forensic watermark — so
@@ -1546,7 +1567,7 @@ class _StudentHomeState extends State<StudentHome> {
         return (CupertinoIcons.calendar, 'Calendar', 'Classes, deadlines & activities', [
           _future(_apiList('/api/v1/me/calendar', 'calendar'), (List items) {
             if (items.isEmpty) return _emptyText('Nothing scheduled yet.');
-            return _CalendarView(items: items);
+            return _CalendarView(items: items, onOpenSession: _openLive);
           }),
         ]);
       case 'forum':
@@ -1659,7 +1680,7 @@ class _StudentHomeState extends State<StudentHome> {
         return (CupertinoIcons.videocam_fill, 'Live Classes', 'Your schedule & join links', [
           _future(_apiList('/api/v1/me/live', 'live'), (List live) {
             if (live.isEmpty) return _emptyText('No live classes scheduled.');
-            return _LiveAgenda(items: live, onJoin: _openUrl);
+            return _LiveAgenda(items: live, onJoin: _openLive);
           }),
         ]);
       case 'help':
@@ -1703,7 +1724,7 @@ class _StudentHomeState extends State<StudentHome> {
         return (CupertinoIcons.calendar, 'Calendar', 'Classes, deadlines & activities', [
           _future(_apiList('/api/v1/me/calendar', 'calendar'), (List items) {
             if (items.isEmpty) return _emptyText('Nothing scheduled yet.');
-            return _CalendarView(items: items);
+            return _CalendarView(items: items, onOpenSession: _openLive);
           }),
         ]);
       case 'announcements':
@@ -2899,7 +2920,7 @@ class _FlashcardsState extends State<_Flashcards> with SingleTickerProviderState
 class _LiveAgenda extends StatelessWidget {
   const _LiveAgenda({required this.items, required this.onJoin});
   final List items;
-  final void Function(String url) onJoin;
+  final void Function(Map<String, dynamic> session) onJoin;
 
   static const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -2949,7 +2970,7 @@ class _LiveCard extends StatefulWidget {
   const _LiveCard({required this.index, required this.data, required this.onJoin});
   final int index;
   final Map<String, dynamic> data;
-  final void Function(String url) onJoin;
+  final void Function(Map<String, dynamic> session) onJoin;
 
   @override
   State<_LiveCard> createState() => _LiveCardState();
@@ -2970,6 +2991,7 @@ class _LiveCardState extends State<_LiveCard> {
     final title = d['title']?.toString() ?? 'Live class';
     final course = d['course']?.toString() ?? '';
     final url = d['join_url']?.toString() ?? '';
+    final simulated = (d['kind']?.toString() ?? 'external') == 'simulated';
     final start = DateTime.tryParse(d['starts_at']?.toString() ?? '')?.toLocal();
     final end = DateTime.tryParse(d['ends_at']?.toString() ?? '')?.toLocal();
     final now = DateTime.now();
@@ -2977,7 +2999,8 @@ class _LiveCardState extends State<_LiveCard> {
     final live = start != null && now.isAfter(start.subtract(const Duration(minutes: 5))) && (hardEnd == null || now.isBefore(hardEnd));
     final ended = hardEnd != null && now.isAfter(hardEnd);
     final timeLabel = start == null ? 'TBD' : (end == null ? _clock(start) : '${_clock(start)} – ${_clock(end)}');
-    final hasLink = url.isNotEmpty;
+    // Simulated-live sessions open in-app (no external link needed).
+    final hasLink = simulated || url.isNotEmpty;
 
     return _Entrance(
       index: widget.index,
@@ -2986,7 +3009,7 @@ class _LiveCardState extends State<_LiveCard> {
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
         child: GestureDetector(
-          onTap: hasLink && !ended ? () => widget.onJoin(url) : null,
+          onTap: hasLink && !ended ? () => widget.onJoin(d) : null,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOutCubic,
@@ -3029,7 +3052,7 @@ class _LiveCardState extends State<_LiveCard> {
                 Text('Link soon', style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: _grey))
               else
                 _Pressable(
-                  onTap: () => widget.onJoin(url),
+                  onTap: () => widget.onJoin(d),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
                     decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(8), boxShadow: [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 6, offset: const Offset(0, 2))]),
@@ -3908,8 +3931,10 @@ const _weekdayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 /// Live month calendar — dots per day for classes / deadlines / activities; tap
 /// a day to see its agenda. Smooth month + day-selection transitions, themed.
 class _CalendarView extends StatefulWidget {
-  const _CalendarView({required this.items});
+  const _CalendarView({required this.items, this.onOpenSession});
   final List items;
+  // Tapping a live-class entry opens it (in-app live room / external link).
+  final void Function(Map<String, dynamic> session)? onOpenSession;
 
   @override
   State<_CalendarView> createState() => _CalendarViewState();
@@ -4155,7 +4180,9 @@ class _CalendarViewState extends State<_CalendarView> {
             final k = _calKind(m['kind']?.toString() ?? 'event');
             final dt = m['_dt'] as DateTime;
             final course = m['course']?.toString() ?? '';
-            return Container(
+            // Live-class entries are tappable → open the session.
+            final isSession = (m['kind']?.toString() ?? '') == 'session' && (m['id']?.toString().isNotEmpty ?? false);
+            final card = Container(
               margin: const EdgeInsets.only(bottom: 10),
               clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(14), border: Border.all(color: _cardBorder), boxShadow: [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.0 : 0.04), blurRadius: 8, offset: const Offset(0, 3))]),
@@ -4186,6 +4213,14 @@ class _CalendarViewState extends State<_CalendarView> {
                 ]),
               ),
             );
+            if (isSession && widget.onOpenSession != null) {
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => widget.onOpenSession!({'id': m['id'], 'kind': m['live_kind'], 'title': m['title'], 'join_url': m['join_url']}),
+                child: card,
+              );
+            }
+            return card;
           }),
         ),
     ]);

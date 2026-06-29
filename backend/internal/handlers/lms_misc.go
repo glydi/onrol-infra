@@ -185,22 +185,32 @@ func (h *Handlers) CreateSession(c *fiber.Ctx) error {
 		WebinarID string `json:"webinar_id"`
 		JoinURL   string `json:"join_url"` // direct live link (Zoho/Meet/etc.) students join
 		HostURL   string `json:"host_url"` // host/start link instructors use to run + record
+		// Simulated-live: when set, this session plays a recorded video as live.
+		MediaAssetID string `json:"media_asset_id"`
+		ChatEnabled  *bool  `json:"chat_enabled"`
+		QAEnabled    *bool  `json:"qa_enabled"`
+		ViewerBase   int    `json:"viewer_base"`
 	}
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Title) == "" || req.StartsAt == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "title and starts_at required")
 	}
-	var ends, webinar any
+	var ends, webinar, media any
 	if req.EndsAt != "" {
 		ends = req.EndsAt
 	}
 	if req.WebinarID != "" {
 		webinar = req.WebinarID
 	}
+	if req.MediaAssetID != "" {
+		media = req.MediaAssetID
+	}
+	chat := req.ChatEnabled == nil || *req.ChatEnabled
+	qa := req.QAEnabled == nil || *req.QAEnabled
 	var id string
 	if err := h.Pool.QueryRow(c.Context(),
-		`INSERT INTO class_sessions (course_id, title, starts_at, ends_at, location, instructor_id, capacity, webinar_id, join_url, host_url)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
-		courseID, req.Title, req.StartsAt, ends, req.Location, callerID(c), req.Capacity, webinar, req.JoinURL, req.HostURL).Scan(&id); err != nil {
+		`INSERT INTO class_sessions (course_id, title, starts_at, ends_at, location, instructor_id, capacity, webinar_id, join_url, host_url, media_asset_id, chat_enabled, qa_enabled, viewer_base)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
+		courseID, req.Title, req.StartsAt, ends, req.Location, callerID(c), req.Capacity, webinar, req.JoinURL, req.HostURL, media, chat, qa, req.ViewerBase).Scan(&id); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": req.Title})
@@ -218,26 +228,37 @@ func (h *Handlers) UpdateSession(c *fiber.Ctx) error {
 		return err
 	}
 	var req struct {
-		Title    *string `json:"title"`
-		JoinURL  *string `json:"join_url"`
-		HostURL  *string `json:"host_url"`
-		StartsAt *string `json:"starts_at"`
+		Title        *string `json:"title"`
+		JoinURL      *string `json:"join_url"`
+		HostURL      *string `json:"host_url"`
+		StartsAt     *string `json:"starts_at"`
+		MediaAssetID *string `json:"media_asset_id"`
+		ChatEnabled  *bool   `json:"chat_enabled"`
+		QAEnabled    *bool   `json:"qa_enabled"`
+		ViewerBase   *int    `json:"viewer_base"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
 	}
 	// COALESCE keeps existing values for any field omitted from the request.
-	var starts any
+	var starts, media any
 	if req.StartsAt != nil && *req.StartsAt != "" {
 		starts = *req.StartsAt
 	}
+	if req.MediaAssetID != nil && *req.MediaAssetID != "" {
+		media = *req.MediaAssetID
+	}
 	if _, err := h.Pool.Exec(c.Context(), `
 		UPDATE class_sessions
-		SET title    = COALESCE($2, title),
-		    join_url = COALESCE($3, join_url),
-		    host_url = COALESCE($4, host_url),
-		    starts_at = COALESCE($5, starts_at)
-		WHERE id=$1`, sessionID, req.Title, req.JoinURL, req.HostURL, starts); err != nil {
+		SET title          = COALESCE($2, title),
+		    join_url       = COALESCE($3, join_url),
+		    host_url       = COALESCE($4, host_url),
+		    starts_at      = COALESCE($5, starts_at),
+		    media_asset_id = COALESCE($6::uuid, media_asset_id),
+		    chat_enabled   = COALESCE($7, chat_enabled),
+		    qa_enabled     = COALESCE($8, qa_enabled),
+		    viewer_base    = COALESCE($9, viewer_base)
+		WHERE id=$1`, sessionID, req.Title, req.JoinURL, req.HostURL, starts, media, req.ChatEnabled, req.QAEnabled, req.ViewerBase); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "update failed")
 	}
 	return c.JSON(fiber.Map{"id": sessionID, "updated": true})
@@ -250,20 +271,30 @@ func (h *Handlers) ListCourseSessions(c *fiber.Ctx) error {
 		return err
 	}
 	rows, err := h.Pool.Query(c.Context(),
-		`SELECT id, title, starts_at, COALESCE(join_url,''), COALESCE(host_url,''), COALESCE(location,'')
-		 FROM class_sessions WHERE course_id=$1 ORDER BY starts_at`, courseID)
+		`SELECT cs.id, cs.title, cs.starts_at, COALESCE(cs.join_url,''), COALESCE(cs.host_url,''), COALESCE(cs.location,''),
+		        COALESCE(cs.media_asset_id::text,''), cs.chat_enabled, cs.qa_enabled, cs.viewer_base, COALESCE(ma.title,'')
+		 FROM class_sessions cs
+		 LEFT JOIN media_assets ma ON ma.id = cs.media_asset_id
+		 WHERE cs.course_id=$1 ORDER BY cs.starts_at`, courseID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
 	}
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var id, title, joinURL, hostURL, loc string
+		var id, title, joinURL, hostURL, loc, mediaID, mediaTitle string
+		var chatOK, qaOK bool
+		var viewerBase int
 		var startsAt any
-		if err := rows.Scan(&id, &title, &startsAt, &joinURL, &hostURL, &loc); err != nil {
+		if err := rows.Scan(&id, &title, &startsAt, &joinURL, &hostURL, &loc, &mediaID, &chatOK, &qaOK, &viewerBase, &mediaTitle); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
-		out = append(out, fiber.Map{"id": id, "title": title, "starts_at": startsAt, "join_url": joinURL, "host_url": hostURL, "location": loc})
+		kind := "external"
+		if mediaID != "" {
+			kind = "simulated"
+		}
+		out = append(out, fiber.Map{"id": id, "title": title, "starts_at": startsAt, "join_url": joinURL, "host_url": hostURL, "location": loc,
+			"media_asset_id": mediaID, "media_title": mediaTitle, "kind": kind, "chat_enabled": chatOK, "qa_enabled": qaOK, "viewer_base": viewerBase})
 	}
 	return c.JSON(fiber.Map{"sessions": out})
 }
@@ -272,11 +303,18 @@ func (h *Handlers) ListCourseSessions(c *fiber.Ctx) error {
 // courses, with the join link. Only enrolled students see them.
 func (h *Handlers) MyLive(c *fiber.Ctx) error {
 	rows, err := h.Pool.Query(c.Context(), `
-		SELECT cs.id, cs.title, cs.starts_at, cs.ends_at, COALESCE(cs.join_url,''), COALESCE(cs.location,''), c.title
+		SELECT cs.id, cs.title, cs.starts_at,
+		       COALESCE(cs.ends_at, CASE WHEN cs.media_asset_id IS NOT NULL AND ma.duration_seconds > 0
+		                                 THEN cs.starts_at + make_interval(secs => ma.duration_seconds) END) AS ends_at,
+		       COALESCE(cs.join_url,''), COALESCE(cs.location,''), c.title,
+		       cs.media_asset_id IS NOT NULL AS simulated
 		FROM class_sessions cs
 		JOIN courses c ON c.id = cs.course_id
 		JOIN course_enrollments ce ON ce.course_id = c.id AND ce.user_id = $1
+		LEFT JOIN media_assets ma ON ma.id = cs.media_asset_id
 		WHERE cs.starts_at >= now() - interval '3 hours'
+		   OR (cs.media_asset_id IS NOT NULL AND ma.duration_seconds > 0
+		       AND now() < cs.starts_at + make_interval(secs => ma.duration_seconds))
 		ORDER BY cs.starts_at`, callerID(c))
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "live load failed")
@@ -286,14 +324,19 @@ func (h *Handlers) MyLive(c *fiber.Ctx) error {
 	for rows.Next() {
 		var id, title, joinURL, location, course string
 		var startsAt, endsAt any
-		if err := rows.Scan(&id, &title, &startsAt, &endsAt, &joinURL, &location, &course); err != nil {
+		var simulated bool
+		if err := rows.Scan(&id, &title, &startsAt, &endsAt, &joinURL, &location, &course, &simulated); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		// Fall back to a join link stored in `location` if join_url is unset.
 		if joinURL == "" && (strings.HasPrefix(location, "http://") || strings.HasPrefix(location, "https://")) {
 			joinURL = location
 		}
-		out = append(out, fiber.Map{"id": id, "title": title, "starts_at": startsAt, "ends_at": endsAt, "join_url": joinURL, "course": course})
+		kind := "external"
+		if simulated {
+			kind = "simulated" // played in-app as a fake-live recording, not an external link
+		}
+		out = append(out, fiber.Map{"id": id, "title": title, "starts_at": startsAt, "ends_at": endsAt, "join_url": joinURL, "course": course, "kind": kind})
 	}
 	return c.JSON(fiber.Map{"live": out})
 }

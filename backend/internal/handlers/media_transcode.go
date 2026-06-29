@@ -176,7 +176,8 @@ func (h *Handlers) transcodeToHLS(assetID, sourceKey string) {
 		}
 	}
 	hlsURL := strings.TrimRight(h.Cfg.R2.PublicBase, "/") + "/" + prefix + "index.m3u8"
-	if _, err := h.Pool.Exec(ctx, `UPDATE media_assets SET status='ready', hls_url=$2, enc_key=$3 WHERE id=$1`, assetID, hlsURL, encKey); err != nil {
+	durSecs := int(pr.duration + 0.5) // 0 if the probe couldn't read it; backfilled lazily on first live-playlist parse
+	if _, err := h.Pool.Exec(ctx, `UPDATE media_assets SET status='ready', hls_url=$2, enc_key=$3, duration_seconds=$4 WHERE id=$1`, assetID, hlsURL, encKey, durSecs); err != nil {
 		fail("db update", err)
 		return
 	}
@@ -198,7 +199,8 @@ type srcProbe struct {
 	width    int
 	height   int
 	hasAudio bool
-	bitRate  int64 // overall bits/sec, 0 if unknown
+	bitRate  int64   // overall bits/sec, 0 if unknown
+	duration float64 // total runtime in seconds, 0 if unknown
 }
 
 // ffprobeSource inspects the downloaded file. Returns ok=false on any failure
@@ -206,7 +208,7 @@ type srcProbe struct {
 // full re-encode.
 func ffprobeSource(src string) (srcProbe, bool) {
 	out, err := exec.Command("ffprobe", "-v", "error",
-		"-show_entries", "stream=codec_type,codec_name,width,height:format=bit_rate",
+		"-show_entries", "stream=codec_type,codec_name,width,height:format=bit_rate,duration",
 		"-of", "json", src).Output()
 	if err != nil {
 		return srcProbe{}, false
@@ -219,7 +221,8 @@ func ffprobeSource(src string) (srcProbe, bool) {
 			Height    int    `json:"height"`
 		} `json:"streams"`
 		Format struct {
-			BitRate string `json:"bit_rate"`
+			BitRate  string `json:"bit_rate"`
+			Duration string `json:"duration"`
 		} `json:"format"`
 	}
 	if err := json.Unmarshal(out, &raw); err != nil {
@@ -246,6 +249,9 @@ func ffprobeSource(src string) (srcProbe, bool) {
 	}
 	if v, err := strconv.ParseInt(strings.TrimSpace(raw.Format.BitRate), 10, 64); err == nil {
 		p.bitRate = v
+	}
+	if v, err := strconv.ParseFloat(strings.TrimSpace(raw.Format.Duration), 64); err == nil {
+		p.duration = v
 	}
 	return p, true
 }

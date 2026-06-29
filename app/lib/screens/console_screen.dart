@@ -1870,8 +1870,15 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
 
   Widget _sessionCard(Map<String, dynamic> s) {
     final p = Palette.of(context);
+    final simulated = (s['kind']?.toString() ?? 'external') == 'simulated';
     final hasLink = (s['join_url']?.toString() ?? '').isNotEmpty;
+    final ready = simulated || hasLink; // a configured session vs. needs-a-link
     final hostUrl = s['host_url']?.toString() ?? '';
+    final mediaTitle = s['media_title']?.toString() ?? '';
+    final time = _fmtTime(s['starts_at']?.toString());
+    final subtitle = simulated
+        ? '$time · Recorded-as-live${mediaTitle.isNotEmpty ? ' · $mediaTitle' : ''}'
+        : (hasLink ? time : '$time · No link — tap to add');
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: GestureDetector(
@@ -1882,25 +1889,24 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
             Container(
               width: 40, height: 40,
               decoration: BoxDecoration(color: AppleColors.red.withOpacity(0.12), borderRadius: BorderRadius.zero),
-              child: const Icon(CupertinoIcons.videocam_fill, color: AppleColors.red, size: 20),
+              child: Icon(simulated ? CupertinoIcons.play_rectangle_fill : CupertinoIcons.videocam_fill, color: AppleColors.red, size: 20),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(s['title']?.toString() ?? 'Live class', style: AppleTheme.headline(context)),
-                Text(hasLink ? _fmtTime(s['starts_at']?.toString()) : '${_fmtTime(s['starts_at']?.toString())} · No link — tap to add',
-                    style: AppleTheme.footnote(context)),
+                Text(subtitle, style: AppleTheme.footnote(context)),
               ]),
             ),
-            // Host & record — opens the instructor's Zoho host link (staff only).
-            if (hostUrl.isNotEmpty) ...[
+            // Host & record — opens the instructor's Zoho host link (external only).
+            if (!simulated && hostUrl.isNotEmpty) ...[
               _smallButton('Host & record', CupertinoIcons.videocam_circle_fill, () => _openLink(hostUrl)),
               const SizedBox(width: 6),
             ],
-            _smallButton('Edit link', CupertinoIcons.link, () => _editSession(s)),
+            _smallButton('Edit', CupertinoIcons.pencil, () => _editSession(s)),
             const SizedBox(width: 6),
-            Icon(hasLink ? CupertinoIcons.link : CupertinoIcons.exclamationmark_circle,
-                size: 18, color: hasLink ? p.secondary : AppleColors.orange),
+            Icon(ready ? (simulated ? CupertinoIcons.play_rectangle : CupertinoIcons.link) : CupertinoIcons.exclamationmark_circle,
+                size: 18, color: ready ? p.secondary : AppleColors.orange),
           ]),
         ),
       ),
@@ -1917,34 +1923,54 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     }
   }
 
-  // Update a live session's video (join) link — and optionally its title.
+  // Edit a live session — its link (external) or its recording + live settings.
   Future<void> _editSession(Map<String, dynamic> s) async {
     final title = TextEditingController(text: s['title']?.toString() ?? '');
     final url = TextEditingController(text: s['join_url']?.toString() ?? '');
     final host = TextEditingController(text: s['host_url']?.toString() ?? '');
-    final ok = await showFormSheet(context, square: true, title: 'Update Live Link', builder: (setS) => [
+    final viewers = TextEditingController(text: '${s['viewer_base'] ?? 0}');
+    int mode = (s['kind']?.toString() ?? 'external') == 'simulated' ? 1 : 0;
+    String? videoId = (s['media_asset_id']?.toString() ?? '').isEmpty ? null : s['media_asset_id'].toString();
+    bool chatOn = s['chat_enabled'] != false;
+    bool qaOn = s['qa_enabled'] != false;
+    final videos = await _loadVideos();
+    if (!mounted) return;
+    final ok = await showFormSheet(context, square: true, title: 'Edit Live Class', builder: (setS) => [
       sheetField(title, 'Title', CupertinoIcons.textformat),
       const SizedBox(height: 10),
-      sheetField(url, 'Join link — students attend (Zoho / Meet / Jitsi)', CupertinoIcons.link),
+      AppleSegmented(square: true, labels: const ['External link', 'Recorded as live'], selected: mode, onChanged: (i) => setS(() => mode = i)),
       const SizedBox(height: 10),
-      sheetField(host, 'Host link — instructor starts & records (Zoho host URL)', CupertinoIcons.videocam_circle),
-      const SizedBox(height: 6),
-      _label(context, 'The host link is shown only to staff via “Host & record”. Students never see it.'),
+      if (mode == 0) ...[
+        sheetField(url, 'Join link — students attend (Zoho / Meet / Jitsi)', CupertinoIcons.link),
+        const SizedBox(height: 10),
+        sheetField(host, 'Host link — instructor starts & records (Zoho host URL)', CupertinoIcons.videocam_circle),
+        const SizedBox(height: 6),
+        _label(context, 'The host link is shown only to staff via “Host & record”. Students never see it.'),
+      ] else
+        ..._simLiveFields(videos, videoId, chatOn, qaOn, viewers,
+            (id) => setS(() => videoId = id), (v) => setS(() => chatOn = v), (v) => setS(() => qaOn = v)),
     ], onSubmit: () async {
-      if (url.text.trim().isEmpty && host.text.trim().isEmpty) return 'Add a join or host link';
+      if (mode == 0 && url.text.trim().isEmpty && host.text.trim().isEmpty) return 'Add a join or host link';
+      if (mode == 1 && (videoId == null || videoId!.isEmpty)) return 'Pick a video to stream';
       try {
-        await widget.auth.apiPatch('/api/v1/manage/sessions/${s['id']}', {
-          'title': title.text.trim(),
-          'join_url': url.text.trim(),
-          'host_url': host.text.trim(),
-        });
+        final body = <String, dynamic>{'title': title.text.trim()};
+        if (mode == 0) {
+          body['join_url'] = url.text.trim();
+          body['host_url'] = host.text.trim();
+        } else {
+          body['media_asset_id'] = videoId;
+          body['chat_enabled'] = chatOn;
+          body['qa_enabled'] = qaOn;
+          body['viewer_base'] = int.tryParse(viewers.text.trim()) ?? 0;
+        }
+        await widget.auth.apiPatch('/api/v1/manage/sessions/${s['id']}', body);
         return null;
       } on ApiException catch (e) {
         return e.message;
       }
     });
     if (ok == true) {
-      _toast('Live link updated');
+      _toast('Live class updated');
       _load();
     }
   }
@@ -2173,29 +2199,98 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     }
   }
 
+  // Load the video store (for the recorded-as-live picker).
+  Future<List<Map<String, dynamic>>> _loadVideos() async {
+    try {
+      final r = await widget.auth.apiGet('/api/v1/manage/videos');
+      return ((ApiClient.decode(r)['videos'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // A selectable list of store videos (only 'ready' ones are playable).
+  Widget _videoPicker(List<Map<String, dynamic>> videos, String? selectedId, void Function(String) onPick) {
+    final p = Palette.of(context);
+    if (videos.isEmpty) return _label(context, 'No videos in the store yet — upload one in the Video Store first.');
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 220),
+      decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+      child: ListView(shrinkWrap: true, children: [
+        for (final v in videos)
+          Builder(builder: (_) {
+            final id = v['id']?.toString() ?? '';
+            final ready = (v['status']?.toString() ?? '') == 'ready';
+            final sel = id == selectedId;
+            return ListTile(
+              dense: true,
+              enabled: ready,
+              onTap: ready ? () => onPick(id) : null,
+              leading: Icon(sel ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle, size: 20, color: sel ? AppleColors.green : p.secondary),
+              title: Text(v['title']?.toString() ?? 'Untitled', style: AppleTheme.body(context)),
+              subtitle: Text(ready ? 'Ready' : ((v['status']?.toString() ?? '') == 'processing' ? 'Processing…' : 'Not playable'), style: AppleTheme.footnote(context)),
+            );
+          }),
+      ]),
+    );
+  }
+
+  // The recorded-as-live form fields (video picker + chat/Q&A toggles + floor).
+  List<Widget> _simLiveFields(List<Map<String, dynamic>> videos, String? videoId, bool chatOn, bool qaOn,
+      TextEditingController viewers, void Function(String) onPick, void Function(bool) onChat, void Function(bool) onQa) {
+    return [
+      _label(context, 'Pick a video from the store. It plays as a live stream from the scheduled time — viewers can’t skip ahead, pause, or tell it was recorded.'),
+      const SizedBox(height: 6),
+      _videoPicker(videos, videoId, onPick),
+      const SizedBox(height: 10),
+      Row(children: [Expanded(child: _label(context, 'Live chat')), CupertinoSwitch(value: chatOn, onChanged: onChat)]),
+      Row(children: [Expanded(child: _label(context, 'Q&A / raise hand')), CupertinoSwitch(value: qaOn, onChanged: onQa)]),
+      const SizedBox(height: 8),
+      sheetField(viewers, 'Starting viewers (displayed-count floor)', CupertinoIcons.eye, keyboard: TextInputType.number),
+    ];
+  }
+
   Future<void> _addSession() async {
     final title = TextEditingController();
     final url = TextEditingController();
     final host = TextEditingController();
+    final viewers = TextEditingController(text: '0');
     DateTime when = DateTime.now().add(const Duration(hours: 1));
+    int mode = 0; // 0 = external link, 1 = recorded-as-live
+    String? videoId;
+    bool chatOn = true, qaOn = true;
+    final videos = await _loadVideos();
+    if (!mounted) return;
     final ok = await showFormSheet(context, square: true, title: 'Add Live Class', builder: (setS) => [
       sheetField(title, 'Title (e.g. Lecture 1)', CupertinoIcons.textformat),
       const SizedBox(height: 10),
-      sheetField(url, 'Join link — students attend', CupertinoIcons.link),
+      AppleSegmented(square: true, labels: const ['External link', 'Recorded as live'], selected: mode, onChanged: (i) => setS(() => mode = i)),
       const SizedBox(height: 10),
-      sheetField(host, 'Host link — instructor records (Zoho host URL, optional)', CupertinoIcons.videocam_circle),
+      if (mode == 0) ...[
+        sheetField(url, 'Join link — students attend', CupertinoIcons.link),
+        const SizedBox(height: 10),
+        sheetField(host, 'Host link — instructor records (Zoho host URL, optional)', CupertinoIcons.videocam_circle),
+      ] else
+        ..._simLiveFields(videos, videoId, chatOn, qaOn, viewers,
+            (id) => setS(() => videoId = id), (v) => setS(() => chatOn = v), (v) => setS(() => qaOn = v)),
       const SizedBox(height: 12),
       _DateTimeRow(value: when, onPick: (d) => setS(() => when = d)),
     ], onSubmit: () async {
       if (title.text.trim().isEmpty) return 'Title required';
-      if (url.text.trim().isEmpty) return 'Join link required';
+      if (mode == 0 && url.text.trim().isEmpty) return 'Join link required';
+      if (mode == 1 && (videoId == null || videoId!.isEmpty)) return 'Pick a video to stream';
       try {
-        await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/sessions', {
-          'title': title.text.trim(),
-          'join_url': url.text.trim(),
-          'host_url': host.text.trim(),
-          'starts_at': when.toUtc().toIso8601String(),
-        });
+        final body = <String, dynamic>{'title': title.text.trim(), 'starts_at': when.toUtc().toIso8601String()};
+        if (mode == 0) {
+          body['join_url'] = url.text.trim();
+          body['host_url'] = host.text.trim();
+        } else {
+          body['media_asset_id'] = videoId;
+          body['chat_enabled'] = chatOn;
+          body['qa_enabled'] = qaOn;
+          body['viewer_base'] = int.tryParse(viewers.text.trim()) ?? 0;
+        }
+        await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/sessions', body);
         return null;
       } on ApiException catch (e) {
         return e.message;
