@@ -1,0 +1,85 @@
+================================================================================
+ONROL — LIVE CLASS LOAD TEST REPORT
+Date: 2026-06-30
+Server: KVM 1 VPS (1 vCPU AMD EPYC, 3.9 GB RAM, 48 GB disk) @ 187.127.178.100
+Goal: verify the box serves 100 real, simultaneous live-class viewers.
+================================================================================
+
+VERDICT
+--------------------------------------------------------------------------------
+PASS — comfortably. 100 concurrent live viewers ran for 60s with ZERO errors,
+p95 latency under 100 ms, and the 1-vCPU server stayed essentially idle
+(load average 0.05, API process 0.1% CPU, ~0.5 GB RAM used of 3.9 GB).
+There is large headroom well beyond 100.
+
+WHAT WAS TESTED
+--------------------------------------------------------------------------------
+- 100 distinct authenticated sessions (real logins → real JWT + bound device),
+  each running the exact poll loop a live viewer's app performs:
+    * GET  /api/v1/me/live/:id/state       every 3 s   (status, viewer count)
+    * GET  /api/v1/me/live/:id/questions    every 4 s   (Q&A)
+    * POST /api/v1/me/live/:id/heartbeat    every 20 s  (presence)
+    * GET  /api/v1/me/videos/:id/hls.key    once        (AES key)
+- A real "live" simulated session on a ready (transcoded) recording.
+- Duration: 60 seconds.
+
+METHOD / SCOPE NOTE
+--------------------------------------------------------------------------------
+- The load generator ran ON the VPS against http://localhost:8080, isolating the
+  server's own capacity (removing internet/client-network variance).
+- Video playlist + segments are served by the Cloudflare R2 CDN, NOT the VPS, so
+  they were intentionally excluded — they place ~zero load on the box. Only the
+  small AES key request hits the API per viewer.
+- Logins used a test account with an unlimited device cap, enrolled in the
+  course; 100 unique device IDs created 100 independent authenticated sessions.
+
+RESULTS (100 viewers, 60 s, ~3,800 requests total, ~63 req/s aggregate)
+--------------------------------------------------------------------------------
+  Endpoint     Requests   Errors   Rate        p50       p95       p99      max
+  state        2100       0        35.0 req/s  45.7 ms   94.0 ms   108 ms   123 ms
+  questions    1400       0        23.3 req/s  52.3 ms   70.7 ms    76 ms    87 ms
+  heartbeat     200       0         3.3 req/s  54.9 ms   72.6 ms    78 ms    83 ms
+  hls.key       100       0         1.7 req/s  39.9 ms   58.5 ms    61 ms    62 ms
+  --------------------------------------------------------------------------------
+  Login         100/100   0        (5.9 s to bring all 100 viewers online)
+
+  Total errors: 0 / ~3,800 requests.
+
+SERVER LOAD DURING THE TEST (sampled mid-run)
+--------------------------------------------------------------------------------
+  Load average (1 vCPU):  0.05            (≈ idle; 1.0 would be one core full)
+  API process (onrol):    0.1% CPU, 31 MB RAM
+  System memory:          551 MB used / 3,915 MB total (3.36 GB available)
+  Postgres:               local, light
+
+INTERPRETATION
+--------------------------------------------------------------------------------
+- The API only does small, indexed Postgres reads/writes per request, so ~63
+  req/s is trivial for a Go + pgx service — the CPU barely registered it.
+- The heavy part (video bandwidth) is fully offloaded to Cloudflare R2 (zero
+  egress), so viewer count does not load the VPS for streaming.
+- Sub-100 ms p95 at 100 concurrent viewers, zero errors, idle CPU → the box is
+  nowhere near its limit. A conservative extrapolation puts comfortable capacity
+  at several hundred concurrent live viewers on this same KVM 1 plan.
+
+THE ONE EXCEPTION: VIDEO TRANSCODING
+--------------------------------------------------------------------------------
+- Serving live classes is light; TRANSCODING an uploaded video (ffmpeg) is the
+  only CPU-heavy task and will peg the single core for the duration of the job.
+- Mitigation already in place: transcodes that get interrupted by a deploy are
+  auto-resumed on startup. Operational rule: upload/transcode videos AHEAD of
+  time (off-peak), not minutes before / during a live class.
+
+WHEN TO CONSIDER KVM 2 (2 vCPU / 8 GB)
+--------------------------------------------------------------------------------
+- You want to transcode videos WHILE classes are live with zero risk of lag, or
+- You are heading toward ~200–300+ concurrent viewers, or
+- You add CPU-heavy features (more live AI, image processing, etc.).
+For 100 concurrent live viewers, KVM 1 is a solid, cost-effective fit.
+
+TEST ARTIFACTS (cleaned up after the run)
+--------------------------------------------------------------------------------
+- Temporary "LOADTEST live" class session — removed.
+- 100 temporary device bindings for the test account — removed.
+- Load-test binary on the server (/tmp/loadtest) — removed.
+================================================================================
