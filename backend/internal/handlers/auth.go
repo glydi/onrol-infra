@@ -160,23 +160,20 @@ func (h *Handlers) bindDevice(ctx context.Context, user models.User, deviceID, p
 		return err
 	}
 
-	// STRICT cap: 2 active devices for everyone, EXCEPT accounts explicitly
-	// granted unlimited devices via a high max_devices (>= 99 — e.g. test
-	// accounts). The user-row lock above serialises concurrent logins, so this
-	// count-then-bind is race-free.
-	if user.MaxDevices < 99 {
-		const hardCap = 2
-		var activeCount int
-		if err := tx.QueryRow(ctx,
-			`SELECT count(*) FROM devices WHERE user_id=$1 AND is_active`,
-			user.ID,
-		).Scan(&activeCount); err != nil {
-			return err
-		}
-		if activeCount >= hardCap {
-			devices, _ := listActiveDevices(ctx, tx, user.ID)
-			return deviceLimitError{devices: devices}
-		}
+	// STRICT cap: at most 2 active devices per account — no exceptions. The
+	// user-row lock above serialises concurrent logins, so this count-then-bind
+	// is race-free.
+	const hardCap = 2
+	var activeCount int
+	if err := tx.QueryRow(ctx,
+		`SELECT count(*) FROM devices WHERE user_id=$1 AND is_active`,
+		user.ID,
+	).Scan(&activeCount); err != nil {
+		return err
+	}
+	if activeCount >= hardCap {
+		devices, _ := listActiveDevices(ctx, tx, user.ID)
+		return deviceLimitError{devices: devices}
 	}
 
 	if existingID != "" {

@@ -16,18 +16,11 @@ func (h *Handlers) ListDevices(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
 	}
 	currentDevice, _ := c.Locals(middleware.LocalDeviceID).(string)
-	// Strict 2-device cap for everyone, except accounts granted unlimited
-	// devices via a high max_devices (>= 99 → 0 means "no limit" in the UI).
-	var maxDev int
-	_ = h.Pool.QueryRow(c.Context(), `SELECT COALESCE(max_devices,2) FROM users WHERE id=$1`, userID).Scan(&maxDev)
-	limit := 2
-	if maxDev >= 99 {
-		limit = 0
-	}
+	// Strict 2-device cap for everyone — no exceptions.
 	return c.JSON(fiber.Map{
 		"devices":           devices,
 		"current_device_id": currentDevice,
-		"max_devices":       limit,
+		"max_devices":       2,
 	})
 }
 
