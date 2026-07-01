@@ -945,12 +945,12 @@ class _StudentHomeState extends State<StudentHome> {
       });
     final out = <Widget>[];
     for (final k in keys) {
-      out.add(Padding(
-        padding: const EdgeInsets.only(left: 4, top: 8, bottom: 2),
-        child: Text(k == null ? 'Unscheduled' : 'Day $k',
-            style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: _grey)),
+      final ls = groups[k]!;
+      out.add(_DayFolder(
+        label: k == null ? 'Unscheduled' : 'Day $k',
+        count: ls.length,
+        children: ls.map((ll) => _lessonRow(ll, rebuild)).toList(),
       ));
-      out.addAll(groups[k]!.map((ll) => _lessonRow(ll, rebuild)));
     }
     return out;
   }
@@ -6041,6 +6041,54 @@ class _PressableState extends State<_Pressable> {
         onTap: widget.onTap,
         child: AnimatedScale(scale: scale, duration: const Duration(milliseconds: 140), curve: Curves.easeOutCubic, child: widget.child),
       ),
+    );
+  }
+}
+
+/// Collapsible "Day" folder inside a module on the student course view.
+class _DayFolder extends StatefulWidget {
+  const _DayFolder({required this.label, required this.count, required this.children});
+  final String label;
+  final int count;
+  final List<Widget> children;
+
+  @override
+  State<_DayFolder> createState() => _DayFolderState();
+}
+
+class _DayFolderState extends State<_DayFolder> {
+  bool _open = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _open = !_open),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(color: _orange.withOpacity(0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: _orange.withOpacity(0.18))),
+            child: Row(children: [
+              Icon(_open ? CupertinoIcons.chevron_down : CupertinoIcons.chevron_right, size: 12, color: _orange),
+              const SizedBox(width: 8),
+              Icon(_open ? CupertinoIcons.folder_fill : CupertinoIcons.folder, size: 15, color: _orange),
+              const SizedBox(width: 8),
+              Expanded(child: Text(widget.label, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: _navy))),
+              Text('${widget.count} ${widget.count == 1 ? 'item' : 'items'}', style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
+            ]),
+          ),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: _open
+              ? Padding(padding: const EdgeInsets.only(left: 6, top: 2), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: widget.children))
+              : const SizedBox(width: double.infinity),
+        ),
+      ]),
     );
   }
 }

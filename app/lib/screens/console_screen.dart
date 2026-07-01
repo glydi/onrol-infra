@@ -2400,12 +2400,12 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       });
     final out = <Widget>[];
     for (final k in keys) {
-      out.add(Padding(
-        padding: const EdgeInsets.only(top: 8, bottom: 2),
-        child: Text(k == null ? 'Unscheduled' : 'Day $k',
-            style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w800, color: Palette.of(context).accent)),
+      final ls = groups[k]!;
+      out.add(_DayFolder(
+        label: k == null ? 'Unscheduled' : 'Day $k',
+        count: ls.length,
+        children: ls.map(_lessonRow).toList(),
       ));
-      out.addAll(groups[k]!.map(_lessonRow));
     }
     return out;
   }
@@ -4192,6 +4192,56 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> {
           ],
         ]),
       ),
+    );
+  }
+}
+
+/// A collapsible "Day" folder inside a module — tap the header to expand/collapse
+/// its lessons. Open by default so nothing is hidden on first view.
+class _DayFolder extends StatefulWidget {
+  const _DayFolder({required this.label, required this.count, required this.children});
+  final String label;
+  final int count;
+  final List<Widget> children;
+
+  @override
+  State<_DayFolder> createState() => _DayFolderState();
+}
+
+class _DayFolderState extends State<_DayFolder> {
+  bool _open = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _open = !_open),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(color: p.accent.withOpacity(0.08), border: Border.all(color: p.separator)),
+            child: Row(children: [
+              Icon(_open ? CupertinoIcons.chevron_down : CupertinoIcons.chevron_right, size: 12, color: p.accent),
+              const SizedBox(width: 8),
+              Icon(_open ? CupertinoIcons.folder_fill : CupertinoIcons.folder, size: 15, color: p.accent),
+              const SizedBox(width: 8),
+              Expanded(child: Text(widget.label, style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w800, color: p.accent))),
+              Text('${widget.count} ${widget.count == 1 ? 'item' : 'items'}', style: AppleTheme.footnote(context).copyWith(color: p.secondary)),
+            ]),
+          ),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: _open
+              ? Padding(padding: const EdgeInsets.only(left: 8), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: widget.children))
+              : const SizedBox(width: double.infinity),
+        ),
+      ]),
     );
   }
 }
