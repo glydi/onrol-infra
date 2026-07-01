@@ -299,7 +299,6 @@ class _StudentHomeState extends State<StudentHome> {
     _Tile(CupertinoIcons.compass_fill, 'Explore', 'explore'),
     _Tile(CupertinoIcons.book_fill, 'My Courses', 'courses'),
     _Tile(CupertinoIcons.calendar, 'Schedule', 'schedule'),
-    _Tile(CupertinoIcons.play_circle_fill, 'Resume', 'resume'),
     _Tile(CupertinoIcons.doc_text_fill, 'Assignments', 'assignments'),
     _Tile(CupertinoIcons.videocam_fill, 'Live Classes', 'live'),
     _Tile(CupertinoIcons.doc_richtext, 'Study Hub', 'study'),
@@ -513,7 +512,12 @@ class _StudentHomeState extends State<StudentHome> {
   // (shrink-wrapped so it flows with the page scroll). The floating scroll
   // button appears when this runs off-screen.
   Widget _narrowHome(BoxConstraints c) {
-    final side = (c.maxWidth - 36).clamp(260.0, 860.0).toDouble();
+    // Size the checkerboard to the SMALLER of the width budget and ~62% of the
+    // screen height, so the whole menu is visible without scrolling (on iPad the
+    // full-width square used to run off-screen).
+    final wSide = (c.maxWidth - 36).clamp(260.0, 860.0);
+    final hSide = c.maxHeight.isFinite ? (c.maxHeight * 0.62).clamp(260.0, 860.0) : 860.0;
+    final side = (wSide < hSide ? wSide : hSide).toDouble();
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncScrollState());
     return SingleChildScrollView(
       controller: _homeScroll,
@@ -1331,6 +1335,10 @@ class _StudentHomeState extends State<StudentHome> {
                     ),
                   ]),
                 ),
+                const SizedBox(height: 14),
+                // Continue where you left off (replaces the old Resume tile).
+                if (courses.isNotEmpty)
+                  _Entrance(index: 1, child: _orangeButton('▶  Continue learning', () => _openPanel('resume'))),
                 const SizedBox(height: 18),
                 // Overall-progress hero with an animated ring.
                 if (courses.isNotEmpty) ...[
