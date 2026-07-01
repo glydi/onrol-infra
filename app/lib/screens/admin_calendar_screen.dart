@@ -59,7 +59,34 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
     if (mounted) setState(() => _loading = false);
   }
 
-  // Icon/colour/label per calendar item kind.
+  // Event types the admin can pick (the "what" of an event).
+  static const _eventTypes = <(String, String, IconData, Color)>[
+    ('general', 'Event', CupertinoIcons.calendar, AppleColors.blue),
+    ('batch_start', 'Batch Start', CupertinoIcons.person_3_fill, AppleColors.green),
+    ('live', 'Live Class', CupertinoIcons.videocam_fill, AppleColors.red),
+    ('exam', 'Exam / Test', CupertinoIcons.doc_text_fill, AppleColors.orange),
+    ('holiday', 'Holiday', CupertinoIcons.sun_max_fill, Color(0xFF7C5CFC)),
+    ('deadline', 'Deadline', CupertinoIcons.clock_fill, Color(0xFFE0A12A)),
+    ('orientation', 'Orientation', CupertinoIcons.compass_fill, Color(0xFF18A999)),
+    ('meeting', 'Meeting', CupertinoIcons.person_2_fill, Color(0xFF3A57E8)),
+    ('result', 'Results', CupertinoIcons.chart_bar_fill, Color(0xFFEA4C89)),
+    ('fee', 'Fee / Payment', CupertinoIcons.creditcard_fill, Color(0xFF2D7DF6)),
+  ];
+
+  ({IconData icon, Color color, String label}) _typeStyle(String key) {
+    final t = _eventTypes.firstWhere((e) => e.$1 == key, orElse: () => _eventTypes.first);
+    return (icon: t.$3, color: t.$4, label: t.$2);
+  }
+
+  // Style for any calendar item: events use their type; the read-only feed uses
+  // its kind.
+  ({IconData icon, Color color, String label}) _styleFor(Map<String, dynamic> m) {
+    final kind = m['kind']?.toString() ?? 'event';
+    if (kind == 'event') return _typeStyle(m['event_type']?.toString() ?? 'general');
+    return _kindStyle(kind);
+  }
+
+  // Icon/colour/label per read-only feed item kind.
   ({IconData icon, Color color, String label}) _kindStyle(String kind) {
     switch (kind) {
       case 'session':
@@ -162,7 +189,7 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
                   const SizedBox(height: 3),
                   SizedBox(height: 5, child: n == 0 ? null : Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
                     for (final m in (_byDay[_dk(d)] ?? const []).take(3))
-                      Container(width: 5, height: 5, margin: const EdgeInsets.symmetric(horizontal: 1), decoration: BoxDecoration(color: isSel ? Colors.white : _kindStyle(m['kind']?.toString() ?? 'event').color, shape: BoxShape.circle)),
+                      Container(width: 5, height: 5, margin: const EdgeInsets.symmetric(horizontal: 1), decoration: BoxDecoration(color: isSel ? Colors.white : _styleFor(m).color, shape: BoxShape.circle)),
                   ])),
                 ]),
               ),
@@ -176,7 +203,7 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
   Widget _itemCard(Map<String, dynamic> e) {
     final kind = e['kind']?.toString() ?? 'event';
     final isEvent = kind == 'event';
-    final st = _kindStyle(kind);
+    final st = _styleFor(e);
     final dt = e['_dt'] as DateTime;
     final end = DateTime.tryParse(e['ends_at']?.toString() ?? '')?.toLocal();
     final loc = e['location']?.toString() ?? '';
@@ -184,7 +211,7 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
     final desc = e['description']?.toString() ?? '';
     final time = end == null ? _clock(dt) : '${_clock(dt)} – ${_clock(end)}';
     final sub = isEvent
-        ? [time, if (loc.isNotEmpty) loc, _audienceLabel(e)].join(' · ')
+        ? [st.label, time, if (loc.isNotEmpty) loc, _audienceLabel(e)].join(' · ')
         : [st.label, if (course.isNotEmpty) course, time].where((x) => x.isNotEmpty).join(' · ');
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -242,9 +269,16 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
     bool hasEnd = ev != null && (ev['ends_at']?.toString().isNotEmpty ?? false);
     int aud = const {'all': 0, 'batch': 1, 'role': 2}[ev?['audience']?.toString() ?? 'all'] ?? 0;
     int roleIdx = const {'student': 0, 'instructor': 1, 'manager': 2}[ev?['role']?.toString() ?? 'student'] ?? 0;
+    String etype = ev?['event_type']?.toString() ?? 'general';
 
     final ok = await showFormSheet(context, square: true, title: isEdit ? 'Edit Event' : 'Add Event', builder: (setS) => [
-      sheetField(title, 'Title (e.g. Orientation)', CupertinoIcons.textformat),
+      _lbl('What is it?'),
+      const SizedBox(height: 6),
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        for (final t in _eventTypes) _typeChip(t.$1, t.$2, t.$3, t.$4, etype == t.$1, () => setS(() => etype = t.$1)),
+      ]),
+      const SizedBox(height: 14),
+      sheetField(title, 'Title (e.g. Batch 7 starts)', CupertinoIcons.textformat),
       const SizedBox(height: 10),
       sheetField(desc, 'Description (optional)', CupertinoIcons.text_alignleft),
       const SizedBox(height: 10),
@@ -270,6 +304,7 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
         'starts_at': start.toUtc().toIso8601String(),
         'ends_at': hasEnd ? end.toUtc().toIso8601String() : '',
         'audience': const ['all', 'batch', 'role'][aud],
+        'event_type': etype,
       };
       if (aud == 1) body['batch_number'] = int.tryParse(batch.text.trim());
       if (aud == 2) body['role'] = _roles[roleIdx];
@@ -291,6 +326,25 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
   }
 
   Widget _lbl(String t) => Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(t, style: AppleTheme.footnote(context)));
+
+  Widget _typeChip(String key, String label, IconData icon, Color color, bool sel, VoidCallback onTap) {
+    final p = Palette.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+        decoration: BoxDecoration(
+          color: sel ? color.withOpacity(0.16) : p.card2,
+          border: Border.all(color: sel ? color : p.separator, width: sel ? 1.4 : 1),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(label, style: AppleTheme.footnote(context).copyWith(color: sel ? color : null, fontWeight: sel ? FontWeight.w700 : FontWeight.w500)),
+        ]),
+      ),
+    );
+  }
 
   Widget _dtField(DateTime value, ValueChanged<DateTime> onPick) {
     final p = Palette.of(context);

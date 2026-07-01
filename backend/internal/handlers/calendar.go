@@ -11,14 +11,23 @@ import (
 
 // calendarEventReq is the create/update body. audience: all | batch | role.
 type calendarEventReq struct {
-	Title       string  `json:"title"`
-	Description string  `json:"description"`
-	Location    string  `json:"location"`
-	StartsAt    string  `json:"starts_at"`
-	EndsAt      string  `json:"ends_at"`
-	Audience    string  `json:"audience"`
-	BatchNumber *int    `json:"batch_number"`
-	Role        string  `json:"role"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Location    string `json:"location"`
+	StartsAt    string `json:"starts_at"`
+	EndsAt      string `json:"ends_at"`
+	Audience    string `json:"audience"`
+	BatchNumber *int   `json:"batch_number"`
+	Role        string `json:"role"`
+	EventType   string `json:"event_type"` // batch_start | live | exam | holiday | … (app-defined)
+}
+
+// eventType returns the type key, defaulting to "general".
+func (r *calendarEventReq) eventType() string {
+	if strings.TrimSpace(r.EventType) == "" {
+		return "general"
+	}
+	return r.EventType
 }
 
 // normalize cleans the audience fields the same way CreateAnnouncement does.
@@ -46,7 +55,7 @@ func (r *calendarEventReq) normalize() (batch any, role any) {
 func (h *Handlers) ListCalendarEvents(c *fiber.Ctx) error {
 	rows, err := h.Pool.Query(c.Context(), `
 		SELECT id, title, description, COALESCE(location,''), starts_at, ends_at,
-		       audience, batch_number, COALESCE(role,'')
+		       audience, batch_number, COALESCE(role,''), COALESCE(event_type,'general')
 		FROM calendar_events
 		WHERE starts_at >= now() - interval '60 days'
 		ORDER BY starts_at`)
@@ -56,15 +65,15 @@ func (h *Handlers) ListCalendarEvents(c *fiber.Ctx) error {
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var id, title, desc, loc, audience, role string
+		var id, title, desc, loc, audience, role, etype string
 		var startsAt any
 		var endsAt any
 		var batch *int
-		if err := rows.Scan(&id, &title, &desc, &loc, &startsAt, &endsAt, &audience, &batch, &role); err != nil {
+		if err := rows.Scan(&id, &title, &desc, &loc, &startsAt, &endsAt, &audience, &batch, &role, &etype); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		out = append(out, fiber.Map{"id": id, "title": title, "description": desc, "location": loc,
-			"starts_at": startsAt, "ends_at": endsAt, "audience": audience, "batch_number": batch, "role": role})
+			"starts_at": startsAt, "ends_at": endsAt, "audience": audience, "batch_number": batch, "role": role, "event_type": etype})
 	}
 	return c.JSON(fiber.Map{"events": out})
 }
@@ -116,9 +125,9 @@ func (h *Handlers) CreateCalendarEvent(c *fiber.Ctx) error {
 	}
 	var id string
 	if err := h.Pool.QueryRow(c.Context(),
-		`INSERT INTO calendar_events (title, description, location, starts_at, ends_at, audience, batch_number, role, created_by)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-		strings.TrimSpace(req.Title), req.Description, req.Location, req.StartsAt, ends, req.Audience, batch, role, callerID(c)).Scan(&id); err != nil {
+		`INSERT INTO calendar_events (title, description, location, starts_at, ends_at, audience, batch_number, role, event_type, created_by)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+		strings.TrimSpace(req.Title), req.Description, req.Location, req.StartsAt, ends, req.Audience, batch, role, req.eventType(), callerID(c)).Scan(&id); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id})
@@ -138,9 +147,9 @@ func (h *Handlers) UpdateCalendarEvent(c *fiber.Ctx) error {
 	}
 	ct, err := h.Pool.Exec(c.Context(),
 		`UPDATE calendar_events
-		 SET title=$2, description=$3, location=$4, starts_at=$5, ends_at=$6, audience=$7, batch_number=$8, role=$9
+		 SET title=$2, description=$3, location=$4, starts_at=$5, ends_at=$6, audience=$7, batch_number=$8, role=$9, event_type=$10
 		 WHERE id=$1`,
-		id, strings.TrimSpace(req.Title), req.Description, req.Location, req.StartsAt, ends, req.Audience, batch, role)
+		id, strings.TrimSpace(req.Title), req.Description, req.Location, req.StartsAt, ends, req.Audience, batch, role, req.eventType())
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "update failed")
 	}
