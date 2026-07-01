@@ -20,9 +20,9 @@ func Connect(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse dsn: %w", err)
 	}
-	// Modest pool: 300 users do not need more, and a small VPS shouldn't burn
-	// connections on idle.
-	cfg.MaxConns = 10
+	// Modest pool sized for a small VPS. 25 keeps ~100 concurrent pollers from
+	// queueing on connections (sub-ms queries) without overloading Postgres.
+	cfg.MaxConns = 25
 	cfg.MinConns = 2
 	cfg.MaxConnIdleTime = 5 * time.Minute
 

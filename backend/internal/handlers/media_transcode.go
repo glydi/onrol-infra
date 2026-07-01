@@ -21,7 +21,19 @@ import (
 // visual quality, scales to at most 1080p, and segments into short .ts pieces.
 // Uploads playlist + segments back to R2 and marks the asset ready. Runs in its
 // own goroutine; failures flip the status to 'failed' (source mp4 is the fallback).
+// Only one transcode runs at a time — ffmpeg is CPU-heavy and the box has a
+// single core, so serialising keeps live-class / API traffic responsive.
+var transcodeSem = make(chan struct{}, 1)
+
+// niceFfmpeg runs ffmpeg at a lower CPU priority so a long encode can't starve
+// the API (nice is coreutils, always present).
+func niceFfmpeg(args ...string) *exec.Cmd {
+	return exec.Command("nice", append([]string{"-n", "10", "ffmpeg"}, args...)...)
+}
+
 func (h *Handlers) transcodeToHLS(assetID, sourceKey string) {
+	transcodeSem <- struct{}{}
+	defer func() { <-transcodeSem }()
 	ctx := context.Background()
 	fail := func(msg string, err error) {
 		log.Printf("transcode %s: %s: %v", assetID, msg, err)
@@ -137,7 +149,7 @@ func (h *Handlers) transcodeToHLS(assetID, sourceKey string) {
 	}
 	log.Printf("transcode %s: %s (codec=%q %dx%d bitrate=%d audio=%q)", assetID, mode, pr.vCodec, pr.width, pr.height, pr.bitRate, pr.aCodec)
 
-	if logBytes, err := exec.Command("ffmpeg", args...).CombinedOutput(); err != nil {
+	if logBytes, err := niceFfmpeg(args...).CombinedOutput(); err != nil {
 		// A stream-copy attempt can still trip on an exotic container or odd
 		// keyframe layout — fall back to a clean full re-encode before giving up.
 		if !copyMode {
@@ -151,7 +163,7 @@ func (h *Handlers) transcodeToHLS(assetID, sourceKey string) {
 			fail("mkdir retry", err)
 			return
 		}
-		if logBytes, err := exec.Command("ffmpeg", encodeArgs...).CombinedOutput(); err != nil {
+		if logBytes, err := niceFfmpeg(encodeArgs...).CombinedOutput(); err != nil {
 			log.Printf("transcode %s ffmpeg output: %s", assetID, tail(string(logBytes), 600))
 			fail("ffmpeg", err)
 			return
@@ -188,6 +200,14 @@ func (h *Handlers) transcodeToHLS(assetID, sourceKey string) {
 // A deploy/restart kills the in-flight transcode goroutine, so on a fresh boot
 // every 'processing' row is stranded — re-queue them so videos actually finish.
 func (h *Handlers) ResumeStuckTranscodes(ctx context.Context) {
+	// Sweep temp dirs left behind by transcodes a restart killed (they'd
+	// otherwise pile up in /tmp; a fresh transcode makes its own dir).
+	if matches, _ := filepath.Glob(filepath.Join(os.TempDir(), "hls-*")); len(matches) > 0 {
+		for _, m := range matches {
+			_ = os.RemoveAll(m)
+		}
+		log.Printf("resume transcodes: cleared %d stale temp dir(s)", len(matches))
+	}
 	rows, err := h.Pool.Query(ctx, `SELECT id, object_key FROM media_assets WHERE status='processing'`)
 	if err != nil {
 		log.Printf("resume transcodes: query failed: %v", err)

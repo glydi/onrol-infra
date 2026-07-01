@@ -25,7 +25,18 @@ echo "[3/5] provisioning DB + .env (idempotent; only writes .env if absent)"
 ssh "$HOST" "DOMAIN=$DOMAIN bash -s" <<'REMOTE'
 set -e
 command -v psql >/dev/null || { export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y -qq postgresql; }
+command -v aws >/dev/null || { export DEBIAN_FRONTEND=noninteractive; apt-get install -y -qq awscli; }  # for offsite backups
 systemctl enable --now postgresql
+# Harden Postgres: listen only on localhost (the app connects via 127.0.0.1) so
+# 5432 is never exposed to the internet.
+sudo -u postgres psql -tAc "ALTER SYSTEM SET listen_addresses = 'localhost'" >/dev/null 2>&1 && systemctl restart postgresql || true
+# Ensure ~2 GB swap (OOM safety during ffmpeg transcodes on small boxes).
+if ! swapon --show | grep -q .; then
+  [ -f /swapfile ] || { fallocate -l 2G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048; mkswap /swapfile; }
+  chmod 600 /swapfile; swapon /swapfile 2>/dev/null || true
+  grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  sysctl -w vm.swappiness=10 >/dev/null 2>&1 || true
+fi
 id onrol >/dev/null 2>&1 || useradd -r -s /usr/sbin/nologin onrol
 if [ ! -f /opt/onrol/.env ]; then
   DBPASS=$(openssl rand -hex 24)
@@ -68,6 +79,16 @@ set -euo pipefail
 OUT=/opt/onrol/backups/onrol-$(date +%Y%m%d-%H%M%S).sql.gz
 sudo -u postgres pg_dump onrol | gzip > "$OUT"
 find /opt/onrol/backups -name 'onrol-*.sql.gz' -mtime +14 -delete
+# Offsite copy to R2 so backups survive a VPS/disk loss (best-effort).
+if [ -f /opt/onrol/.env ]; then
+  set +u; . /opt/onrol/.env; set -u
+  if [ -n "${R2_ACCESS_KEY_ID:-}" ] && [ -n "${R2_ACCOUNT_ID:-}" ] && [ -n "${R2_BUCKET:-}" ]; then
+    AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" \
+      aws s3 cp "$OUT" "s3://$R2_BUCKET/db-backups/$(basename "$OUT")" \
+      --endpoint-url "https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com" \
+      --region auto --only-show-errors || echo "warn: R2 upload failed"
+  fi
+fi
 SH
 chmod +x /opt/onrol/backup.sh
 echo '30 2 * * * root /opt/onrol/backup.sh >> /var/log/onrol-backup.log 2>&1' > /etc/cron.d/onrol-backup
