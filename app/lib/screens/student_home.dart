@@ -2227,13 +2227,27 @@ class _StudyHubState extends State<_StudyHub> {
           ),
           const SizedBox(height: 16),
         ],
+        // Focus Timer is a built-in tool (always shown); the other cards only
+        // appear when the selected course actually has that kind of material —
+        // no empty tabs.
         for (var i = 0; i < _resources.length; i++)
-          _StudyCard(
-            index: i + 1,
-            item: _resources[i],
-            // Show how much material each kind has (Focus Timer has no count).
-            count: _resources[i].id == 'focus' ? null : _mat(_resources[i].id).length,
-            onTap: () => setState(() => _open = _resources[i].id),
+          if (_resources[i].id == 'focus' || (!_loadingMat && _mat(_resources[i].id).isNotEmpty))
+            _StudyCard(
+              index: i + 1,
+              item: _resources[i],
+              count: _resources[i].id == 'focus' ? null : _mat(_resources[i].id).length,
+              onTap: () => setState(() => _open = _resources[i].id),
+            ),
+        if (_loadingMat)
+          const Padding(padding: EdgeInsets.symmetric(vertical: 18), child: Center(child: CupertinoActivityIndicator()))
+        else if (!_resources.any((r) => r.id != 'focus' && _mat(r.id).isNotEmpty))
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              _courses.isEmpty ? 'Enrol in a course to see study material' : 'No study material for $_courseName yet',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(fontSize: 12.5, color: _grey),
+            ),
           ),
       ]);
 
