@@ -304,6 +304,7 @@ class _StudentHomeState extends State<StudentHome> {
     _Tile(CupertinoIcons.doc_richtext, 'Study Hub', 'study'),
     _Tile(CupertinoIcons.list_number, 'Leaderboard', 'leaderboard'),
     _Tile(CupertinoIcons.bubble_left_bubble_right_fill, 'Forum', 'forum'),
+    _Tile(CupertinoIcons.square_pencil_fill, 'Notes', 'notes'),
     _Tile(CupertinoIcons.gear_alt_fill, 'Settings', 'settings'),
     _Tile(CupertinoIcons.square_arrow_right, 'Log Out', 'logout'),
   ];
