@@ -311,6 +311,10 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Get("/me/assessments", auth, h.MyAssessments)
 	api.Get("/me/assessments/:id", auth, h.TakeAssessment)
 	api.Post("/me/assessments/:id/submit", auth, h.SubmitAssessment)
+	api.Post("/me/assessments/:id/files", auth, h.UploadSubmissionFile)
+	api.Get("/me/assessments/:id/files", auth, h.ListMySubmissionFiles)
+	api.Delete("/me/submission-files/:id", auth, h.DeleteSubmissionFile)
+	api.Get("/me/submission-files/:id", auth, h.DownloadSubmissionFile)
 	// Personal study notes.
 	api.Get("/me/notes", auth, h.MyNotes)
 	api.Post("/me/notes", auth, h.CreateNote)

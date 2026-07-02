@@ -16,7 +16,7 @@ func (h *Handlers) ListCourseAssessments(c *fiber.Ctx) error {
 	}
 	rows, err := h.Pool.Query(c.Context(),
 		`SELECT a.id, a.title, a.type, a.max_score, COALESCE(a.due_at::text,''), a.is_published, a.day_number,
-		        a.module_id, COALESCE(m.title,''),
+		        a.module_id, COALESCE(m.title,''), a.auto_award,
 		        (SELECT count(*) FROM questions q WHERE q.assessment_id=a.id) AS qcount
 		 FROM assessments a LEFT JOIN modules m ON m.id=a.module_id
 		 WHERE a.course_id=$1
@@ -29,16 +29,16 @@ func (h *Handlers) ListCourseAssessments(c *fiber.Ctx) error {
 	for rows.Next() {
 		var id, title, typ, due, moduleTitle string
 		var maxScore float64
-		var pub bool
+		var pub, autoAward bool
 		var day *int
 		var moduleID *string
 		var qc int
-		if err := rows.Scan(&id, &title, &typ, &maxScore, &due, &pub, &day, &moduleID, &moduleTitle, &qc); err != nil {
+		if err := rows.Scan(&id, &title, &typ, &maxScore, &due, &pub, &day, &moduleID, &moduleTitle, &autoAward, &qc); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		out = append(out, fiber.Map{"id": id, "title": title, "type": typ, "max_score": maxScore,
 			"due_at": due, "is_published": pub, "day_number": day, "module_id": moduleID,
-			"module": moduleTitle, "questions": qc})
+			"module": moduleTitle, "auto_award": autoAward, "questions": qc})
 	}
 	return c.JSON(fiber.Map{"assessments": out})
 }
@@ -57,6 +57,7 @@ func (h *Handlers) CreateAssessment(c *fiber.Ctx) error {
 		DayNumber   *int    `json:"day_number"`
 		ModuleID    string  `json:"module_id"`
 		IsPublished bool    `json:"is_published"`
+		AutoAward   bool    `json:"auto_award"`
 	}
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Title) == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "title required")
@@ -77,9 +78,9 @@ func (h *Handlers) CreateAssessment(c *fiber.Ctx) error {
 	}
 	var id string
 	if err := h.Pool.QueryRow(c.Context(),
-		`INSERT INTO assessments (course_id, module_id, title, type, max_score, due_at, day_number, is_published, created_by)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-		courseID, module, req.Title, req.Type, req.MaxScore, due, req.DayNumber, req.IsPublished, callerID(c)).Scan(&id); err != nil {
+		`INSERT INTO assessments (course_id, module_id, title, type, max_score, due_at, day_number, is_published, auto_award, created_by)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+		courseID, module, req.Title, req.Type, req.MaxScore, due, req.DayNumber, req.IsPublished, req.AutoAward, callerID(c)).Scan(&id); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": req.Title, "type": req.Type})
@@ -210,7 +211,9 @@ func (h *Handlers) ListSubmissions(c *fiber.Ctx) error {
 		return err
 	}
 	rows, err := h.Pool.Query(c.Context(), `
-		SELECT s.id, s.user_id, u.full_name, s.status, s.score, s.submitted_at, s.body, s.link, s.feedback
+		SELECT s.id, s.user_id, u.full_name, s.status, s.score, s.submitted_at, s.body, s.link, s.feedback,
+		       COALESCE((SELECT json_agg(json_build_object('id', f.id, 'filename', f.filename, 'size', f.size) ORDER BY f.created_at)
+		                 FROM submission_files f WHERE f.assessment_id=s.assessment_id AND f.user_id=s.user_id), '[]') AS files
 		FROM submissions s JOIN users u ON u.id=s.user_id
 		WHERE s.assessment_id=$1 ORDER BY s.submitted_at`, assessID)
 	if err != nil {
@@ -222,12 +225,15 @@ func (h *Handlers) ListSubmissions(c *fiber.Ctx) error {
 		var id, uid, name, status, body, link, feedback string
 		var score *float64
 		var at any
-		if err := rows.Scan(&id, &uid, &name, &status, &score, &at, &body, &link, &feedback); err != nil {
+		var filesJSON []byte
+		if err := rows.Scan(&id, &uid, &name, &status, &score, &at, &body, &link, &feedback, &filesJSON); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
+		var files []fiber.Map
+		_ = json.Unmarshal(filesJSON, &files)
 		out = append(out, fiber.Map{"id": id, "user_id": uid, "student": name,
 			"status": status, "score": score, "submitted_at": at,
-			"body": body, "link": link, "feedback": feedback})
+			"body": body, "link": link, "feedback": feedback, "files": files})
 	}
 	return c.JSON(fiber.Map{"submissions": out})
 }

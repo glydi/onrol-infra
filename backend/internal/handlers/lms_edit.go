@@ -106,6 +106,7 @@ func (h *Handlers) UpdateAssessment(c *fiber.Ctx) error {
 		ModuleID    *string  `json:"module_id"`  // "" clears; a value also clears day_number
 		DayNumber   *int     `json:"day_number"` // a value also clears module_id
 		ClearDay    bool     `json:"clear_day"`
+		AutoAward   *bool    `json:"auto_award"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
@@ -115,9 +116,10 @@ func (h *Handlers) UpdateAssessment(c *fiber.Ctx) error {
 		   title        = COALESCE($2, title),
 		   type         = COALESCE($3, type),
 		   max_score    = COALESCE($4, max_score),
-		   is_published = COALESCE($5, is_published)
+		   is_published = COALESCE($5, is_published),
+		   auto_award   = COALESCE($6, auto_award)
 		 WHERE id=$1`,
-		id, trimmedPtr(req.Title), trimmedPtr(req.Type), req.MaxScore, req.IsPublished); err != nil {
+		id, trimmedPtr(req.Title), trimmedPtr(req.Type), req.MaxScore, req.IsPublished, req.AutoAward); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "update failed")
 	}
 	if req.DueAt != nil {

@@ -14,8 +14,11 @@ import 'package:url_launcher/url_launcher.dart';
 import '../config.dart' as appcfg;
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
+import 'package:file_picker/file_picker.dart';
+
 import '../services/push.dart';
 import '../theme_controller.dart';
+import '../widgets/download_stub.dart' if (dart.library.html) '../widgets/download_web.dart';
 import '../widgets/markdown_view.dart';
 import 'forum_screen.dart';
 import 'live_screen.dart';
@@ -1259,9 +1262,12 @@ class _StudentHomeState extends State<StudentHome> {
   Widget _assignmentView(String id, Map<String, dynamic> m) {
     final sub = (m['submission'] as Map?)?.cast<String, dynamic>() ?? <String, dynamic>{};
     final maxScore = (m['max_score'] as num?)?.round() ?? 100;
+    final autoAward = m['auto_award'] == true;
     final due = m['due_at']?.toString() ?? '';
     final body = TextEditingController(text: sub['body']?.toString() ?? '');
     final link = TextEditingController(text: sub['link']?.toString() ?? '');
+    final files = ((sub['files'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
+    String fileSize(int b) => b < 1024 ? '$b B' : b < 1048576 ? '${(b / 1024).round()} KB' : '${(b / 1048576).toStringAsFixed(1)} MB';
     InputDecoration deco(String hint) => InputDecoration(
           hintText: hint,
           hintStyle: GoogleFonts.poppins(color: _grey, fontSize: 14),
@@ -1276,12 +1282,58 @@ class _StudentHomeState extends State<StudentHome> {
       final submitted = status.isNotEmpty;
       final score = (sub['score'] as num?);
       final feedback = sub['feedback']?.toString() ?? '';
+
+      Future<void> upload() async {
+        try {
+          final res = await FilePicker.platform.pickFiles(withData: true);
+          if (res == null || res.files.isEmpty) return;
+          final pf = res.files.first;
+          final bytes = pf.bytes;
+          if (bytes == null) return;
+          final r = await widget.auth.apiUpload('/api/v1/me/assessments/$id/files', bytes: bytes, filename: pf.name);
+          final mm = jsonDecode(r.body) as Map<String, dynamic>;
+          files.add({'id': mm['id'], 'filename': mm['filename'] ?? pf.name, 'size': mm['size'] ?? bytes.length});
+          sub['status'] = autoAward ? 'graded' : 'submitted';
+          if (autoAward) sub['score'] = maxScore;
+          setS(() {});
+          if (mounted) {
+            setState(() {});
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(autoAward ? 'Uploaded ✓ — full marks awarded' : 'Uploaded ✓')));
+          }
+        } catch (_) {
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload failed — try again.')));
+        }
+      }
+
+      Future<void> removeFile(Map<String, dynamic> f) async {
+        try {
+          await widget.auth.apiDelete('/api/v1/me/submission-files/${f['id']}');
+          files.removeWhere((x) => x['id'] == f['id']);
+          setS(() {});
+        } catch (_) {}
+      }
+
+      Future<void> download(Map<String, dynamic> f) async {
+        try {
+          final r = await widget.auth.apiGet('/api/v1/me/submission-files/${f['id']}');
+          saveFileBytes(f['filename']?.toString() ?? 'file', '', r.bodyBytes);
+        } catch (_) {}
+      }
+
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (due.isNotEmpty) ...[
           Row(children: [
             Icon(CupertinoIcons.calendar, size: 15, color: _grey),
             const SizedBox(width: 6),
             Text('Due ${_fmtAt(due)}', style: GoogleFonts.poppins(fontSize: 12.5, color: _grey)),
+          ]),
+          const SizedBox(height: 12),
+        ],
+        if (autoAward && !graded) ...[
+          Row(children: [
+            Icon(CupertinoIcons.bolt_fill, size: 14, color: _orange),
+            const SizedBox(width: 6),
+            Expanded(child: Text('Full marks are awarded automatically on submission.', style: GoogleFonts.poppins(fontSize: 12.5, color: _grey))),
           ]),
           const SizedBox(height: 12),
         ],
@@ -1322,21 +1374,55 @@ class _StudentHomeState extends State<StudentHome> {
         const SizedBox(height: 6),
         TextField(controller: link, style: GoogleFonts.poppins(fontSize: 14, color: _navy), decoration: deco('Paste a link — Google Drive, GitHub, …')),
         const SizedBox(height: 14),
+        // ---- File uploads --------------------------------------------------
+        Text('Upload files', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
+        const SizedBox(height: 6),
+        for (final f in files)
+          Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
+            child: Row(children: [
+              Icon(CupertinoIcons.doc_fill, size: 16, color: _orange),
+              const SizedBox(width: 8),
+              Expanded(child: Text(f['filename']?.toString() ?? 'file', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 13, color: _navy))),
+              Text(fileSize((f['size'] as num?)?.toInt() ?? 0), style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
+              const SizedBox(width: 8),
+              _Pressable(onTap: () => download(f), child: Icon(CupertinoIcons.cloud_download, size: 17, color: _grey)),
+              const SizedBox(width: 10),
+              _Pressable(onTap: () => removeFile(f), child: const Icon(CupertinoIcons.xmark, size: 16, color: Color(0xFFBDBDBD))),
+            ]),
+          ),
+        _Pressable(
+          onTap: upload,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: _orange.withOpacity(0.08), border: Border.all(color: _orange)),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(CupertinoIcons.cloud_upload_fill, size: 16, color: _orange),
+              const SizedBox(width: 6),
+              Text('Upload a file', style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: _orange)),
+            ]),
+          ),
+        ),
+        const SizedBox(height: 14),
         _Pressable(
           onTap: () async {
             if (body.text.trim().isEmpty && link.text.trim().isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Add a response or a link first.')));
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Write a response or paste a link (or just upload a file above).')));
               return;
             }
             try {
               await widget.auth.apiPost('/api/v1/me/assessments/$id/submit', {'body': body.text.trim(), 'link': link.text.trim()});
-              sub['status'] = 'submitted';
+              sub['status'] = autoAward ? 'graded' : 'submitted';
+              if (autoAward) sub['score'] = maxScore;
               sub['body'] = body.text.trim();
               sub['link'] = link.text.trim();
               setS(() {});
               if (mounted) {
                 setState(() {});
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Submitted ✓ — awaiting grading')));
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(autoAward ? 'Submitted ✓ — full marks awarded' : 'Submitted ✓ — awaiting grading')));
               }
             } catch (_) {
               if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't submit — try again.")));

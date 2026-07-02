@@ -311,10 +311,10 @@ func (h *Handlers) TakeAssessment(c *fiber.Ctx) error {
 	assessID := c.Params("id")
 	var courseID, title, atype, due string
 	var maxScore float64
-	var published bool
+	var published, autoAward bool
 	if err := h.Pool.QueryRow(c.Context(),
-		`SELECT course_id, title, type, max_score, COALESCE(due_at::text,''), is_published FROM assessments WHERE id=$1`,
-		assessID).Scan(&courseID, &title, &atype, &maxScore, &due, &published); err != nil {
+		`SELECT course_id, title, type, max_score, COALESCE(due_at::text,''), is_published, auto_award FROM assessments WHERE id=$1`,
+		assessID).Scan(&courseID, &title, &atype, &maxScore, &due, &published, &autoAward); err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "assessment not found")
 	}
 	if !published || !h.isEnrolled(c, courseID) {
@@ -345,10 +345,23 @@ func (h *Handlers) TakeAssessment(c *fiber.Ctx) error {
 	_ = h.Pool.QueryRow(c.Context(),
 		`SELECT body, link, COALESCE(status,''), feedback, score FROM submissions WHERE assessment_id=$1 AND user_id=$2`,
 		assessID, callerID(c)).Scan(&subBody, &subLink, &subStatus, &subFeedback, &subScore)
+	files := []fiber.Map{}
+	if frows, ferr := h.Pool.Query(c.Context(),
+		`SELECT id, filename, size FROM submission_files WHERE assessment_id=$1 AND user_id=$2 ORDER BY created_at`,
+		assessID, callerID(c)); ferr == nil {
+		defer frows.Close()
+		for frows.Next() {
+			var fid, fn string
+			var sz int
+			if frows.Scan(&fid, &fn, &sz) == nil {
+				files = append(files, fiber.Map{"id": fid, "filename": fn, "size": sz})
+			}
+		}
+	}
 	return c.JSON(fiber.Map{
-		"assessment_id": assessID, "title": title, "type": atype, "max_score": maxScore, "due_at": due,
+		"assessment_id": assessID, "title": title, "type": atype, "max_score": maxScore, "due_at": due, "auto_award": autoAward,
 		"questions": qs,
-		"submission": fiber.Map{"body": subBody, "link": subLink, "status": subStatus, "feedback": subFeedback, "score": subScore},
+		"submission": fiber.Map{"body": subBody, "link": subLink, "status": subStatus, "feedback": subFeedback, "score": subScore, "files": files},
 	})
 }
 
@@ -357,15 +370,18 @@ func (h *Handlers) TakeAssessment(c *fiber.Ctx) error {
 func (h *Handlers) SubmitAssessment(c *fiber.Ctx) error {
 	assessID := c.Params("id")
 	var courseID, atype string
-	var published bool
+	var published, autoAward bool
+	var maxScore float64
 	if err := h.Pool.QueryRow(c.Context(),
-		`SELECT course_id, type, is_published FROM assessments WHERE id=$1`, assessID).Scan(&courseID, &atype, &published); err != nil {
+		`SELECT course_id, type, is_published, auto_award, max_score FROM assessments WHERE id=$1`, assessID).
+		Scan(&courseID, &atype, &published, &autoAward, &maxScore); err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "assessment not found")
 	}
 	if !published || !h.isEnrolled(c, courseID) {
 		return fiber.NewError(fiber.StatusForbidden, "not available")
 	}
-	// Assignment: a free-text response and/or a link, graded manually later.
+	// Assignment: a free-text response and/or a link. Auto-award grants full
+	// marks immediately; otherwise it waits for manual grading.
 	if atype == "assignment" {
 		var req struct {
 			Body string `json:"body"`
@@ -379,16 +395,23 @@ func (h *Handlers) SubmitAssessment(c *fiber.Ctx) error {
 		if body == "" && link == "" {
 			return fiber.NewError(fiber.StatusBadRequest, "add a response or a link")
 		}
-		// Resubmitting re-enters the grading queue (status back to 'submitted').
+		status := "submitted"
+		var score any
+		if autoAward {
+			status = "graded"
+			score = maxScore
+		}
 		if _, err := h.Pool.Exec(c.Context(), `
-			INSERT INTO submissions (assessment_id, user_id, body, link, status)
-			VALUES ($1,$2,$3,$4,'submitted')
+			INSERT INTO submissions (assessment_id, user_id, body, link, status, score)
+			VALUES ($1,$2,$3,$4,$5,$6)
 			ON CONFLICT (assessment_id, user_id)
-			DO UPDATE SET body=EXCLUDED.body, link=EXCLUDED.link, submitted_at=now(), status='submitted'`,
-			assessID, callerID(c), body, link); err != nil {
+			DO UPDATE SET body=EXCLUDED.body, link=EXCLUDED.link, submitted_at=now(),
+			   status=EXCLUDED.status,
+			   score = CASE WHEN EXCLUDED.status='graded' THEN EXCLUDED.score ELSE submissions.score END`,
+			assessID, callerID(c), body, link, status, score); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "submit failed")
 		}
-		return c.JSON(fiber.Map{"assessment_id": assessID, "status": "submitted"})
+		return c.JSON(fiber.Map{"assessment_id": assessID, "status": status})
 	}
 	var req struct {
 		Answers map[string]string `json:"answers"` // {question_id: answer}

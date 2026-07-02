@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../theme.dart';
 import '../widgets/app_shell.dart';
+import '../widgets/download_stub.dart' if (dart.library.html) '../widgets/download_web.dart';
 import '../widgets/markdown_view.dart';
 import '../widgets/profile_view.dart';
 import '../widgets/ui.dart';
@@ -2034,11 +2035,19 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     final maxScore = TextEditingController(text: '100');
     final day = TextEditingController();
     int type = 0; // assignment, quiz
+    bool auto = false; // assignment: auto-award full points on submission
     DateTime due = DateTime.now().add(const Duration(days: 7));
     final ok = await showFormSheet(context, square: true, big: true, title: moduleId == null ? 'Add Assignment' : 'Add to "${moduleTitle ?? 'Module'}"', builder: (setS) => [
       sheetField(title, 'Title (e.g. Assignment 1)', CupertinoIcons.doc_text),
       const SizedBox(height: 10),
       AppleSegmented(square: true, labels: const ['Assignment', 'Quiz'], selected: type, onChanged: (i) => setS(() => type = i)),
+      if (type == 0) ...[
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(child: _label(context, 'Auto-award full points on submission (no manual grading). Students can write a response, paste a link, or upload files.')),
+          CupertinoSwitch(value: auto, onChanged: (v) => setS(() => auto = v)),
+        ]),
+      ],
       const SizedBox(height: 10),
       sheetField(day, 'Day number (e.g. 1, 2, 3 — optional)', CupertinoIcons.calendar, keyboard: TextInputType.number),
       const SizedBox(height: 10),
@@ -2056,6 +2065,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
           if (moduleId != null) 'module_id': moduleId,
           'due_at': due.toUtc().toIso8601String(),
           'is_published': true,
+          'auto_award': type == 0 && auto,
         });
         return null;
       } on ApiException catch (e) {
@@ -2203,6 +2213,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     final day = TextEditingController(text: a['day_number'] == null ? '' : '${a['day_number']}');
     int type = a['type'] == 'quiz' ? 1 : 0;
     bool published = a['is_published'] != false;
+    bool auto = a['auto_award'] == true;
     final modules = (_course?['modules'] as List?) ?? [];
     int scope = (a['module_id']?.toString() ?? '').isNotEmpty ? 1 : 0; // 0=day, 1=module
     String moduleId = a['module_id']?.toString() ?? (modules.isNotEmpty ? modules.first['id'].toString() : '');
@@ -2249,6 +2260,13 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         Expanded(child: Text('Published', style: AppleTheme.body(context))),
         CupertinoSwitch(value: published, onChanged: (v) => setS(() => published = v)),
       ]),
+      if (type == 0) ...[
+        const SizedBox(height: 4),
+        Row(children: [
+          Expanded(child: _label(context, 'Auto-award full points on submission')),
+          CupertinoSwitch(value: auto, onChanged: (v) => setS(() => auto = v)),
+        ]),
+      ],
     ], onSubmit: () async {
       if (title.text.trim().isEmpty) return 'Title required';
       final body = <String, dynamic>{
@@ -2256,6 +2274,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         'type': type == 1 ? 'quiz' : 'assignment',
         'max_score': double.tryParse(maxScore.text.trim()) ?? 100,
         'is_published': published,
+        'auto_award': type == 0 && auto,
         'due_at': due.toUtc().toIso8601String(),
       };
       if (scope == 1 && moduleId.isNotEmpty) {
@@ -4415,12 +4434,20 @@ class _SubmissionsScreenState extends State<_SubmissionsScreen> {
     } catch (_) {}
   }
 
+  Future<void> _downloadFile(Map<String, dynamic> f) async {
+    try {
+      final r = await widget.auth.apiGet('/api/v1/me/submission-files/${f['id']}');
+      saveFileBytes(f['filename']?.toString() ?? 'file', '', r.bodyBytes);
+    } catch (_) {}
+  }
+
   Future<void> _grade(Map<String, dynamic> s) async {
     final p = Palette.of(context);
     final score = TextEditingController(text: (s['score'] as num?)?.toString() ?? '');
     final feedback = TextEditingController(text: s['feedback']?.toString() ?? '');
     final body = s['body']?.toString() ?? '';
     final link = s['link']?.toString() ?? '';
+    final files = ((s['files'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
     final ok = await showFormSheet(context, square: true, big: true, title: 'Grade — ${s['student'] ?? 'Student'}', builder: (_) => [
       if (body.isNotEmpty) ...[
         Text('Response', style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700)),
@@ -4431,6 +4458,24 @@ class _SubmissionsScreenState extends State<_SubmissionsScreen> {
           decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
           child: Text(body, style: AppleTheme.body(context).copyWith(fontSize: 14, height: 1.4)),
         ),
+        const SizedBox(height: 12),
+      ],
+      if (files.isNotEmpty) ...[
+        Text('Files', style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
+        ...files.map((f) => GestureDetector(
+              onTap: () => _downloadFile(f),
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: Row(children: [
+                  Icon(CupertinoIcons.doc_fill, size: 16, color: p.accent),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(f['filename']?.toString() ?? 'file', maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.body(context).copyWith(fontSize: 13, color: p.accent))),
+                  Icon(CupertinoIcons.cloud_download, size: 16, color: p.secondary),
+                ]),
+              ),
+            )),
         const SizedBox(height: 12),
       ],
       if (link.isNotEmpty) ...[
@@ -4485,6 +4530,7 @@ class _SubmissionsScreenState extends State<_SubmissionsScreen> {
     final graded = s['status'] == 'graded';
     final body = s['body']?.toString() ?? '';
     final link = s['link']?.toString() ?? '';
+    final fileCount = ((s['files'] as List?) ?? []).length;
     return AppleCard(
       square: true,
       onTap: () => _grade(s),
@@ -4510,6 +4556,14 @@ class _SubmissionsScreenState extends State<_SubmissionsScreen> {
             Icon(CupertinoIcons.link, size: 14, color: p.accent),
             const SizedBox(width: 6),
             Expanded(child: Text(link, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.body(context).copyWith(fontSize: 12.5, color: p.accent))),
+          ]),
+        ],
+        if (fileCount > 0) ...[
+          const SizedBox(height: 6),
+          Row(children: [
+            Icon(CupertinoIcons.paperclip, size: 14, color: p.secondary),
+            const SizedBox(width: 6),
+            Text('$fileCount file${fileCount == 1 ? '' : 's'}', style: AppleTheme.footnote(context).copyWith(color: p.secondary)),
           ]),
         ],
         const SizedBox(height: 8),
