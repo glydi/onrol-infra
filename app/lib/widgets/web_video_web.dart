@@ -670,11 +670,12 @@ Widget liveHlsVideoElement(
     // in sync if the volume changes by any other means.
     video.onVolumeChange.listen((_) => setIcon(muteBtn, video.muted ? _icVolOff : _icVolUp, size: 26));
 
-    // Exact position "now" = device wall-clock (IST) − scheduled start, seconds.
-    // -1 until the start is known. No server clock involved.
+    // Exact position "now" = (device clock + server skew) − scheduled start, in
+    // seconds. skewMs normalizes a wrong device clock/timezone to the server, so
+    // every viewer lands on the same second. -1 until the start is known.
     double target() {
       if (startEpochMs <= 0) return -1;
-      return (DateTime.now().millisecondsSinceEpoch - startEpochMs) / 1000.0;
+      return (DateTime.now().millisecondsSinceEpoch + skewMs - startEpochMs) / 1000.0;
     }
 
     // Pin the playhead to wall-clock time. The recording is loaded as VOD, so

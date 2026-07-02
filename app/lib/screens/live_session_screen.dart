@@ -44,6 +44,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   String? _playlistUrl; // absolute, set once live
   DateTime? _startsAt;
   int _startEpochMs = 0; // scheduled start (UTC ms) — drives time-locked playback
+  int _skewMs = 0; // server_now - device_now: normalizes a wrong device clock to the server
   bool _loaded = false;
   String? _fatal;
 
@@ -94,6 +95,10 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         final sa = DateTime.tryParse(d['starts_at']?.toString() ?? '');
         _startsAt = sa?.toLocal();
         if (sa != null) _startEpochMs = sa.toUtc().millisecondsSinceEpoch;
+        // Normalize to the SERVER clock so every viewer sees the same second even
+        // if their device clock/timezone is wrong (skew = server_now - device_now).
+        final sn = DateTime.tryParse(d['server_now']?.toString() ?? '');
+        if (sn != null) _skewMs = sn.toUtc().millisecondsSinceEpoch - DateTime.now().millisecondsSinceEpoch;
         final p = d['playlist_url']?.toString();
         if (p != null && p.isNotEmpty) _playlistUrl = p.startsWith('http') ? p : '${Config.apiBase}$p';
         _loaded = true;
@@ -244,9 +249,9 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     // see the host status panel (lobby / preparing / ended / queue summary).
     if (widget.isHost && !(_status == 'live' && _playlistUrl != null)) return _hostPanel();
     if (_status == 'live' && _playlistUrl != null) {
-      return LivePlayer(key: ValueKey(_playlistUrl), playlistUrl: _playlistUrl!, watermark: widget.watermark, authToken: widget.auth.token, startEpochMs: _startEpochMs);
+      return LivePlayer(key: ValueKey(_playlistUrl), playlistUrl: _playlistUrl!, watermark: widget.watermark, authToken: widget.auth.token, startEpochMs: _startEpochMs, skewMs: _skewMs);
     }
-    if (_status == 'ended') return _placeholder(CupertinoIcons.checkmark_seal_fill, 'This live class has ended', 'Thanks for joining.');
+    if (_status == 'ended') return _placeholder(CupertinoIcons.checkmark_seal_fill, 'Session ended', 'This live session has finished.');
     if (_status == 'preparing') return _preparing();
     return _lobby();
   }

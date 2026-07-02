@@ -51,11 +51,12 @@ class _LivePlayerState extends State<LivePlayer> {
   Widget? _webView;
   Timer? _syncTimer;
 
-  // Exact video position "now" = device wall-clock (IST) − scheduled start, in
-  // seconds. No server clock involved.
+  // Exact video position "now" = (device clock + server skew) − scheduled start,
+  // in seconds. skewMs normalizes a wrong device clock to the server so every
+  // viewer is on the same second.
   double _target() {
     if (widget.startEpochMs <= 0) return -1;
-    return (DateTime.now().millisecondsSinceEpoch - widget.startEpochMs) / 1000.0;
+    return (DateTime.now().millisecondsSinceEpoch + widget.skewMs - widget.startEpochMs) / 1000.0;
   }
 
   // Skip FORWARD to the wall-clock position whenever playback drifts behind
