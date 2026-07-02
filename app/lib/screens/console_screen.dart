@@ -2498,7 +2498,9 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
             Icon(isQuiz ? CupertinoIcons.question_square_fill : CupertinoIcons.doc_text_fill, size: 16, color: isQuiz ? AppleColors.purple : AppleColors.blue),
             const SizedBox(width: 10),
             Expanded(child: Text('${m['title']}${(m['questions'] ?? 0) != 0 ? ' · ${m['questions']} Qs' : ''}', style: AppleTheme.body(context).copyWith(fontSize: 14))),
-            _smallButton('Questions', CupertinoIcons.list_bullet, () => _openQuizBuilder(m['id'].toString(), m['title']?.toString() ?? 'Quiz', isQuiz: isQuiz)),
+            isQuiz
+                ? _smallButton('Questions', CupertinoIcons.list_bullet, () => _openQuizBuilder(m['id'].toString(), m['title']?.toString() ?? 'Quiz', isQuiz: isQuiz))
+                : _smallButton('Submissions', CupertinoIcons.tray_full_fill, () => _openSubmissions(m['id'].toString(), m['title']?.toString() ?? 'Assignment', (m['max_score'] as num?) ?? 100)),
             const SizedBox(width: 6),
             GestureDetector(
               onTap: () => _editAssessment(m),
@@ -2513,6 +2515,13 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         );
       }),
     ];
+  }
+
+  // Open the grading queue for an assignment (student submissions).
+  void _openSubmissions(String assessId, String title, num maxScore) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => _SubmissionsScreen(auth: widget.auth, assessId: assessId, title: title, maxScore: maxScore),
+    ));
   }
 
   Future<void> _confirmDelete(String message, Future<dynamic> Function() action) async {
@@ -4331,6 +4340,153 @@ class _DayFolderState extends State<_DayFolder> {
               ? Padding(padding: const EdgeInsets.only(left: 8), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: widget.children))
               : const SizedBox(width: double.infinity),
         ),
+      ]),
+    );
+  }
+}
+
+/// Instructor grading queue for an assignment: lists each student's submission
+/// (response text + link) and lets the instructor score + give feedback.
+class _SubmissionsScreen extends StatefulWidget {
+  const _SubmissionsScreen({required this.auth, required this.assessId, required this.title, required this.maxScore});
+  final AuthService auth;
+  final String assessId;
+  final String title;
+  final num maxScore;
+
+  @override
+  State<_SubmissionsScreen> createState() => _SubmissionsScreenState();
+}
+
+class _SubmissionsScreenState extends State<_SubmissionsScreen> {
+  bool _loading = true;
+  List<Map<String, dynamic>> _subs = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final m = ApiClient.decode(await widget.auth.apiGet('/api/v1/manage/assessments/${widget.assessId}/submissions'));
+      _subs = ((m['submissions'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _openLink(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+    } catch (_) {}
+  }
+
+  Future<void> _grade(Map<String, dynamic> s) async {
+    final p = Palette.of(context);
+    final score = TextEditingController(text: (s['score'] as num?)?.toString() ?? '');
+    final feedback = TextEditingController(text: s['feedback']?.toString() ?? '');
+    final body = s['body']?.toString() ?? '';
+    final link = s['link']?.toString() ?? '';
+    final ok = await showFormSheet(context, square: true, big: true, title: 'Grade — ${s['student'] ?? 'Student'}', builder: (_) => [
+      if (body.isNotEmpty) ...[
+        Text('Response', style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+          child: Text(body, style: AppleTheme.body(context).copyWith(fontSize: 14, height: 1.4)),
+        ),
+        const SizedBox(height: 12),
+      ],
+      if (link.isNotEmpty) ...[
+        GestureDetector(
+          onTap: () => _openLink(link),
+          child: Row(children: [
+            Icon(CupertinoIcons.link, size: 15, color: p.accent),
+            const SizedBox(width: 6),
+            Expanded(child: Text(link, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.body(context).copyWith(fontSize: 13, color: p.accent))),
+          ]),
+        ),
+        const SizedBox(height: 12),
+      ],
+      sheetField(score, 'Score (out of ${widget.maxScore.round()})', CupertinoIcons.number, keyboard: const TextInputType.numberWithOptions(decimal: true)),
+      const SizedBox(height: 10),
+      sheetField(feedback, 'Feedback (optional)', CupertinoIcons.text_bubble),
+    ], onSubmit: () async {
+      final sc = double.tryParse(score.text.trim());
+      if (sc == null) return 'Enter a score';
+      await widget.auth.apiPost('/api/v1/manage/submissions/${s['id']}/grade', {'score': sc, 'feedback': feedback.text.trim()});
+      return null;
+    });
+    if (ok == true) _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Scaffold(
+      backgroundColor: p.bg,
+      appBar: AppBar(
+        backgroundColor: p.card,
+        foregroundColor: p.label,
+        elevation: 0,
+        title: Text(widget.title, style: AppleTheme.headline(context)),
+      ),
+      body: _loading
+          ? const Center(child: CupertinoActivityIndicator())
+          : _subs.isEmpty
+              ? Center(child: Text('No submissions yet.', style: AppleTheme.footnote(context)))
+              : ListView.separated(
+                  padding: const EdgeInsets.all(14),
+                  itemCount: _subs.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (_, i) => _card(_subs[i]),
+                ),
+    );
+  }
+
+  Widget _card(Map<String, dynamic> s) {
+    final p = Palette.of(context);
+    final graded = s['status'] == 'graded';
+    final body = s['body']?.toString() ?? '';
+    final link = s['link']?.toString() ?? '';
+    return AppleCard(
+      square: true,
+      onTap: () => _grade(s),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(s['student']?.toString() ?? 'Student', style: AppleTheme.headline(context))),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+            decoration: BoxDecoration(color: (graded ? AppleColors.green : AppleColors.blue).withOpacity(0.14)),
+            child: Text(
+              graded ? 'Graded · ${(s['score'] as num?)?.round() ?? 0}/${widget.maxScore.round()}' : 'Submitted',
+              style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700, color: graded ? AppleColors.green : AppleColors.blue),
+            ),
+          ),
+        ]),
+        if (body.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(body, maxLines: 4, overflow: TextOverflow.ellipsis, style: AppleTheme.body(context).copyWith(fontSize: 13, color: p.secondary)),
+        ],
+        if (link.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Row(children: [
+            Icon(CupertinoIcons.link, size: 14, color: p.accent),
+            const SizedBox(width: 6),
+            Expanded(child: Text(link, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.body(context).copyWith(fontSize: 12.5, color: p.accent))),
+          ]),
+        ],
+        const SizedBox(height: 8),
+        Row(children: [
+          Icon(CupertinoIcons.pencil, size: 14, color: p.accent),
+          const SizedBox(width: 4),
+          Text(graded ? 'Update grade' : 'Grade', style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700, color: p.accent)),
+        ]),
       ]),
     );
   }

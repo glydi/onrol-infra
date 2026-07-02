@@ -309,10 +309,12 @@ func (h *Handlers) CompleteLesson(c *fiber.Ctx) error {
 // TakeAssessment returns the questions WITHOUT the correct answers.
 func (h *Handlers) TakeAssessment(c *fiber.Ctx) error {
 	assessID := c.Params("id")
-	var courseID string
+	var courseID, title, atype, due string
+	var maxScore float64
 	var published bool
 	if err := h.Pool.QueryRow(c.Context(),
-		`SELECT course_id, is_published FROM assessments WHERE id=$1`, assessID).Scan(&courseID, &published); err != nil {
+		`SELECT course_id, title, type, max_score, COALESCE(due_at::text,''), is_published FROM assessments WHERE id=$1`,
+		assessID).Scan(&courseID, &title, &atype, &maxScore, &due, &published); err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "assessment not found")
 	}
 	if !published || !h.isEnrolled(c, courseID) {
@@ -336,21 +338,57 @@ func (h *Handlers) TakeAssessment(c *fiber.Ctx) error {
 		_ = json.Unmarshal(optsRaw, &opts)
 		qs = append(qs, fiber.Map{"id": id, "prompt": prompt, "type": qtype, "options": opts, "points": points})
 	}
-	return c.JSON(fiber.Map{"assessment_id": assessID, "questions": qs})
+	// The caller's existing submission (so the client can show status / grade /
+	// prior assignment text on reopen).
+	var subBody, subLink, subStatus, subFeedback string
+	var subScore *float64
+	_ = h.Pool.QueryRow(c.Context(),
+		`SELECT body, link, COALESCE(status,''), feedback, score FROM submissions WHERE assessment_id=$1 AND user_id=$2`,
+		assessID, callerID(c)).Scan(&subBody, &subLink, &subStatus, &subFeedback, &subScore)
+	return c.JSON(fiber.Map{
+		"assessment_id": assessID, "title": title, "type": atype, "max_score": maxScore, "due_at": due,
+		"questions": qs,
+		"submission": fiber.Map{"body": subBody, "link": subLink, "status": subStatus, "feedback": subFeedback, "score": subScore},
+	})
 }
 
 // SubmitAssessment stores answers, auto-grades objective questions, and leaves
 // essay/short answers for manual grading.
 func (h *Handlers) SubmitAssessment(c *fiber.Ctx) error {
 	assessID := c.Params("id")
-	var courseID string
+	var courseID, atype string
 	var published bool
 	if err := h.Pool.QueryRow(c.Context(),
-		`SELECT course_id, is_published FROM assessments WHERE id=$1`, assessID).Scan(&courseID, &published); err != nil {
+		`SELECT course_id, type, is_published FROM assessments WHERE id=$1`, assessID).Scan(&courseID, &atype, &published); err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "assessment not found")
 	}
 	if !published || !h.isEnrolled(c, courseID) {
 		return fiber.NewError(fiber.StatusForbidden, "not available")
+	}
+	// Assignment: a free-text response and/or a link, graded manually later.
+	if atype == "assignment" {
+		var req struct {
+			Body string `json:"body"`
+			Link string `json:"link"`
+		}
+		if err := c.BodyParser(&req); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+		}
+		body := strings.TrimSpace(req.Body)
+		link := strings.TrimSpace(req.Link)
+		if body == "" && link == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "add a response or a link")
+		}
+		// Resubmitting re-enters the grading queue (status back to 'submitted').
+		if _, err := h.Pool.Exec(c.Context(), `
+			INSERT INTO submissions (assessment_id, user_id, body, link, status)
+			VALUES ($1,$2,$3,$4,'submitted')
+			ON CONFLICT (assessment_id, user_id)
+			DO UPDATE SET body=EXCLUDED.body, link=EXCLUDED.link, submitted_at=now(), status='submitted'`,
+			assessID, callerID(c), body, link); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "submit failed")
+		}
+		return c.JSON(fiber.Map{"assessment_id": assessID, "status": "submitted"})
 	}
 	var req struct {
 		Answers map[string]string `json:"answers"` // {question_id: answer}

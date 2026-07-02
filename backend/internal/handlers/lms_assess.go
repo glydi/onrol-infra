@@ -210,7 +210,7 @@ func (h *Handlers) ListSubmissions(c *fiber.Ctx) error {
 		return err
 	}
 	rows, err := h.Pool.Query(c.Context(), `
-		SELECT s.id, s.user_id, u.full_name, s.status, s.score, s.submitted_at
+		SELECT s.id, s.user_id, u.full_name, s.status, s.score, s.submitted_at, s.body, s.link, s.feedback
 		FROM submissions s JOIN users u ON u.id=s.user_id
 		WHERE s.assessment_id=$1 ORDER BY s.submitted_at`, assessID)
 	if err != nil {
@@ -219,14 +219,15 @@ func (h *Handlers) ListSubmissions(c *fiber.Ctx) error {
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var id, uid, name, status string
+		var id, uid, name, status, body, link, feedback string
 		var score *float64
 		var at any
-		if err := rows.Scan(&id, &uid, &name, &status, &score, &at); err != nil {
+		if err := rows.Scan(&id, &uid, &name, &status, &score, &at, &body, &link, &feedback); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		out = append(out, fiber.Map{"id": id, "user_id": uid, "student": name,
-			"status": status, "score": score, "submitted_at": at})
+			"status": status, "score": score, "submitted_at": at,
+			"body": body, "link": link, "feedback": feedback})
 	}
 	return c.JSON(fiber.Map{"submissions": out})
 }

@@ -1157,13 +1157,17 @@ class _StudentHomeState extends State<StudentHome> {
     widget.auth.apiPost('/api/v1/me/lessons/$id/progress', {'position': 0}).ignore();
   }
 
-  // Opens a quiz: loads its questions, collects answers, and submits them.
+  // Opens a quiz (loads questions, collects answers) or an assignment (a
+  // free-text submission + link), and submits them.
   Future<void> _openAssessment(Map<String, dynamic> a) async {
     final id = a['id'].toString();
+    final isAssignment = (a['type']?.toString() ?? 'quiz') == 'assignment';
     final answers = <String, String>{};
-    _showPanel(CupertinoIcons.question_square_fill, a['title']?.toString() ?? 'Quiz',
-        a['course']?.toString() ?? 'Quiz', [
+    _showPanel(isAssignment ? CupertinoIcons.doc_text_fill : CupertinoIcons.question_square_fill,
+        a['title']?.toString() ?? (isAssignment ? 'Assignment' : 'Quiz'),
+        a['course']?.toString() ?? (isAssignment ? 'Assignment' : 'Quiz'), [
       _future(_apiMap('/api/v1/me/assessments/$id'), (m) {
+        if (isAssignment) return _assignmentView(id, m);
         final qs = (m['questions'] as List?) ?? [];
         if (qs.isEmpty) return _emptyText('This quiz has no questions yet.');
         return StatefulBuilder(builder: (ctx, setS) {
@@ -1248,6 +1252,105 @@ class _StudentHomeState extends State<StudentHome> {
         });
       }),
     ]);
+  }
+
+  // Assignment: a free-text response + an optional attachment link. Shows the
+  // student's current submission and, once graded, their score + feedback.
+  Widget _assignmentView(String id, Map<String, dynamic> m) {
+    final sub = (m['submission'] as Map?)?.cast<String, dynamic>() ?? <String, dynamic>{};
+    final maxScore = (m['max_score'] as num?)?.round() ?? 100;
+    final due = m['due_at']?.toString() ?? '';
+    final body = TextEditingController(text: sub['body']?.toString() ?? '');
+    final link = TextEditingController(text: sub['link']?.toString() ?? '');
+    InputDecoration deco(String hint) => InputDecoration(
+          hintText: hint,
+          hintStyle: GoogleFonts.poppins(color: _grey, fontSize: 14),
+          isDense: true,
+          contentPadding: const EdgeInsets.all(12),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: _cardBorder)),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: const BorderSide(color: _orange)),
+        );
+    return StatefulBuilder(builder: (ctx, setS) {
+      final status = sub['status']?.toString() ?? '';
+      final graded = status == 'graded';
+      final submitted = status.isNotEmpty;
+      final score = (sub['score'] as num?);
+      final feedback = sub['feedback']?.toString() ?? '';
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (due.isNotEmpty) ...[
+          Row(children: [
+            Icon(CupertinoIcons.calendar, size: 15, color: _grey),
+            const SizedBox(width: 6),
+            Text('Due ${_fmtAt(due)}', style: GoogleFonts.poppins(fontSize: 12.5, color: _grey)),
+          ]),
+          const SizedBox(height: 12),
+        ],
+        if (graded) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: _green.withOpacity(0.10), border: Border.all(color: _green)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Icon(CupertinoIcons.checkmark_seal_fill, size: 17, color: _green),
+                const SizedBox(width: 6),
+                Text('Graded  ·  ${score?.round() ?? 0} / $maxScore', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
+              ]),
+              if (feedback.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(feedback, style: GoogleFonts.poppins(fontSize: 13, color: _navy, height: 1.4)),
+              ],
+            ]),
+          ),
+          const SizedBox(height: 14),
+        ] else if (submitted) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: _orange.withOpacity(0.10), border: Border.all(color: _orange)),
+            child: Row(children: [
+              Icon(CupertinoIcons.clock_fill, size: 16, color: _orange),
+              const SizedBox(width: 6),
+              Expanded(child: Text('Submitted ✓ — awaiting grading. You can update it below.', style: GoogleFonts.poppins(fontSize: 13, color: _navy))),
+            ]),
+          ),
+          const SizedBox(height: 14),
+        ],
+        Text('Your response', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
+        const SizedBox(height: 6),
+        TextField(controller: body, minLines: 6, maxLines: 14, style: GoogleFonts.poppins(fontSize: 14, color: _navy, height: 1.4), decoration: deco('Write your answer…')),
+        const SizedBox(height: 12),
+        Text('Attachment link (optional)', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
+        const SizedBox(height: 6),
+        TextField(controller: link, style: GoogleFonts.poppins(fontSize: 14, color: _navy), decoration: deco('Paste a link — Google Drive, GitHub, …')),
+        const SizedBox(height: 14),
+        _Pressable(
+          onTap: () async {
+            if (body.text.trim().isEmpty && link.text.trim().isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Add a response or a link first.')));
+              return;
+            }
+            try {
+              await widget.auth.apiPost('/api/v1/me/assessments/$id/submit', {'body': body.text.trim(), 'link': link.text.trim()});
+              sub['status'] = 'submitted';
+              sub['body'] = body.text.trim();
+              sub['link'] = link.text.trim();
+              setS(() {});
+              if (mounted) {
+                setState(() {});
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Submitted ✓ — awaiting grading')));
+              }
+            } catch (_) {
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't submit — try again.")));
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero),
+            child: Text(submitted ? 'Resubmit' : 'Submit', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
+          ),
+        ),
+      ]);
+    });
   }
 
   void _showPanel(IconData icon, String title, String sub, List<Widget> body, {String? heroTag, bool compact = false}) {
