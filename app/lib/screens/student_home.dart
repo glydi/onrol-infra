@@ -1132,19 +1132,20 @@ class _StudentHomeState extends State<StudentHome> {
         await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
       } catch (_) {}
     } else if (url.isNotEmpty) {
-      // Text material: open a full-page reader with Previous/Next navigation
-      // across all the text materials in this module.
-      final texts = (siblings ?? [l])
-          .where((x) => (x['type']?.toString() ?? 'text') == 'text' && (x['url']?.toString() ?? '').isNotEmpty)
-          .toList();
-      var idx = texts.indexWhere((x) => x['id'].toString() == id);
-      if (idx < 0) {
-        texts.add(l);
-        idx = texts.length - 1;
-      }
+      // Text material: open a full-page reader positioned here. Previous/Next
+      // page through ALL the materials in this module (text renders inline;
+      // video/link/document show an Open button).
+      final items = (siblings != null && siblings.isNotEmpty) ? siblings : <Map<String, dynamic>>[l];
+      var idx = items.indexWhere((x) => x['id'].toString() == id);
+      if (idx < 0) idx = 0;
       if (mounted) {
         Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => _TextMaterialScreen(auth: widget.auth, items: texts, index: idx),
+          builder: (_) => _TextMaterialScreen(
+            auth: widget.auth,
+            items: items,
+            index: idx,
+            onOpen: (m) => _openLesson(m),
+          ),
         ));
       }
       return; // the reader stamps progress per material it shows
@@ -6546,14 +6547,16 @@ class _NoteMarkdown extends StatelessWidget {
       );
 }
 
-/// Full-page reader for a text material. Shows one material at a time and lets
-/// the learner page through all the text materials in the module with the
-/// Previous / Next buttons. Renders the body as Markdown (headings, lists, etc).
+/// Full-page material reader. Shows one material at a time and lets the learner
+/// page through ALL the materials in the module with Previous / Next. Text is
+/// rendered inline as Markdown; video/link/document materials show an Open
+/// button (handled by [onOpen], which opens them the normal way).
 class _TextMaterialScreen extends StatefulWidget {
-  const _TextMaterialScreen({required this.auth, required this.items, required this.index});
+  const _TextMaterialScreen({required this.auth, required this.items, required this.index, required this.onOpen});
   final AuthService auth;
-  final List<Map<String, dynamic>> items; // text materials in module order
+  final List<Map<String, dynamic>> items; // all materials in module order
   final int index;
+  final void Function(Map<String, dynamic> material) onOpen;
 
   @override
   State<_TextMaterialScreen> createState() => _TextMaterialScreenState();
@@ -6602,6 +6605,7 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
   Widget build(BuildContext context) {
     _isDark = Theme.of(context).brightness == Brightness.dark;
     final it = widget.items[_i];
+    final type = it['type']?.toString() ?? 'text';
     final title = it['title']?.toString() ?? 'Material';
     final body = it['url']?.toString() ?? '';
     final done = it['completed'] == true;
@@ -6642,7 +6646,12 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
                     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                       Text(title, style: GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w800, color: _navy, height: 1.25)),
                       const SizedBox(height: 16),
-                      _NoteMarkdown(text: body),
+                      if (type == 'text')
+                        (body.trim().isEmpty
+                            ? Text('No content in this material.', style: GoogleFonts.poppins(fontSize: 14, color: _grey))
+                            : _NoteMarkdown(text: body))
+                      else
+                        _openCard(type, it),
                     ]),
                   ),
                 ),
@@ -6675,6 +6684,36 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
         ]),
       ),
     );
+  }
+
+  // A non-text material (video / link / document): show what it is and an
+  // Open button that opens it the usual way (player / new tab).
+  Widget _openCard(String type, Map<String, dynamic> it) {
+    final (IconData icon, String label, String action) = switch (type) {
+      'video' => (CupertinoIcons.play_rectangle_fill, 'This is a video material.', 'Play video'),
+      'file' => (CupertinoIcons.doc_richtext, 'This is a document material.', 'Open document'),
+      _ => (CupertinoIcons.link, 'This is a link material.', 'Open link'),
+    };
+    return Column(children: [
+      const SizedBox(height: 8),
+      Icon(icon, size: 46, color: _orange),
+      const SizedBox(height: 12),
+      Text(label, textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 14, color: _grey)),
+      const SizedBox(height: 16),
+      _Pressable(
+        onTap: () => widget.onOpen(it),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          decoration: const BoxDecoration(gradient: _orangeGrad),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(CupertinoIcons.arrow_up_right_square, size: 16, color: Colors.white),
+            const SizedBox(width: 8),
+            Text(action, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
+          ]),
+        ),
+      ),
+      const SizedBox(height: 8),
+    ]);
   }
 
   Widget _navButton(IconData icon, String label, bool enabled, VoidCallback onTap, {bool trailing = false}) {
