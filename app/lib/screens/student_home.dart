@@ -2000,13 +2000,14 @@ class _PanelRowState extends State<_PanelRow> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
         curve: Curves.easeOutCubic,
-        margin: const EdgeInsets.symmetric(vertical: 3),
-        padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 10),
-        // Minimal: transparent at rest, a light orange wash + hairline on hover.
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
+        // Every row is its own box: a solid surface + hairline border at rest,
+        // with a light orange wash + stronger border on hover.
         decoration: BoxDecoration(
-          color: _hover ? _orange.withOpacity(0.06) : Colors.transparent,
+          color: _hover ? Color.alphaBlend(_orange.withOpacity(0.06), _surface) : _surface,
           borderRadius: BorderRadius.zero,
-          border: Border.all(color: _hover ? _orange.withOpacity(0.18) : Colors.transparent, width: 1),
+          border: Border.all(color: _hover ? _orange.withOpacity(0.55) : _cardBorder, width: 1),
         ),
         child: Row(children: [
           Container(width: 44, height: 44, alignment: Alignment.center, decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.zero), child: Icon(widget.icon, size: 20, color: _orange)),
