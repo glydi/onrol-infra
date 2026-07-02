@@ -6474,6 +6474,7 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
     final title = it['title']?.toString() ?? 'Material';
     final body = it['url']?.toString() ?? '';
     final done = it['completed'] == true;
+    final isVideo = type == 'video' && body.isNotEmpty;
     final hasPrev = _i > 0;
     final hasNext = _i < widget.items.length - 1;
     return Scaffold(
@@ -6501,12 +6502,14 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
               child: Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 760),
+                  // Video gets a much wider frame so it plays large; text stays a
+                  // comfortable reading width.
+                  constraints: BoxConstraints(maxWidth: isVideo ? 1180 : 760),
                   // The material sits in a bordered "page" box so the text isn't
                   // floating on the bare background.
                   child: Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(22, 22, 22, 26),
+                    padding: isVideo ? const EdgeInsets.all(12) : const EdgeInsets.fromLTRB(22, 22, 22, 26),
                     decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                       Text(title, style: GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w800, color: _navy, height: 1.25)),
