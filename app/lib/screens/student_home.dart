@@ -409,7 +409,7 @@ class _StudentHomeState extends State<StudentHome> {
   // Desktop: top bar across the top, the menu matrix on the left, and the AI
   // news pinned as a right-hand sidebar (its list scrolls internally).
   Widget _wideHome(BoxConstraints c) {
-    final side = (c.maxWidth - 420 - 96).clamp(360.0, 700.0).toDouble();
+    final side = (c.maxWidth - 480 - 110).clamp(320.0, 700.0).toDouble();
     return Padding(
       padding: const EdgeInsets.fromLTRB(40, 8, 36, 20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -428,7 +428,7 @@ class _StudentHomeState extends State<StudentHome> {
             const SizedBox(width: 28),
             // Right sidebar: profile on top, notifications, then AI news.
             SizedBox(
-              width: 420,
+              width: 480,
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 _Entrance(index: 1, child: _profileSection()),
                 const SizedBox(height: 12),
@@ -1251,15 +1251,10 @@ class _StudentHomeState extends State<StudentHome> {
             Future.wait([
               _apiMap('/api/v1/me/transcript'),
               _apiList('/api/v1/me/courses', 'my_courses'),
-              _apiList('/api/v1/me/announcements', 'announcements'),
-              _apiList('/api/v1/me/notifications', 'notifications'),
             ]),
             (List d) {
               final t = d[0] as Map<String, dynamic>;
               final courses = d[1] as List;
-              // Merge personal notifications + announcements, newest first.
-              final notes = [...(d[3] as List), ...(d[2] as List)]
-                ..sort((a, b) => ((b as Map)['at']?.toString() ?? '').compareTo((a as Map)['at']?.toString() ?? ''));
               final totalL = courses.fold<int>(0, (s, c) => s + (((c as Map)['lessons_total'] ?? 0) as num).toInt());
               final doneL = courses.fold<int>(0, (s, c) => s + (((c as Map)['lessons_done'] ?? 0) as num).toInt());
               final overall = totalL > 0 ? doneL / totalL : 0.0;
@@ -1343,28 +1338,8 @@ class _StudentHomeState extends State<StudentHome> {
                     Expanded(child: _statCard('${t['certificates'] ?? 0}', 'Certificates', icon: CupertinoIcons.rosette, onTap: () => _openPanel('certificates'))),
                   ]),
                 ),
-                // Notifications — recent announcements.
-                if (notes.isNotEmpty) ...[
-                  const SizedBox(height: 22),
-                  _Entrance(
-                    index: 4,
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                      Row(children: [
-                        Icon(CupertinoIcons.bell_fill, size: 16, color: _orange),
-                        const SizedBox(width: 6),
-                        Text('Notifications', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
-                      ]),
-                      const SizedBox(height: 8),
-                      ...notes.take(3).map((e) {
-                        final m = e as Map<String, dynamic>;
-                        final course = m['course']?.toString() ?? '';
-                        final body = m['body']?.toString() ?? '';
-                        final text = [if (course.isNotEmpty) '[$course]', m['title'] ?? '', if (body.isNotEmpty) '— $body'].join(' ');
-                        return _notif(text, _fmtAt(m['at']?.toString()));
-                      }),
-                    ]),
-                  ),
-                ],
+                // (Notifications intentionally omitted here — they live in the
+                // sidebar card and the dedicated Notifications tile.)
               ]);
             },
           ),
