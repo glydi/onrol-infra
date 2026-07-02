@@ -16,6 +16,7 @@ import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/push.dart';
 import '../theme_controller.dart';
+import '../widgets/markdown_view.dart';
 import 'forum_screen.dart';
 import 'live_screen.dart';
 import 'live_session_screen.dart';
@@ -6393,157 +6394,21 @@ class _NotePageEditorState extends State<_NotePageEditor> {
   }
 }
 
-/// Renders a Markdown subset (headings, bold/italic/inline-code, bulleted &
-/// numbered lists, to-do checkboxes, quotes, fenced code blocks, dividers) as
-/// clean, Notion-like blocks. [onToggle] fires with a source line index when a
-/// to-do checkbox is tapped.
+/// Student-palette wrapper around the shared [MarkdownView].
 class _NoteMarkdown extends StatelessWidget {
   const _NoteMarkdown({required this.text, this.onToggle});
   final String text;
   final void Function(int lineIndex)? onToggle;
 
-  static final _todoRe = RegExp(r'^\s*[-*]\s+\[( |x|X)\]\s?(.*)$');
-  static final _bulletRe = RegExp(r'^\s*[-*]\s+(.*)$');
-  static final _numRe = RegExp(r'^\s*(\d+)\.\s+(.*)$');
-  static final _inlineRe = RegExp(r'(\*\*(.+?)\*\*|\*(.+?)\*|`([^`]+?)`)');
-
-  List<InlineSpan> _spans(String s, TextStyle base) {
-    final out = <InlineSpan>[];
-    var idx = 0;
-    for (final m in _inlineRe.allMatches(s)) {
-      if (m.start > idx) out.add(TextSpan(text: s.substring(idx, m.start), style: base));
-      if (m.group(2) != null) {
-        out.add(TextSpan(text: m.group(2), style: base.copyWith(fontWeight: FontWeight.w800)));
-      } else if (m.group(3) != null) {
-        out.add(TextSpan(text: m.group(3), style: base.copyWith(fontStyle: FontStyle.italic)));
-      } else if (m.group(4) != null) {
-        out.add(TextSpan(text: m.group(4), style: base.copyWith(fontFamily: 'monospace', color: _navy, backgroundColor: _orange.withOpacity(0.12))));
-      }
-      idx = m.end;
-    }
-    if (idx < s.length) out.add(TextSpan(text: s.substring(idx), style: base));
-    return out;
-  }
-
-  Widget _rich(String s, TextStyle base) => RichText(text: TextSpan(children: _spans(s, base)));
-
   @override
-  Widget build(BuildContext context) {
-    final base = GoogleFonts.poppins(fontSize: 15.5, color: _navy, height: 1.65);
-    final lines = text.split('\n');
-    final blocks = <Widget>[];
-    var inCode = false;
-    final codeBuf = <String>[];
-
-    for (var i = 0; i < lines.length; i++) {
-      final raw = lines[i];
-      final t = raw.trim();
-
-      if (t.startsWith('```')) {
-        if (inCode) {
-          blocks.add(_code(codeBuf.join('\n')));
-          codeBuf.clear();
-          inCode = false;
-        } else {
-          inCode = true;
-        }
-        continue;
-      }
-      if (inCode) {
-        codeBuf.add(raw);
-        continue;
-      }
-      if (t == '---' || t == '***' || t == '___') {
-        blocks.add(Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Container(height: 1, color: _cardBorder)));
-        continue;
-      }
-      if (t.isEmpty) {
-        blocks.add(const SizedBox(height: 9));
-        continue;
-      }
-      if (t.startsWith('### ')) {
-        blocks.add(_pad(_rich(t.substring(4), GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w700, color: _navy, height: 1.3)), top: 8));
-        continue;
-      }
-      if (t.startsWith('## ')) {
-        blocks.add(_pad(_rich(t.substring(3), GoogleFonts.poppins(fontSize: 21, fontWeight: FontWeight.w800, color: _navy, height: 1.3)), top: 10));
-        continue;
-      }
-      if (t.startsWith('# ')) {
-        blocks.add(_pad(_rich(t.substring(2), GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w800, color: _navy, height: 1.25)), top: 12));
-        continue;
-      }
-      final todo = _todoRe.firstMatch(raw);
-      if (todo != null) {
-        final checked = todo.group(1)!.toLowerCase() == 'x';
-        final content = todo.group(2) ?? '';
-        final li = i;
-        blocks.add(Padding(
-          padding: const EdgeInsets.symmetric(vertical: 3),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onToggle == null ? null : () => onToggle!(li),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 2, right: 9),
-                child: Container(
-                  width: 18, height: 18, alignment: Alignment.center,
-                  decoration: BoxDecoration(color: checked ? _orange : Colors.transparent, border: Border.all(color: checked ? _orange : _grey, width: 1.4)),
-                  child: checked ? const Icon(CupertinoIcons.checkmark, size: 12, color: Colors.white) : null,
-                ),
-              ),
-              Expanded(child: _rich(content, base.copyWith(color: checked ? _grey : _navy, decoration: checked ? TextDecoration.lineThrough : null))),
-            ]),
-          ),
-        ));
-        continue;
-      }
-      final bullet = _bulletRe.firstMatch(raw);
-      if (bullet != null) {
-        blocks.add(_listItem('•  ', bullet.group(1) ?? '', base));
-        continue;
-      }
-      final num = _numRe.firstMatch(raw);
-      if (num != null) {
-        blocks.add(_listItem('${num.group(1)}.  ', num.group(2) ?? '', base));
-        continue;
-      }
-      if (t.startsWith('> ')) {
-        blocks.add(Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
-            decoration: BoxDecoration(border: Border(left: BorderSide(color: _orange, width: 3))),
-            child: _rich(t.substring(2), base.copyWith(color: _grey, fontStyle: FontStyle.italic)),
-          ),
-        ));
-        continue;
-      }
-      blocks.add(_pad(_rich(t, base), top: 2));
-    }
-    if (inCode && codeBuf.isNotEmpty) blocks.add(_code(codeBuf.join('\n')));
-    if (blocks.isEmpty) {
-      blocks.add(Text('Nothing here yet.', style: base.copyWith(color: _grey)));
-    }
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: blocks);
-  }
-
-  Widget _pad(Widget child, {double top = 0}) => Padding(padding: EdgeInsets.only(top: top, bottom: 2), child: child);
-
-  Widget _listItem(String marker, String content, TextStyle base) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Padding(padding: const EdgeInsets.only(right: 2), child: Text(marker, style: base.copyWith(fontWeight: FontWeight.w700))),
-          Expanded(child: _rich(content, base)),
-        ]),
-      );
-
-  Widget _code(String s) => Container(
-        width: double.infinity,
-        margin: const EdgeInsets.symmetric(vertical: 6),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: _isDark ? Colors.white.withOpacity(0.05) : const Color(0xFFF3F3F5), border: Border.all(color: _cardBorder)),
-        child: Text(s, style: GoogleFonts.robotoMono(fontSize: 13, color: _navy, height: 1.45)),
+  Widget build(BuildContext context) => MarkdownView(
+        text: text,
+        onToggle: onToggle,
+        textColor: _navy,
+        mutedColor: _grey,
+        accent: _orange,
+        borderColor: _cardBorder,
+        dark: _isDark,
       );
 }
 

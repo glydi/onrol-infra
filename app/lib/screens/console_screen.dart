@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../theme.dart';
 import '../widgets/app_shell.dart';
+import '../widgets/markdown_view.dart';
 import '../widgets/profile_view.dart';
 import '../widgets/ui.dart';
 import 'admin_calendar_screen.dart';
@@ -2541,6 +2542,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     int type = 0; // text, video, link
     int vsrc = 0; // 0 = R2 (MP4), 1 = HLS (.m3u8)
     bool downloadable = true; // documents: may learners download it?
+    bool preview = false; // text content: Write ⇄ Preview (rendered Markdown)
     final ok = await showFormSheet(context, square: true, big: true, title: 'Add Course Material', builder: (setS) => [
       sheetField(title, 'Lesson title', CupertinoIcons.doc_text),
       const SizedBox(height: 10),
@@ -2570,21 +2572,54 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         ],
       ],
       const SizedBox(height: 10),
-      sheetField(
-        body,
-        type == 0
-            ? 'Content'
-            : type == 1
-                ? (vsrc == 0 ? 'R2 video URL (…/video.mp4)' : 'HLS playlist URL (…/index.m3u8)')
-                : type == 3
-                    ? 'Document URL (PDF / Word / PPT …)'
-                    : 'URL',
-        type == 1
-            ? (vsrc == 0 ? CupertinoIcons.play_rectangle : CupertinoIcons.antenna_radiowaves_left_right)
-            : type == 3
-                ? CupertinoIcons.doc_richtext
-                : CupertinoIcons.link,
-      ),
+      if (type == 0) ...[
+        // Text material: paste/write Markdown, with a live Preview.
+        _label(context, 'Content — Markdown supported (# headings, **bold**, - lists, > quote, `code`). Paste Markdown here.'),
+        const SizedBox(height: 6),
+        AppleSegmented(square: true, labels: const ['Write', 'Preview'], selected: preview ? 1 : 0, onChanged: (i) => setS(() => preview = i == 1)),
+        const SizedBox(height: 8),
+        if (preview)
+          Container(
+            width: double.infinity,
+            constraints: const BoxConstraints(minHeight: 140),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: Palette.of(context).card2, border: Border.all(color: Palette.of(context).separator)),
+            child: MarkdownView(
+              text: body.text,
+              textColor: Palette.of(context).label,
+              mutedColor: Palette.of(context).secondary,
+              accent: Palette.of(context).accent,
+              borderColor: Palette.of(context).separator,
+              dark: Palette.of(context).dark,
+              emptyLabel: 'Nothing to preview yet — write some Markdown.',
+            ),
+          )
+        else
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(color: Palette.of(context).card2, borderRadius: BorderRadius.zero),
+            child: TextField(
+              controller: body,
+              minLines: 7,
+              maxLines: 16,
+              style: TextStyle(color: Palette.of(context).label, fontSize: 15, height: 1.4),
+              decoration: InputDecoration(border: InputBorder.none, isDense: true, hintText: 'Paste or write Markdown…', hintStyle: TextStyle(color: Palette.of(context).secondary)),
+            ),
+          ),
+      ] else
+        sheetField(
+          body,
+          type == 1
+              ? (vsrc == 0 ? 'R2 video URL (…/video.mp4)' : 'HLS playlist URL (…/index.m3u8)')
+              : type == 3
+                  ? 'Document URL (PDF / Word / PPT …)'
+                  : 'URL',
+          type == 1
+              ? (vsrc == 0 ? CupertinoIcons.play_rectangle : CupertinoIcons.antenna_radiowaves_left_right)
+              : type == 3
+                  ? CupertinoIcons.doc_richtext
+                  : CupertinoIcons.link,
+        ),
       if (type == 3) ...[
         const SizedBox(height: 6),
         _label(context, 'Link a PDF / Word / PowerPoint or any document URL. Students open it from the lesson.'),
