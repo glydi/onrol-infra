@@ -6006,65 +6006,13 @@ class _NotesViewState extends State<_NotesView> {
     if (mounted) setState(() => _loading = false);
   }
 
-  Future<void> _edit({Map<String, dynamic>? note}) async {
-    final title = TextEditingController(text: note?['title']?.toString() ?? '');
-    final body = TextEditingController(text: note?['body']?.toString() ?? '');
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: Container(
-          margin: const EdgeInsets.all(10),
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.zero),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text(note == null ? 'New note' : 'Edit note', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: _navy)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: title,
-              style: GoogleFonts.poppins(fontSize: 14, color: _navy, fontWeight: FontWeight.w600),
-              decoration: InputDecoration(hintText: 'Title (optional)', hintStyle: GoogleFonts.poppins(color: _grey, fontSize: 14), isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: _cardBorder)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: const BorderSide(color: _orange))),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: body,
-              minLines: 4,
-              maxLines: 10,
-              autofocus: true,
-              style: GoogleFonts.poppins(fontSize: 14, color: _navy, height: 1.35),
-              decoration: InputDecoration(hintText: 'Write your note…', hintStyle: GoogleFonts.poppins(color: _grey, fontSize: 14), isDense: true,
-                  contentPadding: const EdgeInsets.all(12),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: _cardBorder)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: const BorderSide(color: _orange))),
-            ),
-            const SizedBox(height: 14),
-            Row(children: [
-              Expanded(child: _Pressable(onTap: () => Navigator.of(ctx).pop(false), child: Container(alignment: Alignment.center, padding: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(color: const Color(0xFFF0F0F2), borderRadius: BorderRadius.zero), child: Text('Cancel', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: _grey))))),
-              const SizedBox(width: 10),
-              Expanded(child: _Pressable(onTap: () => Navigator.of(ctx).pop(true), child: Container(alignment: Alignment.center, padding: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero), child: Text('Save', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: Colors.white))))),
-            ]),
-          ]),
-        ),
-      ),
-    );
-    if (saved != true) return;
-    if (title.text.trim().isEmpty && body.text.trim().isEmpty) return;
-    final payload = {'title': title.text.trim(), 'body': body.text.trim()};
-    try {
-      if (note == null) {
-        await widget.auth.apiPost('/api/v1/me/notes', payload);
-      } else {
-        await widget.auth.apiPatch('/api/v1/me/notes/${note['id']}', payload);
-      }
-      _load();
-    } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not save note'), behavior: SnackBarBehavior.floating));
-    }
+  // Open a full-page, Notion-style editor. Reloads the list on return.
+  Future<void> _open({Map<String, dynamic>? note}) async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) => _NotePageEditor(auth: widget.auth, note: note),
+    ));
+    _load();
   }
 
   Future<void> _delete(String id) async {
@@ -6074,57 +6022,73 @@ class _NotesViewState extends State<_NotesView> {
     } catch (_) {}
   }
 
+  // Strip markdown markers for the one-line list preview.
+  static String _plainPreview(String body) {
+    return body
+        .replaceAll(RegExp(r'^\s{0,3}#{1,6}\s+', multiLine: true), '')
+        .replaceAll(RegExp(r'^\s*[-*]\s+\[[ xX]\]\s*', multiLine: true), '')
+        .replaceAll(RegExp(r'^\s*[-*]\s+', multiLine: true), '')
+        .replaceAll(RegExp(r'^\s*\d+\.\s+', multiLine: true), '')
+        .replaceAll(RegExp(r'^\s*>\s+', multiLine: true), '')
+        .replaceAll(RegExp(r'`{1,3}'), '')
+        .replaceAll(RegExp(r'\*\*|\*|__|_|~~'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Padding(padding: EdgeInsets.symmetric(vertical: 30), child: Center(child: CupertinoActivityIndicator()));
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _Pressable(
-        onTap: () => _edit(),
+        onTap: () => _open(),
         child: Container(
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(vertical: 13),
-          decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero, ),
+          decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero),
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             const Icon(CupertinoIcons.add, size: 16, color: Colors.white),
             const SizedBox(width: 6),
-            Text('Add New Note', style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
+            Text('New page', style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
           ]),
         ),
       ),
       const SizedBox(height: 14),
       if (_notes.isEmpty)
-        Padding(padding: const EdgeInsets.symmetric(vertical: 24), child: Center(child: Text('No notes yet — tap “Add New Note”.', style: GoogleFonts.poppins(fontSize: 13, color: _grey))))
+        Padding(padding: const EdgeInsets.symmetric(vertical: 24), child: Center(child: Text('No pages yet — tap “New page”.', style: GoogleFonts.poppins(fontSize: 13, color: _grey))))
       else
         for (var i = 0; i < _notes.length; i++) _noteCard(_notes[i], i),
     ]);
   }
 
   Widget _noteCard(Map<String, dynamic> n, int index) {
-    final title = n['title']?.toString() ?? '';
-    final body = n['body']?.toString() ?? '';
+    final title = n['title']?.toString().trim() ?? '';
+    final preview = _plainPreview(n['body']?.toString() ?? '');
     return _Entrance(
       index: index,
       child: Padding(
-        padding: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.only(bottom: 8),
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: () => _edit(note: n),
+          onTap: () => _open(note: n),
           child: Container(
-            padding: const EdgeInsets.all(13),
-            decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.zero, border: Border.all(color: _cardBorder)),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Padding(padding: const EdgeInsets.only(top: 1, right: 10), child: Icon(CupertinoIcons.doc_text, size: 17, color: _orange)),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                if (title.isNotEmpty) ...[
-                  Text(title, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
-                  const SizedBox(height: 3),
+                Text(title.isEmpty ? 'Untitled' : title,
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: title.isEmpty ? _grey : _navy)),
+                if (preview.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
                 ],
-                if (body.isNotEmpty)
-                  Text(body, maxLines: 4, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12.5, color: _grey, height: 1.35)),
               ])),
               const SizedBox(width: 8),
               _Pressable(
                 onTap: () => _delete(n['id'].toString()),
-                child: const Padding(padding: EdgeInsets.only(left: 4, top: 2), child: Icon(CupertinoIcons.trash, size: 17, color: Color(0xFFBDBDBD))),
+                child: const Padding(padding: EdgeInsets.only(left: 4, top: 2), child: Icon(CupertinoIcons.trash, size: 16, color: Color(0xFFBDBDBD))),
               ),
             ]),
           ),
@@ -6132,4 +6096,449 @@ class _NotesViewState extends State<_NotesView> {
       ),
     );
   }
+}
+
+/// Full-page, Notion-style note editor: a big borderless title, a block/format
+/// toolbar that inserts Markdown, an Edit⇄Preview toggle (rendered Markdown with
+/// tappable to-do checkboxes), and debounced autosave. Markdown is stored in the
+/// note's plain `body`, so no backend change is needed.
+class _NotePageEditor extends StatefulWidget {
+  const _NotePageEditor({required this.auth, this.note});
+  final AuthService auth;
+  final Map<String, dynamic>? note;
+
+  @override
+  State<_NotePageEditor> createState() => _NotePageEditorState();
+}
+
+class _NotePageEditorState extends State<_NotePageEditor> {
+  late final TextEditingController _title;
+  late final TextEditingController _body;
+  final FocusNode _bodyFocus = FocusNode();
+  Timer? _debounce;
+  String? _id;
+  bool _preview = false;
+  bool _dirty = false;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _id = widget.note?['id']?.toString();
+    _title = TextEditingController(text: widget.note?['title']?.toString() ?? '');
+    _body = TextEditingController(text: widget.note?['body']?.toString() ?? '');
+    _title.addListener(_onChanged);
+    _body.addListener(_onChanged);
+  }
+
+  void _onChanged() {
+    _dirty = true;
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 900), _save);
+    if (mounted) setState(() {}); // refresh the "Edited/Saved" chip
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    // Best-effort final save on any exit path (back button / swipe).
+    if (_dirty) {
+      final t = _title.text.trim();
+      final b = _body.text.trim();
+      if (t.isNotEmpty || b.isNotEmpty) _persist(t, b);
+    }
+    _title.dispose();
+    _body.dispose();
+    _bodyFocus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _persist(String t, String b) async {
+    try {
+      if (_id == null) {
+        final r = await widget.auth.apiPost('/api/v1/me/notes', {'title': t, 'body': b});
+        _id = (ApiClient.decode(r)['id'])?.toString();
+      } else {
+        await widget.auth.apiPatch('/api/v1/me/notes/$_id', {'title': t, 'body': b});
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _save() async {
+    if (!_dirty) return;
+    final t = _title.text.trim();
+    final b = _body.text.trim();
+    if (t.isEmpty && b.isEmpty) return;
+    _dirty = false;
+    if (mounted) setState(() => _saving = true);
+    await _persist(t, b);
+    if (mounted) setState(() => _saving = false);
+  }
+
+  Future<void> _deleteAndPop() async {
+    _dirty = false; // don't re-create on dispose
+    if (_id != null) {
+      try {
+        await widget.auth.apiDelete('/api/v1/me/notes/$_id');
+      } catch (_) {}
+    }
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  // ---- Markdown insertion helpers (operate on the body controller) ----------
+
+  void _prefixLine(String prefix) {
+    final v = _body.value;
+    final text = v.text;
+    final base = v.selection.baseOffset;
+    final start = base < 0 ? text.length : base;
+    final lineStart = text.lastIndexOf('\n', start - 1) + 1; // 0 if none
+    final nt = text.replaceRange(lineStart, lineStart, prefix);
+    _body.value = TextEditingValue(text: nt, selection: TextSelection.collapsed(offset: (base < 0 ? nt.length : base + prefix.length)));
+    _onChanged();
+    _bodyFocus.requestFocus();
+  }
+
+  void _wrap(String token) {
+    final v = _body.value;
+    final text = v.text;
+    final sel = v.selection;
+    if (sel.baseOffset < 0 || sel.start == sel.end) {
+      final at = sel.baseOffset < 0 ? text.length : sel.start;
+      final nt = text.replaceRange(at, at, '$token$token');
+      _body.value = TextEditingValue(text: nt, selection: TextSelection.collapsed(offset: at + token.length));
+    } else {
+      final selected = text.substring(sel.start, sel.end);
+      final nt = text.replaceRange(sel.start, sel.end, '$token$selected$token');
+      final s = sel.start + token.length;
+      _body.value = TextEditingValue(text: nt, selection: TextSelection(baseOffset: s, extentOffset: s + selected.length));
+    }
+    _onChanged();
+    _bodyFocus.requestFocus();
+  }
+
+  void _insertBlock(String block) {
+    final v = _body.value;
+    final text = v.text;
+    final at = v.selection.baseOffset < 0 ? text.length : v.selection.baseOffset;
+    final lead = (at > 0 && text[at - 1] != '\n') ? '\n' : '';
+    final ins = '$lead$block';
+    final nt = text.replaceRange(at, at, ins);
+    _body.value = TextEditingValue(text: nt, selection: TextSelection.collapsed(offset: at + ins.length));
+    _onChanged();
+    _bodyFocus.requestFocus();
+  }
+
+  // Toggle a `- [ ]` ⇄ `- [x]` on the given source line (from the preview).
+  void _toggleCheckbox(int lineIndex) {
+    final lines = _body.text.split('\n');
+    if (lineIndex < 0 || lineIndex >= lines.length) return;
+    final l = lines[lineIndex];
+    if (RegExp(r'\[[xX]\]').hasMatch(l)) {
+      lines[lineIndex] = l.replaceFirst(RegExp(r'\[[xX]\]'), '[ ]');
+    } else if (l.contains('[ ]')) {
+      lines[lineIndex] = l.replaceFirst('[ ]', '[x]');
+    }
+    _body.text = lines.join('\n');
+    _dirty = true;
+    setState(() {});
+    _save();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _isDark = Theme.of(context).brightness == Brightness.dark;
+    return Scaffold(
+      backgroundColor: _bg,
+      body: SafeArea(
+        child: Column(children: [
+          _topBar(),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 120),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 760),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    // Title.
+                    if (_preview)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(_title.text.trim().isEmpty ? 'Untitled' : _title.text.trim(),
+                            style: GoogleFonts.poppins(fontSize: 30, fontWeight: FontWeight.w800, color: _title.text.trim().isEmpty ? _grey : _navy, height: 1.2)),
+                      )
+                    else
+                      TextField(
+                        controller: _title,
+                        maxLines: null,
+                        textCapitalization: TextCapitalization.sentences,
+                        style: GoogleFonts.poppins(fontSize: 30, fontWeight: FontWeight.w800, color: _navy, height: 1.2),
+                        decoration: InputDecoration(
+                          isCollapsed: true,
+                          border: InputBorder.none,
+                          hintText: 'Untitled',
+                          hintStyle: GoogleFonts.poppins(fontSize: 30, fontWeight: FontWeight.w800, color: _grey.withOpacity(0.5), height: 1.2),
+                        ),
+                      ),
+                    const SizedBox(height: 12),
+                    if (!_preview) _toolbar(),
+                    const SizedBox(height: 14),
+                    // Body.
+                    if (_preview)
+                      _NoteMarkdown(text: _body.text, onToggle: _toggleCheckbox)
+                    else
+                      TextField(
+                        controller: _body,
+                        focusNode: _bodyFocus,
+                        maxLines: null,
+                        keyboardType: TextInputType.multiline,
+                        textCapitalization: TextCapitalization.sentences,
+                        style: GoogleFonts.poppins(fontSize: 15.5, color: _navy, height: 1.65),
+                        decoration: InputDecoration(
+                          isCollapsed: true,
+                          border: InputBorder.none,
+                          hintText: 'Start writing. Use the toolbar to add headings, lists, to-dos, quotes and code…',
+                          hintStyle: GoogleFonts.poppins(fontSize: 15.5, color: _grey.withOpacity(0.7), height: 1.65),
+                        ),
+                      ),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _topBar() {
+    final status = _saving ? 'Saving…' : (_dirty ? 'Edited' : 'Saved');
+    return Container(
+      padding: const EdgeInsets.fromLTRB(6, 6, 12, 6),
+      decoration: BoxDecoration(color: _surface, border: Border(bottom: BorderSide(color: _cardBorder))),
+      child: Row(children: [
+        _Pressable(onTap: () => Navigator.of(context).maybePop(), child: Padding(padding: const EdgeInsets.all(8), child: Icon(CupertinoIcons.chevron_back, size: 22, color: _navy))),
+        const SizedBox(width: 2),
+        Icon(CupertinoIcons.doc_text, size: 16, color: _grey),
+        const SizedBox(width: 6),
+        Flexible(child: Text(status, style: GoogleFonts.poppins(fontSize: 11.5, color: _grey))),
+        const Spacer(),
+        _Pressable(
+          onTap: () {
+            FocusScope.of(context).unfocus();
+            setState(() => _preview = !_preview);
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+            decoration: BoxDecoration(color: _preview ? _orange.withOpacity(0.12) : _surface, border: Border.all(color: _preview ? _orange : _cardBorder)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(_preview ? CupertinoIcons.pencil : CupertinoIcons.eye, size: 14, color: _orange),
+              const SizedBox(width: 5),
+              Text(_preview ? 'Edit' : 'Preview', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
+            ]),
+          ),
+        ),
+        if (_id != null) ...[
+          const SizedBox(width: 8),
+          _Pressable(onTap: _deleteAndPop, child: const Padding(padding: EdgeInsets.all(6), child: Icon(CupertinoIcons.trash, size: 18, color: Color(0xFFBDBDBD)))),
+        ],
+      ]),
+    );
+  }
+
+  Widget _toolbar() {
+    Widget btn(String tip, Widget child, VoidCallback onTap) => Padding(
+          padding: const EdgeInsets.only(right: 6),
+          child: Tooltip(
+            message: tip,
+            child: _Pressable(
+              onTap: onTap,
+              child: Container(
+                height: 32,
+                constraints: const BoxConstraints(minWidth: 34),
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
+                child: child,
+              ),
+            ),
+          ),
+        );
+    Widget lbl(String s) => Text(s, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w800, color: _navy));
+    Widget ic(IconData i) => Icon(i, size: 17, color: _navy);
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(children: [
+        btn('Heading 1', lbl('H1'), () => _prefixLine('# ')),
+        btn('Heading 2', lbl('H2'), () => _prefixLine('## ')),
+        btn('Heading 3', lbl('H3'), () => _prefixLine('### ')),
+        const SizedBox(width: 4),
+        btn('Bold', ic(CupertinoIcons.bold), () => _wrap('**')),
+        btn('Italic', ic(CupertinoIcons.italic), () => _wrap('*')),
+        btn('Inline code', ic(Icons.code), () => _wrap('`')),
+        const SizedBox(width: 4),
+        btn('Bulleted list', ic(CupertinoIcons.list_bullet), () => _prefixLine('- ')),
+        btn('Numbered list', ic(CupertinoIcons.list_number), () => _prefixLine('1. ')),
+        btn('To-do', ic(CupertinoIcons.checkmark_square), () => _prefixLine('- [ ] ')),
+        const SizedBox(width: 4),
+        btn('Quote', ic(CupertinoIcons.text_quote), () => _prefixLine('> ')),
+        btn('Code block', ic(Icons.data_object), () => _insertBlock('```\n\n```\n')),
+        btn('Divider', ic(Icons.horizontal_rule), () => _insertBlock('\n---\n')),
+      ]),
+    );
+  }
+}
+
+/// Renders a Markdown subset (headings, bold/italic/inline-code, bulleted &
+/// numbered lists, to-do checkboxes, quotes, fenced code blocks, dividers) as
+/// clean, Notion-like blocks. [onToggle] fires with a source line index when a
+/// to-do checkbox is tapped.
+class _NoteMarkdown extends StatelessWidget {
+  const _NoteMarkdown({required this.text, this.onToggle});
+  final String text;
+  final void Function(int lineIndex)? onToggle;
+
+  static final _todoRe = RegExp(r'^\s*[-*]\s+\[( |x|X)\]\s?(.*)$');
+  static final _bulletRe = RegExp(r'^\s*[-*]\s+(.*)$');
+  static final _numRe = RegExp(r'^\s*(\d+)\.\s+(.*)$');
+  static final _inlineRe = RegExp(r'(\*\*(.+?)\*\*|\*(.+?)\*|`([^`]+?)`)');
+
+  List<InlineSpan> _spans(String s, TextStyle base) {
+    final out = <InlineSpan>[];
+    var idx = 0;
+    for (final m in _inlineRe.allMatches(s)) {
+      if (m.start > idx) out.add(TextSpan(text: s.substring(idx, m.start), style: base));
+      if (m.group(2) != null) {
+        out.add(TextSpan(text: m.group(2), style: base.copyWith(fontWeight: FontWeight.w800)));
+      } else if (m.group(3) != null) {
+        out.add(TextSpan(text: m.group(3), style: base.copyWith(fontStyle: FontStyle.italic)));
+      } else if (m.group(4) != null) {
+        out.add(TextSpan(text: m.group(4), style: base.copyWith(fontFamily: 'monospace', color: _navy, backgroundColor: _orange.withOpacity(0.12))));
+      }
+      idx = m.end;
+    }
+    if (idx < s.length) out.add(TextSpan(text: s.substring(idx), style: base));
+    return out;
+  }
+
+  Widget _rich(String s, TextStyle base) => RichText(text: TextSpan(children: _spans(s, base)));
+
+  @override
+  Widget build(BuildContext context) {
+    final base = GoogleFonts.poppins(fontSize: 15.5, color: _navy, height: 1.65);
+    final lines = text.split('\n');
+    final blocks = <Widget>[];
+    var inCode = false;
+    final codeBuf = <String>[];
+
+    for (var i = 0; i < lines.length; i++) {
+      final raw = lines[i];
+      final t = raw.trim();
+
+      if (t.startsWith('```')) {
+        if (inCode) {
+          blocks.add(_code(codeBuf.join('\n')));
+          codeBuf.clear();
+          inCode = false;
+        } else {
+          inCode = true;
+        }
+        continue;
+      }
+      if (inCode) {
+        codeBuf.add(raw);
+        continue;
+      }
+      if (t == '---' || t == '***' || t == '___') {
+        blocks.add(Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Container(height: 1, color: _cardBorder)));
+        continue;
+      }
+      if (t.isEmpty) {
+        blocks.add(const SizedBox(height: 9));
+        continue;
+      }
+      if (t.startsWith('### ')) {
+        blocks.add(_pad(_rich(t.substring(4), GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w700, color: _navy, height: 1.3)), top: 8));
+        continue;
+      }
+      if (t.startsWith('## ')) {
+        blocks.add(_pad(_rich(t.substring(3), GoogleFonts.poppins(fontSize: 21, fontWeight: FontWeight.w800, color: _navy, height: 1.3)), top: 10));
+        continue;
+      }
+      if (t.startsWith('# ')) {
+        blocks.add(_pad(_rich(t.substring(2), GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w800, color: _navy, height: 1.25)), top: 12));
+        continue;
+      }
+      final todo = _todoRe.firstMatch(raw);
+      if (todo != null) {
+        final checked = todo.group(1)!.toLowerCase() == 'x';
+        final content = todo.group(2) ?? '';
+        final li = i;
+        blocks.add(Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onToggle == null ? null : () => onToggle!(li),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2, right: 9),
+                child: Container(
+                  width: 18, height: 18, alignment: Alignment.center,
+                  decoration: BoxDecoration(color: checked ? _orange : Colors.transparent, border: Border.all(color: checked ? _orange : _grey, width: 1.4)),
+                  child: checked ? const Icon(CupertinoIcons.checkmark, size: 12, color: Colors.white) : null,
+                ),
+              ),
+              Expanded(child: _rich(content, base.copyWith(color: checked ? _grey : _navy, decoration: checked ? TextDecoration.lineThrough : null))),
+            ]),
+          ),
+        ));
+        continue;
+      }
+      final bullet = _bulletRe.firstMatch(raw);
+      if (bullet != null) {
+        blocks.add(_listItem('•  ', bullet.group(1) ?? '', base));
+        continue;
+      }
+      final num = _numRe.firstMatch(raw);
+      if (num != null) {
+        blocks.add(_listItem('${num.group(1)}.  ', num.group(2) ?? '', base));
+        continue;
+      }
+      if (t.startsWith('> ')) {
+        blocks.add(Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+            decoration: BoxDecoration(border: Border(left: BorderSide(color: _orange, width: 3))),
+            child: _rich(t.substring(2), base.copyWith(color: _grey, fontStyle: FontStyle.italic)),
+          ),
+        ));
+        continue;
+      }
+      blocks.add(_pad(_rich(t, base), top: 2));
+    }
+    if (inCode && codeBuf.isNotEmpty) blocks.add(_code(codeBuf.join('\n')));
+    if (blocks.isEmpty) {
+      blocks.add(Text('Nothing here yet.', style: base.copyWith(color: _grey)));
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: blocks);
+  }
+
+  Widget _pad(Widget child, {double top = 0}) => Padding(padding: EdgeInsets.only(top: top, bottom: 2), child: child);
+
+  Widget _listItem(String marker, String content, TextStyle base) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(padding: const EdgeInsets.only(right: 2), child: Text(marker, style: base.copyWith(fontWeight: FontWeight.w700))),
+          Expanded(child: _rich(content, base)),
+        ]),
+      );
+
+  Widget _code(String s) => Container(
+        width: double.infinity,
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: _isDark ? Colors.white.withOpacity(0.05) : const Color(0xFFF3F3F5), border: Border.all(color: _cardBorder)),
+        child: Text(s, style: GoogleFonts.robotoMono(fontSize: 13, color: _navy, height: 1.45)),
+      );
 }
