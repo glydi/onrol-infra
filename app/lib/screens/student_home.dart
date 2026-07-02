@@ -45,7 +45,7 @@ Color get _line => _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0F0F0);
 
 // ---- Glassmorphism --------------------------------------------------------
 // Frosted translucent fill + hairline highlight border + soft drop shadow.
-Color get _glassFill => _isDark ? Colors.white.withOpacity(0.07) : Colors.white.withOpacity(0.55);
+Color get _glassFill => _isDark ? Colors.white.withOpacity(0.12) : Colors.white.withOpacity(0.78);
 Color get _glassBorder => _isDark ? Colors.white.withOpacity(0.12) : Colors.white.withOpacity(0.65);
 // Bright translucent card surface for elements inside popups — glassmorphic,
 // no solid fill, so the frosted panel glows through every element.
@@ -65,7 +65,7 @@ Widget _glass({
   required Widget child,
   double radius = 0, // squared — no rounded corners
   EdgeInsetsGeometry? padding,
-  double blur = 18,
+  double blur = 10, // gentler frost (less glassy)
   Color? tint,
   Color? border, // override the hairline border colour
   double borderWidth = 1,
