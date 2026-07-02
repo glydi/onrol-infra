@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -39,8 +38,8 @@ const _greenBg = Color(0xFFEAFAF0);
 bool _isDark = false;
 Color get _navy => _isDark ? const Color(0xFFECEDF2) : const Color(0xFF1A1A2E);
 Color get _grey => _isDark ? const Color(0xFF9AA0AC) : const Color(0xFF888888);
-Color get _peach => _isDark ? const Color(0xFF2C231C) : const Color(0xFFFFF3EC);
-Color get _bg => _isDark ? const Color(0xFF0E0F14) : const Color(0xFFFFF6F1);
+Color get _peach => _isDark ? const Color(0xFF23252C) : const Color(0xFFF1F2F4); // neutral tint (no peach)
+Color get _bg => _isDark ? const Color(0xFF0E0F14) : const Color(0xFFF4F5F7); // clean light grey (no peach)
 Color get _surface => _isDark ? const Color(0xFF1E2027) : Colors.white;
 Color get _line => _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0F0F0);
 
@@ -50,14 +49,14 @@ Color get _glassFill => _isDark ? Colors.white.withOpacity(0.07) : Colors.white.
 Color get _glassBorder => _isDark ? Colors.white.withOpacity(0.12) : Colors.white.withOpacity(0.65);
 // Bright translucent card surface for elements inside popups — glassmorphic,
 // no solid fill, so the frosted panel glows through every element.
-Color get _cardBorder => _isDark ? Colors.white.withOpacity(0.16) : Colors.white.withOpacity(0.70);
-// Soft ambient gradient for element surfaces — replaces flat fills.
+Color get _cardBorder => _isDark ? Colors.white.withOpacity(0.10) : const Color(0xFFE6E7EB);
+// Flat solid surface for element cards — a single tone (no ambient glow/gradient).
 LinearGradient get _cardGradient => LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
       colors: _isDark
-          ? [Colors.white.withOpacity(0.12), Colors.white.withOpacity(0.04)]
-          : [Colors.white.withOpacity(0.62), Colors.white.withOpacity(0.30)],
+          ? const [Color(0xFF1E2027), Color(0xFF1E2027)]
+          : const [Colors.white, Colors.white],
     );
 
 /// Wraps [child] in a frosted-glass surface (backdrop blur + translucent fill).
@@ -69,7 +68,7 @@ Widget _glass({
   double blur = 18,
   Color? tint,
 }) {
-  final r = BorderRadius.circular(radius);
+  final r = BorderRadius.zero;
   return ClipRRect(
     borderRadius: r,
     child: BackdropFilter(
@@ -80,7 +79,6 @@ Widget _glass({
           color: tint ?? _glassFill,
           borderRadius: r,
           border: Border.all(color: _glassBorder, width: 1),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.30 : 0.07), blurRadius: 30, offset: const Offset(0, 14))],
         ),
         child: child,
       ),
@@ -88,120 +86,17 @@ Widget _glass({
   );
 }
 
-/// Full-bleed backdrop: a base gradient plus a few large, heavily-blurred
-/// colour blobs so the glass panels have something rich to refract.
-/// How many panel/modal routes are currently open. While > 0 the animated
-/// backdrop pauses, so an open popup's glass isn't re-blurring a moving
-/// background every frame (keeps popups perfectly smooth).
+/// How many panel/modal routes are currently open (used elsewhere to pause
+/// background work while a popup is showing).
 final ValueNotifier<int> _panelDepth = ValueNotifier(0);
 
-class _GlassBackdrop extends StatefulWidget {
+/// Full-bleed backdrop — a flat, solid neutral fill. No peach, no gradient,
+/// no blurred glow blobs (flat theme).
+class _GlassBackdrop extends StatelessWidget {
   const _GlassBackdrop();
-  @override
-  State<_GlassBackdrop> createState() => _GlassBackdropState();
-}
-
-class _GlassBackdropState extends State<_GlassBackdrop> with SingleTickerProviderStateMixin {
-  // Very slow, perpetual drift so the ambient glow feels alive (same colours,
-  // same positions — just a soft breathing motion).
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 24))..repeat();
 
   @override
-  void initState() {
-    super.initState();
-    _panelDepth.addListener(_syncRunning);
-  }
-
-  // Pause the drift while a panel is open; resume when back on the dashboard.
-  void _syncRunning() {
-    if (_panelDepth.value > 0) {
-      if (_c.isAnimating) _c.stop();
-    } else if (!_c.isAnimating) {
-      _c.repeat();
-    }
-  }
-
-  @override
-  void dispose() {
-    _panelDepth.removeListener(_syncRunning);
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final blob = ui.ImageFilter.blur(sigmaX: 90, sigmaY: 90);
-    // Each blurred circle is cached in a RepaintBoundary so the blur rasterizes
-    // once and the animation only *moves* the cached texture — stays smooth.
-    Widget circle(Color c, double d) => RepaintBoundary(
-          child: ImageFiltered(
-            imageFilter: blob,
-            child: Container(width: d, height: d, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
-          ),
-        );
-    // Bright, lively ambient blobs — warm orange + peach + a pop of violet.
-    final c1 = circle(_orange.withOpacity(_isDark ? 0.24 : 0.34), 380);
-    final c2 = circle(const Color(0xFFFF9A4D).withOpacity(_isDark ? 0.20 : 0.32), 420);
-    final c3 = circle(const Color(0xFF8E6BFF).withOpacity(_isDark ? 0.16 : 0.18), 460);
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: _isDark
-                  ? const [Color(0xFF0E0F14), Color(0xFF14161F)]
-                  : const [Color(0xFFFFF1E6), Color(0xFFFFE9F0)],
-            ),
-          ),
-          child: AnimatedBuilder(
-            animation: _c,
-            builder: (context, _) {
-              final t = _c.value * 2 * math.pi;
-              Offset drift(double phase, double ax, double ay) => Offset(ax * math.sin(t + phase), ay * math.cos(t + phase));
-              return Stack(children: [
-                Positioned(top: -120, left: -100, child: Transform.translate(offset: drift(0, 26, 20), child: c1)),
-                Positioned(top: 80, right: -140, child: Transform.translate(offset: drift(2.1, -30, 24), child: c2)),
-                Positioned(bottom: -160, left: 120, child: Transform.translate(offset: drift(4.2, 28, -22), child: c3)),
-              ]);
-            },
-          ),
-        ),
-        // Subtle film-grain texture so surfaces don't read as flat.
-        Positioned.fill(
-          child: IgnorePointer(
-            child: RepaintBoundary(child: CustomPaint(painter: _GrainPainter(_isDark))),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// A faint, static film-grain overlay — sparse 1px specks at very low opacity,
-/// painted once (cached by a RepaintBoundary) to give flat areas some texture.
-class _GrainPainter extends CustomPainter {
-  const _GrainPainter(this.dark);
-  final bool dark;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rnd = math.Random(7);
-    final base = dark ? Colors.white : const Color(0xFF5A4A40);
-    final paint = Paint();
-    final count = (size.width * size.height / 800).clamp(0, 14000).toInt();
-    for (var i = 0; i < count; i++) {
-      final dx = rnd.nextDouble() * size.width;
-      final dy = rnd.nextDouble() * size.height;
-      paint.color = base.withOpacity((dark ? 0.022 : 0.030) * rnd.nextDouble());
-      canvas.drawRect(Rect.fromLTWH(dx, dy, 1.1, 1.1), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _GrainPainter old) => old.dark != dark;
+  Widget build(BuildContext context) => ColoredBox(color: _bg);
 }
 
 /// A default profile picture: an emoji on a gradient square (index 0 = the
@@ -592,7 +487,6 @@ class _StudentHomeState extends State<StudentHome> {
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
           decoration: BoxDecoration(
             gradient: _orangeGrad,
-            boxShadow: [BoxShadow(color: _orange.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             const Icon(CupertinoIcons.flame_fill, color: Colors.white, size: 14),
@@ -651,7 +545,7 @@ class _StudentHomeState extends State<StudentHome> {
                       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                       constraints: const BoxConstraints(minWidth: 17),
                       alignment: Alignment.center,
-                      decoration: BoxDecoration(color: const Color(0xFFE5484D), borderRadius: BorderRadius.circular(10), border: Border.all(color: _bg, width: 1.5)),
+                      decoration: BoxDecoration(color: const Color(0xFFE5484D), borderRadius: BorderRadius.zero, border: Border.all(color: _bg, width: 1.5)),
                       child: Text(unseen > 99 ? '99+' : '$unseen', style: GoogleFonts.poppins(fontSize: 9.5, fontWeight: FontWeight.w800, color: Colors.white)),
                     )),
                 ]),
@@ -661,7 +555,7 @@ class _StudentHomeState extends State<StudentHome> {
                     Text('Notifications', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800, color: _navy)),
                     if (unseen > 0) ...[
                       const SizedBox(width: 6),
-                      Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1), decoration: BoxDecoration(color: _orange.withOpacity(0.14), borderRadius: BorderRadius.circular(10)), child: Text('$unseen new', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: _orange))),
+                      Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1), decoration: BoxDecoration(color: _orange.withOpacity(0.14), borderRadius: BorderRadius.zero), child: Text('$unseen new', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: _orange))),
                     ],
                   ]),
                   const SizedBox(height: 2),
@@ -799,7 +693,7 @@ class _StudentHomeState extends State<StudentHome> {
                             duration: const Duration(milliseconds: 140),
                             padding: const EdgeInsets.all(3),
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(20),
+                              borderRadius: BorderRadius.zero,
                               border: Border.all(color: sel == 'p:$i' || (sel.isEmpty && i == 0) ? _orange : Colors.transparent, width: 3),
                             ),
                             child: _avatarBox('p:$i', 58, initials),
@@ -811,7 +705,7 @@ class _StudentHomeState extends State<StudentHome> {
                         child: Container(
                           width: 64, height: 64, alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.zero,
                             color: _orange.withOpacity(0.10),
                             border: Border.all(color: _orange.withOpacity(0.5), width: 1.5),
                           ),
@@ -881,7 +775,7 @@ class _StudentHomeState extends State<StudentHome> {
     if (pic == null) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: ClipRRect(borderRadius: BorderRadius.circular(14), child: pic),
+      child: ClipRRect(borderRadius: BorderRadius.zero, child: pic),
     );
   }
 
@@ -895,25 +789,43 @@ class _StudentHomeState extends State<StudentHome> {
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: modules.expand<Widget>((mod) {
           final md = mod as Map<String, dynamic>;
           final lessons = (md['lessons'] as List?) ?? [];
+          // Each module is its own bordered box: a tinted title bar on top,
+          // then its day folders (each also boxed) + the comments link.
           return [
-            Padding(
-              padding: const EdgeInsets.only(top: 10, bottom: 4),
-              child: Text(md['title']?.toString() ?? 'Module', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
-            ),
-            if (lessons.isEmpty) _emptyText('No lessons.') else ..._lessonsByDay(lessons, () => setS(() {})),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: _Pressable(
-                onTap: () => _openComments(md['id'].toString(), md['title']?.toString() ?? 'Module'),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(CupertinoIcons.chat_bubble_2_fill, size: 15, color: _orange),
-                    const SizedBox(width: 6),
-                    Text('Comments & Doubts', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _orange)),
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: _orange.withOpacity(0.08),
+                    border: Border(bottom: BorderSide(color: _cardBorder)),
+                  ),
+                  child: Text(md['title']?.toString() ?? 'Module', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    if (lessons.isEmpty) _emptyText('No lessons.') else ..._lessonsByDay(lessons, () => setS(() {})),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: _Pressable(
+                        onTap: () => _openComments(md['id'].toString(), md['title']?.toString() ?? 'Module'),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(CupertinoIcons.chat_bubble_2_fill, size: 15, color: _orange),
+                            const SizedBox(width: 6),
+                            Text('Comments & Doubts', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _orange)),
+                          ]),
+                        ),
+                      ),
+                    ),
                   ]),
                 ),
-              ),
+              ]),
             ),
           ];
         }).toList());
@@ -971,13 +883,13 @@ class _StudentHomeState extends State<StudentHome> {
               return Container(
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(10), border: Border.all(color: _cardBorder)),
+                decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.zero, border: Border.all(color: _cardBorder)),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
                     Text(m['author']?.toString() ?? 'Someone', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
                     const SizedBox(width: 6),
-                    if (staff) Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: _orange.withOpacity(0.14), borderRadius: BorderRadius.circular(4)), child: Text('Mentor', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w700, color: _orange))),
-                    if (isDoubt) Container(margin: const EdgeInsets.only(left: 6), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: const Color(0xFF2D7DF6).withOpacity(0.14), borderRadius: BorderRadius.circular(4)), child: Text('Doubt', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w700, color: const Color(0xFF2D7DF6)))),
+                    if (staff) Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: _orange.withOpacity(0.14), borderRadius: BorderRadius.zero), child: Text('Mentor', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w700, color: _orange))),
+                    if (isDoubt) Container(margin: const EdgeInsets.only(left: 6), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: const Color(0xFF2D7DF6).withOpacity(0.14), borderRadius: BorderRadius.zero), child: Text('Doubt', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w700, color: const Color(0xFF2D7DF6)))),
                   ]),
                   const SizedBox(height: 4),
                   Text(m['body']?.toString() ?? '', style: GoogleFonts.poppins(fontSize: 14, color: _navy, height: 1.4)),
@@ -987,7 +899,7 @@ class _StudentHomeState extends State<StudentHome> {
           }),
           const SizedBox(height: 12),
           CupertinoTextField(controller: text, placeholder: 'Write a comment…', minLines: 1, maxLines: 4, padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(10), border: Border.all(color: _cardBorder))),
+              decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.zero, border: Border.all(color: _cardBorder))),
           const SizedBox(height: 8),
           Row(children: [
             _Pressable(onTap: () => setS(() => doubt = !doubt), child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -996,7 +908,7 @@ class _StudentHomeState extends State<StudentHome> {
               Text('Mark as doubt', style: GoogleFonts.poppins(fontSize: 13, color: _navy)),
             ])),
             const Spacer(),
-            _Pressable(onTap: post, child: Container(padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10), decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(8)),
+            _Pressable(onTap: post, child: Container(padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10), decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero),
                 child: Text('Post', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)))),
           ]),
         ]);
@@ -1217,7 +1129,7 @@ class _StudentHomeState extends State<StudentHome> {
                             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                             decoration: BoxDecoration(
                               color: answers[qid] == o ? _orange.withOpacity(0.12) : _bg,
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.zero,
                               border: Border.all(color: answers[qid] == o ? _orange : _line),
                             ),
                             child: Row(children: [
@@ -1233,7 +1145,7 @@ class _StudentHomeState extends State<StudentHome> {
                       placeholder: 'Your answer',
                       onChanged: (v) => answers[qid] = v,
                       padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(8), border: Border.all(color: _cardBorder)),
+                      decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.zero, border: Border.all(color: _cardBorder)),
                     ),
                 ]),
               );
@@ -1268,7 +1180,7 @@ class _StudentHomeState extends State<StudentHome> {
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 alignment: Alignment.center,
-                decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero),
                 child: Text('Submit', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
               ),
             ),
@@ -1340,9 +1252,8 @@ class _StudentHomeState extends State<StudentHome> {
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       gradient: _cardGradient,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.zero,
                       border: Border.all(color: _cardBorder),
-                      boxShadow: [BoxShadow(color: _orange.withOpacity(0.07), blurRadius: 16, offset: const Offset(0, 8))],
                     ),
                     child: Row(children: [
                       SizedBox(
@@ -1515,7 +1426,7 @@ class _StudentHomeState extends State<StudentHome> {
               Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                  decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: _orange.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))]),
+                  decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero, ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     const Icon(CupertinoIcons.flame_fill, color: Colors.white, size: 15),
                     const SizedBox(width: 5),
@@ -1530,7 +1441,7 @@ class _StudentHomeState extends State<StudentHome> {
                   onTap: () => _openPanel('settings'),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                    decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(10)),
+                    decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       const Icon(CupertinoIcons.gear_alt_fill, size: 16, color: Colors.white),
                       const SizedBox(width: 8),
@@ -1543,7 +1454,7 @@ class _StudentHomeState extends State<StudentHome> {
                   onTap: _pickAvatar,
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                    decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(10), border: Border.all(color: _orange.withOpacity(0.35))),
+                    decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.zero, border: Border.all(color: _orange.withOpacity(0.35))),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       Icon(CupertinoIcons.camera_fill, size: 16, color: _orange),
                       const SizedBox(width: 8),
@@ -1695,7 +1606,7 @@ class _StudentHomeState extends State<StudentHome> {
         return (CupertinoIcons.creditcard_fill, 'Payments', 'Billing & subscriptions', [
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_orange.withOpacity(0.14), _orange.withOpacity(0.05)]), borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_orange.withOpacity(0.14), _orange.withOpacity(0.05)]), borderRadius: BorderRadius.zero),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Current Plan', style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
               const SizedBox(height: 4),
@@ -1781,7 +1692,6 @@ class _StudentHomeState extends State<StudentHome> {
                   decoration: BoxDecoration(
                     gradient: _orangeGrad,
                     shape: BoxShape.circle,
-                    boxShadow: [BoxShadow(color: _orange.withOpacity(0.35), blurRadius: 22, offset: const Offset(0, 10))],
                   ),
                   child: const Icon(CupertinoIcons.hand_raised_fill, size: 38, color: Colors.white),
                 ),
@@ -1800,7 +1710,7 @@ class _StudentHomeState extends State<StudentHome> {
                     padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 12),
                     decoration: BoxDecoration(
                       color: _orange.withOpacity(0.10),
-                      borderRadius: BorderRadius.circular(30),
+                      borderRadius: BorderRadius.zero,
                       border: Border.all(color: _orange.withOpacity(0.28)),
                     ),
                     child: Text('Stay', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _orange)),
@@ -1814,8 +1724,7 @@ class _StudentHomeState extends State<StudentHome> {
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                     decoration: BoxDecoration(
                       gradient: _orangeGrad,
-                      borderRadius: BorderRadius.circular(30),
-                      boxShadow: [BoxShadow(color: _orange.withOpacity(0.40), blurRadius: 14, offset: const Offset(0, 6))],
+                      borderRadius: BorderRadius.zero,
                     ),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       const Icon(CupertinoIcons.square_arrow_right, size: 16, color: Colors.white),
@@ -1872,18 +1781,18 @@ class _PanelRowState extends State<_PanelRow> {
         // Minimal: transparent at rest, a light orange wash + hairline on hover.
         decoration: BoxDecoration(
           color: _hover ? _orange.withOpacity(0.06) : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.zero,
           border: Border.all(color: _hover ? _orange.withOpacity(0.18) : Colors.transparent, width: 1),
         ),
         child: Row(children: [
-          Container(width: 44, height: 44, alignment: Alignment.center, decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(8)), child: Icon(widget.icon, size: 20, color: _orange)),
+          Container(width: 44, height: 44, alignment: Alignment.center, decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.zero), child: Icon(widget.icon, size: 20, color: _orange)),
           const SizedBox(width: 14),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(widget.name, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
             Text(widget.meta, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
           ])),
           const SizedBox(width: 8),
-          Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: widget.badgeBg ?? _peach, borderRadius: BorderRadius.circular(20)),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: widget.badgeBg ?? _peach, borderRadius: BorderRadius.zero),
               child: Text(widget.badge, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: widget.badgeFg ?? _orange))),
         ]),
       ),
@@ -1936,9 +1845,8 @@ class _CertCardState extends State<_CertCard> {
           transform: Matrix4.translationValues(0, _hover ? -2 : 0, 0),
           decoration: BoxDecoration(
             gradient: _cardGradient,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.zero,
             border: Border.all(color: _hover ? _orange.withOpacity(0.40) : _cardBorder, width: 1),
-            boxShadow: [BoxShadow(color: _orange.withOpacity(_hover ? 0.20 : 0.07), blurRadius: _hover ? 22 : 12, offset: Offset(0, _hover ? 9 : 5))],
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1947,8 +1855,7 @@ class _CertCardState extends State<_CertCard> {
                 width: 52, height: 52, alignment: Alignment.center,
                 decoration: BoxDecoration(
                   gradient: _orangeGrad,
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [BoxShadow(color: _orange.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 4))],
+                  borderRadius: BorderRadius.zero,
                 ),
                 child: const Icon(CupertinoIcons.rosette, size: 26, color: Colors.white),
               ),
@@ -1985,9 +1892,8 @@ class _CertCardState extends State<_CertCard> {
           decoration: BoxDecoration(
             gradient: filled ? _orangeGrad : null,
             color: filled ? null : _orange.withOpacity(0.10),
-            borderRadius: BorderRadius.circular(5),
+            borderRadius: BorderRadius.zero,
             border: filled ? null : Border.all(color: _orange.withOpacity(0.30)),
-            boxShadow: filled ? [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 6, offset: const Offset(0, 2))] : const [],
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(icon, size: 16, color: filled ? Colors.white : _orange),
@@ -2259,9 +2165,8 @@ class _StudyHubState extends State<_StudyHub> {
         decoration: BoxDecoration(
           gradient: sel ? _orangeGrad : null,
           color: sel ? null : _orange.withOpacity(0.07),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.zero,
           border: Border.all(color: sel ? Colors.transparent : _cardBorder),
-          boxShadow: sel ? [BoxShadow(color: _orange.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))] : const [],
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(CupertinoIcons.cube_box_fill, size: 13, color: sel ? Colors.white : _orange),
@@ -2280,7 +2185,7 @@ class _StudyHubState extends State<_StudyHub> {
           onTap: () => setState(() => _open = null),
           child: Container(
             width: 34, height: 34, alignment: Alignment.center,
-            decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(5), border: Border.all(color: _orange.withOpacity(0.25))),
+            decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.zero, border: Border.all(color: _orange.withOpacity(0.25))),
             child: const Icon(CupertinoIcons.chevron_back, size: 18, color: _orange),
           ),
         ),
@@ -2293,7 +2198,7 @@ class _StudyHubState extends State<_StudyHub> {
         ),
         Container(
           width: 38, height: 38, alignment: Alignment.center,
-          decoration: BoxDecoration(gradient: LinearGradient(colors: r.colors, begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(12)),
+          decoration: BoxDecoration(gradient: LinearGradient(colors: r.colors, begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.zero),
           child: Icon(r.icon, size: 19, color: Colors.white),
         ),
       ]),
@@ -2366,7 +2271,7 @@ class _StudyHubState extends State<_StudyHub> {
         child: Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(16), border: Border.all(color: _cardBorder)),
+          decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.zero, border: Border.all(color: _cardBorder)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Icon(CupertinoIcons.bolt_fill, size: 14, color: _orange),
@@ -2378,7 +2283,7 @@ class _StudyHubState extends State<_StudyHub> {
               for (final it in items)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-                  decoration: BoxDecoration(gradient: LinearGradient(colors: [_orange.withOpacity(0.14), _orange.withOpacity(0.05)]), borderRadius: BorderRadius.circular(10), border: Border.all(color: _orange.withOpacity(0.18))),
+                  decoration: BoxDecoration(gradient: LinearGradient(colors: [_orange.withOpacity(0.14), _orange.withOpacity(0.05)]), borderRadius: BorderRadius.zero, border: Border.all(color: _orange.withOpacity(0.18))),
                   child: Text(it, style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: _navy)),
                 ),
             ]),
@@ -2392,7 +2297,7 @@ class _StudyHubState extends State<_StudyHub> {
           child: Center(
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-              decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(30), boxShadow: [BoxShadow(color: _orange.withOpacity(0.34), blurRadius: 14, offset: const Offset(0, 6))]),
+              decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero, ),
               child: Text(center, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
             ),
           ),
@@ -2404,7 +2309,7 @@ class _StudyHubState extends State<_StudyHub> {
             child: Container(
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.all(13),
-              decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(14), border: Border.all(color: _cardBorder)),
+              decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.zero, border: Border.all(color: _cardBorder)),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
                   Container(width: 8, height: 8, decoration: BoxDecoration(gradient: _orangeGrad, shape: BoxShape.circle)),
@@ -2418,7 +2323,7 @@ class _StudyHubState extends State<_StudyHub> {
                     for (final leaf in branches[i].$2)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(color: _orange.withOpacity(0.08), borderRadius: BorderRadius.circular(9)),
+                        decoration: BoxDecoration(color: _orange.withOpacity(0.08), borderRadius: BorderRadius.zero),
                         child: Text(leaf, style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: _orange)),
                       ),
                   ]),
@@ -2433,14 +2338,14 @@ class _StudyHubState extends State<_StudyHub> {
         child: Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(15),
-          decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(16), border: Border.all(color: _cardBorder)),
+          decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.zero, border: Border.all(color: _cardBorder)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(name, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w800, color: _orange)),
             const SizedBox(height: 8),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(color: _isDark ? Colors.white.withOpacity(0.05) : Colors.white.withOpacity(0.55), borderRadius: BorderRadius.circular(10), border: Border.all(color: _cardBorder)),
+              decoration: BoxDecoration(color: _isDark ? Colors.white.withOpacity(0.05) : Colors.white.withOpacity(0.55), borderRadius: BorderRadius.zero, border: Border.all(color: _cardBorder)),
               child: Text(formula, style: GoogleFonts.robotoMono(fontSize: 15, fontWeight: FontWeight.w600, color: _navy)),
             ),
             const SizedBox(height: 7),
@@ -2492,12 +2397,11 @@ class _StudyCardState extends State<_StudyCard> {
                     ? [c1.withOpacity(_hover ? 0.30 : 0.20), c2.withOpacity(_hover ? 0.16 : 0.10)]
                     : [c1.withOpacity(_hover ? 0.18 : 0.12), c2.withOpacity(_hover ? 0.10 : 0.05)],
               ),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.zero,
               border: Border.all(color: _hover ? c1.withOpacity(0.55) : c1.withOpacity(0.22), width: 1.2),
-              boxShadow: [BoxShadow(color: c1.withOpacity(_hover ? 0.30 : 0.12), blurRadius: _hover ? 26 : 14, offset: Offset(0, _hover ? 10 : 6))],
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.zero,
               child: Stack(children: [
                 // Decorative blob bleeding off the top-right corner.
                 Positioned(
@@ -2521,8 +2425,7 @@ class _StudyCardState extends State<_StudyCard> {
                         width: 56, height: 56, alignment: Alignment.center,
                         decoration: BoxDecoration(
                           gradient: LinearGradient(colors: it.colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [BoxShadow(color: c1.withOpacity(0.45), blurRadius: 14, offset: const Offset(0, 6))],
+                          borderRadius: BorderRadius.zero,
                         ),
                         child: Icon(it.icon, size: 27, color: Colors.white),
                       ),
@@ -2537,7 +2440,7 @@ class _StudyCardState extends State<_StudyCard> {
                           const SizedBox(height: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                            decoration: BoxDecoration(color: c1.withOpacity(0.16), borderRadius: BorderRadius.circular(20)),
+                            decoration: BoxDecoration(color: c1.withOpacity(0.16), borderRadius: BorderRadius.zero),
                             child: Text(count == 0 ? 'Tap to add' : '$count ${it.unit}',
                                 style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w800, color: c1)),
                           ),
@@ -2583,7 +2486,7 @@ class _StudyExpandableState extends State<_StudyExpandable> {
       index: widget.index,
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
-        decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(14), border: Border.all(color: _open ? _orange.withOpacity(0.35) : _cardBorder)),
+        decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.zero, border: Border.all(color: _open ? _orange.withOpacity(0.35) : _cardBorder)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           _Pressable(
             onTap: () => setState(() => _open = !_open),
@@ -2709,7 +2612,7 @@ class _FocusTimerState extends State<_FocusTimer> {
                 decoration: BoxDecoration(
                   gradient: _mode == i ? _orangeGrad : null,
                   color: _mode == i ? null : _orange.withOpacity(0.07),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.zero,
                   border: Border.all(color: _mode == i ? Colors.transparent : _cardBorder),
                 ),
                 child: Text(_labels[i], style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _mode == i ? Colors.white : _navy)),
@@ -2749,7 +2652,7 @@ class _FocusTimerState extends State<_FocusTimer> {
             child: Container(
               height: 50,
               alignment: Alignment.center,
-              decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: _orange.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))]),
+              decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero, ),
               child: Text(_running ? 'Pause' : (_remaining == 0 ? 'Restart' : 'Start'), style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
             ),
           ),
@@ -2761,7 +2664,7 @@ class _FocusTimerState extends State<_FocusTimer> {
             height: 50,
             width: 50,
             alignment: Alignment.center,
-            decoration: BoxDecoration(color: _orange.withOpacity(0.08), borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
+            decoration: BoxDecoration(color: _orange.withOpacity(0.08), borderRadius: BorderRadius.zero, border: Border.all(color: _cardBorder)),
             child: const Icon(CupertinoIcons.arrow_counterclockwise, color: _orange, size: 20),
           ),
         ),
@@ -2889,14 +2792,13 @@ class _FlashcardsState extends State<_Flashcards> with SingleTickerProviderState
           gradient: isBack
               ? const LinearGradient(colors: [Color(0xFF2D7DF6), Color(0xFF6FA8FF)], begin: Alignment.topLeft, end: Alignment.bottomRight)
               : _cardGradient,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.zero,
           border: Border.all(color: isBack ? Colors.transparent : _orange.withOpacity(0.3), width: 1.4),
-          boxShadow: [BoxShadow(color: (isBack ? const Color(0xFF2D7DF6) : _orange).withOpacity(0.22), blurRadius: 22, offset: const Offset(0, 10))],
         ),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-            decoration: BoxDecoration(color: isBack ? Colors.white.withOpacity(0.22) : _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(color: isBack ? Colors.white.withOpacity(0.22) : _orange.withOpacity(0.12), borderRadius: BorderRadius.zero),
             child: Text(isBack ? 'ANSWER' : 'QUESTION', style: GoogleFonts.poppins(fontSize: 9.5, fontWeight: FontWeight.w800, color: isBack ? Colors.white : _orange, letterSpacing: 0.6)),
           ),
           const SizedBox(height: 14),
@@ -2911,9 +2813,8 @@ class _FlashcardsState extends State<_Flashcards> with SingleTickerProviderState
           decoration: BoxDecoration(
             gradient: filled ? _orangeGrad : null,
             color: filled ? null : _orange.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.zero,
             border: filled ? null : Border.all(color: _orange.withOpacity(0.35), width: 1.5),
-            boxShadow: filled ? [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 6, offset: const Offset(0, 2))] : const [],
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             if (!filled) Icon(icon, size: 15, color: _orange),
@@ -3031,9 +2932,8 @@ class _LiveCardState extends State<_LiveCard> {
               gradient: live
                   ? LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_orange.withOpacity(0.16), _orange.withOpacity(0.05)])
                   : _cardGradient,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.zero,
               border: Border.all(color: live ? _orange.withOpacity(0.45) : (_hover ? _orange.withOpacity(0.30) : _cardBorder), width: live ? 1.4 : 1),
-              boxShadow: [BoxShadow(color: _orange.withOpacity(_hover || live ? 0.16 : 0.06), blurRadius: _hover || live ? 18 : 10, offset: const Offset(0, 5))],
             ),
             child: Row(children: [
               // Time / live indicator column.
@@ -3066,7 +2966,7 @@ class _LiveCardState extends State<_LiveCard> {
                   onTap: () => widget.onJoin(d),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-                    decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(8), boxShadow: [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 6, offset: const Offset(0, 2))]),
+                    decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero, ),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       const Icon(CupertinoIcons.videocam_fill, size: 14, color: Colors.white),
                       const SizedBox(width: 6),
@@ -3152,7 +3052,7 @@ class _ForumViewState extends State<_ForumView> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: _surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
         title: Text('Delete discussion?', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: _navy, fontSize: 16)),
         content: Text('This removes it (and its replies) for everyone. This cannot be undone.', style: GoogleFonts.poppins(fontSize: 13, color: _grey, height: 1.35)),
         actions: [
@@ -3296,9 +3196,8 @@ class _ForumViewState extends State<_ForumView> {
         decoration: BoxDecoration(
           gradient: sel ? _orangeGrad : null,
           color: sel ? null : _orange.withOpacity(0.07),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.zero,
           border: Border.all(color: sel ? Colors.transparent : _cardBorder),
-          boxShadow: sel ? [BoxShadow(color: _orange.withOpacity(0.30), blurRadius: 10, offset: const Offset(0, 4))] : const [],
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, size: 13, color: sel ? Colors.white : _orange),
@@ -3316,7 +3215,7 @@ class _ForumViewState extends State<_ForumView> {
         },
         child: Container(
           height: 44, alignment: Alignment.center,
-          decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(8), boxShadow: [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 6, offset: const Offset(0, 2))]),
+          decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero, ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             const Icon(CupertinoIcons.plus_bubble_fill, color: Colors.white, size: 16),
             const SizedBox(width: 8),
@@ -3327,7 +3226,7 @@ class _ForumViewState extends State<_ForumView> {
 
   Widget _composer() => Container(
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(18), border: Border.all(color: _orange.withOpacity(0.30)), boxShadow: [BoxShadow(color: _orange.withOpacity(0.10), blurRadius: 16, offset: const Offset(0, 6))]),
+        decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.zero, border: Border.all(color: _orange.withOpacity(0.30)), ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
             Icon(CupertinoIcons.plus_bubble_fill, size: 16, color: _orange),
@@ -3361,7 +3260,7 @@ class _ForumViewState extends State<_ForumView> {
               onTap: _busy ? () {} : _post,
               child: Container(
                 height: 46, alignment: Alignment.center,
-                decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: _orange.withOpacity(0.30), blurRadius: 12, offset: const Offset(0, 5))]),
+                decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero, ),
                 child: _busy
                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
                     : Text('Post discussion', style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
@@ -3380,7 +3279,7 @@ class _ForumViewState extends State<_ForumView> {
           decoration: BoxDecoration(
             gradient: sel ? _orangeGrad : null,
             color: sel ? null : _orange.withOpacity(0.07),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.zero,
             border: Border.all(color: sel ? Colors.transparent : _cardBorder),
           ),
           child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: sel ? Colors.white : _navy)),
@@ -3389,7 +3288,7 @@ class _ForumViewState extends State<_ForumView> {
 
   Widget _field(TextEditingController c, String hint, {int maxLines = 1}) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(color: _isDark ? Colors.white.withOpacity(0.05) : Colors.white.withOpacity(0.55), borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
+        decoration: BoxDecoration(color: _isDark ? Colors.white.withOpacity(0.05) : Colors.white.withOpacity(0.55), borderRadius: BorderRadius.zero, border: Border.all(color: _cardBorder)),
         child: TextField(
           controller: c,
           maxLines: maxLines,
@@ -3440,7 +3339,7 @@ class _ForumViewState extends State<_ForumView> {
                   Flexible(
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(8)),
+                      decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.zero),
                       child: Text(course, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w700, color: _orange)),
                     ),
                   ),
@@ -3485,9 +3384,8 @@ class _ForumHoverCardState extends State<_ForumHoverCard> {
             transform: Matrix4.translationValues(0, _hover ? -2 : 0, 0),
             decoration: BoxDecoration(
               gradient: _cardGradient,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.zero,
               border: Border.all(color: _hover ? _orange.withOpacity(0.40) : _cardBorder),
-              boxShadow: [BoxShadow(color: _orange.withOpacity(_hover ? 0.18 : 0.06), blurRadius: _hover ? 20 : 10, offset: Offset(0, _hover ? 8 : 4))],
             ),
             child: widget.child,
           ),
@@ -3529,7 +3427,7 @@ class _ForumThreadState extends State<_ForumThread> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: _surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
         title: Text(title, style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: _navy, fontSize: 16)),
         content: Text(msg, style: GoogleFonts.poppins(fontSize: 13, color: _grey, height: 1.35)),
         actions: [
@@ -3584,7 +3482,7 @@ class _ForumThreadState extends State<_ForumThread> {
           onTap: widget.onBack,
           child: Container(
             width: 34, height: 34, alignment: Alignment.center,
-            decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(5), border: Border.all(color: _orange.withOpacity(0.25))),
+            decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.zero, border: Border.all(color: _orange.withOpacity(0.25))),
             child: const Icon(CupertinoIcons.chevron_back, size: 18, color: _orange),
           ),
         ),
@@ -3596,7 +3494,7 @@ class _ForumThreadState extends State<_ForumThread> {
             onTap: widget.onDeleteThread!,
             child: Container(
               width: 34, height: 34, alignment: Alignment.center,
-              decoration: BoxDecoration(color: _danger.withOpacity(0.10), borderRadius: BorderRadius.circular(5), border: Border.all(color: _danger.withOpacity(0.25))),
+              decoration: BoxDecoration(color: _danger.withOpacity(0.10), borderRadius: BorderRadius.zero, border: Border.all(color: _danger.withOpacity(0.25))),
               child: Icon(CupertinoIcons.trash, size: 16, color: _danger),
             ),
           ),
@@ -3620,7 +3518,7 @@ class _ForumThreadState extends State<_ForumThread> {
         Expanded(
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14),
-            decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(24), border: Border.all(color: _cardBorder)),
+            decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.zero, border: Border.all(color: _cardBorder)),
             child: TextField(
               controller: _reply,
               minLines: 1,
@@ -3635,7 +3533,7 @@ class _ForumThreadState extends State<_ForumThread> {
           onTap: _sending ? () {} : _send,
           child: Container(
             width: 46, height: 46, alignment: Alignment.center,
-            decoration: BoxDecoration(gradient: _orangeGrad, shape: BoxShape.circle, boxShadow: [BoxShadow(color: _orange.withOpacity(0.34), blurRadius: 12, offset: const Offset(0, 5))]),
+            decoration: BoxDecoration(gradient: _orangeGrad, shape: BoxShape.circle, ),
             child: _sending
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
                 : const Icon(CupertinoIcons.paperplane_fill, size: 18, color: Colors.white),
@@ -3664,7 +3562,7 @@ class _ForumThreadState extends State<_ForumThread> {
                 Flexible(child: Text(author, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: _navy))),
                 if (staff) ...[
                   const SizedBox(width: 6),
-                  Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(5)), child: Text('STAFF', style: GoogleFonts.poppins(fontSize: 8, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5))),
+                  Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero), child: Text('STAFF', style: GoogleFonts.poppins(fontSize: 8, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5))),
                 ],
                 const Spacer(),
                 Text(_StudentHomeState._fmtAt(p['at']?.toString()), style: GoogleFonts.poppins(fontSize: 10, color: _grey)),
@@ -3682,7 +3580,7 @@ class _ForumThreadState extends State<_ForumThread> {
                 padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
                 decoration: BoxDecoration(
                   gradient: _cardGradient,
-                  borderRadius: const BorderRadius.only(topLeft: Radius.circular(4), topRight: Radius.circular(14), bottomLeft: Radius.circular(14), bottomRight: Radius.circular(14)),
+                  borderRadius: const BorderRadius.only(topLeft: Radius.zero, topRight: Radius.zero, bottomLeft: Radius.zero, bottomRight: Radius.zero),
                   border: Border.all(color: _cardBorder),
                 ),
                 child: Text(body, style: GoogleFonts.poppins(fontSize: 13, color: _navy, height: 1.45)),
@@ -3791,9 +3689,8 @@ class _LeaderboardViewState extends State<_LeaderboardView> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
             gradient: selected ? _orangeGrad : _cardGradient,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.zero,
             border: Border.all(color: selected ? Colors.transparent : _cardBorder),
-            boxShadow: selected ? [BoxShadow(color: _orange.withOpacity(0.35), blurRadius: 12, offset: const Offset(0, 5))] : const [],
           ),
           child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? Colors.white : _navy)),
         ),
@@ -3840,7 +3737,6 @@ class _LeaderRowState extends State<_LeaderRow> {
     final avatar = d['avatar']?.toString() ?? '';
     final initials = name.isNotEmpty ? name[0].toUpperCase() : '?';
     final medal = _medal(rank);
-    final active = _hover || isMe;
 
     return _Entrance(
       index: widget.index,
@@ -3858,9 +3754,8 @@ class _LeaderRowState extends State<_LeaderRow> {
             gradient: isMe
                 ? LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_orange.withOpacity(0.18), _orange.withOpacity(0.06)])
                 : _cardGradient,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.zero,
             border: Border.all(color: isMe ? _orange.withOpacity(0.55) : (_hover ? _orange.withOpacity(0.30) : _cardBorder), width: isMe ? 1.5 : 1),
-            boxShadow: active ? [BoxShadow(color: _orange.withOpacity(isMe ? 0.20 : 0.12), blurRadius: 16, offset: const Offset(0, 6))] : const [],
           ),
           child: Row(children: [
             // Rank / medal badge.
@@ -3872,7 +3767,6 @@ class _LeaderRowState extends State<_LeaderRow> {
                       decoration: BoxDecoration(
                         gradient: LinearGradient(colors: medal, begin: Alignment.topLeft, end: Alignment.bottomRight),
                         shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(color: medal.last.withOpacity(0.45), blurRadius: 8, offset: const Offset(0, 3))],
                       ),
                       child: Text('$rank', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white)),
                     )
@@ -3889,7 +3783,7 @@ class _LeaderRowState extends State<_LeaderRow> {
                     const SizedBox(width: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                      decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(6)),
+                      decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero),
                       child: Text('YOU', style: GoogleFonts.poppins(fontSize: 8.5, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5)),
                     ),
                   ],
@@ -4047,7 +3941,7 @@ class _CalendarViewState extends State<_CalendarView> {
         if (selEvs.isNotEmpty)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-            decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
+            decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.zero),
             child: Text('${selEvs.length} ${selEvs.length == 1 ? 'event' : 'events'}', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700, color: _orange)),
           ),
       ]),
@@ -4072,14 +3966,14 @@ class _CalendarViewState extends State<_CalendarView> {
         onTap: onTap,
         child: Container(
           width: 38, height: 38, alignment: Alignment.center,
-          decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(12)),
+          decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.zero),
           child: Icon(ic, size: 18, color: _orange),
         ),
       );
 
   Widget _sumChip(String label, int n, Color color, IconData icon) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(color: color.withOpacity(0.10), borderRadius: BorderRadius.circular(16), border: Border.all(color: color.withOpacity(0.22))),
+        decoration: BoxDecoration(color: color.withOpacity(0.10), borderRadius: BorderRadius.zero, border: Border.all(color: color.withOpacity(0.22))),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Icon(icon, size: 14, color: color),
@@ -4104,7 +3998,7 @@ class _CalendarViewState extends State<_CalendarView> {
         }),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
+          decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.zero),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(CupertinoIcons.calendar_today, size: 14, color: _orange),
             const SizedBox(width: 6),
@@ -4149,9 +4043,8 @@ class _CalendarViewState extends State<_CalendarView> {
           decoration: BoxDecoration(
             gradient: isSel ? _orangeGrad : null,
             color: isSel ? null : (isToday ? _orange.withOpacity(0.12) : Colors.transparent),
-            borderRadius: BorderRadius.circular(13),
+            borderRadius: BorderRadius.zero,
             border: isToday && !isSel ? Border.all(color: _orange.withOpacity(0.6), width: 1.4) : null,
-            boxShadow: isSel ? [BoxShadow(color: _orange.withOpacity(0.40), blurRadius: 12, offset: const Offset(0, 5))] : const [],
           ),
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
             Text('${d.day}', style: GoogleFonts.poppins(fontSize: 13, fontWeight: isSel || isToday ? FontWeight.w700 : FontWeight.w500, color: isSel ? Colors.white : _navy)),
@@ -4196,7 +4089,7 @@ class _CalendarViewState extends State<_CalendarView> {
             final card = Container(
               margin: const EdgeInsets.only(bottom: 10),
               clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(14), border: Border.all(color: _cardBorder), boxShadow: [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.0 : 0.04), blurRadius: 8, offset: const Offset(0, 3))]),
+              decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.zero, border: Border.all(color: _cardBorder), ),
               child: IntrinsicHeight(
                 child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   Container(width: 4, color: k.color),
@@ -4204,14 +4097,14 @@ class _CalendarViewState extends State<_CalendarView> {
                     child: Padding(
                       padding: const EdgeInsets.all(12),
                       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: k.color.withOpacity(0.14), borderRadius: BorderRadius.circular(10)), child: Icon(k.icon, size: 19, color: k.color)),
+                        Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: k.color.withOpacity(0.14), borderRadius: BorderRadius.zero), child: Icon(k.icon, size: 19, color: k.color)),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text(m['title']?.toString() ?? 'Event', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
                             const SizedBox(height: 3),
                             Row(children: [
-                              Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: k.color.withOpacity(0.12), borderRadius: BorderRadius.circular(20)), child: Text(k.label, style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w700, color: k.color))),
+                              Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: k.color.withOpacity(0.12), borderRadius: BorderRadius.zero), child: Text(k.label, style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w700, color: k.color))),
                               if (course.isNotEmpty) ...[const SizedBox(width: 6), Flexible(child: Text(course, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12, color: _grey)))],
                             ]),
                           ]),
@@ -4262,8 +4155,8 @@ Widget _field(String label, String value) => Padding(
           decoration: InputDecoration(
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFEEEEEE), width: 1.5)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: _orange, width: 1.5)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: const BorderSide(color: Color(0xFFEEEEEE), width: 1.5)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: const BorderSide(color: _orange, width: 1.5)),
           ),
         ),
       ]),
@@ -4273,7 +4166,7 @@ Widget _orangeButton(String label, VoidCallback onTap) => _Pressable(
       onTap: onTap,
       child: Container(
         width: double.infinity, height: 44, alignment: Alignment.center,
-        decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(8)),
+        decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero),
         child: Text(label, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
       ),
     );
@@ -4391,7 +4284,7 @@ class _AiNewsCardState extends State<_AiNewsCard> {
                       padding: const EdgeInsets.only(right: 8),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: _orange.withOpacity(0.4), blurRadius: 8)]),
+                        decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero, ),
                         child: Text('${_newUrls.length} NEW', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5)),
                       ),
                     ),
@@ -4446,7 +4339,7 @@ class _AiNewsCardState extends State<_AiNewsCard> {
         onTap: _load,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
+          decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.zero),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             _refreshing
                 ? const SizedBox(width: 9, height: 9, child: CircularProgressIndicator(strokeWidth: 1.6, color: _orange))
@@ -4472,13 +4365,13 @@ class _AiNewsCardState extends State<_AiNewsCard> {
           gradient: isNew
               ? LinearGradient(begin: Alignment.centerLeft, end: Alignment.centerRight, colors: [_orange.withOpacity(0.14), _orange.withOpacity(0.03)])
               : null,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.zero,
           border: last || isNew ? null : Border(bottom: BorderSide(color: _line)),
         ),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Container(
             width: 56, height: 56, alignment: Alignment.center,
-            decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_orange.withOpacity(0.16), _orange.withOpacity(0.06)]), borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_orange.withOpacity(0.16), _orange.withOpacity(0.06)]), borderRadius: BorderRadius.zero),
             child: Icon(n.icon, size: 26, color: _orange),
           ),
           const SizedBox(width: 14),
@@ -4490,7 +4383,7 @@ class _AiNewsCardState extends State<_AiNewsCard> {
                 Row(mainAxisSize: MainAxisSize.min, children: [
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                    decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(5)),
+                    decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero),
                     child: Text('NEW', style: GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5)),
                   ),
                 ])
@@ -4550,7 +4443,6 @@ class _LiveDotState extends State<_LiveDot> with SingleTickerProviderStateMixin 
           decoration: BoxDecoration(
             color: Color.lerp(_orange.withOpacity(0.45), _orange, t),
             shape: BoxShape.circle,
-            boxShadow: [BoxShadow(color: _orange.withOpacity(0.55 * t), blurRadius: 6 * t, spreadRadius: 1.5 * t)],
           ),
         );
       },
@@ -4709,7 +4601,6 @@ class _HeroPanelModal extends StatelessWidget {
     // corners); on tablets/desktops it stays a centred, rounded, floating card.
     final mq = MediaQuery.of(ctx);
     final bool fill = !compact && mq.size.shortestSide < 600;
-    final double r = fill ? 0.0 : 24.0;
     // The gradient header is the shared element that morphs from the tile.
     final header = Material(
       type: MaterialType.transparency,
@@ -4727,7 +4618,7 @@ class _HeroPanelModal extends StatelessWidget {
                 ? [Colors.white.withOpacity(0.10), Colors.white.withOpacity(0.04)]
                 : [Colors.white.withOpacity(0.55), Colors.white.withOpacity(0.28)],
           ),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(r)),
+          borderRadius: BorderRadius.vertical(top: Radius.zero),
           border: Border(bottom: BorderSide(color: _isDark ? Colors.white.withOpacity(0.10) : Colors.white.withOpacity(0.6))),
         ),
         child: Row(children: [
@@ -4735,7 +4626,7 @@ class _HeroPanelModal extends StatelessWidget {
             onTap: () => Navigator.of(ctx).maybePop(),
             child: Container(
               width: 34, height: 34, alignment: Alignment.center,
-              decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(10), border: Border.all(color: _orange.withOpacity(0.25))),
+              decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.zero, border: Border.all(color: _orange.withOpacity(0.25))),
               child: const Icon(CupertinoIcons.chevron_back, size: 20, color: _orange),
             ),
           ),
@@ -4758,11 +4649,10 @@ class _HeroPanelModal extends StatelessWidget {
         key: ValueKey(_isDark),
         child: Container(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(r),
-            boxShadow: fill ? const [] : [BoxShadow(color: Colors.black.withOpacity(_isDark ? 0.5 : 0.25), blurRadius: 48, offset: const Offset(0, 22))],
+            borderRadius: BorderRadius.zero,
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(r),
+            borderRadius: BorderRadius.zero,
             child: BackdropFilter(
               filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
               child: Container(
@@ -4777,7 +4667,7 @@ class _HeroPanelModal extends StatelessWidget {
                         ? [const Color(0xFF22242D).withOpacity(0.82), const Color(0xFF181A22).withOpacity(0.70)]
                         : [Colors.white.withOpacity(0.74), Colors.white.withOpacity(0.60)],
                   ),
-                  borderRadius: BorderRadius.circular(r),
+                  borderRadius: BorderRadius.zero,
                   border: Border.all(color: _isDark ? Colors.white.withOpacity(0.12) : Colors.white.withOpacity(0.70), width: 1.2),
                 ),
                 child: Column(
@@ -4832,17 +4722,15 @@ Uint8List? _decodeDataUri(String d) {
 /// A square (rounded) profile picture. [avatar] is '' / 'p:N' (preset) or a
 /// 'data:' URI (uploaded photo). Shows a camera badge when [editable].
 Widget _avatarBox(String avatar, double size, String initials, {bool editable = false}) {
-  const radius = 0.0; // squared — no rounded corners
   final bytes = avatar.startsWith('data:') ? _decodeDataUri(avatar) : null;
   Widget face;
   if (bytes != null) {
     face = Container(
       width: size, height: size,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(radius),
+        borderRadius: BorderRadius.zero,
         border: Border.all(color: Colors.white, width: 3),
         image: DecorationImage(image: MemoryImage(bytes), fit: BoxFit.cover),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.22), blurRadius: 14, offset: const Offset(0, 6))],
       ),
     );
   } else {
@@ -4853,9 +4741,8 @@ Widget _avatarBox(String avatar, double size, String initials, {bool editable = 
       alignment: Alignment.center,
       decoration: BoxDecoration(
         gradient: LinearGradient(colors: a.colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
-        borderRadius: BorderRadius.circular(radius),
+        borderRadius: BorderRadius.zero,
         border: Border.all(color: Colors.white, width: 3),
-        boxShadow: [BoxShadow(color: a.colors.last.withOpacity(0.35), blurRadius: 14, offset: const Offset(0, 6))],
       ),
       child: a.emoji.isEmpty
           ? Text(initials, style: GoogleFonts.poppins(fontSize: size * 0.40, fontWeight: FontWeight.w800, color: Colors.white))
@@ -4909,7 +4796,7 @@ class _GlowProgress extends StatelessWidget {
                     height: height,
                     decoration: BoxDecoration(
                       color: _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0EBE8),
-                      borderRadius: BorderRadius.circular(height),
+                      borderRadius: BorderRadius.zero,
                     ),
                   ),
                   // Gradient fill.
@@ -4918,8 +4805,7 @@ class _GlowProgress extends StatelessWidget {
                     width: fillW,
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(colors: [Color(0xFFFF9A5E), _orange, Color(0xFFE8421F)]),
-                      borderRadius: BorderRadius.circular(height),
-                      boxShadow: [BoxShadow(color: _orange.withOpacity(0.40), blurRadius: 7, offset: const Offset(0, 1))],
+                      borderRadius: BorderRadius.zero,
                     ),
                   ),
                   // Glowing spark thumb at the fill point.
@@ -4932,10 +4818,6 @@ class _GlowProgress extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: Colors.white,
                           shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(color: _orange.withOpacity(0.55), blurRadius: 10, spreadRadius: 1),
-                            BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 4, offset: const Offset(0, 2)),
-                          ],
                         ),
                         child: Icon(Icons.auto_awesome, size: thumb * 0.52, color: _orange),
                       ),
@@ -5047,7 +4929,7 @@ class _ResumeCardState extends State<_ResumeCard> {
           decoration: BoxDecoration(gradient: LinearGradient(colors: cover, begin: Alignment.topLeft, end: Alignment.bottomRight)),
         );
     return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.zero,
       child: Stack(alignment: Alignment.center, children: [
         SizedBox(width: 84, height: 84, child: bg),
         // Dim + play button overlay.
@@ -5057,7 +4939,7 @@ class _ResumeCardState extends State<_ResumeCard> {
           duration: const Duration(milliseconds: 200),
           child: Container(
             width: 34, height: 34, alignment: Alignment.center,
-            decoration: BoxDecoration(color: Colors.white.withOpacity(0.92), shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 8)]),
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.92), shape: BoxShape.circle, ),
             child: const Icon(CupertinoIcons.play_fill, size: 16, color: _orange),
           ),
         ),
@@ -5098,9 +4980,8 @@ class _ResumeCardState extends State<_ResumeCard> {
             transform: Matrix4.translationValues(0, _hover ? -2 : 0, 0),
             decoration: BoxDecoration(
               gradient: _cardGradient,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.zero,
               border: Border.all(color: _hover ? _orange.withOpacity(0.40) : _cardBorder, width: 1),
-              boxShadow: [BoxShadow(color: _orange.withOpacity(_hover ? 0.22 : 0.07), blurRadius: _hover ? 22 : 12, offset: Offset(0, _hover ? 9 : 5))],
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -5118,7 +4999,7 @@ class _ResumeCardState extends State<_ResumeCard> {
                         const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(6)),
+                          decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.zero),
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
                             Icon(CupertinoIcons.arrow_counterclockwise, size: 9, color: _orange),
                             const SizedBox(width: 3),
@@ -5155,8 +5036,7 @@ class _ResumeCardState extends State<_ResumeCard> {
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         gradient: _orangeGrad,
-                        borderRadius: BorderRadius.circular(19),
-                        boxShadow: [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 6, offset: const Offset(0, 2))],
+                        borderRadius: BorderRadius.zero,
                       ),
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
                         const Icon(CupertinoIcons.play_fill, color: Colors.white, size: 14),
@@ -5214,7 +5094,7 @@ class _CourseCardState extends State<_CourseCard> {
         im = Image.network(url, width: 58, height: 58, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _glyphCover(cover));
       }
     }
-    if (im != null) return ClipRRect(borderRadius: BorderRadius.circular(14), child: im);
+    if (im != null) return ClipRRect(borderRadius: BorderRadius.zero, child: im);
     return _glyphCover(cover);
   }
 
@@ -5222,8 +5102,7 @@ class _CourseCardState extends State<_CourseCard> {
         width: 58, height: 58, alignment: Alignment.center,
         decoration: BoxDecoration(
           gradient: LinearGradient(colors: cover, begin: Alignment.topLeft, end: Alignment.bottomRight),
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [BoxShadow(color: cover.last.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 4))],
+          borderRadius: BorderRadius.zero,
         ),
         child: const Icon(CupertinoIcons.book_fill, size: 24, color: Colors.white),
       );
@@ -5246,9 +5125,8 @@ class _CourseCardState extends State<_CourseCard> {
           transform: Matrix4.translationValues(0, _hover ? -2 : 0, 0),
           decoration: BoxDecoration(
             gradient: _cardGradient,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.zero,
             border: Border.all(color: _hover ? _orange.withOpacity(0.40) : _cardBorder, width: 1),
-            boxShadow: [BoxShadow(color: _orange.withOpacity(_hover ? 0.22 : 0.07), blurRadius: _hover ? 22 : 12, offset: Offset(0, _hover ? 9 : 5))],
           ),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             // Admin cover image if set, else a gradient cover with the book glyph.
@@ -5332,33 +5210,10 @@ class _GridCellState extends State<_GridCell> {
             width: s, height: s,
             alignment: Alignment.center,
             padding: EdgeInsets.all(s * 0.08),
-            // Tinted-glass tile: translucent orange so the backdrop glows
-            // through, a hairline highlight edge, and an orange lift on hover.
+            // Flat solid orange tile — no peach, no glow, no sheen. Squared.
+            // Hover just deepens the orange a touch (no shadow bloom).
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: _hover
-                    ? [const Color(0xFFFFB37A).withOpacity(0.96), const Color(0xFFFF7A4D).withOpacity(0.90), _orange.withOpacity(0.86)]
-                    : [const Color(0xFFFF9A5E).withOpacity(0.92), _orange.withOpacity(0.88), const Color(0xFFE8421F).withOpacity(0.80)],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: _orange.withOpacity(active ? 0.55 : 0.20),
-                  blurRadius: active ? 28 : 14,
-                  spreadRadius: active ? 1 : 0,
-                  offset: Offset(0, active ? 12 : 6),
-                ),
-              ],
-            ),
-            // Glossy top sheen.
-            foregroundDecoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.white.withOpacity(0.16), Colors.white.withOpacity(0.0)],
-                stops: const [0.0, 0.55],
-              ),
+              color: active ? const Color(0xFFFF6A2C) : _orange,
             ),
             // The icon is a fixed size on every tile (proportional to the cell,
             // so it's uniform across the grid) — only the label scales to fit, so
@@ -5578,9 +5433,8 @@ class _SettingsViewState extends State<_SettingsView> {
   Widget _section(String title, IconData icon, List<Widget> rows) => Container(
         decoration: BoxDecoration(
           gradient: _cardGradient,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.zero,
           border: Border.all(color: _cardBorder),
-          boxShadow: [BoxShadow(color: _ac.withOpacity(0.06), blurRadius: 16, offset: const Offset(0, 8))],
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Padding(
@@ -5601,7 +5455,7 @@ class _SettingsViewState extends State<_SettingsView> {
     final c = color ?? _ac;
     return Container(
       width: 34, height: 34, alignment: Alignment.center,
-      decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [c.withOpacity(0.22), c.withOpacity(0.08)]), borderRadius: BorderRadius.circular(10)),
+      decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [c.withOpacity(0.22), c.withOpacity(0.08)]), borderRadius: BorderRadius.zero),
       child: Icon(icon, size: 16, color: c),
     );
   }
@@ -5644,7 +5498,7 @@ class _SettingsViewState extends State<_SettingsView> {
 
   Widget _seg(List<String> labels, int sel, void Function(int) onTap) => Container(
         padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(color: _ac.withOpacity(0.08), borderRadius: BorderRadius.circular(12)),
+        decoration: BoxDecoration(color: _ac.withOpacity(0.08), borderRadius: BorderRadius.zero),
         child: Row(children: [
           for (var i = 0; i < labels.length; i++)
             Expanded(
@@ -5657,8 +5511,7 @@ class _SettingsViewState extends State<_SettingsView> {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     gradient: sel == i ? _acGrad : null,
-                    borderRadius: BorderRadius.circular(9),
-                    boxShadow: sel == i ? [BoxShadow(color: _ac.withOpacity(0.30), blurRadius: 10, offset: const Offset(0, 4))] : const [],
+                    borderRadius: BorderRadius.zero,
                   ),
                   child: Text(labels[i], style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: sel == i ? Colors.white : _navy)),
                 ),
@@ -5737,7 +5590,7 @@ class _SettingsViewState extends State<_SettingsView> {
                       onTap: _savingPw ? () {} : _savePassword,
                       child: Container(
                         height: 44, alignment: Alignment.center,
-                        decoration: BoxDecoration(gradient: _acGrad, borderRadius: BorderRadius.circular(8), boxShadow: [BoxShadow(color: _ac.withOpacity(0.18), blurRadius: 6, offset: const Offset(0, 2))]),
+                        decoration: BoxDecoration(gradient: _acGrad, borderRadius: BorderRadius.zero, ),
                         child: _savingPw
                             ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
                             : Text('Update password', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
@@ -5753,7 +5606,7 @@ class _SettingsViewState extends State<_SettingsView> {
     final shown = _shownPw.contains(c);
     return Container(
       padding: const EdgeInsets.only(left: 12, right: 4),
-      decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
+      decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.zero, border: Border.all(color: _cardBorder)),
       child: Row(children: [
         Expanded(
           child: TextField(
@@ -5830,7 +5683,7 @@ class _SettingsViewState extends State<_SettingsView> {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         gradient: _cardGradient,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.zero,
         border: Border.all(color: isCurrent ? _ac.withOpacity(0.55) : _cardBorder, width: isCurrent ? 1.4 : 1),
       ),
       child: Row(children: [
@@ -5843,7 +5696,7 @@ class _SettingsViewState extends State<_SettingsView> {
               const SizedBox(width: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(color: _ac.withOpacity(0.14), borderRadius: BorderRadius.circular(5)),
+                decoration: BoxDecoration(color: _ac.withOpacity(0.14), borderRadius: BorderRadius.zero),
                 child: Text('THIS DEVICE', style: GoogleFonts.poppins(fontSize: 8, fontWeight: FontWeight.w800, color: _ac, letterSpacing: 0.4)),
               ),
             ],
@@ -5893,16 +5746,15 @@ class _StatCardState extends State<_StatCard> {
               gradient: _hover
                   ? LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_orange.withOpacity(0.22), _orange.withOpacity(0.08)])
                   : _cardGradient,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.zero,
               border: Border.all(color: _hover ? _orange.withOpacity(0.55) : _cardBorder, width: _hover ? 1.5 : 1),
-              boxShadow: [BoxShadow(color: _orange.withOpacity(_hover ? 0.24 : 0.06), blurRadius: _hover ? 22 : 10, offset: const Offset(0, 6))],
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 if (widget.icon != null)
                   Container(
                     width: 30, height: 30, alignment: Alignment.center,
-                    decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(9)),
+                    decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.zero),
                     child: Icon(widget.icon, size: 16, color: _orange),
                   ),
                 const Spacer(),
@@ -5964,9 +5816,8 @@ class _StudentHomeNotifState extends State<_StudentHomeNotif> {
             gradient: active
                 ? LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_orange.withOpacity(0.16), _orange.withOpacity(0.05)])
                 : _cardGradient,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.zero,
             border: Border.all(color: active ? _orange.withOpacity(0.30) : _cardBorder, width: 1),
-            boxShadow: active ? [BoxShadow(color: _orange.withOpacity(0.10), blurRadius: 12, offset: const Offset(0, 4))] : const [],
           ),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Container(width: 8, height: 8, margin: const EdgeInsets.only(top: 6, right: 12), decoration: BoxDecoration(color: widget.read ? _grey : _orange, shape: BoxShape.circle)),
@@ -6050,15 +5901,21 @@ class _DayFolderState extends State<_DayFolder> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
+    // Each day is its own bordered box: tinted header (tap to collapse) with a
+    // divider under it when open, then its lessons.
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => setState(() => _open = !_open),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(color: _orange.withOpacity(0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: _orange.withOpacity(0.18))),
+            decoration: BoxDecoration(
+              color: _orange.withOpacity(0.08),
+              border: _open ? Border(bottom: BorderSide(color: _cardBorder)) : null,
+            ),
             child: Row(children: [
               Icon(_open ? CupertinoIcons.chevron_down : CupertinoIcons.chevron_right, size: 12, color: _orange),
               const SizedBox(width: 8),
@@ -6074,7 +5931,7 @@ class _DayFolderState extends State<_DayFolder> {
           curve: Curves.easeOutCubic,
           alignment: Alignment.topCenter,
           child: _open
-              ? Padding(padding: const EdgeInsets.only(left: 6, top: 2), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: widget.children))
+              ? Padding(padding: const EdgeInsets.fromLTRB(10, 4, 10, 8), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: widget.children))
               : const SizedBox(width: double.infinity),
         ),
       ]),
@@ -6121,7 +5978,7 @@ class _NotesViewState extends State<_NotesView> {
         child: Container(
           margin: const EdgeInsets.all(10),
           padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.zero),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text(note == null ? 'New note' : 'Edit note', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: _navy)),
             const SizedBox(height: 12),
@@ -6130,8 +5987,8 @@ class _NotesViewState extends State<_NotesView> {
               style: GoogleFonts.poppins(fontSize: 14, color: _navy, fontWeight: FontWeight.w600),
               decoration: InputDecoration(hintText: 'Title (optional)', hintStyle: GoogleFonts.poppins(color: _grey, fontSize: 14), isDense: true,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _cardBorder)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _orange))),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: _cardBorder)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: const BorderSide(color: _orange))),
             ),
             const SizedBox(height: 10),
             TextField(
@@ -6142,14 +5999,14 @@ class _NotesViewState extends State<_NotesView> {
               style: GoogleFonts.poppins(fontSize: 14, color: _navy, height: 1.35),
               decoration: InputDecoration(hintText: 'Write your note…', hintStyle: GoogleFonts.poppins(color: _grey, fontSize: 14), isDense: true,
                   contentPadding: const EdgeInsets.all(12),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _cardBorder)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _orange))),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: _cardBorder)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: const BorderSide(color: _orange))),
             ),
             const SizedBox(height: 14),
             Row(children: [
-              Expanded(child: _Pressable(onTap: () => Navigator.of(ctx).pop(false), child: Container(alignment: Alignment.center, padding: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(color: const Color(0xFFF0F0F2), borderRadius: BorderRadius.circular(10)), child: Text('Cancel', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: _grey))))),
+              Expanded(child: _Pressable(onTap: () => Navigator.of(ctx).pop(false), child: Container(alignment: Alignment.center, padding: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(color: const Color(0xFFF0F0F2), borderRadius: BorderRadius.zero), child: Text('Cancel', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: _grey))))),
               const SizedBox(width: 10),
-              Expanded(child: _Pressable(onTap: () => Navigator.of(ctx).pop(true), child: Container(alignment: Alignment.center, padding: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(10)), child: Text('Save', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: Colors.white))))),
+              Expanded(child: _Pressable(onTap: () => Navigator.of(ctx).pop(true), child: Container(alignment: Alignment.center, padding: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero), child: Text('Save', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: Colors.white))))),
             ]),
           ]),
         ),
@@ -6186,7 +6043,7 @@ class _NotesViewState extends State<_NotesView> {
         child: Container(
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(vertical: 13),
-          decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 8, offset: const Offset(0, 3))]),
+          decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero, ),
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             const Icon(CupertinoIcons.add, size: 16, color: Colors.white),
             const SizedBox(width: 6),
@@ -6214,7 +6071,7 @@ class _NotesViewState extends State<_NotesView> {
           onTap: () => _edit(note: n),
           child: Container(
             padding: const EdgeInsets.all(13),
-            decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(14), border: Border.all(color: _cardBorder)),
+            decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.zero, border: Border.all(color: _cardBorder)),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 if (title.isNotEmpty) ...[

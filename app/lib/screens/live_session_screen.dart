@@ -162,7 +162,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                 filled: true,
                 fillColor: Colors.white.withOpacity(0.06),
                 contentPadding: const EdgeInsets.all(14),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                border: OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide.none),
               ),
             ),
           ]),
@@ -215,7 +215,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
               Flexible(child: Text(_title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w700))),
               if (widget.isHost) ...[
                 const SizedBox(width: 8),
-                Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: _orange.withOpacity(0.2), borderRadius: BorderRadius.circular(5), border: Border.all(color: _orange.withOpacity(0.5))), child: Text('HOST', style: GoogleFonts.poppins(color: _orange, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.5))),
+                Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: _orange.withOpacity(0.2), borderRadius: BorderRadius.zero, border: Border.all(color: _orange.withOpacity(0.5))), child: Text('HOST', style: GoogleFonts.poppins(color: _orange, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.5))),
               ],
             ]),
             if (_course.isNotEmpty) Text(_course, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 12)),
@@ -239,7 +239,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
 
   Widget _statusPill(String text, Color c) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-        decoration: BoxDecoration(color: c.withOpacity(0.18), borderRadius: BorderRadius.circular(6), border: Border.all(color: c.withOpacity(0.5))),
+        decoration: BoxDecoration(color: c.withOpacity(0.18), borderRadius: BorderRadius.zero, border: Border.all(color: c.withOpacity(0.5))),
         child: Text(text, style: GoogleFonts.poppins(color: c == Colors.white24 ? Colors.white60 : c, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.4)),
       );
 
@@ -274,7 +274,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
             const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(color: _orange.withOpacity(waiting > 0 ? 0.18 : 0.06), borderRadius: BorderRadius.circular(10)),
+              decoration: BoxDecoration(color: _orange.withOpacity(waiting > 0 ? 0.18 : 0.06), borderRadius: BorderRadius.zero),
               child: Text(waiting > 0 ? '$waiting question${waiting == 1 ? '' : 's'} waiting → answer them in the panel' : 'No questions waiting. New questions appear in the panel.',
                   textAlign: TextAlign.center, style: GoogleFonts.poppins(color: waiting > 0 ? _orange : Colors.white60, fontSize: 12.5, fontWeight: FontWeight.w600)),
             ),
@@ -361,14 +361,14 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                   return Container(
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.all(11),
-                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.04), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white12)),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.04), borderRadius: BorderRadius.zero, border: Border.all(color: Colors.white12)),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(mine ? 'You asked' : (q['name']?.toString() ?? 'Question'), style: GoogleFonts.poppins(color: const Color(0xFF8AB4F8), fontSize: 11.5, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 2),
                       Text(q['body']?.toString() ?? '', style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.92), fontSize: 13, height: 1.25)),
                       const SizedBox(height: 8),
                       if (answered) ...[
-                        Container(width: double.infinity, padding: const EdgeInsets.all(9), decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.circular(8)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Container(width: double.infinity, padding: const EdgeInsets.all(9), decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.zero), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text('Host answered', style: GoogleFonts.poppins(color: _orange, fontSize: 11, fontWeight: FontWeight.w700)),
                           const SizedBox(height: 2),
                           Text(q['answer']?.toString() ?? '', style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.92), fontSize: 13, height: 1.25)),
@@ -403,7 +403,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                     padding: const EdgeInsets.all(11),
                     decoration: BoxDecoration(
                       color: answered ? Colors.white.withOpacity(0.03) : _orange.withOpacity(0.07),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.zero,
                       border: Border.all(color: answered ? Colors.white10 : _orange.withOpacity(0.35)),
                     ),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -423,7 +423,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                             onTap: () => _answer(q),
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                              decoration: BoxDecoration(color: _orange, borderRadius: BorderRadius.circular(8)),
+                              decoration: BoxDecoration(color: _orange, borderRadius: BorderRadius.zero),
                               child: Text('Answer', style: GoogleFonts.poppins(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
                             ),
                           ),
@@ -471,7 +471,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               filled: true,
               fillColor: Colors.white.withOpacity(0.06),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+              border: OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide.none),
             ),
           ),
         ),

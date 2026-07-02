@@ -124,7 +124,7 @@ class _AdminAmbassadorsState extends State<_AdminAmbassadors> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _create,
         backgroundColor: Palette.of(context).accent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
         icon: const Icon(CupertinoIcons.add, color: Colors.white),
         label: const Text('New Ambassador', style: TextStyle(color: Colors.white)),
       ),
@@ -243,7 +243,7 @@ class _AdminReferralsState extends State<_AdminReferrals> {
             Text('by ${r['ambassador']} · ${[r['phone'], r['email']].where((x) => (x?.toString() ?? '').isNotEmpty).join(' · ')}', style: AppleTheme.footnote(context)),
           ])),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: c.withOpacity(0.14), borderRadius: BorderRadius.circular(6)), child: Text(status, style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w700))),
+            Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: c.withOpacity(0.14), borderRadius: BorderRadius.zero), child: Text(status, style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w700))),
             if (((r['reward_paise'] as num?) ?? 0) > 0) Padding(padding: const EdgeInsets.only(top: 4), child: Text(_money((r['reward_paise'] as num?) ?? 0), style: AppleTheme.footnote(context))),
           ]),
         ])),
@@ -262,7 +262,7 @@ class _AdminReferralsState extends State<_AdminReferrals> {
       Wrap(spacing: 6, runSpacing: 6, children: [
         for (var i = 0; i < 5; i++) GestureDetector(
           onTap: () => setS(() => status = i),
-          child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: status == i ? Palette.of(context).accent : Palette.of(context).card2, borderRadius: BorderRadius.circular(6)),
+          child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: status == i ? Palette.of(context).accent : Palette.of(context).card2, borderRadius: BorderRadius.zero),
             child: Text(const ['New', 'Contacted', 'Enrolled', 'Rewarded', 'Rejected'][i], style: TextStyle(fontSize: 12, color: status == i ? Colors.white : Palette.of(context).label)))),
       ]),
       const SizedBox(height: 10),
@@ -319,7 +319,7 @@ class _AmbassadorDashboardState extends State<_AmbassadorDashboard> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _refer,
         backgroundColor: Palette.of(context).accent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
         icon: const Icon(CupertinoIcons.add, color: Colors.white),
         label: const Text('Refer someone', style: TextStyle(color: Colors.white)),
       ),
@@ -360,7 +360,7 @@ class _AmbassadorDashboardState extends State<_AmbassadorDashboard> {
         Text(r['name']?.toString() ?? '', style: AppleTheme.headline(context)),
         Text([r['phone'], r['email']].where((x) => (x?.toString() ?? '').isNotEmpty).join(' · '), style: AppleTheme.footnote(context)),
       ])),
-      Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: c.withOpacity(0.14), borderRadius: BorderRadius.circular(6)), child: Text(status, style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w700))),
+      Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: c.withOpacity(0.14), borderRadius: BorderRadius.zero), child: Text(status, style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w700))),
     ])));
   }
 

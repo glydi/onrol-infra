@@ -102,7 +102,7 @@ Widget _enrollmentCard(BuildContext context, Map<String, dynamic> e, {bool showF
         ])),
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
           if (((e['fee_paise'] as num?) ?? 0) > 0) Text(_money((e['fee_paise'] as num?) ?? 0), style: AppleTheme.headline(context)),
-          Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: c.withOpacity(0.14), borderRadius: BorderRadius.circular(6)), child: Text(status, style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w700))),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: c.withOpacity(0.14), borderRadius: BorderRadius.zero), child: Text(status, style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w700))),
         ]),
       ])),
     ),
@@ -112,7 +112,7 @@ Widget _enrollmentCard(BuildContext context, Map<String, dynamic> e, {bool showF
 Widget _frFab(VoidCallback onTap, String label) => Builder(builder: (context) => FloatingActionButton.extended(
       onPressed: onTap,
       backgroundColor: Palette.of(context).accent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       icon: const Icon(CupertinoIcons.add, color: Colors.white),
       label: Text(label, style: const TextStyle(color: Colors.white)),
     ));
@@ -152,7 +152,7 @@ class _AdminFranchisesState extends State<_AdminFranchises> {
         const SizedBox(height: 14),
         if (_items.isEmpty) AppleCard(child: Text('No franchises yet. Add a partner — they get a login + branch dashboard.', style: AppleTheme.footnote(context)))
         else ..._items.map((f) => Padding(padding: const EdgeInsets.only(bottom: 12), child: AppleCard(child: Row(children: [
-          Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: AppleColors.teal.withOpacity(0.14), borderRadius: BorderRadius.circular(11)), child: const Icon(CupertinoIcons.briefcase_fill, color: AppleColors.teal, size: 20)),
+          Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: AppleColors.teal.withOpacity(0.14), borderRadius: BorderRadius.zero), child: const Icon(CupertinoIcons.briefcase_fill, color: AppleColors.teal, size: 20)),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(f['full_name']?.toString() ?? '', style: AppleTheme.headline(context)),
@@ -245,7 +245,7 @@ class _AdminEnrollmentsState extends State<_AdminEnrollments> {
       context: context, backgroundColor: Colors.transparent,
       builder: (ctx) {
         final p = Palette.of(ctx);
-        return Container(margin: const EdgeInsets.all(10), decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(16)),
+        return Container(margin: const EdgeInsets.all(10), decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.zero),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const SizedBox(height: 12), Text('Set status', style: AppleTheme.headline(ctx)), const SizedBox(height: 8),
             for (final s in const ['enrolled', 'paid', 'dropped']) ListTile(leading: Icon(CupertinoIcons.circle, color: _enrColor(s)), title: Text(s, style: AppleTheme.body(ctx)), onTap: () => Navigator.pop(ctx, s)),

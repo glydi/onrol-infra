@@ -187,7 +187,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   padding: const EdgeInsets.all(16),
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 1100),
-                    child: ClipRRect(borderRadius: BorderRadius.circular(14), child: player),
+                    child: ClipRRect(borderRadius: BorderRadius.zero, child: player),
                   ),
                 ),
               ),
@@ -224,7 +224,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Widget _shortcutsHint() => Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        decoration: BoxDecoration(color: Colors.black.withOpacity(0.55), borderRadius: BorderRadius.circular(12)),
+        decoration: BoxDecoration(color: Colors.black.withOpacity(0.55), borderRadius: BorderRadius.zero),
         child: Wrap(
           spacing: 14, runSpacing: 6, alignment: WrapAlignment.center,
           children: const [
@@ -429,7 +429,7 @@ class _HintChip extends StatelessWidget {
     return Row(mainAxisSize: MainAxisSize.min, children: [
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-        decoration: BoxDecoration(color: Colors.white.withOpacity(0.18), borderRadius: BorderRadius.circular(6)),
+        decoration: BoxDecoration(color: Colors.white.withOpacity(0.18), borderRadius: BorderRadius.zero),
         child: Text(keys, style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700)),
       ),
       const SizedBox(width: 5),

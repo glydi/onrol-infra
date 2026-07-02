@@ -201,13 +201,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         height: 80,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius: BorderRadius.zero,
                           gradient: const LinearGradient(
                             colors: [_orange, Color(0xFFFF7A4D)],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
-                          boxShadow: [BoxShadow(color: _orange.withOpacity(0.4), blurRadius: 24, offset: const Offset(0, 10))],
                         ),
                         child: const Icon(CupertinoIcons.book_fill, color: Colors.white, size: 38),
                       ),
@@ -272,7 +271,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             width: 20, height: 20, alignment: Alignment.center,
                             decoration: BoxDecoration(
                               color: _remember ? _orange : Colors.transparent,
-                              borderRadius: BorderRadius.circular(6),
+                              borderRadius: BorderRadius.zero,
                               border: Border.all(color: _remember ? _orange : grey.withOpacity(0.5), width: 1.5),
                             ),
                             child: _remember ? const Icon(CupertinoIcons.checkmark_alt, size: 14, color: Colors.white) : null,
@@ -320,7 +319,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // Frosted-glass container (matches the LMS cards).
   Widget _glassCard({required bool dark, required Widget child}) {
-    final r = BorderRadius.circular(20);
+    final r = BorderRadius.zero;
     return ClipRRect(
       borderRadius: r,
       child: BackdropFilter(
@@ -347,8 +346,7 @@ class _LoginScreenState extends State<LoginScreen> {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             gradient: const LinearGradient(colors: [_orange, Color(0xFFFF7A4D)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [BoxShadow(color: _orange.withOpacity(0.20), blurRadius: 8, offset: const Offset(0, 3))],
+            borderRadius: BorderRadius.zero,
           ),
           child: _busy
               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
@@ -374,7 +372,7 @@ class _LoginBackdrop extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: dark ? const [Color(0xFF0E0F14), Color(0xFF14161F)] : const [Color(0xFFFFF1EA), Color(0xFFFDEAF6)],
+          colors: dark ? const [Color(0xFF0E0F14), Color(0xFF14161F)] : const [Color(0xFFF4F5F7), Color(0xFFF4F5F7)],
         ),
       ),
       child: Stack(children: [

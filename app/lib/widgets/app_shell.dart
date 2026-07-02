@@ -122,7 +122,7 @@ class _Sidebar extends StatelessWidget {
             Container(
               width: 38, height: 38,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(SquareScope.of(context) ? 0 : 12),
+                borderRadius: BorderRadius.zero,
                 gradient: const LinearGradient(colors: [AppleColors.blue, AppleColors.purple], begin: Alignment.topLeft, end: Alignment.bottomRight),
               ),
               child: const Icon(CupertinoIcons.book_fill, color: Colors.white, size: 20),
@@ -167,7 +167,7 @@ class _Sidebar extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           decoration: BoxDecoration(
             color: on ? p.accent : Colors.transparent,
-            borderRadius: BorderRadius.circular(SquareScope.of(context) ? 0 : 8),
+            borderRadius: BorderRadius.zero,
           ),
           child: Row(children: [
             Icon(d.icon, size: 20, color: on ? Colors.white : p.secondary),

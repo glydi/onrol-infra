@@ -52,7 +52,6 @@ class _ProfileViewState extends State<ProfileView> {
     final name = TextEditingController(text: widget.auth.user?.fullName ?? '');
     final phone = TextEditingController();
     final p = Palette.of(context);
-    final sq = SquareScope.of(context); // captured before the modal leaves the scope
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -63,7 +62,7 @@ class _ProfileViewState extends State<ProfileView> {
         return StatefulBuilder(builder: (ctx, setS) {
           Widget field(TextEditingController c, String hint, IconData icon) => Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(sq ? 0 : 12)),
+                decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.zero),
                 child: AppleField(controller: c, hint: hint, icon: icon),
               );
           return Padding(
@@ -71,7 +70,7 @@ class _ProfileViewState extends State<ProfileView> {
             child: Container(
               margin: const EdgeInsets.all(10),
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(sq ? 0 : 20)),
+              decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.zero),
               child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Center(child: Text('Edit Profile', style: AppleTheme.title2(ctx))),
                 const SizedBox(height: 16),
@@ -137,7 +136,7 @@ class _ProfileViewState extends State<ProfileView> {
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
                   color: Palette.of(context).accent.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(SquareScope.of(context) ? 0 : 20),
+                  borderRadius: BorderRadius.zero,
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(CupertinoIcons.square_stack_3d_up, size: 16, color: Palette.of(context).accent),
@@ -157,7 +156,7 @@ class _ProfileViewState extends State<ProfileView> {
               onTap: _edit,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
-                decoration: BoxDecoration(color: Palette.of(context).accent.withOpacity(0.12), borderRadius: BorderRadius.circular(SquareScope.of(context) ? 0 : 20)),
+                decoration: BoxDecoration(color: Palette.of(context).accent.withOpacity(0.12), borderRadius: BorderRadius.zero),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(CupertinoIcons.pencil, size: 15, color: Palette.of(context).accent),
                   const SizedBox(width: 6),

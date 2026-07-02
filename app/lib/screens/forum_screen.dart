@@ -277,18 +277,17 @@ class _ForumScreenState extends State<ForumScreen> {
   }
 
   Widget _card(bool phone) {
-    final r = phone ? 0.0 : 24.0;
     final cardW = phone ? MediaQuery.of(context).size.width : (MediaQuery.of(context).size.width * 0.97).clamp(0.0, 1180.0);
     final wide = cardW >= 820;
     return Material(
       type: MaterialType.transparency,
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(r),
+          borderRadius: BorderRadius.zero,
           boxShadow: phone ? const [] : [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 48, offset: const Offset(0, 22))],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(r),
+          borderRadius: BorderRadius.zero,
           child: Container(
             color: _bg,
             child: Column(children: [
@@ -317,7 +316,7 @@ class _ForumScreenState extends State<ForumScreen> {
           onTap: onTap,
           child: Container(
             width: 34, height: 34, alignment: Alignment.center,
-            decoration: BoxDecoration(color: _accent.withOpacity(0.12), borderRadius: BorderRadius.circular(10), border: Border.all(color: _accent.withOpacity(0.25))),
+            decoration: BoxDecoration(color: _accent.withOpacity(0.12), borderRadius: BorderRadius.zero, border: Border.all(color: _accent.withOpacity(0.25))),
             child: Icon(icon, size: 20, color: _accent),
           ),
         );
@@ -401,7 +400,7 @@ class _ForumScreenState extends State<ForumScreen> {
         decoration: BoxDecoration(
           gradient: sel ? _accentGrad : null,
           color: sel ? null : _panel,
-          borderRadius: BorderRadius.circular(sel ? 14 : 23),
+          borderRadius: BorderRadius.zero,
           border: Border.all(color: sel ? Colors.transparent : _line),
         ),
         child: Text(label, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: sel ? Colors.white : _ink)),
@@ -413,7 +412,7 @@ class _ForumScreenState extends State<ForumScreen> {
         onTap: _createServer,
         child: Container(
           width: 46, height: 46, alignment: Alignment.center,
-          decoration: BoxDecoration(color: _panel, borderRadius: BorderRadius.circular(23), border: Border.all(color: _line)),
+          decoration: BoxDecoration(color: _panel, borderRadius: BorderRadius.zero, border: Border.all(color: _line)),
           child: const Icon(CupertinoIcons.add, size: 20, color: _accent),
         ),
       );
@@ -468,7 +467,7 @@ class _ForumScreenState extends State<ForumScreen> {
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 2),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-        decoration: BoxDecoration(color: sel ? _accent.withValues(alpha: 0.12) : Colors.transparent, borderRadius: BorderRadius.circular(8)),
+        decoration: BoxDecoration(color: sel ? _accent.withValues(alpha: 0.12) : Colors.transparent, borderRadius: BorderRadius.zero),
         child: Row(children: [
           Text('#', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800, color: sel ? _accent : _muted)),
           const SizedBox(width: 8),
@@ -495,7 +494,7 @@ class _ForumScreenState extends State<ForumScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       decoration: BoxDecoration(
                         color: ch['id'].toString() == _channelId ? _accent.withValues(alpha: 0.14) : _rail,
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.zero,
                       ),
                       child: Text('#${ch['name']}', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _ink)),
                     ),
@@ -573,7 +572,7 @@ class _ForumScreenState extends State<ForumScreen> {
           Expanded(
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(22), border: Border.all(color: _line)),
+              decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.zero, border: Border.all(color: _line)),
               child: TextField(
                 controller: _composer,
                 minLines: 1,
@@ -600,7 +599,7 @@ class _ForumScreenState extends State<ForumScreen> {
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-          decoration: BoxDecoration(gradient: _accentGrad, borderRadius: BorderRadius.circular(10)),
+          decoration: BoxDecoration(gradient: _accentGrad, borderRadius: BorderRadius.zero),
           child: Text(label, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
         ),
       );

@@ -184,7 +184,7 @@ class _DiscussionScreenState extends State<DiscussionScreen> {
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(color: AppleColors.orange.withOpacity(0.15), borderRadius: BorderRadius.circular(5)),
+                decoration: BoxDecoration(color: AppleColors.orange.withOpacity(0.15), borderRadius: BorderRadius.zero),
                 child: const Text('DOUBT', style: TextStyle(color: AppleColors.orange, fontSize: 9, fontWeight: FontWeight.w800)),
               ),
             ],
@@ -222,7 +222,7 @@ class _DiscussionScreenState extends State<DiscussionScreen> {
               const SizedBox(width: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(color: AppleColors.blue.withOpacity(0.14), borderRadius: BorderRadius.circular(5)),
+                decoration: BoxDecoration(color: AppleColors.blue.withOpacity(0.14), borderRadius: BorderRadius.zero),
                 child: Text(m['role']?.toString() == 'student' ? '' : 'Instructor',
                     style: const TextStyle(color: AppleColors.blue, fontSize: 10, fontWeight: FontWeight.w700)),
               ),
@@ -258,7 +258,7 @@ class _DiscussionScreenState extends State<DiscussionScreen> {
             Expanded(
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(20), boxShadow: p.clay),
+                decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.zero, boxShadow: p.clay),
                 child: AppleField(controller: _input, hint: (_replyTo == null && _replyModuleId == null) ? 'Ask a doubt or comment…' : 'Write a reply…'),
               ),
             ),

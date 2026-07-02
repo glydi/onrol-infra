@@ -87,7 +87,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
         builder: (_, ctrl) => Container(
           margin: const EdgeInsets.all(10),
           padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(16)),
+          decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.zero),
           child: ListView(controller: ctrl, children: [
             Text(l['title']?.toString() ?? 'Lesson', style: AppleTheme.title2(context)),
             const SizedBox(height: 12),
@@ -159,7 +159,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                     onTap: () => _open(l),
                     leading: Container(
                       width: 36, height: 36,
-                      decoration: BoxDecoration(color: _color(type).withOpacity(0.12), borderRadius: BorderRadius.circular(9)),
+                      decoration: BoxDecoration(color: _color(type).withOpacity(0.12), borderRadius: BorderRadius.zero),
                       child: Icon(_icon(type), size: 18, color: _color(type)),
                     ),
                     title: Text(l['title']?.toString() ?? '', style: AppleTheme.body(context)),

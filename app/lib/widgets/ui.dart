@@ -65,7 +65,6 @@ class _AppleCardState extends State<AppleCard> {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    final sq = widget.square || SquareScope.of(context);
     final interactive = widget.onTap != null;
     final hovered = interactive && _hover;
     final card = AnimatedContainer(
@@ -75,7 +74,7 @@ class _AppleCardState extends State<AppleCard> {
       padding: widget.padding,
       decoration: BoxDecoration(
         color: p.card,
-        borderRadius: BorderRadius.circular(sq ? 0 : 10),
+        borderRadius: BorderRadius.zero,
         border: Border.all(color: hovered ? p.accent : p.separator),
         boxShadow: hovered
             ? [BoxShadow(color: Colors.black.withOpacity(p.dark ? 0.32 : 0.08), blurRadius: 12, offset: const Offset(0, 4))]
@@ -146,7 +145,6 @@ class _PrimaryButtonState extends State<PrimaryButton> {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final enabled = widget.onPressed != null && !widget.busy;
-    final sq = widget.square || SquareScope.of(context);
     return MouseRegion(
       cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
       onEnter: (_) => setState(() => _hover = true),
@@ -175,7 +173,7 @@ class _PrimaryButtonState extends State<PrimaryButton> {
                     end: Alignment.bottomRight,
                   ),
             // Compact, Coursera-style: small radius, no heavy glow.
-            borderRadius: BorderRadius.circular(sq ? 0 : 8),
+            borderRadius: BorderRadius.zero,
             boxShadow: (!widget.square && enabled)
                 ? [BoxShadow(color: p.accent.withOpacity(0.20), offset: const Offset(0, 3), blurRadius: 8, spreadRadius: -2)]
                 : null,
@@ -396,7 +394,7 @@ class AppleProgress extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     return ClipRRect(
-      borderRadius: BorderRadius.circular(4),
+      borderRadius: BorderRadius.zero,
       child: LinearProgressIndicator(
         value: value.clamp(0, 1),
         minHeight: 7,
@@ -506,12 +504,11 @@ class AppleSegmented extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    final sq = square || SquareScope.of(context);
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: p.dark ? AppleColors.darkCard2 : const Color(0xFFE9E9EB),
-        borderRadius: BorderRadius.circular(sq ? 0 : 8),
+        borderRadius: BorderRadius.zero,
       ),
       child: Row(
         children: List.generate(labels.length, (i) {
@@ -527,7 +524,7 @@ class AppleSegmented extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: on ? p.card : Colors.transparent,
-                  borderRadius: BorderRadius.circular(sq ? 0 : 6),
+                  borderRadius: BorderRadius.zero,
                   boxShadow: on && !p.dark
                       ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 6, offset: const Offset(0, 2))]
                       : null,
@@ -561,10 +558,9 @@ class SquareScope extends InheritedWidget {
 Widget sheetField(TextEditingController c, String hint, IconData icon, {TextInputType? keyboard, bool square = false, bool obscure = false}) {
   return Builder(builder: (context) {
     final p = Palette.of(context);
-    final sq = square || SquareScope.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-      decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(sq ? 0 : 8)),
+      decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.zero),
       child: AppleField(controller: c, hint: hint, icon: icon, keyboard: keyboard, obscure: obscure),
     );
   });
@@ -597,7 +593,7 @@ Future<bool?> showFormSheet(
           child: Container(
             margin: const EdgeInsets.all(10),
             padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(sq ? 0 : 12)),
+            decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.zero),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Center(child: Text(title, style: AppleTheme.title2(ctx))),
               const SizedBox(height: 16),

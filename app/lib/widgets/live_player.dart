@@ -201,7 +201,7 @@ class _LiveBadgeState extends State<_LiveBadge> with SingleTickerProviderStateMi
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(color: Colors.black.withOpacity(0.5), borderRadius: BorderRadius.circular(6)),
+      decoration: BoxDecoration(color: Colors.black.withOpacity(0.5), borderRadius: BorderRadius.zero),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         FadeTransition(
           opacity: Tween<double>(begin: 1, end: 0.3).animate(_ac),
