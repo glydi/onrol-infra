@@ -64,7 +64,7 @@ LinearGradient get _cardGradient => LinearGradient(
 /// Use sparingly — each one is a real BackdropFilter.
 Widget _glass({
   required Widget child,
-  double radius = 22,
+  double radius = 0, // squared — no rounded corners
   EdgeInsetsGeometry? padding,
   double blur = 18,
   Color? tint,
@@ -512,37 +512,29 @@ class _StudentHomeState extends State<StudentHome> {
   // iPad / phone: a single scrolling column — big matrix, then AI news below it
   // (shrink-wrapped so it flows with the page scroll). The floating scroll
   // button appears when this runs off-screen.
+  // iPad / phone: a single NON-scrolling screen — brand bar, a compact profile,
+  // then the checkerboard fills the rest so all tiles are visible at once.
   Widget _narrowHome(BoxConstraints c) {
-    // Size the checkerboard to the SMALLER of the width budget and ~62% of the
-    // screen height, so the whole menu is visible without scrolling (on iPad the
-    // full-width square used to run off-screen).
-    final wSide = (c.maxWidth - 36).clamp(260.0, 860.0);
-    final hSide = c.maxHeight.isFinite ? (c.maxHeight * 0.62).clamp(260.0, 860.0) : 860.0;
-    final side = (wSide < hSide ? wSide : hSide).toDouble();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _syncScrollState());
-    return SingleChildScrollView(
-      controller: _homeScroll,
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 96),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 12),
       child: Column(children: [
         _Entrance(index: 0, child: _topBar()),
-        const SizedBox(height: 14),
-        // Profile section + notifications at the top on iPad / phone.
+        const SizedBox(height: 12),
         _Entrance(index: 1, child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 640), child: _profileSection(compact: true)))),
-        const SizedBox(height: 14),
-        _Entrance(index: 2, child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 640), child: _homeNotifications()))),
-        const SizedBox(height: 18),
-        _Entrance(index: 3, child: Center(child: _matrix(side))),
-        const SizedBox(height: 28),
-        _Entrance(
-          index: 4,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 760),
-              child: _AiNewsCard(auth: widget.auth, scrollable: false),
+        const SizedBox(height: 12),
+        // The matrix fills the remaining space, sized to the smaller of the free
+        // width/height so the full 5×5 board is always on screen — no scrolling.
+        Expanded(
+          child: _Entrance(
+            index: 2,
+            child: Center(
+              child: LayoutBuilder(builder: (_, cc) {
+                final s = (cc.maxWidth < cc.maxHeight ? cc.maxWidth : cc.maxHeight).clamp(240.0, 900.0).toDouble();
+                return _matrix(s);
+              }),
             ),
           ),
         ),
-        const SizedBox(height: 24),
       ]),
     );
   }
@@ -579,7 +571,7 @@ class _StudentHomeState extends State<StudentHome> {
                 Wrap(spacing: 8, runSpacing: 8, children: [
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                    decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
+                    decoration: BoxDecoration(color: _orange.withOpacity(0.12)),
                     child: Text('ONROL Learner', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
                   ),
                   _streakChip(),
@@ -600,7 +592,6 @@ class _StudentHomeState extends State<StudentHome> {
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
           decoration: BoxDecoration(
             gradient: _orangeGrad,
-            borderRadius: BorderRadius.circular(20),
             boxShadow: [BoxShadow(color: _orange.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -4841,7 +4832,7 @@ Uint8List? _decodeDataUri(String d) {
 /// A square (rounded) profile picture. [avatar] is '' / 'p:N' (preset) or a
 /// 'data:' URI (uploaded photo). Shows a camera badge when [editable].
 Widget _avatarBox(String avatar, double size, String initials, {bool editable = false}) {
-  final radius = size * 0.26;
+  const radius = 0.0; // squared — no rounded corners
   final bytes = avatar.startsWith('data:') ? _decodeDataUri(avatar) : null;
   Widget face;
   if (bytes != null) {
