@@ -1279,24 +1279,58 @@ class _QuizBuilderState extends State<_QuizBuilder> {
         const SizedBox(height: 10),
         _label(context, 'Question type'),
         const SizedBox(height: 6),
-        Wrap(spacing: 8, runSpacing: 8, children: [
-          for (var i = 0; i < types.length; i++)
-            GestureDetector(
-              onTap: () => setS(() {
-                type = i;
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () async {
+            final picked = await showDialog<int>(
+              context: context,
+              builder: (dctx) {
+                final dp = Palette.of(dctx);
+                return Dialog(
+                  backgroundColor: dp.card,
+                  insetPadding: const EdgeInsets.symmetric(horizontal: 36, vertical: 24),
+                  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 380),
+                    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 8), child: Text('Select question type', style: AppleTheme.headline(dctx))),
+                      for (var i = 0; i < typeLabels.length; i++)
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => Navigator.of(dctx).pop(i),
+                          child: Container(
+                            color: i == type ? dp.accent.withOpacity(0.12) : null,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                            child: Row(children: [
+                              Icon(i == type ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle, size: 20, color: i == type ? dp.accent : dp.secondary),
+                              const SizedBox(width: 12),
+                              Expanded(child: Text(typeLabels[i], style: AppleTheme.body(dctx))),
+                            ]),
+                          ),
+                        ),
+                      const SizedBox(height: 8),
+                    ]),
+                  ),
+                );
+              },
+            );
+            if (picked != null) {
+              setS(() {
+                type = picked;
                 correctIdx = 0;
                 correctSet.clear();
-              }),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: type == i ? p.accent.withOpacity(0.15) : p.card2,
-                  border: Border.all(color: type == i ? p.accent : p.separator),
-                ),
-                child: Text(typeLabels[i], style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700, color: type == i ? p.accent : p.label)),
-              ),
-            ),
-        ]),
+              });
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+            child: Row(children: [
+              Expanded(child: Text(typeLabels[type], style: AppleTheme.body(context).copyWith(fontWeight: FontWeight.w700))),
+              Icon(CupertinoIcons.chevron_up_chevron_down, size: 16, color: p.secondary),
+            ]),
+          ),
+        ),
         const SizedBox(height: 14),
       ];
       final isMulti = tkey == 'multi';
