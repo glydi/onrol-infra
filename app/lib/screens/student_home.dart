@@ -67,6 +67,8 @@ Widget _glass({
   EdgeInsetsGeometry? padding,
   double blur = 18,
   Color? tint,
+  Color? border, // override the hairline border colour
+  double borderWidth = 1,
 }) {
   final r = BorderRadius.zero;
   return ClipRRect(
@@ -78,12 +80,49 @@ Widget _glass({
         decoration: BoxDecoration(
           color: tint ?? _glassFill,
           borderRadius: r,
-          border: Border.all(color: _glassBorder, width: 1),
+          border: Border.all(color: border ?? _glassBorder, width: borderWidth),
         ),
         child: child,
       ),
     ),
   );
+}
+
+/// A flat, tappable card with a thin border that highlights on hover (no glow).
+/// Used for the home sidebar cards (profile, notifications, live news).
+class _HoverCard extends StatefulWidget {
+  const _HoverCard({required this.child, this.onTap, this.padding});
+  final Widget child;
+  final VoidCallback? onTap;
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  State<_HoverCard> createState() => _HoverCardState();
+}
+
+class _HoverCardState extends State<_HoverCard> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: widget.onTap != null ? SystemMouseCursors.click : MouseCursor.defer,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+          decoration: BoxDecoration(
+            color: _hover ? Color.alphaBlend(_orange.withOpacity(0.06), _surface) : _surface,
+            border: Border.all(color: _hover ? _orange : _orange.withOpacity(0.28), width: _hover ? 1.4 : 1),
+          ),
+          child: Padding(padding: widget.padding ?? EdgeInsets.zero, child: widget.child),
+        ),
+      ),
+    );
+  }
 }
 
 /// How many panel/modal routes are currently open (used elsewhere to pause
@@ -370,7 +409,7 @@ class _StudentHomeState extends State<StudentHome> {
   // Desktop: top bar across the top, the menu matrix on the left, and the AI
   // news pinned as a right-hand sidebar (its list scrolls internally).
   Widget _wideHome(BoxConstraints c) {
-    final side = (c.maxWidth - 380 - 96).clamp(360.0, 700.0).toDouble();
+    final side = (c.maxWidth - 420 - 96).clamp(360.0, 700.0).toDouble();
     return Padding(
       padding: const EdgeInsets.fromLTRB(40, 8, 36, 20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -389,7 +428,7 @@ class _StudentHomeState extends State<StudentHome> {
             const SizedBox(width: 28),
             // Right sidebar: profile on top, notifications, then AI news.
             SizedBox(
-              width: 380,
+              width: 420,
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 _Entrance(index: 1, child: _profileSection()),
                 const SizedBox(height: 12),
@@ -415,7 +454,7 @@ class _StudentHomeState extends State<StudentHome> {
       child: Column(children: [
         _Entrance(index: 0, child: _topBar()),
         const SizedBox(height: 12),
-        _Entrance(index: 1, child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 640), child: _profileSection(compact: true)))),
+        _Entrance(index: 1, child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: _profileSection(compact: true)))),
         const SizedBox(height: 12),
         // The matrix fills the remaining space, sized to the smaller of the free
         // width/height so the full 5×5 board is always on screen — no scrolling.
@@ -440,13 +479,10 @@ class _StudentHomeState extends State<StudentHome> {
     final initials = _firstName.isNotEmpty ? _firstName[0].toUpperCase() : 'S';
     final avatar = compact ? 84.0 : 104.0; // bigger profile picture
     final hi = compact ? 20.0 : 23.0;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () => _openPanel('profile'),
-        child: _glass(
-          padding: const EdgeInsets.all(18),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return _HoverCard(
+      onTap: () => _openPanel('profile'),
+      padding: const EdgeInsets.all(18),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             ValueListenableBuilder<String>(
               valueListenable: avatarNotifier,
               builder: (ctx, av, _) => _avatarBox(av, avatar, initials),
@@ -475,8 +511,6 @@ class _StudentHomeState extends State<StudentHome> {
             ),
             Icon(CupertinoIcons.gear_alt_fill, size: 18, color: _orange.withOpacity(0.55)),
           ]),
-        ),
-      ),
     );
   }
 
@@ -533,11 +567,10 @@ class _StudentHomeState extends State<StudentHome> {
           }
           all.sort((a, b) => (b['at']?.toString() ?? '').compareTo(a['at']?.toString() ?? ''));
           final preview = all.isEmpty ? 'No notifications yet' : (all.first['text'] as String);
-          return _Pressable(
+          return _HoverCard(
             onTap: () => _openPanel('notifications'),
-            child: _glass(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-              child: Row(children: [
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            child: Row(children: [
                 Stack(clipBehavior: Clip.none, children: [
                   Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: _orange.withOpacity(0.12), shape: BoxShape.circle), child: Icon(CupertinoIcons.bell_fill, size: 19, color: _orange)),
                   if (unseen > 0)
@@ -564,7 +597,6 @@ class _StudentHomeState extends State<StudentHome> {
                 const SizedBox(width: 6),
                 Icon(CupertinoIcons.chevron_forward, size: 17, color: _grey),
               ]),
-            ),
           );
         },
       );
@@ -4198,6 +4230,7 @@ class _AiNewsCardState extends State<_AiNewsCard> {
   Timer? _ticker; // ticks the "x min ago" labels + LIVE windows
   final Set<String> _knownUrls = {}; // every URL seen so far
   Set<String> _newUrls = {}; // URLs that arrived on the latest poll
+  bool _hover = false; // thin border highlights on hover
 
   @override
   void initState() {
@@ -4261,8 +4294,14 @@ class _AiNewsCardState extends State<_AiNewsCard> {
 
   @override
   Widget build(BuildContext context) {
-    return _glass(
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: _glass(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      border: _hover ? _orange : _orange.withOpacity(0.28),
+      borderWidth: _hover ? 1.4 : 1,
+      tint: _hover ? Color.alphaBlend(_orange.withOpacity(0.06), _glassFill) : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: widget.scrollable ? MainAxisSize.max : MainAxisSize.min,
@@ -4294,6 +4333,7 @@ class _AiNewsCardState extends State<_AiNewsCard> {
           const SizedBox(height: 10),
           if (widget.scrollable) Expanded(child: _body()) else _body(),
         ],
+      ),
       ),
     );
   }
