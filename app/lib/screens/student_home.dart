@@ -413,7 +413,6 @@ class _StudentHomeState extends State<StudentHome> {
   // Desktop: top bar across the top, the menu matrix on the left, and the AI
   // news pinned as a right-hand sidebar (its list scrolls internally).
   Widget _wideHome(BoxConstraints c) {
-    final side = (c.maxWidth - 480 - 110).clamp(320.0, 860.0).toDouble();
     return Padding(
       padding: const EdgeInsets.fromLTRB(40, 8, 36, 20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -422,12 +421,13 @@ class _StudentHomeState extends State<StudentHome> {
         Expanded(
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(
-              child: SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 24),
-                  child: Center(child: _matrix(side)),
-                ),
-              ),
+              // Size the board to the smaller free dimension of its box so it
+              // always fits — no overflow, no scroll.
+              child: LayoutBuilder(builder: (_, mc) {
+                final avail = mc.maxWidth < mc.maxHeight ? mc.maxWidth : mc.maxHeight;
+                final side = (avail - 6).clamp(200.0, 900.0).toDouble();
+                return Center(child: _matrix(side));
+              }),
             ),
             const SizedBox(width: 28),
             // Right sidebar: profile on top, notifications, then AI news.
@@ -467,7 +467,10 @@ class _StudentHomeState extends State<StudentHome> {
             index: 2,
             child: Center(
               child: LayoutBuilder(builder: (_, cc) {
-                final s = (cc.maxWidth < cc.maxHeight ? cc.maxWidth : cc.maxHeight).clamp(240.0, 1040.0).toDouble();
+                // Size to the smaller free dimension, minus a small margin so a
+                // sub-pixel/border rounding never tips it into an overflow.
+                final avail = cc.maxWidth < cc.maxHeight ? cc.maxWidth : cc.maxHeight;
+                final s = (avail - 6).clamp(120.0, 1000.0).toDouble();
                 return _matrix(s);
               }),
             ),
