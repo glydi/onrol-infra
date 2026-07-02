@@ -6502,9 +6502,9 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
               child: Center(
                 child: ConstrainedBox(
-                  // Video gets a much wider frame so it plays large; text stays a
-                  // comfortable reading width.
-                  constraints: BoxConstraints(maxWidth: isVideo ? 1180 : 760),
+                  // Both video and text get a wide frame (text much wider than
+                  // the old reading width, per request).
+                  constraints: BoxConstraints(maxWidth: isVideo ? 1180 : 1100),
                   // The material sits in a bordered "page" box so the text isn't
                   // floating on the bare background.
                   child: Container(
