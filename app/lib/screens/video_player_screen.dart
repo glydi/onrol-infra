@@ -15,7 +15,7 @@ import '../widgets/web_video_stub.dart' if (dart.library.html) '../widgets/web_v
 /// blocked app-wide (Android FLAG_SECURE; iOS capture-blanking) and the file is
 /// never offered as a download.
 class VideoPlayerScreen extends StatefulWidget {
-  const VideoPlayerScreen({super.key, required this.url, required this.watermark, this.title = 'Video', this.startAt = Duration.zero, this.onProgress, this.onCompleted, this.authToken = ''});
+  const VideoPlayerScreen({super.key, required this.url, required this.watermark, this.title = 'Video', this.startAt = Duration.zero, this.onProgress, this.onCompleted, this.authToken = '', this.embedded = false});
   final String url;
   final String watermark;
   final String title;
@@ -25,6 +25,9 @@ class VideoPlayerScreen extends StatefulWidget {
   final Duration startAt;
   final void Function(Duration position, Duration duration)? onProgress;
   final VoidCallback? onCompleted;
+  // When true, render just the player (no Scaffold/route chrome) so it can be
+  // embedded inline — e.g. inside the material reader.
+  final bool embedded;
 
   @override
   State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
@@ -173,6 +176,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       label: widget.watermark,
       child: kIsWeb ? _webPlayer() : _mobilePlayer(),
     );
+    // Embedded (inside the material reader): no Scaffold/route chrome.
+    if (widget.embedded) {
+      return ColoredBox(color: const Color(0xFF0B0B0D), child: player);
+    }
     return PopScope(
       canPop: !_fullscreen,
       onPopInvokedWithResult: (didPop, _) {
@@ -275,6 +282,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Widget _topBar() {
+    if (widget.embedded) return const SizedBox.shrink(); // reader supplies its own header
     return Positioned(
       top: 0, left: 0, right: 0,
       child: SafeArea(

@@ -6650,6 +6650,8 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
                         (body.trim().isEmpty
                             ? Text('No content in this material.', style: GoogleFonts.poppins(fontSize: 14, color: _grey))
                             : _NoteMarkdown(text: body))
+                      else if (type == 'video' && body.isNotEmpty)
+                        _videoPlayer(it, body)
                       else
                         _openCard(type, it),
                     ]),
@@ -6686,8 +6688,28 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
     );
   }
 
-  // A non-text material (video / link / document): show what it is and an
-  // Open button that opens it the usual way (player / new tab).
+  // A video material — plays inline in the reader (no separate tab/route).
+  Widget _videoPlayer(Map<String, dynamic> it, String url) {
+    final id = it['id'].toString();
+    final startAt = ((it['position'] ?? 0) as num).toInt();
+    return VideoPlayerScreen(
+      key: ValueKey('vid-$id'), // fresh player when paging to another video
+      embedded: true,
+      url: url,
+      watermark: widget.auth.user?.email ?? 'student',
+      title: it['title']?.toString() ?? 'Video',
+      authToken: widget.auth.token,
+      startAt: Duration(seconds: startAt),
+      onProgress: (pos, dur) => widget.auth.apiPost('/api/v1/me/lessons/$id/progress', {'position': pos.inSeconds}).ignore(),
+      onCompleted: () {
+        widget.auth.apiPost('/api/v1/me/lessons/$id/complete', {}).ignore();
+        if (mounted) setState(() => it['completed'] = true);
+      },
+    );
+  }
+
+  // A non-text material (link / document): show what it is and an Open button
+  // that opens it the usual way (new tab / viewer).
   Widget _openCard(String type, Map<String, dynamic> it) {
     final (IconData icon, String label, String action) = switch (type) {
       'video' => (CupertinoIcons.play_rectangle_fill, 'This is a video material.', 'Play video'),
