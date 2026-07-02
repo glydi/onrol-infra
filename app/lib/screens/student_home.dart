@@ -369,7 +369,7 @@ class _StudentHomeState extends State<StudentHome> {
 
   static Widget _emptyText(String t) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 22),
-        child: Text(t, textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
+        child: Text(t, textAlign: TextAlign.center, style: GoogleFonts.ibmPlexMono(fontSize: 13, color: _grey)),
       );
 
   static String _fmtAt(String? iso) {
@@ -493,18 +493,18 @@ class _StudentHomeState extends State<StudentHome> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 RichText(
                   text: TextSpan(children: [
-                    TextSpan(text: 'Hi, ', style: GoogleFonts.poppins(fontSize: hi, fontWeight: FontWeight.w800, color: _navy)),
-                    TextSpan(text: _firstName, style: GoogleFonts.poppins(fontSize: hi, fontWeight: FontWeight.w800, color: _orange)),
+                    TextSpan(text: 'Hi, ', style: GoogleFonts.ibmPlexMono(fontSize: hi, fontWeight: FontWeight.w800, color: _navy)),
+                    TextSpan(text: _firstName, style: GoogleFonts.ibmPlexMono(fontSize: hi, fontWeight: FontWeight.w800, color: _orange)),
                   ]),
                 ),
                 const SizedBox(height: 3),
-                Text(_roleLabel, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w600, color: _grey)),
+                Text(_roleLabel, style: GoogleFonts.ibmPlexMono(fontSize: 13.5, fontWeight: FontWeight.w600, color: _grey)),
                 const SizedBox(height: 10),
                 Wrap(spacing: 8, runSpacing: 8, children: [
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                     decoration: BoxDecoration(color: _orange.withOpacity(0.12)),
-                    child: Text('ONROL Learner', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
+                    child: Text('ONROL Learner', style: GoogleFonts.ibmPlexMono(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
                   ),
                   _streakChip(),
                 ]),
@@ -526,7 +526,7 @@ class _StudentHomeState extends State<StudentHome> {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             const Icon(CupertinoIcons.flame_fill, color: Colors.white, size: 14),
             const SizedBox(width: 4),
-            Text('$_streak day streak', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+            Text('$_streak day streak', style: GoogleFonts.ibmPlexMono(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
           ]),
         ),
       );
@@ -580,20 +580,20 @@ class _StudentHomeState extends State<StudentHome> {
                       constraints: const BoxConstraints(minWidth: 17),
                       alignment: Alignment.center,
                       decoration: BoxDecoration(color: const Color(0xFFE5484D), borderRadius: BorderRadius.zero, border: Border.all(color: _bg, width: 1.5)),
-                      child: Text(unseen > 99 ? '99+' : '$unseen', style: GoogleFonts.poppins(fontSize: 9.5, fontWeight: FontWeight.w800, color: Colors.white)),
+                      child: Text(unseen > 99 ? '99+' : '$unseen', style: GoogleFonts.ibmPlexMono(fontSize: 9.5, fontWeight: FontWeight.w800, color: Colors.white)),
                     )),
                 ]),
                 const SizedBox(width: 12),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
-                    Text('Notifications', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800, color: _navy)),
+                    Text('Notifications', style: GoogleFonts.ibmPlexMono(fontSize: 15, fontWeight: FontWeight.w800, color: _navy)),
                     if (unseen > 0) ...[
                       const SizedBox(width: 6),
-                      Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1), decoration: BoxDecoration(color: _orange.withOpacity(0.14), borderRadius: BorderRadius.zero), child: Text('$unseen new', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: _orange))),
+                      Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1), decoration: BoxDecoration(color: _orange.withOpacity(0.14), borderRadius: BorderRadius.zero), child: Text('$unseen new', style: GoogleFonts.ibmPlexMono(fontSize: 10, fontWeight: FontWeight.w800, color: _orange))),
                     ],
                   ]),
                   const SizedBox(height: 2),
-                  Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+                  Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 12, color: _grey)),
                 ])),
                 const SizedBox(width: 6),
                 Icon(CupertinoIcons.chevron_forward, size: 17, color: _grey),
@@ -609,7 +609,7 @@ class _StudentHomeState extends State<StudentHome> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
       child: Row(children: [
-        Text('ONROL', style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 1)),
+        Text('ONROL', style: GoogleFonts.ibmPlexMono(fontSize: 20, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 1)),
       ]),
     );
   }
@@ -707,9 +707,9 @@ class _StudentHomeState extends State<StudentHome> {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 380),
               child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Choose a picture', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: _navy)),
+                Text('Choose a picture', style: GoogleFonts.ibmPlexMono(fontSize: 18, fontWeight: FontWeight.w700, color: _navy)),
                 const SizedBox(height: 3),
-                Text('Pick a default or upload your own', style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
+                Text('Pick a default or upload your own', style: GoogleFonts.ibmPlexMono(fontSize: 13, color: _grey)),
                 const SizedBox(height: 18),
                 ValueListenableBuilder<String>(
                   valueListenable: avatarNotifier,
@@ -745,7 +745,7 @@ class _StudentHomeState extends State<StudentHome> {
                           child: Column(mainAxisSize: MainAxisSize.min, children: [
                             Icon(CupertinoIcons.cloud_upload_fill, size: 22, color: _orange),
                             const SizedBox(height: 2),
-                            Text('Upload', style: GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w700, color: _orange)),
+                            Text('Upload', style: GoogleFonts.ibmPlexMono(fontSize: 9, fontWeight: FontWeight.w700, color: _orange)),
                           ]),
                         ),
                       ),
@@ -759,7 +759,7 @@ class _StudentHomeState extends State<StudentHome> {
                     onTap: () => Navigator.of(ctx).pop(),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      child: Text('Close', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _orange)),
+                      child: Text('Close', style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w700, color: _orange)),
                     ),
                   ),
                 ),
@@ -846,7 +846,7 @@ class _StudentHomeState extends State<StudentHome> {
           ),
           child: Row(children: [
             if (isSub) Padding(padding: const EdgeInsets.only(right: 6), child: Icon(Icons.subdirectory_arrow_right, size: 15, color: _orange)),
-            Expanded(child: Text(title, style: GoogleFonts.poppins(fontSize: isSub ? 13.5 : 15, fontWeight: FontWeight.w700, color: _orange))),
+            Expanded(child: Text(title, style: GoogleFonts.ibmPlexMono(fontSize: isSub ? 13.5 : 15, fontWeight: FontWeight.w700, color: _orange))),
           ]),
         ),
         Padding(
@@ -865,7 +865,7 @@ class _StudentHomeState extends State<StudentHome> {
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(CupertinoIcons.chat_bubble_2_fill, size: 15, color: _orange),
                     const SizedBox(width: 6),
-                    Text('Comments & Doubts', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _orange)),
+                    Text('Comments & Doubts', style: GoogleFonts.ibmPlexMono(fontSize: 13, fontWeight: FontWeight.w600, color: _orange)),
                   ]),
                 ),
               ),
@@ -933,13 +933,13 @@ class _StudentHomeState extends State<StudentHome> {
                 decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.zero, border: Border.all(color: _cardBorder)),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
-                    Text(m['author']?.toString() ?? 'Someone', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
+                    Text(m['author']?.toString() ?? 'Someone', style: GoogleFonts.ibmPlexMono(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
                     const SizedBox(width: 6),
-                    if (staff) Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: _orange.withOpacity(0.14), borderRadius: BorderRadius.zero), child: Text('Mentor', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w700, color: _orange))),
-                    if (isDoubt) Container(margin: const EdgeInsets.only(left: 6), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: const Color(0xFF2D7DF6).withOpacity(0.14), borderRadius: BorderRadius.zero), child: Text('Doubt', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w700, color: const Color(0xFF2D7DF6)))),
+                    if (staff) Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: _orange.withOpacity(0.14), borderRadius: BorderRadius.zero), child: Text('Mentor', style: GoogleFonts.ibmPlexMono(fontSize: 10, fontWeight: FontWeight.w700, color: _orange))),
+                    if (isDoubt) Container(margin: const EdgeInsets.only(left: 6), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: const Color(0xFF2D7DF6).withOpacity(0.14), borderRadius: BorderRadius.zero), child: Text('Doubt', style: GoogleFonts.ibmPlexMono(fontSize: 10, fontWeight: FontWeight.w700, color: const Color(0xFF2D7DF6)))),
                   ]),
                   const SizedBox(height: 4),
-                  Text(m['body']?.toString() ?? '', style: GoogleFonts.poppins(fontSize: 14, color: _navy, height: 1.4)),
+                  Text(m['body']?.toString() ?? '', style: GoogleFonts.ibmPlexMono(fontSize: 14, color: _navy, height: 1.4)),
                 ]),
               );
             }).toList());
@@ -952,11 +952,11 @@ class _StudentHomeState extends State<StudentHome> {
             _Pressable(onTap: () => setS(() => doubt = !doubt), child: Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(doubt ? CupertinoIcons.checkmark_square_fill : CupertinoIcons.square, size: 18, color: doubt ? _orange : _grey),
               const SizedBox(width: 6),
-              Text('Mark as doubt', style: GoogleFonts.poppins(fontSize: 13, color: _navy)),
+              Text('Mark as doubt', style: GoogleFonts.ibmPlexMono(fontSize: 13, color: _navy)),
             ])),
             const Spacer(),
             _Pressable(onTap: post, child: Container(padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10), decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero),
-                child: Text('Post', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)))),
+                child: Text('Post', style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)))),
           ]),
         ]);
       }),
@@ -1005,9 +1005,9 @@ class _StudentHomeState extends State<StudentHome> {
                   ),
                 ),
                 const SizedBox(height: 18),
-                Text(title, textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: _navy)),
+                Text(title, textAlign: TextAlign.center, style: GoogleFonts.ibmPlexMono(fontSize: 18, fontWeight: FontWeight.w700, color: _navy)),
                 const SizedBox(height: 6),
-                Text(sub, textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, color: _grey, height: 1.4)),
+                Text(sub, textAlign: TextAlign.center, style: GoogleFonts.ibmPlexMono(fontSize: 13, color: _grey, height: 1.4)),
               ]),
               ),
             ),
@@ -1035,7 +1035,7 @@ class _StudentHomeState extends State<StudentHome> {
         child: Row(children: [
           Icon(icon, size: 20, color: _orange),
           const SizedBox(width: 12),
-          Expanded(child: Text(l['title']?.toString() ?? 'Lesson', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _navy))),
+          Expanded(child: Text(l['title']?.toString() ?? 'Lesson', style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w600, color: _navy))),
           if (type == 'file') ...[
             Icon(l['downloadable'] == true ? CupertinoIcons.cloud_download_fill : CupertinoIcons.eye_fill, size: 15, color: _grey),
             const SizedBox(width: 8),
@@ -1179,7 +1179,7 @@ class _StudentHomeState extends State<StudentHome> {
                 padding: const EdgeInsets.only(bottom: 18),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('${e.key + 1}. ${q['prompt'] ?? ''}',
-                      style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: _navy)),
+                      style: GoogleFonts.ibmPlexMono(fontSize: 15, fontWeight: FontWeight.w600, color: _navy)),
                   const SizedBox(height: 8),
                   if (opts.isNotEmpty)
                     ...opts.map((o) => _Pressable(
@@ -1196,7 +1196,7 @@ class _StudentHomeState extends State<StudentHome> {
                               Icon(answers[qid] == o ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle,
                                   size: 18, color: answers[qid] == o ? _orange : _grey),
                               const SizedBox(width: 10),
-                              Expanded(child: Text(o, style: GoogleFonts.poppins(fontSize: 14, color: _navy))),
+                              Expanded(child: Text(o, style: GoogleFonts.ibmPlexMono(fontSize: 14, color: _navy))),
                             ]),
                           ),
                         ))
@@ -1241,7 +1241,7 @@ class _StudentHomeState extends State<StudentHome> {
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero),
-                child: Text('Submit', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
+                child: Text('Submit', style: GoogleFonts.ibmPlexMono(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
               ),
             ),
           ]);
@@ -1287,9 +1287,9 @@ class _StudentHomeState extends State<StudentHome> {
                     const SizedBox(width: 14),
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('Hi, $_firstName 👋', style: GoogleFonts.poppins(fontSize: 19, fontWeight: FontWeight.w700, color: _navy)),
+                        Text('Hi, $_firstName 👋', style: GoogleFonts.ibmPlexMono(fontSize: 19, fontWeight: FontWeight.w700, color: _navy)),
                         const SizedBox(height: 2),
-                        Text("Here's your learning snapshot", style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
+                        Text("Here's your learning snapshot", style: GoogleFonts.ibmPlexMono(fontSize: 13, color: _grey)),
                       ]),
                     ),
                   ]),
@@ -1323,15 +1323,15 @@ class _StudentHomeState extends State<StudentHome> {
                               child: CircularProgressIndicator(value: v, strokeWidth: 7, backgroundColor: _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0EBE8), valueColor: const AlwaysStoppedAnimation(_orange)),
                             ),
                           ),
-                          Text('${(overall * 100).round()}%', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800, color: _orange)),
+                          Text('${(overall * 100).round()}%', style: GoogleFonts.ibmPlexMono(fontSize: 15, fontWeight: FontWeight.w800, color: _orange)),
                         ]),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('Overall progress', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
+                          Text('Overall progress', style: GoogleFonts.ibmPlexMono(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
                           const SizedBox(height: 3),
-                          Text(doneL > 0 ? '$doneL of $totalL lessons complete — keep going!' : 'Start a lesson to build your streak', style: GoogleFonts.poppins(fontSize: 12.5, color: _grey, height: 1.4)),
+                          Text(doneL > 0 ? '$doneL of $totalL lessons complete — keep going!' : 'Start a lesson to build your streak', style: GoogleFonts.ibmPlexMono(fontSize: 12.5, color: _grey, height: 1.4)),
                         ]),
                       ),
                     ]),
@@ -1449,12 +1449,12 @@ class _StudentHomeState extends State<StudentHome> {
                 ),
               ),
               const SizedBox(height: 14),
-              Text(_name, style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w800, color: _navy)),
+              Text(_name, style: GoogleFonts.ibmPlexMono(fontSize: 20, fontWeight: FontWeight.w800, color: _navy)),
               const SizedBox(height: 3),
-              Text(_roleLabel, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w600, color: _orange)),
+              Text(_roleLabel, style: GoogleFonts.ibmPlexMono(fontSize: 13.5, fontWeight: FontWeight.w600, color: _orange)),
               if ((widget.auth.user?.email ?? '').isNotEmpty) ...[
                 const SizedBox(height: 2),
-                Text(widget.auth.user!.email, style: GoogleFonts.poppins(fontSize: 12.5, color: _grey)),
+                Text(widget.auth.user!.email, style: GoogleFonts.ibmPlexMono(fontSize: 12.5, color: _grey)),
               ],
               const SizedBox(height: 16),
               // Streak + notifications, consolidated into the profile panel.
@@ -1465,7 +1465,7 @@ class _StudentHomeState extends State<StudentHome> {
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     const Icon(CupertinoIcons.flame_fill, color: Colors.white, size: 15),
                     const SizedBox(width: 5),
-                    Text('$_streak day streak', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.white)),
+                    Text('$_streak day streak', style: GoogleFonts.ibmPlexMono(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.white)),
                   ]),
                 ),
               ]),
@@ -1480,7 +1480,7 @@ class _StudentHomeState extends State<StudentHome> {
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       const Icon(CupertinoIcons.gear_alt_fill, size: 16, color: Colors.white),
                       const SizedBox(width: 8),
-                      Text('Settings', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
+                      Text('Settings', style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
                     ]),
                   ),
                 ),
@@ -1493,7 +1493,7 @@ class _StudentHomeState extends State<StudentHome> {
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       Icon(CupertinoIcons.camera_fill, size: 16, color: _orange),
                       const SizedBox(width: 8),
-                      Text('Photo', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _orange)),
+                      Text('Photo', style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w700, color: _orange)),
                     ]),
                   ),
                 ),
@@ -1553,7 +1553,7 @@ class _StudentHomeState extends State<StudentHome> {
               children.add(Padding(
                 padding: const EdgeInsets.only(top: 16, bottom: 4),
                 child: Text(k == null ? 'Unscheduled' : 'Day $k',
-                    style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _orange)),
+                    style: GoogleFonts.ibmPlexMono(fontSize: 13, fontWeight: FontWeight.w700, color: _orange)),
               ));
               for (final m in groups[k]!) {
                 final isQuiz = m['type'] == 'quiz';
@@ -1643,10 +1643,10 @@ class _StudentHomeState extends State<StudentHome> {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_orange.withOpacity(0.14), _orange.withOpacity(0.05)]), borderRadius: BorderRadius.zero),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Current Plan', style: GoogleFonts.poppins(fontSize: 13, color: _grey)),
+              Text('Current Plan', style: GoogleFonts.ibmPlexMono(fontSize: 13, color: _grey)),
               const SizedBox(height: 4),
-              Text('ONROL Pro', style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w700, color: _orange)),
-              Text('Renews July 10, 2026', style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFFAAAAAA))),
+              Text('ONROL Pro', style: GoogleFonts.ibmPlexMono(fontSize: 20, fontWeight: FontWeight.w700, color: _orange)),
+              Text('Renews July 10, 2026', style: GoogleFonts.ibmPlexMono(fontSize: 12, color: const Color(0xFFAAAAAA))),
             ]),
           ),
           const SizedBox(height: 14),
@@ -1680,7 +1680,7 @@ class _StudentHomeState extends State<StudentHome> {
         return (CupertinoIcons.search, 'Search', 'Find courses & lessons', [
           _field('SEARCH', ''),
           const SizedBox(height: 8),
-          Text('Popular searches', style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFFAAAAAA), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+          Text('Popular searches', style: GoogleFonts.ibmPlexMono(fontSize: 12, color: const Color(0xFFAAAAAA), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
           const SizedBox(height: 6),
           _row(CupertinoIcons.device_laptop, 'JavaScript Basics', 'Course · 4.8 rating', 'Open'),
           _row(CupertinoIcons.paintbrush_fill, 'Figma Crash Course', 'Course · 4.9 rating', 'Open'),
@@ -1732,10 +1732,10 @@ class _StudentHomeState extends State<StudentHome> {
                 ),
               ),
               const SizedBox(height: 20),
-              Text('Heading off, $_firstName?', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: _navy)),
+              Text('Heading off, $_firstName?', textAlign: TextAlign.center, style: GoogleFonts.ibmPlexMono(fontSize: 18, fontWeight: FontWeight.w700, color: _navy)),
               const SizedBox(height: 6),
               Text('Your progress is saved — jump back in anytime.',
-                  textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13.5, color: _grey, height: 1.5)),
+                  textAlign: TextAlign.center, style: GoogleFonts.ibmPlexMono(fontSize: 13.5, color: _grey, height: 1.5)),
               const SizedBox(height: 26),
               Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
                 // Compact "Stay" pill — subtle tinted.
@@ -1748,7 +1748,7 @@ class _StudentHomeState extends State<StudentHome> {
                       borderRadius: BorderRadius.zero,
                       border: Border.all(color: _orange.withOpacity(0.28)),
                     ),
-                    child: Text('Stay', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _orange)),
+                    child: Text('Stay', style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w700, color: _orange)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1764,7 +1764,7 @@ class _StudentHomeState extends State<StudentHome> {
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       const Icon(CupertinoIcons.square_arrow_right, size: 16, color: Colors.white),
                       const SizedBox(width: 7),
-                      Text('Log Out', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
+                      Text('Log Out', style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
                     ]),
                   ),
                 ),
@@ -1823,12 +1823,12 @@ class _PanelRowState extends State<_PanelRow> {
           Container(width: 44, height: 44, alignment: Alignment.center, decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.zero), child: Icon(widget.icon, size: 20, color: _orange)),
           const SizedBox(width: 14),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(widget.name, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
-            Text(widget.meta, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+            Text(widget.name, style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
+            Text(widget.meta, style: GoogleFonts.ibmPlexMono(fontSize: 12, color: _grey)),
           ])),
           const SizedBox(width: 8),
           Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: widget.badgeBg ?? _peach, borderRadius: BorderRadius.zero),
-              child: Text(widget.badge, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: widget.badgeFg ?? _orange))),
+              child: Text(widget.badge, style: GoogleFonts.ibmPlexMono(fontSize: 11, fontWeight: FontWeight.w600, color: widget.badgeFg ?? _orange))),
         ]),
       ),
     );
@@ -1897,13 +1897,13 @@ class _CertCardState extends State<_CertCard> {
               const SizedBox(width: 14),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(course, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
+                  Text(course, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
                   const SizedBox(height: 3),
-                  Text('Issued $issued', style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+                  Text('Issued $issued', style: GoogleFonts.ibmPlexMono(fontSize: 12, color: _grey)),
                   if (serial.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
-                      child: Text('ID $serial', style: GoogleFonts.poppins(fontSize: 11, color: _grey, fontWeight: FontWeight.w500)),
+                      child: Text('ID $serial', style: GoogleFonts.ibmPlexMono(fontSize: 11, color: _grey, fontWeight: FontWeight.w500)),
                     ),
                 ]),
               ),
@@ -1933,7 +1933,7 @@ class _CertCardState extends State<_CertCard> {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(icon, size: 16, color: filled ? Colors.white : _orange),
             const SizedBox(width: 7),
-            Text(label, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w600, color: filled ? Colors.white : _orange)),
+            Text(label, style: GoogleFonts.ibmPlexMono(fontSize: 13.5, fontWeight: FontWeight.w600, color: filled ? Colors.white : _orange)),
           ]),
         ),
       );
@@ -1989,7 +1989,7 @@ class _ExploreListState extends State<_ExploreList> {
         }
         final cat = snap.hasData ? snap.data! : const [];
         if (cat.isEmpty) {
-          return Padding(padding: const EdgeInsets.symmetric(vertical: 22), child: Text('No courses available right now.', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, color: _grey)));
+          return Padding(padding: const EdgeInsets.symmetric(vertical: 22), child: Text('No courses available right now.', textAlign: TextAlign.center, style: GoogleFonts.ibmPlexMono(fontSize: 13, color: _grey)));
         }
         // Group batch-wise (by category — the catalog's grouping field).
         final groups = <String, List>{};
@@ -2001,7 +2001,7 @@ class _ExploreListState extends State<_ExploreList> {
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: groups.entries.expand<Widget>((e) => [
           Padding(
             padding: const EdgeInsets.only(top: 10, bottom: 4),
-            child: Text(e.key, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
+            child: Text(e.key, style: GoogleFonts.ibmPlexMono(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
           ),
           ...e.value.map((c) => _courseRow(c as Map<String, dynamic>, idx++)),
         ]).toList());
@@ -2184,7 +2184,7 @@ class _StudyHubState extends State<_StudyHub> {
             child: Text(
               _courses.isEmpty ? 'Enrol in a course to see study material' : 'No study material for $_courseName yet',
               textAlign: TextAlign.center,
-              style: GoogleFonts.poppins(fontSize: 12.5, color: _grey),
+              style: GoogleFonts.ibmPlexMono(fontSize: 12.5, color: _grey),
             ),
           ),
       ]);
@@ -2206,7 +2206,7 @@ class _StudyHubState extends State<_StudyHub> {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(CupertinoIcons.cube_box_fill, size: 13, color: sel ? Colors.white : _orange),
           const SizedBox(width: 6),
-          Text(label, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: sel ? Colors.white : _navy)),
+          Text(label, style: GoogleFonts.ibmPlexMono(fontSize: 12.5, fontWeight: FontWeight.w700, color: sel ? Colors.white : _navy)),
         ]),
       ),
     );
@@ -2227,8 +2227,8 @@ class _StudyHubState extends State<_StudyHub> {
         const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(r.title, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: _navy)),
-            Text(_courseName, style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: _orange)),
+            Text(r.title, style: GoogleFonts.ibmPlexMono(fontSize: 16, fontWeight: FontWeight.w800, color: _navy)),
+            Text(_courseName, style: GoogleFonts.ibmPlexMono(fontSize: 11.5, fontWeight: FontWeight.w600, color: _orange)),
           ]),
         ),
         Container(
@@ -2294,10 +2294,10 @@ class _StudyHubState extends State<_StudyHub> {
           ),
           const SizedBox(height: 14),
           Text(_courses.isEmpty ? 'Enrol in a course to see study material' : 'No $what for $_courseName yet',
-              textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
+              textAlign: TextAlign.center, style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
           const SizedBox(height: 4),
           Text(_courses.isEmpty ? '' : 'Your instructor adds these per course.',
-              textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+              textAlign: TextAlign.center, style: GoogleFonts.ibmPlexMono(fontSize: 12, color: _grey)),
         ]),
       );
 
@@ -2311,7 +2311,7 @@ class _StudyHubState extends State<_StudyHub> {
             Row(children: [
               Icon(CupertinoIcons.bolt_fill, size: 14, color: _orange),
               const SizedBox(width: 7),
-              Text(heading, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w800, color: _navy)),
+              Text(heading, style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w800, color: _navy)),
             ]),
             const SizedBox(height: 10),
             Wrap(spacing: 8, runSpacing: 8, children: [
@@ -2319,7 +2319,7 @@ class _StudyHubState extends State<_StudyHub> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
                   decoration: BoxDecoration(gradient: LinearGradient(colors: [_orange.withOpacity(0.14), _orange.withOpacity(0.05)]), borderRadius: BorderRadius.zero, border: Border.all(color: _orange.withOpacity(0.18))),
-                  child: Text(it, style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: _navy)),
+                  child: Text(it, style: GoogleFonts.ibmPlexMono(fontSize: 12, fontWeight: FontWeight.w600, color: _navy)),
                 ),
             ]),
           ]),
@@ -2333,7 +2333,7 @@ class _StudyHubState extends State<_StudyHub> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
               decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero, ),
-              child: Text(center, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
+              child: Text(center, style: GoogleFonts.ibmPlexMono(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
             ),
           ),
         ),
@@ -2349,7 +2349,7 @@ class _StudyHubState extends State<_StudyHub> {
                 Row(children: [
                   Container(width: 8, height: 8, decoration: BoxDecoration(gradient: _orangeGrad, shape: BoxShape.circle)),
                   const SizedBox(width: 8),
-                  Text(branches[i].$1, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: _navy)),
+                  Text(branches[i].$1, style: GoogleFonts.ibmPlexMono(fontSize: 13.5, fontWeight: FontWeight.w700, color: _navy)),
                 ]),
                 const SizedBox(height: 9),
                 Padding(
@@ -2359,7 +2359,7 @@ class _StudyHubState extends State<_StudyHub> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(color: _orange.withOpacity(0.08), borderRadius: BorderRadius.zero),
-                        child: Text(leaf, style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: _orange)),
+                        child: Text(leaf, style: GoogleFonts.ibmPlexMono(fontSize: 11.5, fontWeight: FontWeight.w600, color: _orange)),
                       ),
                   ]),
                 ),
@@ -2375,7 +2375,7 @@ class _StudyHubState extends State<_StudyHub> {
           padding: const EdgeInsets.all(15),
           decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.zero, border: Border.all(color: _cardBorder)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(name, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w800, color: _orange)),
+            Text(name, style: GoogleFonts.ibmPlexMono(fontSize: 13.5, fontWeight: FontWeight.w800, color: _orange)),
             const SizedBox(height: 8),
             Container(
               width: double.infinity,
@@ -2384,7 +2384,7 @@ class _StudyHubState extends State<_StudyHub> {
               child: Text(formula, style: GoogleFonts.robotoMono(fontSize: 15, fontWeight: FontWeight.w600, color: _navy)),
             ),
             const SizedBox(height: 7),
-            Text(note, style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
+            Text(note, style: GoogleFonts.ibmPlexMono(fontSize: 11.5, color: _grey)),
           ]),
         ),
       );
@@ -2468,16 +2468,16 @@ class _StudyCardState extends State<_StudyCard> {
                     const SizedBox(width: 15),
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(it.title, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: _navy)),
+                        Text(it.title, style: GoogleFonts.ibmPlexMono(fontSize: 16, fontWeight: FontWeight.w800, color: _navy)),
                         const SizedBox(height: 3),
-                        Text(it.sub, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12.5, color: _grey, height: 1.25)),
+                        Text(it.sub, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 12.5, color: _grey, height: 1.25)),
                         if (count != null) ...[
                           const SizedBox(height: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                             decoration: BoxDecoration(color: c1.withOpacity(0.16), borderRadius: BorderRadius.zero),
                             child: Text(count == 0 ? 'Tap to add' : '$count ${it.unit}',
-                                style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w800, color: c1)),
+                                style: GoogleFonts.ibmPlexMono(fontSize: 10.5, fontWeight: FontWeight.w800, color: c1)),
                           ),
                         ],
                       ]),
@@ -2530,7 +2530,7 @@ class _StudyExpandableState extends State<_StudyExpandable> {
               child: Row(children: [
                 Icon(CupertinoIcons.doc_text_fill, size: 16, color: _orange),
                 const SizedBox(width: 10),
-                Expanded(child: Text(widget.title, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy))),
+                Expanded(child: Text(widget.title, style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w700, color: _navy))),
                 AnimatedRotation(turns: _open ? 0.5 : 0, duration: const Duration(milliseconds: 200), child: Icon(CupertinoIcons.chevron_down, size: 16, color: _grey)),
               ]),
             ),
@@ -2548,7 +2548,7 @@ class _StudyExpandableState extends State<_StudyExpandable> {
                           padding: const EdgeInsets.only(bottom: 7),
                           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Padding(padding: const EdgeInsets.only(top: 6, right: 9), child: Container(width: 5, height: 5, decoration: BoxDecoration(gradient: _orangeGrad, shape: BoxShape.circle))),
-                            Expanded(child: Text(p, style: GoogleFonts.poppins(fontSize: 12.5, color: _navy, height: 1.4))),
+                            Expanded(child: Text(p, style: GoogleFonts.ibmPlexMono(fontSize: 12.5, color: _navy, height: 1.4))),
                           ]),
                         ),
                     ]),
@@ -2650,7 +2650,7 @@ class _FocusTimerState extends State<_FocusTimer> {
                   borderRadius: BorderRadius.zero,
                   border: Border.all(color: _mode == i ? Colors.transparent : _cardBorder),
                 ),
-                child: Text(_labels[i], style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _mode == i ? Colors.white : _navy)),
+                child: Text(_labels[i], style: GoogleFonts.ibmPlexMono(fontSize: 12, fontWeight: FontWeight.w700, color: _mode == i ? Colors.white : _navy)),
               ),
             ),
           ),
@@ -2673,8 +2673,8 @@ class _FocusTimerState extends State<_FocusTimer> {
               ),
             ),
             Column(mainAxisSize: MainAxisSize.min, children: [
-              Text(_fmt, style: GoogleFonts.poppins(fontSize: 46, fontWeight: FontWeight.w800, color: _navy)),
-              Text(_labels[_mode], style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: _orange)),
+              Text(_fmt, style: GoogleFonts.ibmPlexMono(fontSize: 46, fontWeight: FontWeight.w800, color: _navy)),
+              Text(_labels[_mode], style: GoogleFonts.ibmPlexMono(fontSize: 12.5, fontWeight: FontWeight.w600, color: _orange)),
             ]),
           ]),
         ),
@@ -2688,7 +2688,7 @@ class _FocusTimerState extends State<_FocusTimer> {
               height: 50,
               alignment: Alignment.center,
               decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero, ),
-              child: Text(_running ? 'Pause' : (_remaining == 0 ? 'Restart' : 'Start'), style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
+              child: Text(_running ? 'Pause' : (_remaining == 0 ? 'Restart' : 'Start'), style: GoogleFonts.ibmPlexMono(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
             ),
           ),
         ),
@@ -2705,7 +2705,7 @@ class _FocusTimerState extends State<_FocusTimer> {
         ),
       ]),
       const SizedBox(height: 18),
-      Center(child: Text('$_completed focus session${_completed == 1 ? '' : 's'} done this visit', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: _grey))),
+      Center(child: Text('$_completed focus session${_completed == 1 ? '' : 's'} done this visit', style: GoogleFonts.ibmPlexMono(fontSize: 12.5, fontWeight: FontWeight.w600, color: _grey))),
     ]);
   }
 }
@@ -2768,19 +2768,19 @@ class _FlashcardsState extends State<_Flashcards> with SingleTickerProviderState
   @override
   Widget build(BuildContext context) {
     if (widget.cards.isEmpty) {
-      return Padding(padding: const EdgeInsets.symmetric(vertical: 22), child: Text('No flashcards yet.', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, color: _grey)));
+      return Padding(padding: const EdgeInsets.symmetric(vertical: 22), child: Text('No flashcards yet.', textAlign: TextAlign.center, style: GoogleFonts.ibmPlexMono(fontSize: 13, color: _grey)));
     }
     final card = widget.cards[_order[_pos]];
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Row(children: [
-        Text('Card ${_pos + 1} of ${_order.length}', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: _grey)),
+        Text('Card ${_pos + 1} of ${_order.length}', style: GoogleFonts.ibmPlexMono(fontSize: 12.5, fontWeight: FontWeight.w600, color: _grey)),
         const Spacer(),
         _Pressable(
           onTap: _shuffle,
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(CupertinoIcons.shuffle, size: 14, color: _orange),
             const SizedBox(width: 5),
-            Text('Shuffle', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
+            Text('Shuffle', style: GoogleFonts.ibmPlexMono(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
           ]),
         ),
       ]),
@@ -2809,7 +2809,7 @@ class _FlashcardsState extends State<_Flashcards> with SingleTickerProviderState
         ),
       ),
       const SizedBox(height: 8),
-      Center(child: Text('Tap the card to flip', style: GoogleFonts.poppins(fontSize: 11.5, color: _grey))),
+      Center(child: Text('Tap the card to flip', style: GoogleFonts.ibmPlexMono(fontSize: 11.5, color: _grey))),
       const SizedBox(height: 12),
       Row(children: [
         Expanded(child: _navBtn('Previous', CupertinoIcons.chevron_back, () => _go(-1), filled: false)),
@@ -2834,10 +2834,10 @@ class _FlashcardsState extends State<_Flashcards> with SingleTickerProviderState
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
             decoration: BoxDecoration(color: isBack ? Colors.white.withOpacity(0.22) : _orange.withOpacity(0.12), borderRadius: BorderRadius.zero),
-            child: Text(isBack ? 'ANSWER' : 'QUESTION', style: GoogleFonts.poppins(fontSize: 9.5, fontWeight: FontWeight.w800, color: isBack ? Colors.white : _orange, letterSpacing: 0.6)),
+            child: Text(isBack ? 'ANSWER' : 'QUESTION', style: GoogleFonts.ibmPlexMono(fontSize: 9.5, fontWeight: FontWeight.w800, color: isBack ? Colors.white : _orange, letterSpacing: 0.6)),
           ),
           const SizedBox(height: 14),
-          Text(text, textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: isBack ? Colors.white : _navy, height: 1.35)),
+          Text(text, textAlign: TextAlign.center, style: GoogleFonts.ibmPlexMono(fontSize: 16, fontWeight: FontWeight.w700, color: isBack ? Colors.white : _navy, height: 1.35)),
         ]),
       );
 
@@ -2854,7 +2854,7 @@ class _FlashcardsState extends State<_Flashcards> with SingleTickerProviderState
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             if (!filled) Icon(icon, size: 15, color: _orange),
             if (!filled) const SizedBox(width: 6),
-            Text(label, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: filled ? Colors.white : _orange)),
+            Text(label, style: GoogleFonts.ibmPlexMono(fontSize: 13, fontWeight: FontWeight.w700, color: filled ? Colors.white : _orange)),
             if (filled) const SizedBox(width: 6),
             if (filled) Icon(icon, size: 15, color: Colors.white),
           ]),
@@ -2904,7 +2904,7 @@ class _LiveAgenda extends StatelessWidget {
           child: Row(children: [
             Icon(CupertinoIcons.calendar, size: 14, color: _orange),
             const SizedBox(width: 7),
-            Text(k, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w800, color: _navy)),
+            Text(k, style: GoogleFonts.ibmPlexMono(fontSize: 13.5, fontWeight: FontWeight.w800, color: _navy)),
           ]),
         ),
         for (final s in groups[k]!) _LiveCard(index: idx++, data: s, onJoin: onJoin),
@@ -2978,24 +2978,24 @@ class _LiveCardState extends State<_LiveCard> {
                     ? Column(mainAxisSize: MainAxisSize.min, children: [
                         const _LiveDot(),
                         const SizedBox(height: 4),
-                        Text('LIVE', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
+                        Text('LIVE', style: GoogleFonts.ibmPlexMono(fontSize: 10, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
                       ])
                     : Icon(ended ? CupertinoIcons.checkmark_circle : CupertinoIcons.videocam_fill, size: 24, color: ended ? _grey : _orange),
               ),
               Container(width: 1, height: 42, color: _line, margin: const EdgeInsets.symmetric(horizontal: 12)),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy, height: 1.2)),
+                  Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w700, color: _navy, height: 1.2)),
                   const SizedBox(height: 3),
-                  Text([if (course.isNotEmpty) course, timeLabel].join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
+                  Text([if (course.isNotEmpty) course, timeLabel].join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 11.5, color: _grey)),
                 ]),
               ),
               const SizedBox(width: 10),
               // Join button (opens the Zoho link).
               if (ended)
-                Text('Ended', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: _grey))
+                Text('Ended', style: GoogleFonts.ibmPlexMono(fontSize: 12, fontWeight: FontWeight.w600, color: _grey))
               else if (!hasLink)
-                Text('Link soon', style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: _grey))
+                Text('Link soon', style: GoogleFonts.ibmPlexMono(fontSize: 11.5, fontWeight: FontWeight.w600, color: _grey))
               else
                 _Pressable(
                   onTap: () => widget.onJoin(d),
@@ -3005,7 +3005,7 @@ class _LiveCardState extends State<_LiveCard> {
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       const Icon(CupertinoIcons.videocam_fill, size: 14, color: Colors.white),
                       const SizedBox(width: 6),
-                      Text(live ? 'Join now' : 'Join', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.white)),
+                      Text(live ? 'Join now' : 'Join', style: GoogleFonts.ibmPlexMono(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.white)),
                     ]),
                   ),
                 ),
@@ -3088,11 +3088,11 @@ class _ForumViewState extends State<_ForumView> {
       builder: (ctx) => AlertDialog(
         backgroundColor: _surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        title: Text('Delete discussion?', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: _navy, fontSize: 16)),
-        content: Text('This removes it (and its replies) for everyone. This cannot be undone.', style: GoogleFonts.poppins(fontSize: 13, color: _grey, height: 1.35)),
+        title: Text('Delete discussion?', style: GoogleFonts.ibmPlexMono(fontWeight: FontWeight.w700, color: _navy, fontSize: 16)),
+        content: Text('This removes it (and its replies) for everyone. This cannot be undone.', style: GoogleFonts.ibmPlexMono(fontSize: 13, color: _grey, height: 1.35)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: GoogleFonts.poppins(color: _grey, fontWeight: FontWeight.w600))),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Delete', style: GoogleFonts.poppins(color: _danger, fontWeight: FontWeight.w800))),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: GoogleFonts.ibmPlexMono(color: _grey, fontWeight: FontWeight.w600))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Delete', style: GoogleFonts.ibmPlexMono(color: _danger, fontWeight: FontWeight.w800))),
         ],
       ),
     );
@@ -3188,9 +3188,9 @@ class _ForumViewState extends State<_ForumView> {
                       child: Column(children: [
                         Icon(CupertinoIcons.bubble_left_bubble_right, size: 30, color: _grey),
                         const SizedBox(height: 8),
-                        Text(_filter == 'general' ? 'No general discussions yet' : 'No discussions here yet', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
+                        Text(_filter == 'general' ? 'No general discussions yet' : 'No discussions here yet', style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
                         const SizedBox(height: 2),
-                        Text('Be the first to start one!', style: GoogleFonts.poppins(fontSize: 12.5, color: _grey)),
+                        Text('Be the first to start one!', style: GoogleFonts.ibmPlexMono(fontSize: 12.5, color: _grey)),
                       ]),
                     )
                   : Column(key: ValueKey('list-$_filter'), children: [for (var i = 0; i < list.length; i++) _threadCard(list[i], i)]),
@@ -3237,7 +3237,7 @@ class _ForumViewState extends State<_ForumView> {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, size: 13, color: sel ? Colors.white : _orange),
           const SizedBox(width: 6),
-          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: sel ? Colors.white : _navy)),
+          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 12.5, fontWeight: FontWeight.w700, color: sel ? Colors.white : _navy)),
         ]),
       ),
     );
@@ -3254,7 +3254,7 @@ class _ForumViewState extends State<_ForumView> {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             const Icon(CupertinoIcons.plus_bubble_fill, color: Colors.white, size: 16),
             const SizedBox(width: 8),
-            Text('Start a discussion', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+            Text('Start a discussion', style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
           ]),
         ),
       );
@@ -3266,7 +3266,7 @@ class _ForumViewState extends State<_ForumView> {
           Row(children: [
             Icon(CupertinoIcons.plus_bubble_fill, size: 16, color: _orange),
             const SizedBox(width: 8),
-            Text('New discussion', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w800, color: _navy)),
+            Text('New discussion', style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w800, color: _navy)),
             const Spacer(),
             _Pressable(onTap: () => setState(() => _composing = false), child: Icon(CupertinoIcons.xmark_circle_fill, size: 20, color: _grey)),
           ]),
@@ -3274,7 +3274,7 @@ class _ForumViewState extends State<_ForumView> {
           if (!_coursesLoaded)
             const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Center(child: CupertinoActivityIndicator()))
           else ...[
-            Text('Post to', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700, color: _grey, letterSpacing: 0.3)),
+            Text('Post to', style: GoogleFonts.ibmPlexMono(fontSize: 11, fontWeight: FontWeight.w700, color: _grey, letterSpacing: 0.3)),
             const SizedBox(height: 6),
             SizedBox(
               height: 34,
@@ -3298,7 +3298,7 @@ class _ForumViewState extends State<_ForumView> {
                 decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero, ),
                 child: _busy
                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
-                    : Text('Post discussion', style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
+                    : Text('Post discussion', style: GoogleFonts.ibmPlexMono(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
               ),
             ),
           ],
@@ -3317,7 +3317,7 @@ class _ForumViewState extends State<_ForumView> {
             borderRadius: BorderRadius.zero,
             border: Border.all(color: sel ? Colors.transparent : _cardBorder),
           ),
-          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: sel ? Colors.white : _navy)),
+          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 12, fontWeight: FontWeight.w700, color: sel ? Colors.white : _navy)),
         ),
       );
 
@@ -3327,8 +3327,8 @@ class _ForumViewState extends State<_ForumView> {
         child: TextField(
           controller: c,
           maxLines: maxLines,
-          style: GoogleFonts.poppins(fontSize: 13.5, color: _navy),
-          decoration: InputDecoration(border: InputBorder.none, isDense: true, contentPadding: const EdgeInsets.symmetric(vertical: 12), hintText: hint, hintStyle: GoogleFonts.poppins(fontSize: 13, color: _grey.withOpacity(0.7))),
+          style: GoogleFonts.ibmPlexMono(fontSize: 13.5, color: _navy),
+          decoration: InputDecoration(border: InputBorder.none, isDense: true, contentPadding: const EdgeInsets.symmetric(vertical: 12), hintText: hint, hintStyle: GoogleFonts.ibmPlexMono(fontSize: 13, color: _grey.withOpacity(0.7))),
         ),
       );
 
@@ -3354,7 +3354,7 @@ class _ForumViewState extends State<_ForumView> {
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Expanded(child: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 14.5, fontWeight: FontWeight.w700, color: _navy, height: 1.25))),
+                Expanded(child: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 14.5, fontWeight: FontWeight.w700, color: _navy, height: 1.25))),
                 if (m['can_delete'] == true)
                   _Pressable(
                     onTap: () => _deleteThread(m['id']?.toString() ?? ''),
@@ -3366,7 +3366,7 @@ class _ForumViewState extends State<_ForumView> {
               ]),
               if (snippet.isNotEmpty) ...[
                 const SizedBox(height: 3),
-                Text(snippet, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12.5, color: _grey, height: 1.3)),
+                Text(snippet, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 12.5, color: _grey, height: 1.3)),
               ],
               const SizedBox(height: 8),
               Row(children: [
@@ -3375,15 +3375,15 @@ class _ForumViewState extends State<_ForumView> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.zero),
-                      child: Text(course, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w700, color: _orange)),
+                      child: Text(course, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 10.5, fontWeight: FontWeight.w700, color: _orange)),
                     ),
                   ),
                 const Spacer(),
                 Icon(CupertinoIcons.chat_bubble_2_fill, size: 13, color: _grey),
                 const SizedBox(width: 4),
-                Text('$replies', style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w700, color: _grey)),
+                Text('$replies', style: GoogleFonts.ibmPlexMono(fontSize: 11.5, fontWeight: FontWeight.w700, color: _grey)),
                 const SizedBox(width: 10),
-                Text(_StudentHomeState._fmtAt(m['last_at']?.toString()), style: GoogleFonts.poppins(fontSize: 10.5, color: _grey)),
+                Text(_StudentHomeState._fmtAt(m['last_at']?.toString()), style: GoogleFonts.ibmPlexMono(fontSize: 10.5, color: _grey)),
               ]),
             ]),
           ),
@@ -3463,11 +3463,11 @@ class _ForumThreadState extends State<_ForumThread> {
       builder: (ctx) => AlertDialog(
         backgroundColor: _surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        title: Text(title, style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: _navy, fontSize: 16)),
-        content: Text(msg, style: GoogleFonts.poppins(fontSize: 13, color: _grey, height: 1.35)),
+        title: Text(title, style: GoogleFonts.ibmPlexMono(fontWeight: FontWeight.w700, color: _navy, fontSize: 16)),
+        content: Text(msg, style: GoogleFonts.ibmPlexMono(fontSize: 13, color: _grey, height: 1.35)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: GoogleFonts.poppins(color: _grey, fontWeight: FontWeight.w600))),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Delete', style: GoogleFonts.poppins(color: _danger, fontWeight: FontWeight.w800))),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: GoogleFonts.ibmPlexMono(color: _grey, fontWeight: FontWeight.w600))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Delete', style: GoogleFonts.ibmPlexMono(color: _danger, fontWeight: FontWeight.w800))),
         ],
       ),
     );
@@ -3522,7 +3522,7 @@ class _ForumThreadState extends State<_ForumThread> {
           ),
         ),
         const SizedBox(width: 12),
-        Expanded(child: Text(widget.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: _navy))),
+        Expanded(child: Text(widget.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 16, fontWeight: FontWeight.w800, color: _navy))),
         // Delete the whole discussion (only the owner / staff see this).
         if (widget.canDeleteThread && widget.onDeleteThread != null)
           _Pressable(
@@ -3558,8 +3558,8 @@ class _ForumThreadState extends State<_ForumThread> {
               controller: _reply,
               minLines: 1,
               maxLines: 4,
-              style: GoogleFonts.poppins(fontSize: 13.5, color: _navy),
-              decoration: InputDecoration(border: InputBorder.none, isDense: true, contentPadding: const EdgeInsets.symmetric(vertical: 12), hintText: 'Write a reply…', hintStyle: GoogleFonts.poppins(fontSize: 13, color: _grey.withOpacity(0.7))),
+              style: GoogleFonts.ibmPlexMono(fontSize: 13.5, color: _navy),
+              decoration: InputDecoration(border: InputBorder.none, isDense: true, contentPadding: const EdgeInsets.symmetric(vertical: 12), hintText: 'Write a reply…', hintStyle: GoogleFonts.ibmPlexMono(fontSize: 13, color: _grey.withOpacity(0.7))),
             ),
           ),
         ),
@@ -3594,13 +3594,13 @@ class _ForumThreadState extends State<_ForumThread> {
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                Flexible(child: Text(author, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: _navy))),
+                Flexible(child: Text(author, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 12.5, fontWeight: FontWeight.w700, color: _navy))),
                 if (staff) ...[
                   const SizedBox(width: 6),
-                  Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero), child: Text('STAFF', style: GoogleFonts.poppins(fontSize: 8, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5))),
+                  Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero), child: Text('STAFF', style: GoogleFonts.ibmPlexMono(fontSize: 8, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5))),
                 ],
                 const Spacer(),
-                Text(_StudentHomeState._fmtAt(p['at']?.toString()), style: GoogleFonts.poppins(fontSize: 10, color: _grey)),
+                Text(_StudentHomeState._fmtAt(p['at']?.toString()), style: GoogleFonts.ibmPlexMono(fontSize: 10, color: _grey)),
                 // Delete this reply (only the author / staff see this).
                 if (p['can_delete'] == true) ...[
                   const SizedBox(width: 8),
@@ -3618,7 +3618,7 @@ class _ForumThreadState extends State<_ForumThread> {
                   borderRadius: const BorderRadius.only(topLeft: Radius.zero, topRight: Radius.zero, bottomLeft: Radius.zero, bottomRight: Radius.zero),
                   border: Border.all(color: _cardBorder),
                 ),
-                child: Text(body, style: GoogleFonts.poppins(fontSize: 13, color: _navy, height: 1.45)),
+                child: Text(body, style: GoogleFonts.ibmPlexMono(fontSize: 13, color: _navy, height: 1.45)),
               ),
             ]),
           ),
@@ -3694,7 +3694,7 @@ class _LeaderboardViewState extends State<_LeaderboardView> {
             return const Padding(padding: EdgeInsets.symmetric(vertical: 34), child: Center(child: CircularProgressIndicator(color: _orange, strokeWidth: 2.5)));
           }
           if (snap.hasError || !snap.hasData) {
-            return Padding(padding: const EdgeInsets.symmetric(vertical: 22), child: Text("Couldn't load — pull again later.", textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, color: _grey)));
+            return Padding(padding: const EdgeInsets.symmetric(vertical: 22), child: Text("Couldn't load — pull again later.", textAlign: TextAlign.center, style: GoogleFonts.ibmPlexMono(fontSize: 13, color: _grey)));
           }
           final rows = snap.data!;
           return AnimatedSwitcher(
@@ -3704,7 +3704,7 @@ class _LeaderboardViewState extends State<_LeaderboardView> {
             transitionBuilder: _smoothSwitch,
             layoutBuilder: _topSwitcherLayout,
             child: rows.isEmpty
-                ? Padding(key: const ValueKey('empty'), padding: const EdgeInsets.symmetric(vertical: 22), child: Text('No ranked learners here yet — finish a lesson to climb the board!', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, color: _grey)))
+                ? Padding(key: const ValueKey('empty'), padding: const EdgeInsets.symmetric(vertical: 22), child: Text('No ranked learners here yet — finish a lesson to climb the board!', textAlign: TextAlign.center, style: GoogleFonts.ibmPlexMono(fontSize: 13, color: _grey)))
                 : Column(
                     key: ValueKey(_courseId ?? 'overall'),
                     children: [for (var i = 0; i < rows.length; i++) _LeaderRow(index: i, data: rows[i] as Map<String, dynamic>)],
@@ -3727,7 +3727,7 @@ class _LeaderboardViewState extends State<_LeaderboardView> {
             borderRadius: BorderRadius.zero,
             border: Border.all(color: selected ? Colors.transparent : _cardBorder),
           ),
-          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? Colors.white : _navy)),
+          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? Colors.white : _navy)),
         ),
       );
 }
@@ -3803,9 +3803,9 @@ class _LeaderRowState extends State<_LeaderRow> {
                         gradient: LinearGradient(colors: medal, begin: Alignment.topLeft, end: Alignment.bottomRight),
                         shape: BoxShape.circle,
                       ),
-                      child: Text('$rank', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white)),
+                      child: Text('$rank', style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white)),
                     )
-                  : Center(child: Text('$rank', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _grey))),
+                  : Center(child: Text('$rank', style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w700, color: _grey))),
             ),
             const SizedBox(width: 10),
             _avatarBox(avatar, 40, initials),
@@ -3813,13 +3813,13 @@ class _LeaderRowState extends State<_LeaderRow> {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
-                  Flexible(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy))),
+                  Flexible(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w700, color: _navy))),
                   if (isMe) ...[
                     const SizedBox(width: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                       decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero),
-                      child: Text('YOU', style: GoogleFonts.poppins(fontSize: 8.5, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5)),
+                      child: Text('YOU', style: GoogleFonts.ibmPlexMono(fontSize: 8.5, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5)),
                     ),
                   ],
                 ]),
@@ -3827,14 +3827,14 @@ class _LeaderRowState extends State<_LeaderRow> {
                 Row(children: [
                   Icon(CupertinoIcons.book_fill, size: 11, color: _grey),
                   const SizedBox(width: 4),
-                  Flexible(child: Text(course.isNotEmpty ? course : 'Getting started', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 11.5, color: _grey))),
+                  Flexible(child: Text(course.isNotEmpty ? course : 'Getting started', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 11.5, color: _grey))),
                 ]),
               ]),
             ),
             const SizedBox(width: 8),
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Text('$xp XP', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w800, color: _orange)),
-              Text('$lessons ${lessons == 1 ? 'lesson' : 'lessons'}', style: GoogleFonts.poppins(fontSize: 10.5, color: _grey)),
+              Text('$xp XP', style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w800, color: _orange)),
+              Text('$lessons ${lessons == 1 ? 'lesson' : 'lessons'}', style: GoogleFonts.ibmPlexMono(fontSize: 10.5, color: _grey)),
             ]),
           ]),
         ),
@@ -3936,7 +3936,7 @@ class _CalendarViewState extends State<_CalendarView> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Row(children: [
         _navBtn(CupertinoIcons.chevron_left, () => _shift(-1)),
-        Expanded(child: Center(child: Text('${_monthNames[_month.month - 1]} ${_month.year}', style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w800, color: _navy)))),
+        Expanded(child: Center(child: Text('${_monthNames[_month.month - 1]} ${_month.year}', style: GoogleFonts.ibmPlexMono(fontSize: 17, fontWeight: FontWeight.w800, color: _navy)))),
         _navBtn(CupertinoIcons.chevron_right, () => _shift(1)),
       ]),
       const SizedBox(height: 14),
@@ -3948,7 +3948,7 @@ class _CalendarViewState extends State<_CalendarView> {
         Expanded(child: _sumChip('Activities', act, _blue, CupertinoIcons.bell_fill)),
       ]),
       const SizedBox(height: 16),
-      Row(children: _weekdayNames.map((w) => Expanded(child: Center(child: Text(w, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: _grey))))).toList()),
+      Row(children: _weekdayNames.map((w) => Expanded(child: Center(child: Text(w, style: GoogleFonts.ibmPlexMono(fontSize: 11, fontWeight: FontWeight.w600, color: _grey))))).toList()),
       const SizedBox(height: 6),
       ClipRect(
         child: AnimatedSwitcher(
@@ -3972,12 +3972,12 @@ class _CalendarViewState extends State<_CalendarView> {
       Divider(color: _cardBorder, height: 1),
       const SizedBox(height: 14),
       Row(children: [
-        Expanded(child: Text('${_weekdayNames[(_selected.weekday - 1) % 7]}, ${_monthNames[_selected.month - 1]} ${_selected.day}', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy))),
+        Expanded(child: Text('${_weekdayNames[(_selected.weekday - 1) % 7]}, ${_monthNames[_selected.month - 1]} ${_selected.day}', style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w700, color: _navy))),
         if (selEvs.isNotEmpty)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
             decoration: BoxDecoration(color: _orange.withOpacity(0.12), borderRadius: BorderRadius.zero),
-            child: Text('${selEvs.length} ${selEvs.length == 1 ? 'event' : 'events'}', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700, color: _orange)),
+            child: Text('${selEvs.length} ${selEvs.length == 1 ? 'event' : 'events'}', style: GoogleFonts.ibmPlexMono(fontSize: 11, fontWeight: FontWeight.w700, color: _orange)),
           ),
       ]),
       const SizedBox(height: 12),
@@ -4017,11 +4017,11 @@ class _CalendarViewState extends State<_CalendarView> {
               tween: Tween(begin: 0, end: n.toDouble()),
               duration: const Duration(milliseconds: 700),
               curve: Curves.easeOutCubic,
-              builder: (_, v, __) => Text('${v.round()}', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: color)),
+              builder: (_, v, __) => Text('${v.round()}', style: GoogleFonts.ibmPlexMono(fontSize: 18, fontWeight: FontWeight.w800, color: color)),
             ),
           ]),
           const SizedBox(height: 2),
-          Text(label, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w500, color: _grey)),
+          Text(label, style: GoogleFonts.ibmPlexMono(fontSize: 11, fontWeight: FontWeight.w500, color: _grey)),
         ]),
       );
 
@@ -4037,7 +4037,7 @@ class _CalendarViewState extends State<_CalendarView> {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(CupertinoIcons.calendar_today, size: 14, color: _orange),
             const SizedBox(width: 6),
-            Text('Today', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: _orange)),
+            Text('Today', style: GoogleFonts.ibmPlexMono(fontSize: 12.5, fontWeight: FontWeight.w700, color: _orange)),
           ]),
         ),
       );
@@ -4082,7 +4082,7 @@ class _CalendarViewState extends State<_CalendarView> {
             border: isToday && !isSel ? Border.all(color: _orange.withOpacity(0.6), width: 1.4) : null,
           ),
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text('${d.day}', style: GoogleFonts.poppins(fontSize: 13, fontWeight: isSel || isToday ? FontWeight.w700 : FontWeight.w500, color: isSel ? Colors.white : _navy)),
+            Text('${d.day}', style: GoogleFonts.ibmPlexMono(fontSize: 13, fontWeight: isSel || isToday ? FontWeight.w700 : FontWeight.w500, color: isSel ? Colors.white : _navy)),
             const SizedBox(height: 3),
             SizedBox(
               height: 5,
@@ -4104,9 +4104,9 @@ class _CalendarViewState extends State<_CalendarView> {
         child: Column(children: [
           Icon(CupertinoIcons.calendar, size: 30, color: _grey.withOpacity(0.7)),
           const SizedBox(height: 8),
-          Text('Nothing scheduled', style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w600, color: _navy)),
+          Text('Nothing scheduled', style: GoogleFonts.ibmPlexMono(fontSize: 13.5, fontWeight: FontWeight.w600, color: _navy)),
           const SizedBox(height: 2),
-          Text('Enjoy the free time, or browse the catalog.', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+          Text('Enjoy the free time, or browse the catalog.', textAlign: TextAlign.center, style: GoogleFonts.ibmPlexMono(fontSize: 12, color: _grey)),
         ]),
       );
     }
@@ -4136,16 +4136,16 @@ class _CalendarViewState extends State<_CalendarView> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(m['title']?.toString() ?? 'Event', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
+                            Text(m['title']?.toString() ?? 'Event', style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
                             const SizedBox(height: 3),
                             Row(children: [
-                              Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: k.color.withOpacity(0.12), borderRadius: BorderRadius.zero), child: Text(k.label, style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w700, color: k.color))),
-                              if (course.isNotEmpty) ...[const SizedBox(width: 6), Flexible(child: Text(course, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12, color: _grey)))],
+                              Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: k.color.withOpacity(0.12), borderRadius: BorderRadius.zero), child: Text(k.label, style: GoogleFonts.ibmPlexMono(fontSize: 10, fontWeight: FontWeight.w700, color: k.color))),
+                              if (course.isNotEmpty) ...[const SizedBox(width: 6), Flexible(child: Text(course, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 12, color: _grey)))],
                             ]),
                           ]),
                         ),
                         const SizedBox(width: 8),
-                        Text(_timeLabel(dt), style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: _grey)),
+                        Text(_timeLabel(dt), style: GoogleFonts.ibmPlexMono(fontSize: 12, fontWeight: FontWeight.w600, color: _grey)),
                       ]),
                     ),
                   ),
@@ -4172,9 +4172,9 @@ Widget _help(String q, String a) => Container(
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(width: 10, height: 10, margin: const EdgeInsets.only(top: 5, right: 14), decoration: BoxDecoration(color: _navy, shape: BoxShape.circle)),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(q, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
+          Text(q, style: GoogleFonts.ibmPlexMono(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
           const SizedBox(height: 3),
-          Text(a, style: GoogleFonts.poppins(fontSize: 12, color: _grey, height: 1.4)),
+          Text(a, style: GoogleFonts.ibmPlexMono(fontSize: 12, color: _grey, height: 1.4)),
         ])),
       ]),
     );
@@ -4182,11 +4182,11 @@ Widget _help(String q, String a) => Container(
 Widget _field(String label, String value) => Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFFAAAAAA), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+        Text(label, style: GoogleFonts.ibmPlexMono(fontSize: 12, color: const Color(0xFFAAAAAA), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
         const SizedBox(height: 5),
         TextFormField(
           initialValue: value,
-          style: GoogleFonts.poppins(fontSize: 14, color: _navy),
+          style: GoogleFonts.ibmPlexMono(fontSize: 14, color: _navy),
           decoration: InputDecoration(
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -4202,7 +4202,7 @@ Widget _orangeButton(String label, VoidCallback onTap) => _Pressable(
       child: Container(
         width: double.infinity, height: 44, alignment: Alignment.center,
         decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero),
-        child: Text(label, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+        child: Text(label, style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
       ),
     );
 
@@ -4312,8 +4312,8 @@ class _AiNewsCardState extends State<_AiNewsCard> {
           Row(children: [
             Icon(CupertinoIcons.sparkles, size: 18, color: _orange),
             const SizedBox(width: 8),
-            Text('UPDATE ', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: _navy)),
-            Text('LIVE AI NEWS', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: _orange)),
+            Text('UPDATE ', style: GoogleFonts.ibmPlexMono(fontSize: 16, fontWeight: FontWeight.w800, color: _navy)),
+            Text('LIVE AI NEWS', style: GoogleFonts.ibmPlexMono(fontSize: 16, fontWeight: FontWeight.w800, color: _orange)),
             const Spacer(),
             // "N new" badge appears when fresh headlines land, then fades next poll.
             AnimatedSwitcher(
@@ -4327,7 +4327,7 @@ class _AiNewsCardState extends State<_AiNewsCard> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero, ),
-                        child: Text('${_newUrls.length} NEW', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5)),
+                        child: Text('${_newUrls.length} NEW', style: GoogleFonts.ibmPlexMono(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5)),
                       ),
                     ),
             ),
@@ -4367,9 +4367,9 @@ class _AiNewsCardState extends State<_AiNewsCard> {
             child: Column(children: [
               Icon(CupertinoIcons.wifi_slash, size: 28, color: _grey),
               const SizedBox(height: 8),
-              Text('Live news unavailable', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _navy)),
+              Text('Live news unavailable', textAlign: TextAlign.center, style: GoogleFonts.ibmPlexMono(fontSize: 13, fontWeight: FontWeight.w600, color: _navy)),
               const SizedBox(height: 2),
-              Text('Pull again in a moment.', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+              Text('Pull again in a moment.', textAlign: TextAlign.center, style: GoogleFonts.ibmPlexMono(fontSize: 12, color: _grey)),
             ]),
           );
     // Keep a consistent height in the scrollable (wide) layout.
@@ -4388,7 +4388,7 @@ class _AiNewsCardState extends State<_AiNewsCard> {
                 ? const SizedBox(width: 9, height: 9, child: CircularProgressIndicator(strokeWidth: 1.6, color: _orange))
                 : const _LiveDot(),
             const SizedBox(width: 5),
-            Text('LIVE', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
+            Text('LIVE', style: GoogleFonts.ibmPlexMono(fontSize: 11, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
           ]),
         ),
       );
@@ -4427,23 +4427,23 @@ class _AiNewsCardState extends State<_AiNewsCard> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                     decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.zero),
-                    child: Text('NEW', style: GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5)),
+                    child: Text('NEW', style: GoogleFonts.ibmPlexMono(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5)),
                   ),
                 ])
               else if (live)
                 Row(mainAxisSize: MainAxisSize.min, children: [
                   const _LiveDot(),
                   const SizedBox(width: 5),
-                  Text('LIVE', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
+                  Text('LIVE', style: GoogleFonts.ibmPlexMono(fontSize: 10, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
                 ])
               else
-                Text(n.source.toUpperCase(), style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
+                Text(n.source.toUpperCase(), style: GoogleFonts.ibmPlexMono(fontSize: 10, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.5)),
               const SizedBox(height: 4),
-              Text(n.title, maxLines: 3, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: _navy, height: 1.3)),
+              Text(n.title, maxLines: 3, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 13.5, fontWeight: FontWeight.w700, color: _navy, height: 1.3)),
               const SizedBox(height: 4),
               Text(
                 [n.source, if (n.ago.isNotEmpty) n.ago].join(' · '),
-                style: GoogleFonts.poppins(fontSize: 11.5, color: _grey),
+                style: GoogleFonts.ibmPlexMono(fontSize: 11.5, color: _grey),
               ),
             ]),
           ),
@@ -4678,8 +4678,8 @@ class _HeroPanelModal extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: _navy)),
-              Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 18, fontWeight: FontWeight.w800, color: _navy)),
+              Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 12, color: _grey)),
             ]),
           ),
         ]),
@@ -4788,7 +4788,7 @@ Widget _avatarBox(String avatar, double size, String initials, {bool editable = 
         border: Border.all(color: Colors.white, width: 3),
       ),
       child: a.emoji.isEmpty
-          ? Text(initials, style: GoogleFonts.poppins(fontSize: size * 0.40, fontWeight: FontWeight.w800, color: Colors.white))
+          ? Text(initials, style: GoogleFonts.ibmPlexMono(fontSize: size * 0.40, fontWeight: FontWeight.w800, color: Colors.white))
           : Text(a.emoji, style: TextStyle(fontSize: size * 0.52)),
     );
   }
@@ -5032,12 +5032,12 @@ class _ResumeCardState extends State<_ResumeCard> {
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(course.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.4)),
+                    Text(course.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 10.5, fontWeight: FontWeight.w800, color: _orange, letterSpacing: 0.4)),
                     const SizedBox(height: 3),
                     Row(children: [
                       Icon(k.icon, size: 13, color: _grey),
                       const SizedBox(width: 5),
-                      Text(k.label, style: GoogleFonts.poppins(fontSize: 9.5, fontWeight: FontWeight.w800, color: _grey, letterSpacing: 0.5)),
+                      Text(k.label, style: GoogleFonts.ibmPlexMono(fontSize: 9.5, fontWeight: FontWeight.w800, color: _grey, letterSpacing: 0.5)),
                       if (position > 0) ...[
                         const SizedBox(width: 8),
                         Container(
@@ -5046,23 +5046,23 @@ class _ResumeCardState extends State<_ResumeCard> {
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
                             Icon(CupertinoIcons.arrow_counterclockwise, size: 9, color: _orange),
                             const SizedBox(width: 3),
-                            Text('Resume ${_fmtClock(position)}', style: GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w800, color: _orange)),
+                            Text('Resume ${_fmtClock(position)}', style: GoogleFonts.ibmPlexMono(fontSize: 9, fontWeight: FontWeight.w800, color: _orange)),
                           ]),
                         ),
                       ],
                     ]),
                     const SizedBox(height: 4),
-                    Text(lesson, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 14.5, fontWeight: FontWeight.w700, color: _navy, height: 1.25)),
+                    Text(lesson, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 14.5, fontWeight: FontWeight.w700, color: _navy, height: 1.25)),
                     if (module.isNotEmpty)
-                      Padding(padding: const EdgeInsets.only(top: 2), child: Text(module, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 11.5, color: _grey))),
+                      Padding(padding: const EdgeInsets.only(top: 2), child: Text(module, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 11.5, color: _grey))),
                   ]),
                 ),
               ]),
               const SizedBox(height: 12),
               Row(children: [
-                Text('$done/$total lessons', style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
+                Text('$done/$total lessons', style: GoogleFonts.ibmPlexMono(fontSize: 11.5, color: _grey)),
                 const Spacer(),
-                Text('$percent%', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
+                Text('$percent%', style: GoogleFonts.ibmPlexMono(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
               ]),
               const SizedBox(height: 7),
               _GlowProgress(value: pct, height: 6),
@@ -5084,7 +5084,7 @@ class _ResumeCardState extends State<_ResumeCard> {
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
                         const Icon(CupertinoIcons.play_fill, color: Colors.white, size: 14),
                         const SizedBox(width: 7),
-                        Text('Continue', style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white)),
+                        Text('Continue', style: GoogleFonts.ibmPlexMono(fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white)),
                       ]),
                     ),
                   ),
@@ -5178,7 +5178,7 @@ class _CourseCardState extends State<_CourseCard> {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
-                  Expanded(child: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _navy))),
+                  Expanded(child: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 15, fontWeight: FontWeight.w700, color: _navy))),
                   AnimatedSlide(
                     offset: Offset(_hover ? 0.2 : 0, 0),
                     duration: const Duration(milliseconds: 200),
@@ -5189,9 +5189,9 @@ class _CourseCardState extends State<_CourseCard> {
                 Row(children: [
                   Icon(CupertinoIcons.book, size: 13, color: _grey),
                   const SizedBox(width: 4),
-                  Text('${widget.done}/${widget.total} lessons', style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+                  Text('${widget.done}/${widget.total} lessons', style: GoogleFonts.ibmPlexMono(fontSize: 12, color: _grey)),
                   const Spacer(),
-                  Text('${widget.percent}%', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: _orange)),
+                  Text('${widget.percent}%', style: GoogleFonts.ibmPlexMono(fontSize: 12.5, fontWeight: FontWeight.w700, color: _orange)),
                 ]),
                 const SizedBox(height: 9),
                 _GlowProgress(value: pct, height: 7),
@@ -5285,7 +5285,7 @@ class _GridCellState extends State<_GridCell> {
                     child: Text(t.label,
                         maxLines: 1,
                         textAlign: TextAlign.center,
-                        style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+                        style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
                   ),
                 ),
               ],
@@ -5485,7 +5485,7 @@ class _SettingsViewState extends State<_SettingsView> {
             child: Row(children: [
               Icon(icon, size: 16, color: _ac),
               const SizedBox(width: 8),
-              Text(title, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w800, color: _navy)),
+              Text(title, style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w800, color: _navy)),
             ]),
           ),
           ...rows,
@@ -5511,8 +5511,8 @@ class _SettingsViewState extends State<_SettingsView> {
             _iconChip(icon),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
-              Text(sub, style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
+              Text(title, style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
+              Text(sub, style: GoogleFonts.ibmPlexMono(fontSize: 11.5, color: _grey)),
             ])),
           ]),
           const SizedBox(height: 10),
@@ -5530,8 +5530,8 @@ class _SettingsViewState extends State<_SettingsView> {
             _iconChip(icon, color: tint),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: tint ?? _navy)),
-              Text(sub, style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
+              Text(title, style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w700, color: tint ?? _navy)),
+              Text(sub, style: GoogleFonts.ibmPlexMono(fontSize: 11.5, color: _grey)),
             ])),
             const SizedBox(width: 8),
             trailing ?? Icon(CupertinoIcons.chevron_right, size: 15, color: _grey),
@@ -5556,7 +5556,7 @@ class _SettingsViewState extends State<_SettingsView> {
                     gradient: sel == i ? _acGrad : null,
                     borderRadius: BorderRadius.zero,
                   ),
-                  child: Text(labels[i], style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: sel == i ? Colors.white : _navy)),
+                  child: Text(labels[i], style: GoogleFonts.ibmPlexMono(fontSize: 12.5, fontWeight: FontWeight.w700, color: sel == i ? Colors.white : _navy)),
                 ),
               ),
             ),
@@ -5618,14 +5618,14 @@ class _SettingsViewState extends State<_SettingsView> {
                       Row(children: [
                         const Icon(CupertinoIcons.exclamationmark_circle_fill, size: 15, color: Color(0xFFD23B3B)),
                         const SizedBox(width: 6),
-                        Expanded(child: Text(_pwErr!, style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFFD23B3B)))),
+                        Expanded(child: Text(_pwErr!, style: GoogleFonts.ibmPlexMono(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFFD23B3B)))),
                       ]),
                     ] else if (_pwSaved) ...[
                       const SizedBox(height: 10),
                       Row(children: [
                         const Icon(CupertinoIcons.checkmark_alt_circle_fill, size: 15, color: Color(0xFF1E9E5A)),
                         const SizedBox(width: 6),
-                        Expanded(child: Text('Password updated', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF1E9E5A)))),
+                        Expanded(child: Text('Password updated', style: GoogleFonts.ibmPlexMono(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF1E9E5A)))),
                       ]),
                     ],
                     const SizedBox(height: 12),
@@ -5636,7 +5636,7 @@ class _SettingsViewState extends State<_SettingsView> {
                         decoration: BoxDecoration(gradient: _acGrad, borderRadius: BorderRadius.zero, ),
                         child: _savingPw
                             ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
-                            : Text('Update password', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+                            : Text('Update password', style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
                       ),
                     ),
                   ]),
@@ -5657,8 +5657,8 @@ class _SettingsViewState extends State<_SettingsView> {
             obscureText: !shown,
             enableSuggestions: false,
             autocorrect: false,
-            style: GoogleFonts.poppins(fontSize: 13.5, color: _navy),
-            decoration: InputDecoration(border: InputBorder.none, isDense: true, contentPadding: const EdgeInsets.symmetric(vertical: 13), hintText: hint, hintStyle: GoogleFonts.poppins(fontSize: 13, color: _grey.withOpacity(0.7))),
+            style: GoogleFonts.ibmPlexMono(fontSize: 13.5, color: _navy),
+            decoration: InputDecoration(border: InputBorder.none, isDense: true, contentPadding: const EdgeInsets.symmetric(vertical: 13), hintText: hint, hintStyle: GoogleFonts.ibmPlexMono(fontSize: 13, color: _grey.withOpacity(0.7))),
           ),
         ),
         // Eye toggle — tap to show/hide this field's text.
@@ -5696,18 +5696,18 @@ class _SettingsViewState extends State<_SettingsView> {
                       : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                           // Count + refresh.
                           Row(children: [
-                            Expanded(child: Text(_deviceSummary(), style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: _grey))),
+                            Expanded(child: Text(_deviceSummary(), style: GoogleFonts.ibmPlexMono(fontSize: 11.5, fontWeight: FontWeight.w600, color: _grey))),
                             _Pressable(
                               onTap: () { setState(() => _devices = null); _loadDevices(); },
                               child: Padding(padding: const EdgeInsets.all(4), child: Icon(CupertinoIcons.refresh, size: 16, color: _ac)),
                             ),
                           ]),
                           if (_devices!.isEmpty)
-                            Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Text('No active devices.', style: GoogleFonts.poppins(fontSize: 12.5, color: _grey)))
+                            Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Text('No active devices.', style: GoogleFonts.ibmPlexMono(fontSize: 12.5, color: _grey)))
                           else ...[
                             for (final d in _devices!) _deviceTile(d as Map<String, dynamic>),
                             const SizedBox(height: 8),
-                            Text('To remove a device, contact your administrator.', style: GoogleFonts.poppins(fontSize: 11, color: _grey)),
+                            Text('To remove a device, contact your administrator.', style: GoogleFonts.ibmPlexMono(fontSize: 11, color: _grey)),
                           ],
                         ]),
                 ),
@@ -5734,18 +5734,18 @@ class _SettingsViewState extends State<_SettingsView> {
         const SizedBox(width: 10),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            Flexible(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _navy))),
+            Flexible(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 13, fontWeight: FontWeight.w600, color: _navy))),
             if (isCurrent) ...[
               const SizedBox(width: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                 decoration: BoxDecoration(color: _ac.withOpacity(0.14), borderRadius: BorderRadius.zero),
-                child: Text('THIS DEVICE', style: GoogleFonts.poppins(fontSize: 8, fontWeight: FontWeight.w800, color: _ac, letterSpacing: 0.4)),
+                child: Text('THIS DEVICE', style: GoogleFonts.ibmPlexMono(fontSize: 8, fontWeight: FontWeight.w800, color: _ac, letterSpacing: 0.4)),
               ),
             ],
           ]),
           Text('Last seen ${_StudentHomeState._fmtAt(d['last_seen']?.toString())}${added.isNotEmpty ? ' · added $added' : ''}',
-              maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 11, color: _grey)),
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 11, color: _grey)),
         ])),
         // View-only — devices are removed by an admin, not the user.
         if (isCurrent) Icon(CupertinoIcons.checkmark_circle_fill, size: 16, color: _ac),
@@ -5810,11 +5810,11 @@ class _StatCardState extends State<_StatCard> {
                 curve: Curves.easeOutCubic,
                 builder: (_, v, __) => Text(
                   target != null ? v.round().toString() : widget.value,
-                  style: GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w800, color: _orange),
+                  style: GoogleFonts.ibmPlexMono(fontSize: 26, fontWeight: FontWeight.w800, color: _orange),
                 ),
               ),
               const SizedBox(height: 2),
-              Text(widget.label, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w500, color: _grey)),
+              Text(widget.label, style: GoogleFonts.ibmPlexMono(fontSize: 12.5, fontWeight: FontWeight.w500, color: _grey)),
             ]),
           ),
         ),
@@ -5874,11 +5874,11 @@ class _StudentHomeNotifState extends State<_StudentHomeNotif> {
                     widget.text,
                     maxLines: _open ? null : 2,
                     overflow: _open ? TextOverflow.visible : TextOverflow.ellipsis,
-                    style: GoogleFonts.poppins(fontSize: 13, color: _navy, height: 1.5),
+                    style: GoogleFonts.ibmPlexMono(fontSize: 13, color: _navy, height: 1.5),
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(widget.time, style: GoogleFonts.poppins(fontSize: 11, color: _grey)),
+                Text(widget.time, style: GoogleFonts.ibmPlexMono(fontSize: 11, color: _grey)),
               ]),
             ),
             const SizedBox(width: 8),
@@ -5966,8 +5966,8 @@ class _DayFolderState extends State<_DayFolder> {
               const SizedBox(width: 8),
               Icon(_open ? CupertinoIcons.folder_fill : CupertinoIcons.folder, size: 15, color: _orange),
               const SizedBox(width: 8),
-              Expanded(child: Text(widget.label, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: _navy))),
-              Text('${widget.count} ${widget.count == 1 ? 'item' : 'items'}', style: GoogleFonts.poppins(fontSize: 11.5, color: _grey)),
+              Expanded(child: Text(widget.label, style: GoogleFonts.ibmPlexMono(fontSize: 12.5, fontWeight: FontWeight.w700, color: _navy))),
+              Text('${widget.count} ${widget.count == 1 ? 'item' : 'items'}', style: GoogleFonts.ibmPlexMono(fontSize: 11.5, color: _grey)),
             ]),
           ),
         ),
@@ -6054,13 +6054,13 @@ class _NotesViewState extends State<_NotesView> {
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             const Icon(CupertinoIcons.add, size: 16, color: Colors.white),
             const SizedBox(width: 6),
-            Text('New page', style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
+            Text('New page', style: GoogleFonts.ibmPlexMono(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
           ]),
         ),
       ),
       const SizedBox(height: 14),
       if (_notes.isEmpty)
-        Padding(padding: const EdgeInsets.symmetric(vertical: 24), child: Center(child: Text('No pages yet — tap “New page”.', style: GoogleFonts.poppins(fontSize: 13, color: _grey))))
+        Padding(padding: const EdgeInsets.symmetric(vertical: 24), child: Center(child: Text('No pages yet — tap “New page”.', style: GoogleFonts.ibmPlexMono(fontSize: 13, color: _grey))))
       else
         for (var i = 0; i < _notes.length; i++) _noteCard(_notes[i], i),
     ]);
@@ -6084,10 +6084,10 @@ class _NotesViewState extends State<_NotesView> {
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(title.isEmpty ? 'Untitled' : title,
                     maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: title.isEmpty ? _grey : _navy)),
+                    style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w700, color: title.isEmpty ? _grey : _navy)),
                 if (preview.isNotEmpty) ...[
                   const SizedBox(height: 2),
-                  Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12, color: _grey)),
+                  Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 12, color: _grey)),
                 ],
               ])),
               const SizedBox(width: 8),
@@ -6270,19 +6270,19 @@ class _NotePageEditorState extends State<_NotePageEditor> {
                       Padding(
                         padding: const EdgeInsets.only(bottom: 6),
                         child: Text(_title.text.trim().isEmpty ? 'Untitled' : _title.text.trim(),
-                            style: GoogleFonts.poppins(fontSize: 30, fontWeight: FontWeight.w800, color: _title.text.trim().isEmpty ? _grey : _navy, height: 1.2)),
+                            style: GoogleFonts.ibmPlexMono(fontSize: 30, fontWeight: FontWeight.w800, color: _title.text.trim().isEmpty ? _grey : _navy, height: 1.2)),
                       )
                     else
                       TextField(
                         controller: _title,
                         maxLines: null,
                         textCapitalization: TextCapitalization.sentences,
-                        style: GoogleFonts.poppins(fontSize: 30, fontWeight: FontWeight.w800, color: _navy, height: 1.2),
+                        style: GoogleFonts.ibmPlexMono(fontSize: 30, fontWeight: FontWeight.w800, color: _navy, height: 1.2),
                         decoration: InputDecoration(
                           isCollapsed: true,
                           border: InputBorder.none,
                           hintText: 'Untitled',
-                          hintStyle: GoogleFonts.poppins(fontSize: 30, fontWeight: FontWeight.w800, color: _grey.withOpacity(0.5), height: 1.2),
+                          hintStyle: GoogleFonts.ibmPlexMono(fontSize: 30, fontWeight: FontWeight.w800, color: _grey.withOpacity(0.5), height: 1.2),
                         ),
                       ),
                     const SizedBox(height: 12),
@@ -6298,12 +6298,12 @@ class _NotePageEditorState extends State<_NotePageEditor> {
                         maxLines: null,
                         keyboardType: TextInputType.multiline,
                         textCapitalization: TextCapitalization.sentences,
-                        style: GoogleFonts.poppins(fontSize: 15.5, color: _navy, height: 1.65),
+                        style: GoogleFonts.ibmPlexMono(fontSize: 15.5, color: _navy, height: 1.65),
                         decoration: InputDecoration(
                           isCollapsed: true,
                           border: InputBorder.none,
                           hintText: 'Start writing. Use the toolbar to add headings, lists, to-dos, quotes and code…',
-                          hintStyle: GoogleFonts.poppins(fontSize: 15.5, color: _grey.withOpacity(0.7), height: 1.65),
+                          hintStyle: GoogleFonts.ibmPlexMono(fontSize: 15.5, color: _grey.withOpacity(0.7), height: 1.65),
                         ),
                       ),
                   ]),
@@ -6326,7 +6326,7 @@ class _NotePageEditorState extends State<_NotePageEditor> {
         const SizedBox(width: 2),
         Icon(CupertinoIcons.doc_text, size: 16, color: _grey),
         const SizedBox(width: 6),
-        Flexible(child: Text(status, style: GoogleFonts.poppins(fontSize: 11.5, color: _grey))),
+        Flexible(child: Text(status, style: GoogleFonts.ibmPlexMono(fontSize: 11.5, color: _grey))),
         const Spacer(),
         _Pressable(
           onTap: () {
@@ -6339,7 +6339,7 @@ class _NotePageEditorState extends State<_NotePageEditor> {
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(_preview ? CupertinoIcons.pencil : CupertinoIcons.eye, size: 14, color: _orange),
               const SizedBox(width: 5),
-              Text(_preview ? 'Edit' : 'Preview', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
+              Text(_preview ? 'Edit' : 'Preview', style: GoogleFonts.ibmPlexMono(fontSize: 12, fontWeight: FontWeight.w700, color: _orange)),
             ]),
           ),
         ),
@@ -6369,7 +6369,7 @@ class _NotePageEditorState extends State<_NotePageEditor> {
             ),
           ),
         );
-    Widget lbl(String s) => Text(s, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w800, color: _navy));
+    Widget lbl(String s) => Text(s, style: GoogleFonts.ibmPlexMono(fontSize: 12.5, fontWeight: FontWeight.w800, color: _navy));
     Widget ic(IconData i) => Icon(i, size: 17, color: _navy);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -6490,9 +6490,9 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
               const SizedBox(width: 2),
               Icon(CupertinoIcons.doc_text_fill, size: 16, color: _orange),
               const SizedBox(width: 6),
-              Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy))),
+              Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w700, color: _navy))),
               const SizedBox(width: 8),
-              Text('${_i + 1} / ${widget.items.length}', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: _grey)),
+              Text('${_i + 1} / ${widget.items.length}', style: GoogleFonts.ibmPlexMono(fontSize: 12, fontWeight: FontWeight.w600, color: _grey)),
             ]),
           ),
           // Body.
@@ -6512,11 +6512,11 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
                     padding: isVideo ? const EdgeInsets.all(12) : const EdgeInsets.fromLTRB(22, 22, 22, 26),
                     decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                      Text(title, style: GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w800, color: _navy, height: 1.25)),
+                      Text(title, style: GoogleFonts.ibmPlexMono(fontSize: 26, fontWeight: FontWeight.w800, color: _navy, height: 1.25)),
                       const SizedBox(height: 16),
                       if (type == 'text')
                         (body.trim().isEmpty
-                            ? Text('No content in this material.', style: GoogleFonts.poppins(fontSize: 14, color: _grey))
+                            ? Text('No content in this material.', style: GoogleFonts.ibmPlexMono(fontSize: 14, color: _grey))
                             : _NoteMarkdown(text: body))
                       else if (type == 'video' && body.isNotEmpty)
                         _videoPlayer(it, body)
@@ -6543,7 +6543,7 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(done ? CupertinoIcons.checkmark_alt_circle_fill : CupertinoIcons.circle, size: 16, color: done ? _green : _orange),
                     const SizedBox(width: 6),
-                    Text(done ? 'Completed' : 'Mark done', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: done ? _green : _orange)),
+                    Text(done ? 'Completed' : 'Mark done', style: GoogleFonts.ibmPlexMono(fontSize: 12.5, fontWeight: FontWeight.w700, color: done ? _green : _orange)),
                   ]),
                 ),
               ),
@@ -6589,7 +6589,7 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
       const SizedBox(height: 8),
       Icon(icon, size: 46, color: _orange),
       const SizedBox(height: 12),
-      Text(label, textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 14, color: _grey)),
+      Text(label, textAlign: TextAlign.center, style: GoogleFonts.ibmPlexMono(fontSize: 14, color: _grey)),
       const SizedBox(height: 16),
       _Pressable(
         onTap: () => widget.onOpen(it),
@@ -6599,7 +6599,7 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             const Icon(CupertinoIcons.arrow_up_right_square, size: 16, color: Colors.white),
             const SizedBox(width: 8),
-            Text(action, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
+            Text(action, style: GoogleFonts.ibmPlexMono(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
           ]),
         ),
       ),
@@ -6613,7 +6613,7 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
     final row = Row(mainAxisSize: MainAxisSize.min, children: [
       if (!trailing) Icon(icon, size: 16, color: color),
       if (!trailing) const SizedBox(width: 5),
-      Text(label, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: color)),
+      Text(label, style: GoogleFonts.ibmPlexMono(fontSize: 13, fontWeight: FontWeight.w700, color: color)),
       if (trailing) const SizedBox(width: 5),
       if (trailing) Icon(icon, size: 16, color: color),
     ]);

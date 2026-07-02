@@ -143,11 +143,11 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: _panel,
-        title: Text('Answer', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
+        title: Text('Answer', style: GoogleFonts.ibmPlexMono(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
         content: SizedBox(
           width: 560,
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${q['name'] ?? 'Student'}: ${q['body'] ?? ''}', style: GoogleFonts.poppins(color: Colors.white60, fontSize: 13)),
+            Text('${q['name'] ?? 'Student'}: ${q['body'] ?? ''}', style: GoogleFonts.ibmPlexMono(color: Colors.white60, fontSize: 13)),
             const SizedBox(height: 12),
             TextField(
               controller: ctl,
@@ -155,10 +155,10 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
               minLines: 6,
               maxLines: 14,
               keyboardType: TextInputType.multiline,
-              style: GoogleFonts.poppins(color: Colors.white, fontSize: 14, height: 1.35),
+              style: GoogleFonts.ibmPlexMono(color: Colors.white, fontSize: 14, height: 1.35),
               decoration: InputDecoration(
                 hintText: 'Type your answer…',
-                hintStyle: GoogleFonts.poppins(color: Colors.white38, fontSize: 14),
+                hintStyle: GoogleFonts.ibmPlexMono(color: Colors.white38, fontSize: 14),
                 filled: true,
                 fillColor: Colors.white.withOpacity(0.06),
                 contentPadding: const EdgeInsets.all(14),
@@ -168,8 +168,8 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
           ]),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: GoogleFonts.poppins(color: Colors.white54))),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Send', style: GoogleFonts.poppins(color: _orange, fontWeight: FontWeight.w700))),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: GoogleFonts.ibmPlexMono(color: Colors.white54))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Send', style: GoogleFonts.ibmPlexMono(color: _orange, fontWeight: FontWeight.w700))),
         ],
       ),
     );
@@ -191,7 +191,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
       backgroundColor: _bg,
       body: SafeArea(
         child: _fatal != null
-            ? Center(child: Text(_fatal!, style: GoogleFonts.poppins(color: Colors.white70)))
+            ? Center(child: Text(_fatal!, style: GoogleFonts.ibmPlexMono(color: Colors.white70)))
             : (sideBySide && showPanel)
                 ? Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Expanded(child: Column(children: [_header(), Expanded(child: Center(child: _stage()))])),
@@ -212,13 +212,13 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Row(children: [
-              Flexible(child: Text(_title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w700))),
+              Flexible(child: Text(_title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w700))),
               if (widget.isHost) ...[
                 const SizedBox(width: 8),
-                Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: _orange.withOpacity(0.2), borderRadius: BorderRadius.zero, border: Border.all(color: _orange.withOpacity(0.5))), child: Text('HOST', style: GoogleFonts.poppins(color: _orange, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.5))),
+                Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: _orange.withOpacity(0.2), borderRadius: BorderRadius.zero, border: Border.all(color: _orange.withOpacity(0.5))), child: Text('HOST', style: GoogleFonts.ibmPlexMono(color: _orange, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.5))),
               ],
             ]),
-            if (_course.isNotEmpty) Text(_course, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 12)),
+            if (_course.isNotEmpty) Text(_course, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.ibmPlexMono(color: Colors.white54, fontSize: 12)),
           ]),
         ),
         if (_status == 'live') ...[
@@ -227,7 +227,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
           Row(children: [
             const Icon(CupertinoIcons.eye_fill, size: 14, color: Colors.white60),
             const SizedBox(width: 4),
-            Text(_fmtCount(_viewers), style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12.5, fontWeight: FontWeight.w600)),
+            Text(_fmtCount(_viewers), style: GoogleFonts.ibmPlexMono(color: Colors.white70, fontSize: 12.5, fontWeight: FontWeight.w600)),
           ]),
         ] else if (_status == 'ended')
           _statusPill('ENDED', Colors.white24)
@@ -240,7 +240,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   Widget _statusPill(String text, Color c) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
         decoration: BoxDecoration(color: c.withOpacity(0.18), borderRadius: BorderRadius.zero, border: Border.all(color: c.withOpacity(0.5))),
-        child: Text(text, style: GoogleFonts.poppins(color: c == Colors.white24 ? Colors.white60 : c, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.4)),
+        child: Text(text, style: GoogleFonts.ibmPlexMono(color: c == Colors.white24 ? Colors.white60 : c, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.4)),
       );
 
   // ---- Stage ---------------------------------------------------------------
@@ -268,15 +268,15 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Icon(CupertinoIcons.dot_radiowaves_left_right, size: 48, color: _orange),
             const SizedBox(height: 14),
-            Text(_title, textAlign: TextAlign.center, style: GoogleFonts.poppins(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+            Text(_title, textAlign: TextAlign.center, style: GoogleFonts.ibmPlexMono(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
-            Text('$statusText · ${_fmtCount(_viewers)} watching', style: GoogleFonts.poppins(color: Colors.white60, fontSize: 13, fontWeight: FontWeight.w600)),
+            Text('$statusText · ${_fmtCount(_viewers)} watching', style: GoogleFonts.ibmPlexMono(color: Colors.white60, fontSize: 13, fontWeight: FontWeight.w600)),
             const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(color: _orange.withOpacity(waiting > 0 ? 0.18 : 0.06), borderRadius: BorderRadius.zero),
               child: Text(waiting > 0 ? '$waiting question${waiting == 1 ? '' : 's'} waiting → answer them in the panel' : 'No questions waiting. New questions appear in the panel.',
-                  textAlign: TextAlign.center, style: GoogleFonts.poppins(color: waiting > 0 ? _orange : Colors.white60, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                  textAlign: TextAlign.center, style: GoogleFonts.ibmPlexMono(color: waiting > 0 ? _orange : Colors.white60, fontSize: 12.5, fontWeight: FontWeight.w600)),
             ),
           ]),
         ),
@@ -295,11 +295,11 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Icon(CupertinoIcons.videocam_circle_fill, size: 56, color: _orange),
             const SizedBox(height: 14),
-            Text(_title, textAlign: TextAlign.center, style: GoogleFonts.poppins(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+            Text(_title, textAlign: TextAlign.center, style: GoogleFonts.ibmPlexMono(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
-            Text('The class is about to begin', style: GoogleFonts.poppins(color: Colors.white54, fontSize: 13)),
+            Text('The class is about to begin', style: GoogleFonts.ibmPlexMono(color: Colors.white54, fontSize: 13)),
             const SizedBox(height: 18),
-            Text(countdown, style: GoogleFonts.poppins(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: 1)),
+            Text(countdown, style: GoogleFonts.ibmPlexMono(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: 1)),
           ]),
         ),
       ),
@@ -314,9 +314,9 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               const CupertinoActivityIndicator(color: Colors.white, radius: 16),
               const SizedBox(height: 16),
-              Text(_title, textAlign: TextAlign.center, style: GoogleFonts.poppins(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700)),
+              Text(_title, textAlign: TextAlign.center, style: GoogleFonts.ibmPlexMono(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700)),
               const SizedBox(height: 6),
-              Text('The live class is starting…', style: GoogleFonts.poppins(color: Colors.white54, fontSize: 13)),
+              Text('The live class is starting…', style: GoogleFonts.ibmPlexMono(color: Colors.white54, fontSize: 13)),
             ]),
           ),
         ),
@@ -330,9 +330,9 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               Icon(icon, size: 52, color: Colors.white38),
               const SizedBox(height: 12),
-              Text(title, style: GoogleFonts.poppins(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+              Text(title, style: GoogleFonts.ibmPlexMono(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
-              Text(sub, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 13)),
+              Text(sub, style: GoogleFonts.ibmPlexMono(color: Colors.white54, fontSize: 13)),
             ]),
           ),
         ),
@@ -350,7 +350,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
       _panelHeader('Q&A', 'Ask the host — only the host sees your question.'),
       Expanded(
         child: _questions.isEmpty
-            ? Center(child: Text('No questions yet — ask away 👋', style: GoogleFonts.poppins(color: Colors.white38, fontSize: 13)))
+            ? Center(child: Text('No questions yet — ask away 👋', style: GoogleFonts.ibmPlexMono(color: Colors.white38, fontSize: 13)))
             : ListView.builder(
                 padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
                 itemCount: _questions.length,
@@ -363,18 +363,18 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                     padding: const EdgeInsets.all(11),
                     decoration: BoxDecoration(color: Colors.white.withOpacity(0.04), borderRadius: BorderRadius.zero, border: Border.all(color: Colors.white12)),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(mine ? 'You asked' : (q['name']?.toString() ?? 'Question'), style: GoogleFonts.poppins(color: const Color(0xFF8AB4F8), fontSize: 11.5, fontWeight: FontWeight.w700)),
+                      Text(mine ? 'You asked' : (q['name']?.toString() ?? 'Question'), style: GoogleFonts.ibmPlexMono(color: const Color(0xFF8AB4F8), fontSize: 11.5, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 2),
-                      Text(q['body']?.toString() ?? '', style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.92), fontSize: 13, height: 1.25)),
+                      Text(q['body']?.toString() ?? '', style: GoogleFonts.ibmPlexMono(color: Colors.white.withOpacity(0.92), fontSize: 13, height: 1.25)),
                       const SizedBox(height: 8),
                       if (answered) ...[
                         Container(width: double.infinity, padding: const EdgeInsets.all(9), decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.zero), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('Host answered', style: GoogleFonts.poppins(color: _orange, fontSize: 11, fontWeight: FontWeight.w700)),
+                          Text('Host answered', style: GoogleFonts.ibmPlexMono(color: _orange, fontSize: 11, fontWeight: FontWeight.w700)),
                           const SizedBox(height: 2),
-                          Text(q['answer']?.toString() ?? '', style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.92), fontSize: 13, height: 1.25)),
+                          Text(q['answer']?.toString() ?? '', style: GoogleFonts.ibmPlexMono(color: Colors.white.withOpacity(0.92), fontSize: 13, height: 1.25)),
                         ])),
                       ] else
-                        Text('Awaiting answer…', style: GoogleFonts.poppins(color: Colors.white38, fontSize: 11.5, fontStyle: FontStyle.italic)),
+                        Text('Awaiting answer…', style: GoogleFonts.ibmPlexMono(color: Colors.white38, fontSize: 11.5, fontStyle: FontStyle.italic)),
                     ]),
                   );
                 },
@@ -391,7 +391,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
       _panelHeader('Questions', waiting > 0 ? '$waiting waiting to be answered' : 'All caught up'),
       Expanded(
         child: _questions.isEmpty
-            ? Center(child: Text('No questions yet.', style: GoogleFonts.poppins(color: Colors.white38, fontSize: 13)))
+            ? Center(child: Text('No questions yet.', style: GoogleFonts.ibmPlexMono(color: Colors.white38, fontSize: 13)))
             : ListView.builder(
                 padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
                 itemCount: _questions.length,
@@ -408,14 +408,14 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                     ),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Row(children: [
-                        Expanded(child: Text(q['name']?.toString().isNotEmpty == true ? q['name'].toString() : 'Student', style: GoogleFonts.poppins(color: const Color(0xFF8AB4F8), fontSize: 11.5, fontWeight: FontWeight.w700))),
-                        if (answered) Text('Answered ✓', style: GoogleFonts.poppins(color: const Color(0xFF34C759), fontSize: 10.5, fontWeight: FontWeight.w700)),
+                        Expanded(child: Text(q['name']?.toString().isNotEmpty == true ? q['name'].toString() : 'Student', style: GoogleFonts.ibmPlexMono(color: const Color(0xFF8AB4F8), fontSize: 11.5, fontWeight: FontWeight.w700))),
+                        if (answered) Text('Answered ✓', style: GoogleFonts.ibmPlexMono(color: const Color(0xFF34C759), fontSize: 10.5, fontWeight: FontWeight.w700)),
                       ]),
                       const SizedBox(height: 2),
-                      Text(q['body']?.toString() ?? '', style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.92), fontSize: 13, height: 1.25)),
+                      Text(q['body']?.toString() ?? '', style: GoogleFonts.ibmPlexMono(color: Colors.white.withOpacity(0.92), fontSize: 13, height: 1.25)),
                       const SizedBox(height: 8),
                       if (answered)
-                        Text('You: ${q['answer'] ?? ''}', style: GoogleFonts.poppins(color: Colors.white54, fontSize: 12, height: 1.25))
+                        Text('You: ${q['answer'] ?? ''}', style: GoogleFonts.ibmPlexMono(color: Colors.white54, fontSize: 12, height: 1.25))
                       else
                         Align(
                           alignment: Alignment.centerRight,
@@ -424,14 +424,14 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                               decoration: BoxDecoration(color: _orange, borderRadius: BorderRadius.zero),
-                              child: Text('Answer', style: GoogleFonts.poppins(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                              child: Text('Answer', style: GoogleFonts.ibmPlexMono(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
                             ),
                           ),
                         ),
                       if (answered)
                         Padding(
                           padding: const EdgeInsets.only(top: 6),
-                          child: GestureDetector(onTap: () => _answer(q), child: Text('Edit answer', style: GoogleFonts.poppins(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w600))),
+                          child: GestureDetector(onTap: () => _answer(q), child: Text('Edit answer', style: GoogleFonts.ibmPlexMono(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w600))),
                         ),
                     ]),
                   );
@@ -445,9 +445,9 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
         decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFF222228)))),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: GoogleFonts.poppins(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+          Text(title, style: GoogleFonts.ibmPlexMono(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
           const SizedBox(height: 1),
-          Text(sub, style: GoogleFonts.poppins(color: Colors.white38, fontSize: 11)),
+          Text(sub, style: GoogleFonts.ibmPlexMono(color: Colors.white38, fontSize: 11)),
         ]),
       );
 
@@ -463,10 +463,10 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
             maxLines: 3,
             textInputAction: TextInputAction.send,
             onSubmitted: (_) => onSend(),
-            style: GoogleFonts.poppins(color: Colors.white, fontSize: 13),
+            style: GoogleFonts.ibmPlexMono(color: Colors.white, fontSize: 13),
             decoration: InputDecoration(
               hintText: hint,
-              hintStyle: GoogleFonts.poppins(color: Colors.white38, fontSize: 13),
+              hintStyle: GoogleFonts.ibmPlexMono(color: Colors.white38, fontSize: 13),
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               filled: true,
