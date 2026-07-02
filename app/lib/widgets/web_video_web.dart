@@ -59,6 +59,7 @@ Widget hlsVideoElement(
   String url, {
   String authToken = '',
   double startAt = 0,
+  bool autoPlay = true,
   void Function(double position, double duration)? onTime,
   void Function()? onEnded,
 }) {
@@ -66,7 +67,7 @@ Widget hlsVideoElement(
   ui_web.platformViewRegistry.registerViewFactory(viewType, (int id) {
     final video = html.VideoElement()
       ..controls = false // ← no native browser controls
-      ..autoplay = true
+      ..autoplay = autoPlay
       ..style.width = '100%'
       ..style.height = '100%'
       ..style.display = 'block'
@@ -259,7 +260,9 @@ Widget hlsVideoElement(
       centerBtn.style.pointerEvents = 'none';
     }
     container.append(centerBtn);
-    hideCenter(); // autoplay starts playing; the button is revealed on pause/end
+    // Autoplay starts playing (button revealed on pause/end); otherwise the
+    // video waits paused and shows the big play button so the user starts it.
+    if (autoPlay) { hideCenter(); } else { showCenter(_icPlay); }
 
     // Icon-button factory (clean SVG, no emojis).
     html.SpanElement iconBtn(String path, void Function() onTap, {double size = 22}) {

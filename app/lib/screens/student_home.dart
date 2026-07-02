@@ -6560,6 +6560,7 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
     return VideoPlayerScreen(
       key: ValueKey('vid-$id'), // fresh player when paging to another video
       embedded: true,
+      autoPlay: false, // wait for the student to press play (no autoplay)
       url: url,
       watermark: widget.auth.user?.email ?? 'student',
       title: it['title']?.toString() ?? 'Video',

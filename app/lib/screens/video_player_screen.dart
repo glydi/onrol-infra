@@ -15,7 +15,7 @@ import '../widgets/web_video_stub.dart' if (dart.library.html) '../widgets/web_v
 /// blocked app-wide (Android FLAG_SECURE; iOS capture-blanking) and the file is
 /// never offered as a download.
 class VideoPlayerScreen extends StatefulWidget {
-  const VideoPlayerScreen({super.key, required this.url, required this.watermark, this.title = 'Video', this.startAt = Duration.zero, this.onProgress, this.onCompleted, this.authToken = '', this.embedded = false});
+  const VideoPlayerScreen({super.key, required this.url, required this.watermark, this.title = 'Video', this.startAt = Duration.zero, this.onProgress, this.onCompleted, this.authToken = '', this.embedded = false, this.autoPlay = true});
   final String url;
   final String watermark;
   final String title;
@@ -28,6 +28,9 @@ class VideoPlayerScreen extends StatefulWidget {
   // When true, render just the player (no Scaffold/route chrome) so it can be
   // embedded inline — e.g. inside the material reader.
   final bool embedded;
+  // When false, the video loads but waits paused (big play button) instead of
+  // starting on its own.
+  final bool autoPlay;
 
   @override
   State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
@@ -66,7 +69,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         if (widget.startAt.inSeconds > 0) {
           await _c!.seekTo(widget.startAt);
         }
-        _c!.play();
+        if (widget.autoPlay) _c!.play();
         _c!.addListener(_tick);
         if (mounted) setState(() => _ready = true);
         _scheduleHide();
@@ -208,7 +211,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Widget _webPlayer() => Stack(children: [
         AspectRatio(
           aspectRatio: 16 / 9,
-          child: hlsVideoElement(widget.url, authToken: widget.authToken, startAt: widget.startAt.inSeconds.toDouble(), onTime: _onWebTime, onEnded: () {
+          child: hlsVideoElement(widget.url, authToken: widget.authToken, startAt: widget.startAt.inSeconds.toDouble(), autoPlay: widget.autoPlay, onTime: _onWebTime, onEnded: () {
             if (!_completed) {
               _completed = true;
               widget.onCompleted?.call();

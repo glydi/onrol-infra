@@ -6,6 +6,7 @@ Widget hlsVideoElement(
   String url, {
   String authToken = '',
   double startAt = 0,
+  bool autoPlay = true,
   void Function(double position, double duration)? onTime,
   void Function()? onEnded,
 }) =>
