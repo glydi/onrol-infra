@@ -49,6 +49,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   double? _scrub; // position (ms) while dragging the scrubber, else null
   bool _completed = false;
   bool _webHint = true; // brief keyboard-shortcuts hint on the web player
+  Widget? _webVideo; // built ONCE so setState rebuilds don't recreate the
+  // <video>/hls.js element (which would restart playback — "first plays twice").
 
   static const _speeds = [0.5, 1.0, 1.25, 1.5, 2.0];
   static const _accent = Color(0xFFFF4F2B);
@@ -209,7 +211,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // driven by Netflix-style keyboard shortcuts + click (handled in the platform
   // view); a floating top bar and a brief shortcuts hint overlay on top.
   Widget _webPlayer() => Stack(children: [
-        AspectRatio(
+        _webVideo ??= AspectRatio(
           aspectRatio: 16 / 9,
           child: hlsVideoElement(widget.url, authToken: widget.authToken, startAt: widget.startAt.inSeconds.toDouble(), autoPlay: widget.autoPlay, onTime: _onWebTime, onEnded: () {
             if (!_completed) {
