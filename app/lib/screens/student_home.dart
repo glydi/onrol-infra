@@ -49,7 +49,7 @@ Color get _line => _isDark ? const Color(0xFF2C2F37) : const Color(0xFFF0F0F0);
 
 // ---- Glassmorphism --------------------------------------------------------
 // Frosted translucent fill + hairline highlight border + soft drop shadow.
-Color get _glassFill => _isDark ? Colors.white.withOpacity(0.12) : Colors.white.withOpacity(0.78);
+Color get _glassFill => _isDark ? const Color(0xFF1E2027).withOpacity(0.92) : Colors.white.withOpacity(0.92);
 Color get _glassBorder => _isDark ? Colors.white.withOpacity(0.12) : Colors.white.withOpacity(0.65);
 // Bright translucent card surface for elements inside popups — glassmorphic,
 // no solid fill, so the frosted panel glows through every element.
@@ -4887,21 +4887,14 @@ class _HeroPanelModal extends StatelessWidget {
           child: ClipRRect(
             borderRadius: BorderRadius.zero,
             child: BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              filter: ui.ImageFilter.blur(sigmaX: 6, sigmaY: 6),
               child: Container(
                 width: double.infinity,
-                // Frosted-glass card — translucent so the blurred dashboard
-                // refracts through; white element cards stay crisp on top.
+                // Near-solid card so text is fully legible (only a hint of frost).
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: _isDark
-                        ? [const Color(0xFF22242D).withOpacity(0.82), const Color(0xFF181A22).withOpacity(0.70)]
-                        : [Colors.white.withOpacity(0.74), Colors.white.withOpacity(0.60)],
-                  ),
+                  color: _isDark ? const Color(0xFF1B1D25) : Colors.white,
                   borderRadius: BorderRadius.zero,
-                  border: Border.all(color: _isDark ? Colors.white.withOpacity(0.12) : Colors.white.withOpacity(0.70), width: 1.2),
+                  border: Border.all(color: _isDark ? Colors.white.withOpacity(0.12) : _cardBorder, width: 1),
                 ),
                 child: Column(
                   mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
