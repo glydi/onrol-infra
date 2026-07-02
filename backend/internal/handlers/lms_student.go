@@ -321,31 +321,44 @@ func (h *Handlers) TakeAssessment(c *fiber.Ctx) error {
 	if !published || !h.isEnrolled(c, courseID) {
 		return fiber.NewError(fiber.StatusForbidden, "not available")
 	}
+	// The caller's existing submission (so the client can show status / grade /
+	// prior assignment text on reopen).
+	var subBody, subLink, subStatus, subFeedback string
+	var subScore *float64
+	var subAnswers []byte
+	_ = h.Pool.QueryRow(c.Context(),
+		`SELECT body, link, COALESCE(status,''), feedback, score, answers FROM submissions WHERE assessment_id=$1 AND user_id=$2`,
+		assessID, callerID(c)).Scan(&subBody, &subLink, &subStatus, &subFeedback, &subScore, &subAnswers)
+	answersMap := map[string]any{}
+	if len(subAnswers) > 0 {
+		_ = json.Unmarshal(subAnswers, &answersMap)
+	}
+	// Reveal the correct answers ONLY after the caller has submitted (so a review
+	// can mark right/wrong) — never before.
+	submitted := len(answersMap) > 0
+
 	rows, err := h.Pool.Query(c.Context(),
-		`SELECT id, prompt, type, options, points FROM questions WHERE assessment_id=$1 ORDER BY position`, assessID)
+		`SELECT id, prompt, type, options, points, correct FROM questions WHERE assessment_id=$1 ORDER BY position`, assessID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "load failed")
 	}
 	defer rows.Close()
 	qs := []fiber.Map{}
 	for rows.Next() {
-		var id, prompt, qtype string
+		var id, prompt, qtype, correct string
 		var optsRaw []byte
 		var points float64
-		if err := rows.Scan(&id, &prompt, &qtype, &optsRaw, &points); err != nil {
+		if err := rows.Scan(&id, &prompt, &qtype, &optsRaw, &points, &correct); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		var opts []string
 		_ = json.Unmarshal(optsRaw, &opts)
-		qs = append(qs, fiber.Map{"id": id, "prompt": prompt, "type": qtype, "options": opts, "points": points})
+		qm := fiber.Map{"id": id, "prompt": prompt, "type": qtype, "options": opts, "points": points}
+		if submitted {
+			qm["correct"] = correct
+		}
+		qs = append(qs, qm)
 	}
-	// The caller's existing submission (so the client can show status / grade /
-	// prior assignment text on reopen).
-	var subBody, subLink, subStatus, subFeedback string
-	var subScore *float64
-	_ = h.Pool.QueryRow(c.Context(),
-		`SELECT body, link, COALESCE(status,''), feedback, score FROM submissions WHERE assessment_id=$1 AND user_id=$2`,
-		assessID, callerID(c)).Scan(&subBody, &subLink, &subStatus, &subFeedback, &subScore)
 	files := []fiber.Map{}
 	if frows, ferr := h.Pool.Query(c.Context(),
 		`SELECT id, filename, size FROM submission_files WHERE assessment_id=$1 AND user_id=$2 ORDER BY created_at`,
@@ -362,7 +375,7 @@ func (h *Handlers) TakeAssessment(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"assessment_id": assessID, "title": title, "type": atype, "max_score": maxScore, "due_at": due, "auto_award": autoAward,
 		"questions": qs,
-		"submission": fiber.Map{"body": subBody, "link": subLink, "status": subStatus, "feedback": subFeedback, "score": subScore, "files": files},
+		"submission": fiber.Map{"body": subBody, "link": subLink, "status": subStatus, "feedback": subFeedback, "score": subScore, "files": files, "answers": answersMap},
 	})
 }
 
@@ -413,6 +426,14 @@ func (h *Handlers) SubmitAssessment(c *fiber.Ctx) error {
 			return fiber.NewError(fiber.StatusInternalServerError, "submit failed")
 		}
 		return c.JSON(fiber.Map{"assessment_id": assessID, "status": status})
+	}
+	// Quizzes are single-attempt: once answers are recorded, no re-editing.
+	// (An empty "{}" from a file-only upload still allows the first answer submit.)
+	var prevAnswers []byte
+	_ = h.Pool.QueryRow(c.Context(),
+		`SELECT answers FROM submissions WHERE assessment_id=$1 AND user_id=$2`, assessID, callerID(c)).Scan(&prevAnswers)
+	if len(prevAnswers) > 2 {
+		return fiber.NewError(fiber.StatusConflict, "already submitted")
 	}
 	var req struct {
 		Answers map[string]string `json:"answers"` // {question_id: answer}

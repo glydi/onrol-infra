@@ -1176,8 +1176,34 @@ class _StudentHomeState extends State<StudentHome> {
         if (isAssignment) return _assignmentView(id, m);
         final qs = (m['questions'] as List?) ?? [];
         if (qs.isEmpty) return _emptyText('This quiz has no questions yet.');
+        // Once submitted, the quiz is locked: show the submitted answers, no edits.
+        final submission = (m['submission'] as Map?)?.cast<String, dynamic>() ?? {};
+        final submittedAnswers = (submission['answers'] as Map?)?.cast<String, dynamic>() ?? {};
+        final locked = submittedAnswers.isNotEmpty;
+        if (locked && answers.isEmpty) {
+          submittedAnswers.forEach((k, v) => answers[k] = v?.toString() ?? '');
+        }
+        final subScore = submission['score'];
+        final subStatus = submission['status']?.toString() ?? '';
+        final maxScore = (m['max_score'] as num?)?.round() ?? 100;
         return StatefulBuilder(builder: (ctx, setS) {
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (locked) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(color: _green.withOpacity(0.10), border: Border.all(color: _green)),
+                child: Row(children: [
+                  Icon(CupertinoIcons.checkmark_seal_fill, size: 17, color: _green),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text(
+                    subStatus == 'graded' && subScore != null
+                        ? 'Submitted · scored ${(subScore as num).round()} / $maxScore. Your answers are below.'
+                        : 'Submitted ✓ — your answers are locked and shown below.',
+                    style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _navy))),
+                ]),
+              ),
+            ],
             ...qs.asMap().entries.map((e) {
               final q = e.value as Map<String, dynamic>;
               final qid = q['id'].toString();
@@ -1193,7 +1219,7 @@ class _StudentHomeState extends State<StudentHome> {
                   const SizedBox(height: 8),
                   if (type == 'upload')
                     _Pressable(
-                      onTap: () async {
+                      onTap: locked ? null : () async {
                         try {
                           final res = await FilePicker.platform.pickFiles(withData: true);
                           if (res == null || res.files.isEmpty) return;
@@ -1218,8 +1244,7 @@ class _StudentHomeState extends State<StudentHome> {
                       ),
                     )
                   else if (type == 'multi')
-                    // Multiple response: tick every correct option; stored as a
-                    // JSON array of the selected option texts.
+                    // Multiple response. After submit: green = correct, red = wrong pick.
                     Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: opts.map((o) {
                       List<String> sel;
                       try {
@@ -1227,9 +1252,19 @@ class _StudentHomeState extends State<StudentHome> {
                       } catch (_) {
                         sel = <String>[];
                       }
+                      List<String> correctList = const [];
+                      if (locked) {
+                        try {
+                          correctList = (jsonDecode(q['correct']?.toString() ?? '[]') as List).map((e) => e.toString()).toList();
+                        } catch (_) {}
+                      }
                       final on = sel.contains(o);
+                      final isCorrect = locked && correctList.contains(o);
+                      final wrongPick = locked && on && !isCorrect;
+                      final bd = isCorrect ? _green : wrongPick ? _danger : (on ? _orange : _line);
+                      final bg = isCorrect ? _green.withOpacity(0.14) : wrongPick ? _danger.withOpacity(0.12) : (on ? _orange.withOpacity(0.12) : _bg);
                       return _Pressable(
-                        onTap: () => setS(() {
+                        onTap: locked ? null : () => setS(() {
                           final cur = [...sel];
                           on ? cur.remove(o) : cur.add(o);
                           answers[qid] = jsonEncode(cur);
@@ -1237,38 +1272,63 @@ class _StudentHomeState extends State<StudentHome> {
                         child: Container(
                           margin: const EdgeInsets.only(bottom: 6),
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: on ? _orange.withOpacity(0.12) : _bg,
-                            borderRadius: BorderRadius.zero,
-                            border: Border.all(color: on ? _orange : _line),
-                          ),
+                          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.zero, border: Border.all(color: bd)),
                           child: Row(children: [
-                            Icon(on ? CupertinoIcons.checkmark_square_fill : CupertinoIcons.square, size: 18, color: on ? _orange : _grey),
+                            Icon(on ? CupertinoIcons.checkmark_square_fill : CupertinoIcons.square, size: 18, color: on ? (wrongPick ? _danger : _orange) : _grey),
                             const SizedBox(width: 10),
                             Expanded(child: Text(o, style: GoogleFonts.poppins(fontSize: 14, color: _navy))),
+                            if (isCorrect) const Icon(CupertinoIcons.checkmark_alt, size: 15, color: _green),
+                            if (wrongPick) const Icon(CupertinoIcons.xmark, size: 14, color: _danger),
                           ]),
                         ),
                       );
                     }).toList())
                   else if (opts.isNotEmpty)
-                    ...opts.map((o) => _Pressable(
-                          onTap: () => setS(() => answers[qid] = o),
-                          child: Container(
-                            margin: const EdgeInsets.only(bottom: 6),
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                            decoration: BoxDecoration(
-                              color: answers[qid] == o ? _orange.withOpacity(0.12) : _bg,
-                              borderRadius: BorderRadius.zero,
-                              border: Border.all(color: answers[qid] == o ? _orange : _line),
-                            ),
-                            child: Row(children: [
-                              Icon(answers[qid] == o ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle,
-                                  size: 18, color: answers[qid] == o ? _orange : _grey),
-                              const SizedBox(width: 10),
-                              Expanded(child: Text(o, style: GoogleFonts.poppins(fontSize: 14, color: _navy))),
-                            ]),
-                          ),
-                        ))
+                    ...opts.map((o) {
+                      final correct = q['correct']?.toString() ?? '';
+                      final picked = answers[qid] == o;
+                      final isCorrect = locked && o == correct;
+                      final wrongPick = locked && picked && !isCorrect;
+                      final bd = isCorrect ? _green : wrongPick ? _danger : (picked ? _orange : _line);
+                      final bg = isCorrect ? _green.withOpacity(0.14) : wrongPick ? _danger.withOpacity(0.12) : (picked ? _orange.withOpacity(0.12) : _bg);
+                      final icColor = isCorrect ? _green : wrongPick ? _danger : (picked ? _orange : _grey);
+                      final ic = isCorrect
+                          ? CupertinoIcons.checkmark_circle_fill
+                          : wrongPick
+                              ? CupertinoIcons.xmark_circle_fill
+                              : (picked ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle);
+                      return _Pressable(
+                        onTap: locked ? null : () => setS(() => answers[qid] = o),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.zero, border: Border.all(color: bd)),
+                          child: Row(children: [
+                            Icon(ic, size: 18, color: icColor),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text(o, style: GoogleFonts.poppins(fontSize: 14, color: _navy))),
+                          ]),
+                        ),
+                      );
+                    })
+                  else if (locked)
+                    Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
+                        child: Text((answers[qid] ?? '').trim().isEmpty ? '— no answer —' : answers[qid]!,
+                            style: GoogleFonts.poppins(fontSize: 14, color: (answers[qid] ?? '').trim().isEmpty ? _grey : _navy)),
+                      ),
+                      if (type != 'essay' && type != 'upload' && (q['correct']?.toString() ?? '').isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Row(children: [
+                          Icon(CupertinoIcons.checkmark_seal_fill, size: 14, color: _green),
+                          const SizedBox(width: 6),
+                          Expanded(child: Text('Correct answer: ${(q['correct'] as String).replaceAll('|', ' / ')}', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: _green))),
+                        ]),
+                      ],
+                    ])
                   else
                     CupertinoTextField(
                       placeholder: 'Your answer',
@@ -1279,8 +1339,8 @@ class _StudentHomeState extends State<StudentHome> {
                 ]),
               );
             }),
-            const SizedBox(height: 8),
-            _Pressable(
+            if (!locked) const SizedBox(height: 8),
+            if (!locked) _Pressable(
               onTap: () async {
                 try {
                   final res = await widget.auth.apiPost('/api/v1/me/assessments/$id/submit', {'answers': answers});
