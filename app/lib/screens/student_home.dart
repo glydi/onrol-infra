@@ -5917,6 +5917,7 @@ class _PressableState extends State<_Pressable> {
         _down = false;
       }),
       child: GestureDetector(
+        behavior: HitTestBehavior.opaque, // whole area tappable, not just the glyphs
         onTapDown: enabled ? (_) => setState(() => _down = true) : null,
         onTapUp: enabled ? (_) => setState(() => _down = false) : null,
         onTapCancel: enabled ? () => setState(() => _down = false) : null,
@@ -6632,11 +6633,18 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 760),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    Text(title, style: GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w800, color: _navy, height: 1.25)),
-                    const SizedBox(height: 16),
-                    _NoteMarkdown(text: body),
-                  ]),
+                  // The material sits in a bordered "page" box so the text isn't
+                  // floating on the bare background.
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(22, 22, 22, 26),
+                    decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      Text(title, style: GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w800, color: _navy, height: 1.25)),
+                      const SizedBox(height: 16),
+                      _NoteMarkdown(text: body),
+                    ]),
+                  ),
                 ),
               ),
             ),
