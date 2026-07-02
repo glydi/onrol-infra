@@ -830,7 +830,84 @@ class _StudentHomeState extends State<StudentHome> {
           ]);
         });
       }),
+      // This course's assignments & quizzes, grouped by day.
+      _future(_apiList('/api/v1/me/assessments', 'assessments'), (List items) {
+        final mine = items.where((a) => (a as Map<String, dynamic>)['course']?.toString() == title).toList();
+        if (mine.isEmpty) return const SizedBox.shrink();
+        return _assessmentsByDayView(mine);
+      }),
     ]);
+  }
+
+  // A "Assignments & Quizzes" section grouped by day (Day 1, 2, … then
+  // Unscheduled), each row opening the quiz / assignment. Used in the course view.
+  Widget _assessmentsByDayView(List items) {
+    final groups = <int?, List<Map<String, dynamic>>>{};
+    for (final a in items) {
+      final m = a as Map<String, dynamic>;
+      groups.putIfAbsent((m['day_number'] as num?)?.toInt(), () => []).add(m);
+    }
+    final keys = groups.keys.toList()
+      ..sort((x, y) {
+        if (x == null) return 1;
+        if (y == null) return -1;
+        return x.compareTo(y);
+      });
+    final children = <Widget>[
+      Padding(
+        padding: const EdgeInsets.only(top: 18, bottom: 4),
+        child: Row(children: [
+          Icon(CupertinoIcons.doc_text_fill, size: 16, color: _orange),
+          const SizedBox(width: 8),
+          Text('Assignments & Quizzes', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
+        ]),
+      ),
+    ];
+    for (final k in keys) {
+      children.add(Padding(
+        padding: const EdgeInsets.only(top: 12, bottom: 4),
+        child: Text(k == null ? 'Unscheduled' : 'Day $k', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: _orange)),
+      ));
+      for (final m in groups[k]!) {
+        final isQuiz = m['type'] == 'quiz';
+        final submitted = m['submitted'] == true;
+        final course = m['course']?.toString() ?? '';
+        final status = m['status']?.toString() ?? '';
+        final score = m['score'];
+        final maxScore = (m['max_score'] as num?)?.round() ?? 100;
+        String badge;
+        Color? badgeBg, badgeFg;
+        if (submitted) {
+          if (status == 'graded' && score != null) {
+            badge = '${(score as num).round()}/$maxScore pts';
+            badgeBg = _greenBg;
+            badgeFg = _green;
+          } else if (status == 'submitted') {
+            badge = 'Grading…';
+            badgeBg = _orange.withOpacity(0.12);
+            badgeFg = _orange;
+          } else {
+            badge = 'Submitted';
+            badgeBg = _greenBg;
+            badgeFg = _green;
+          }
+        } else {
+          badge = isQuiz ? 'Start' : 'Pending';
+        }
+        children.add(GestureDetector(
+          onTap: () => _openAssessment(m),
+          child: _row(
+            isQuiz ? CupertinoIcons.question_square_fill : CupertinoIcons.doc_text_fill,
+            m['title']?.toString() ?? 'Assessment',
+            '$course · ${isQuiz ? 'Quiz' : 'Assignment'} · $maxScore pts',
+            badge,
+            badgeBg: badgeBg,
+            badgeFg: badgeFg,
+          ),
+        ));
+      }
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
   }
 
   // One module as a bordered box: a tinted title bar, its day folders, a
