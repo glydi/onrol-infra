@@ -6549,6 +6549,9 @@ class _NotePageEditorState extends State<_NotePageEditor> {
     _id = widget.note?['id']?.toString();
     _title = TextEditingController(text: widget.note?['title']?.toString() ?? '');
     _body = TextEditingController(text: widget.note?['body']?.toString() ?? '');
+    // Open existing notes (with content) in Preview by default; new/empty ones
+    // start in Edit so you can write straight away.
+    _preview = (widget.note?['body']?.toString() ?? '').trim().isNotEmpty;
     _title.addListener(_onChanged);
     _body.addListener(_onChanged);
   }
