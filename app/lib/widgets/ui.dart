@@ -603,20 +603,24 @@ Future<bool?> showFormSheet(
             }
           },
         );
+        final screenH = MediaQuery.of(ctx).size.height;
+        // `big` renders a large CENTERED panel (not a shrink-to-content bottom
+        // sheet) with a generous fixed height, so long forms feel roomy.
         return SquareScope(square: sq, child: Padding(
           padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
           child: Align(
-            alignment: Alignment.bottomCenter,
+            alignment: big ? Alignment.center : Alignment.bottomCenter,
             child: ConstrainedBox(
               constraints: BoxConstraints(
-                maxWidth: big ? 720 : double.infinity,
-                maxHeight: MediaQuery.of(ctx).size.height * (big ? 0.92 : 0.85),
+                maxWidth: big ? 760 : double.infinity,
+                maxHeight: screenH * (big ? 0.9 : 0.85),
               ),
               child: Container(
-                margin: const EdgeInsets.all(10),
-                padding: EdgeInsets.all(big ? 24 : 20),
+                margin: EdgeInsets.all(big ? 16 : 10),
+                height: big ? (screenH * 0.82).clamp(0.0, 820.0) : null,
+                padding: EdgeInsets.all(big ? 26 : 20),
                 decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.zero),
-                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                child: Column(mainAxisSize: big ? MainAxisSize.max : MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   Center(child: Text(title, style: AppleTheme.title2(ctx))),
                   const SizedBox(height: 16),
                   Flexible(

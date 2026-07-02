@@ -736,8 +736,9 @@ Widget liveHlsVideoElement(
       video.src = url; // Safari / mp4
     }
 
-    // Strip seek/skip/details from the OS media notification so it looks live
-    // (and can't be scrubbed from outside the page). Re-applied on each play.
+    // Fully suppress the OS media notification for live (no metadata/evidence,
+    // and no controls that could drive the stream). Re-applied on play and every
+    // second below, since the browser re-populates the session on state changes.
     void neuterMediaSession() {
       try {
         if (js.context.hasProperty('onrolNeuterMediaSession')) js.context.callMethod('onrolNeuterMediaSession');
@@ -766,6 +767,7 @@ Widget liveHlsVideoElement(
         return;
       }
       syncToTime();
+      neuterMediaSession(); // keep the media notification wiped while live
     });
     return container;
   });

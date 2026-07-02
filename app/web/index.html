@@ -77,20 +77,26 @@
         }
       };
     };
-    // Simulated-live: stop the OS / browser media notification (lock screen,
-    // notification shade, desktop media hub) from exposing seek / skip controls
-    // or a scrubber — those reveal it's a seekable recording AND let a viewer
-    // skip from outside the page. Remove every position/seek action and show a
-    // neutral "Live" label. Re-applied on each play (the browser can reset it).
+    // Simulated-live: fully suppress the OS / browser media notification (lock
+    // screen, notification shade, desktop media hub). We (1) clear the metadata
+    // so there's NO title / artist / artwork — no evidence a class recording is
+    // playing, (2) report "nothing playing" so the notification is dropped where
+    // the browser allows, (3) remove EVERY action handler so the notification
+    // can't play / pause / seek / skip the stream, and (4) clear any position
+    // state (no scrubber). Re-applied every second by the live guard because the
+    // browser re-populates the session whenever playback state changes.
     window.onrolNeuterMediaSession = function () {
       try {
         if (!('mediaSession' in navigator)) return;
-        if (window.MediaMetadata) {
-          navigator.mediaSession.metadata = new MediaMetadata({ title: 'Live', artist: '', album: '' });
-        }
-        ['seekbackward', 'seekforward', 'seekto', 'previoustrack', 'nexttrack', 'skipad', 'stop'].forEach(function (a) {
-          try { navigator.mediaSession.setActionHandler(a, null); } catch (e) {}
+        var ms = navigator.mediaSession;
+        try { ms.metadata = null; } catch (e) {}
+        try { ms.playbackState = 'none'; } catch (e) {}
+        ['play', 'pause', 'stop', 'seekbackward', 'seekforward', 'seekto',
+         'previoustrack', 'nexttrack', 'skipad', 'togglemicrophone',
+         'togglecamera', 'hangup'].forEach(function (a) {
+          try { ms.setActionHandler(a, null); } catch (e) {}
         });
+        try { if (ms.setPositionState) ms.setPositionState(); } catch (e) {}
       } catch (e) {}
     };
     // Keep a simulated-live stream from getting permanently stuck: recover from
