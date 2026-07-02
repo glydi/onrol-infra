@@ -2422,30 +2422,63 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       out.add(_DayFolder(
         label: k == null ? 'Unscheduled' : 'Day $k',
         count: ls.length,
-        children: ls.map(_lessonRow).toList(),
+        children: [for (var i = 0; i < ls.length; i++) _lessonRow(ls[i], ls, i)],
       ));
     }
     return out;
   }
 
-  Widget _lessonRow(Map<String, dynamic> ll) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
-        child: Row(children: [
-          Icon(_iconFor(ll['type']?.toString() ?? 'text'), size: 17, color: Palette.of(context).secondary),
-          const SizedBox(width: 10),
-          Expanded(child: Text(ll['title']?.toString() ?? '', style: AppleTheme.body(context).copyWith(fontSize: 15))),
-          GestureDetector(
-            onTap: () => _editLesson(ll),
-            child: Icon(CupertinoIcons.pencil, size: 16, color: Palette.of(context).secondary),
-          ),
-          const SizedBox(width: 12),
-          GestureDetector(
-            onTap: () => _confirmDelete('Delete this lesson?', () =>
-                widget.auth.apiDelete('/api/v1/manage/lessons/${ll['id']}')),
-            child: Icon(CupertinoIcons.minus_circle, size: 17, color: AppleColors.red.withOpacity(0.8)),
-          ),
-        ]),
-      );
+  Widget _lessonRow(Map<String, dynamic> ll, List<Map<String, dynamic>> group, int index) {
+    final p = Palette.of(context);
+    final canUp = index > 0;
+    final canDown = index < group.length - 1;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(children: [
+        Icon(_iconFor(ll['type']?.toString() ?? 'text'), size: 17, color: p.secondary),
+        const SizedBox(width: 10),
+        Expanded(child: Text(ll['title']?.toString() ?? '', style: AppleTheme.body(context).copyWith(fontSize: 15))),
+        // Reorder within the day (move the material up / down).
+        GestureDetector(
+          onTap: canUp ? () => _moveLesson(group, index, -1) : null,
+          child: Icon(CupertinoIcons.chevron_up, size: 16, color: canUp ? p.secondary : p.separator),
+        ),
+        const SizedBox(width: 10),
+        GestureDetector(
+          onTap: canDown ? () => _moveLesson(group, index, 1) : null,
+          child: Icon(CupertinoIcons.chevron_down, size: 16, color: canDown ? p.secondary : p.separator),
+        ),
+        const SizedBox(width: 14),
+        GestureDetector(
+          onTap: () => _editLesson(ll),
+          child: Icon(CupertinoIcons.pencil, size: 16, color: p.secondary),
+        ),
+        const SizedBox(width: 12),
+        GestureDetector(
+          onTap: () => _confirmDelete('Delete this lesson?', () =>
+              widget.auth.apiDelete('/api/v1/manage/lessons/${ll['id']}')),
+          child: Icon(CupertinoIcons.minus_circle, size: 17, color: AppleColors.red.withOpacity(0.8)),
+        ),
+      ]),
+    );
+  }
+
+  // Move a material up/down within its day group: reassign sequential positions
+  // (0,1,2,…) to the new order and persist, then reload.
+  Future<void> _moveLesson(List<Map<String, dynamic>> group, int index, int delta) async {
+    final target = index + delta;
+    if (target < 0 || target >= group.length) return;
+    final reordered = [...group];
+    final item = reordered.removeAt(index);
+    reordered.insert(target, item);
+    try {
+      await Future.wait([
+        for (var i = 0; i < reordered.length; i++)
+          widget.auth.apiPatch('/api/v1/manage/lessons/${reordered[i]['id']}', {'position': i}),
+      ]);
+    } catch (_) {}
+    await _load();
+  }
 
   // Quizzes/assignments attached to a specific module (shown inside its card).
   List<Widget> _moduleAssessments(String moduleId) {
