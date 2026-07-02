@@ -4915,18 +4915,12 @@ class _HeroPanelModal extends StatelessWidget {
         // When the panel meets the screen top, inset the header by the device
         // safe area (Dynamic Island / notch) so the title clears it.
         padding: EdgeInsets.fromLTRB(14, 16 + (fill ? mq.padding.top : 0), 18, 16),
-        // Frosted-glass header (no bold orange): translucent gradient + a
-        // hairline edge, with the accent used only on the icon/back chip.
+        // Solid, pinned title bar (no glass) so nothing shows through it as the
+        // body scrolls; the accent is used only on the icon/back chip.
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: _isDark
-                ? [Colors.white.withOpacity(0.10), Colors.white.withOpacity(0.04)]
-                : [Colors.white.withOpacity(0.55), Colors.white.withOpacity(0.28)],
-          ),
+          color: _isDark ? const Color(0xFF1B1D25) : Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.zero),
-          border: Border(bottom: BorderSide(color: _isDark ? Colors.white.withOpacity(0.10) : Colors.white.withOpacity(0.6))),
+          border: Border(bottom: BorderSide(color: _cardBorder)),
         ),
         child: Row(children: [
           _Pressable(
