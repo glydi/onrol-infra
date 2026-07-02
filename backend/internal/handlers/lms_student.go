@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"math"
+	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -444,14 +445,23 @@ func (h *Handlers) SubmitAssessment(c *fiber.Ctx) error {
 				autoScore += points
 				correctCount++
 			}
-		case "short":
-			// Auto-correct short answers too: case-insensitive, and the answer key
-			// may list several accepted answers separated by "|".
+		case "short", "fill":
+			// Case-insensitive; the answer key may list accepted answers with "|".
 			if matchShortAnswer(req.Answers[id], correct) {
 				autoScore += points
 				correctCount++
 			}
-		default: // essay — needs a human
+		case "numeric":
+			if matchNumeric(req.Answers[id], correct) {
+				autoScore += points
+				correctCount++
+			}
+		case "multi":
+			if matchMultiSet(req.Answers[id], correct) {
+				autoScore += points
+				correctCount++
+			}
+		default: // essay / upload — needs a human
 			needsManual = true
 		}
 	}
@@ -500,6 +510,41 @@ func matchShortAnswer(ans, correct string) bool {
 		}
 	}
 	return false
+}
+
+// matchNumeric compares two numbers within a small tolerance.
+func matchNumeric(ans, correct string) bool {
+	a, e1 := strconv.ParseFloat(strings.TrimSpace(ans), 64)
+	c, e2 := strconv.ParseFloat(strings.TrimSpace(correct), 64)
+	if e1 != nil || e2 != nil {
+		return false
+	}
+	return math.Abs(a-c) < 1e-6
+}
+
+// matchMultiSet compares a multiple-response answer to the key. Both are JSON
+// arrays of option strings; order-insensitive, case-insensitive exact-set match.
+func matchMultiSet(ans, correct string) bool {
+	var a, c []string
+	if json.Unmarshal([]byte(strings.TrimSpace(ans)), &a) != nil {
+		return false
+	}
+	if json.Unmarshal([]byte(strings.TrimSpace(correct)), &c) != nil {
+		return false
+	}
+	if len(a) == 0 || len(a) != len(c) {
+		return false
+	}
+	want := map[string]bool{}
+	for _, x := range c {
+		want[strings.ToLower(strings.TrimSpace(x))] = true
+	}
+	for _, x := range a {
+		if !want[strings.ToLower(strings.TrimSpace(x))] {
+			return false
+		}
+	}
+	return true
 }
 
 // MyGrades: the caller's graded submissions.

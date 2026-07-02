@@ -1236,50 +1236,91 @@ class _QuizBuilderState extends State<_QuizBuilder> {
 
   // Add a new question, or edit an existing one when [edit] is passed.
   Future<void> _questionForm([Map<String, dynamic>? edit]) async {
-    const types = ['mcq', 'truefalse', 'short', 'essay', 'upload'];
+    const types = ['mcq', 'multi', 'truefalse', 'short', 'fill', 'numeric', 'essay', 'upload'];
+    const typeLabels = ['Multiple choice', 'Multiple response', 'True / False', 'Short answer', 'Fill in the blank', 'Numerical', 'Essay', 'Upload file'];
     final existing = ((edit?['options'] as List?) ?? const []).map((e) => e.toString()).toList();
     final correctStr = edit?['correct']?.toString() ?? '';
     int type = edit == null ? 0 : types.indexOf(edit['type']?.toString() ?? 'mcq');
     if (type < 0) type = 0;
     final prompt = TextEditingController(text: edit?['prompt']?.toString() ?? '');
     final points = TextEditingController(text: edit == null ? '1' : '${edit['points'] ?? 1}');
-    final shortAns = TextEditingController(text: type == 2 ? correctStr : '');
     final opts = <TextEditingController>[];
-    int correctIdx = 0; // for mcq + truefalse
-    if (type == 0 && existing.isNotEmpty) {
+    int correctIdx = 0; // mcq + truefalse
+    final correctSet = <int>{}; // multi
+    final tk0 = types[type];
+    if ((tk0 == 'mcq' || tk0 == 'multi') && existing.isNotEmpty) {
       for (final o in existing) {
         opts.add(TextEditingController(text: o));
       }
-      final ci = existing.indexOf(correctStr);
-      correctIdx = ci >= 0 ? ci : 0;
-    } else if (type == 1) {
+      if (tk0 == 'mcq') {
+        final ci = existing.indexOf(correctStr);
+        correctIdx = ci >= 0 ? ci : 0;
+      } else {
+        try {
+          final list = (jsonDecode(correctStr) as List).map((e) => e.toString()).toList();
+          for (var i = 0; i < existing.length; i++) {
+            if (list.contains(existing[i])) correctSet.add(i);
+          }
+        } catch (_) {}
+      }
+    } else if (tk0 == 'truefalse') {
       correctIdx = correctStr == 'false' ? 1 : 0;
     }
     while (opts.length < 2) {
       opts.add(TextEditingController());
     }
+    final shortAns = TextEditingController(text: (tk0 == 'short' || tk0 == 'fill' || tk0 == 'numeric') ? correctStr : '');
 
     final ok = await showFormSheet(context, square: true, big: true, title: edit == null ? 'Add Question' : 'Edit Question', builder: (setS) {
+      final p = Palette.of(context);
+      final tkey = types[type];
       final rows = <Widget>[
         sheetField(prompt, 'Question prompt', CupertinoIcons.text_quote),
         const SizedBox(height: 10),
-        AppleSegmented(square: true, labels: const ['MCQ', 'True/False', 'Short', 'Essay', 'Upload'], selected: type, onChanged: (i) => setS(() {
-          type = i;
-          correctIdx = 0;
-        })),
-        const SizedBox(height: 12),
+        _label(context, 'Question type'),
+        const SizedBox(height: 6),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (var i = 0; i < types.length; i++)
+            GestureDetector(
+              onTap: () => setS(() {
+                type = i;
+                correctIdx = 0;
+                correctSet.clear();
+              }),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: type == i ? p.accent.withOpacity(0.15) : p.card2,
+                  border: Border.all(color: type == i ? p.accent : p.separator),
+                ),
+                child: Text(typeLabels[i], style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700, color: type == i ? p.accent : p.label)),
+              ),
+            ),
+        ]),
+        const SizedBox(height: 14),
       ];
-      if (type == 0) {
-        rows.add(_label(context, 'Options — tap the circle to mark the correct one'));
+      final isMulti = tkey == 'multi';
+      if (tkey == 'mcq' || isMulti) {
+        rows.add(_label(context, isMulti ? 'Options — tick EVERY correct answer' : 'Options — tap the circle to mark the correct one'));
         rows.add(const SizedBox(height: 6));
         for (var i = 0; i < opts.length; i++) {
+          final sel = isMulti ? correctSet.contains(i) : correctIdx == i;
           rows.add(Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Row(children: [
               GestureDetector(
-                onTap: () => setS(() => correctIdx = i),
-                child: Icon(correctIdx == i ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle,
-                    color: correctIdx == i ? AppleColors.green : Palette.of(context).secondary, size: 24),
+                onTap: () => setS(() {
+                  if (isMulti) {
+                    sel ? correctSet.remove(i) : correctSet.add(i);
+                  } else {
+                    correctIdx = i;
+                  }
+                }),
+                child: Icon(
+                    sel
+                        ? (isMulti ? CupertinoIcons.checkmark_square_fill : CupertinoIcons.checkmark_circle_fill)
+                        : (isMulti ? CupertinoIcons.square : CupertinoIcons.circle),
+                    color: sel ? AppleColors.green : Palette.of(context).secondary, size: 24),
               ),
               const SizedBox(width: 10),
               Expanded(child: sheetField(opts[i], 'Option ${i + 1}', CupertinoIcons.circle_grid_hex)),
@@ -1288,6 +1329,7 @@ class _QuizBuilderState extends State<_QuizBuilder> {
                 GestureDetector(
                   onTap: () => setS(() {
                     opts.removeAt(i);
+                    correctSet.remove(i);
                     if (correctIdx >= opts.length) correctIdx = opts.length - 1;
                   }),
                   child: const Icon(CupertinoIcons.minus_circle, size: 20, color: AppleColors.red),
@@ -1307,13 +1349,17 @@ class _QuizBuilderState extends State<_QuizBuilder> {
             ]),
           ),
         ));
-      } else if (type == 1) {
+      } else if (tkey == 'truefalse') {
         rows.add(_label(context, 'Correct answer'));
         rows.add(const SizedBox(height: 6));
         rows.add(AppleSegmented(square: true, labels: const ['True', 'False'], selected: correctIdx, onChanged: (i) => setS(() => correctIdx = i)));
-      } else if (type == 2) {
+      } else if (tkey == 'short') {
         rows.add(sheetField(shortAns, 'Correct answer', CupertinoIcons.checkmark_alt_circle));
-      } else if (type == 3) {
+      } else if (tkey == 'fill') {
+        rows.add(sheetField(shortAns, 'Accepted answer(s) — separate alternatives with |', CupertinoIcons.text_cursor));
+      } else if (tkey == 'numeric') {
+        rows.add(sheetField(shortAns, 'Correct number', CupertinoIcons.number, keyboard: const TextInputType.numberWithOptions(decimal: true, signed: true)));
+      } else if (tkey == 'essay') {
         rows.add(_label(context, 'Long answer — students write a response and you grade it manually. No answer key needed.'));
       } else {
         rows.add(_label(context, 'Upload — students upload a file as their answer; you grade it manually.'));
@@ -1323,26 +1369,41 @@ class _QuizBuilderState extends State<_QuizBuilder> {
       return rows;
     }, onSubmit: () async {
       if (prompt.text.trim().isEmpty) return 'Prompt required';
+      final tkey = types[type];
       List<String> options;
       String correct;
-      if (type == 0) {
+      if (tkey == 'mcq') {
         options = opts.map((c) => c.text.trim()).where((s) => s.isNotEmpty).toList();
         if (options.length < 2) return 'Add at least two options';
         if (correctIdx >= options.length) return 'Pick the correct option';
         correct = options[correctIdx];
-      } else if (type == 1) {
+      } else if (tkey == 'multi') {
+        options = opts.map((c) => c.text.trim()).where((s) => s.isNotEmpty).toList();
+        if (options.length < 2) return 'Add at least two options';
+        final correctOpts = <String>[];
+        for (var i = 0; i < opts.length; i++) {
+          if (correctSet.contains(i) && opts[i].text.trim().isNotEmpty) correctOpts.add(opts[i].text.trim());
+        }
+        if (correctOpts.isEmpty) return 'Tick at least one correct answer';
+        correct = jsonEncode(correctOpts);
+      } else if (tkey == 'truefalse') {
         options = ['true', 'false'];
         correct = correctIdx == 0 ? 'true' : 'false';
-      } else if (type == 2) {
+      } else if (tkey == 'short' || tkey == 'fill') {
         options = [];
         correct = shortAns.text.trim();
+        if (correct.isEmpty) return 'Enter the correct answer';
+      } else if (tkey == 'numeric') {
+        options = [];
+        correct = shortAns.text.trim();
+        if (double.tryParse(correct) == null) return 'Enter a valid number';
       } else {
         options = [];
         correct = '';
       }
       final payload = <String, dynamic>{
         'prompt': prompt.text.trim(),
-        'type': types[type],
+        'type': tkey,
         'options': options,
         'correct': correct,
         'points': double.tryParse(points.text.trim()) ?? 1,

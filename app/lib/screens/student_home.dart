@@ -1214,6 +1214,39 @@ class _StudentHomeState extends State<StudentHome> {
                         ]),
                       ),
                     )
+                  else if (type == 'multi')
+                    // Multiple response: tick every correct option; stored as a
+                    // JSON array of the selected option texts.
+                    Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: opts.map((o) {
+                      List<String> sel;
+                      try {
+                        sel = (jsonDecode(answers[qid] ?? '[]') as List).map((e) => e.toString()).toList();
+                      } catch (_) {
+                        sel = <String>[];
+                      }
+                      final on = sel.contains(o);
+                      return _Pressable(
+                        onTap: () => setS(() {
+                          final cur = [...sel];
+                          on ? cur.remove(o) : cur.add(o);
+                          answers[qid] = jsonEncode(cur);
+                        }),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: on ? _orange.withOpacity(0.12) : _bg,
+                            borderRadius: BorderRadius.zero,
+                            border: Border.all(color: on ? _orange : _line),
+                          ),
+                          child: Row(children: [
+                            Icon(on ? CupertinoIcons.checkmark_square_fill : CupertinoIcons.square, size: 18, color: on ? _orange : _grey),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text(o, style: GoogleFonts.poppins(fontSize: 14, color: _navy))),
+                          ]),
+                        ),
+                      );
+                    }).toList())
                   else if (opts.isNotEmpty)
                     ...opts.map((o) => _Pressable(
                           onTap: () => setS(() => answers[qid] = o),
