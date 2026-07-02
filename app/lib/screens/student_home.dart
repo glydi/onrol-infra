@@ -1188,7 +1188,33 @@ class _StudentHomeState extends State<StudentHome> {
                   Text('${e.key + 1}. ${q['prompt'] ?? ''}',
                       style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: _navy)),
                   const SizedBox(height: 8),
-                  if (opts.isNotEmpty)
+                  if (type == 'upload')
+                    _Pressable(
+                      onTap: () async {
+                        try {
+                          final res = await FilePicker.platform.pickFiles(withData: true);
+                          if (res == null || res.files.isEmpty) return;
+                          final pf = res.files.first;
+                          final bytes = pf.bytes;
+                          if (bytes == null) return;
+                          await widget.auth.apiUpload('/api/v1/me/assessments/$id/files', bytes: bytes, filename: pf.name);
+                          setS(() => answers[qid] = pf.name);
+                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Uploaded ${pf.name}')));
+                        } catch (_) {
+                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload failed — try again.')));
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                        decoration: BoxDecoration(color: _orange.withOpacity(0.08), border: Border.all(color: _orange)),
+                        child: Row(children: [
+                          Icon((answers[qid] ?? '').isNotEmpty ? CupertinoIcons.checkmark_alt_circle_fill : CupertinoIcons.cloud_upload_fill, size: 17, color: _orange),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text((answers[qid] ?? '').isNotEmpty ? 'Uploaded: ${answers[qid]}' : 'Upload a file', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: _orange))),
+                        ]),
+                      ),
+                    )
+                  else if (opts.isNotEmpty)
                     ...opts.map((o) => _Pressable(
                           onTap: () => setS(() => answers[qid] = o),
                           child: Container(

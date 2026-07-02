@@ -37,8 +37,14 @@ func (h *Handlers) UploadSubmissionFile(c *fiber.Ctx) error {
 	if !published || !h.isEnrolled(c, courseID) {
 		return fiber.NewError(fiber.StatusForbidden, "not available")
 	}
+	// Allowed for assignments, or quizzes that contain an 'upload' question.
 	if atype != "assignment" {
-		return fiber.NewError(fiber.StatusBadRequest, "not an assignment")
+		var hasUpload bool
+		_ = h.Pool.QueryRow(c.Context(),
+			`SELECT EXISTS(SELECT 1 FROM questions WHERE assessment_id=$1 AND type='upload')`, assessID).Scan(&hasUpload)
+		if !hasUpload {
+			return fiber.NewError(fiber.StatusBadRequest, "file upload not enabled")
+		}
 	}
 	fh, err := c.FormFile("file")
 	if err != nil {

@@ -1236,7 +1236,7 @@ class _QuizBuilderState extends State<_QuizBuilder> {
 
   // Add a new question, or edit an existing one when [edit] is passed.
   Future<void> _questionForm([Map<String, dynamic>? edit]) async {
-    const types = ['mcq', 'truefalse', 'short', 'essay'];
+    const types = ['mcq', 'truefalse', 'short', 'essay', 'upload'];
     final existing = ((edit?['options'] as List?) ?? const []).map((e) => e.toString()).toList();
     final correctStr = edit?['correct']?.toString() ?? '';
     int type = edit == null ? 0 : types.indexOf(edit['type']?.toString() ?? 'mcq');
@@ -1259,11 +1259,11 @@ class _QuizBuilderState extends State<_QuizBuilder> {
       opts.add(TextEditingController());
     }
 
-    final ok = await showFormSheet(context, square: true, title: edit == null ? 'Add Question' : 'Edit Question', builder: (setS) {
+    final ok = await showFormSheet(context, square: true, big: true, title: edit == null ? 'Add Question' : 'Edit Question', builder: (setS) {
       final rows = <Widget>[
         sheetField(prompt, 'Question prompt', CupertinoIcons.text_quote),
         const SizedBox(height: 10),
-        AppleSegmented(square: true, labels: const ['MCQ', 'True/False', 'Short', 'Essay'], selected: type, onChanged: (i) => setS(() {
+        AppleSegmented(square: true, labels: const ['MCQ', 'True/False', 'Short', 'Essay', 'Upload'], selected: type, onChanged: (i) => setS(() {
           type = i;
           correctIdx = 0;
         })),
@@ -1313,8 +1313,10 @@ class _QuizBuilderState extends State<_QuizBuilder> {
         rows.add(AppleSegmented(square: true, labels: const ['True', 'False'], selected: correctIdx, onChanged: (i) => setS(() => correctIdx = i)));
       } else if (type == 2) {
         rows.add(sheetField(shortAns, 'Correct answer', CupertinoIcons.checkmark_alt_circle));
-      } else {
+      } else if (type == 3) {
         rows.add(_label(context, 'Long answer — students write a response and you grade it manually. No answer key needed.'));
+      } else {
+        rows.add(_label(context, 'Upload — students upload a file as their answer; you grade it manually.'));
       }
       rows.add(const SizedBox(height: 12));
       rows.add(sheetField(points, 'Points', CupertinoIcons.number, keyboard: TextInputType.number));
@@ -2133,7 +2135,11 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
             ),
             _pubToggle(id, a['is_published'] != false),
             const SizedBox(width: 8),
-            _smallButton('Questions', CupertinoIcons.list_bullet, () => _openQuizBuilder(id, title, isQuiz: isQuiz)),
+            if (isQuiz) ...[
+              _smallButton('Questions', CupertinoIcons.list_bullet, () => _openQuizBuilder(id, title, isQuiz: isQuiz)),
+              const SizedBox(width: 6),
+            ],
+            _smallButton('Submissions', CupertinoIcons.tray_full_fill, () => _openSubmissions(id, title, (a['max_score'] as num?) ?? 100)),
             const SizedBox(width: 6),
             GestureDetector(
               onTap: () => _editAssessment(a),
@@ -2548,9 +2554,11 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
             Expanded(child: Text('${m['title']}${(m['questions'] ?? 0) != 0 ? ' · ${m['questions']} Qs' : ''}', style: AppleTheme.body(context).copyWith(fontSize: 14))),
             _pubToggle(m['id'].toString(), m['is_published'] != false),
             const SizedBox(width: 6),
-            isQuiz
-                ? _smallButton('Questions', CupertinoIcons.list_bullet, () => _openQuizBuilder(m['id'].toString(), m['title']?.toString() ?? 'Quiz', isQuiz: isQuiz))
-                : _smallButton('Submissions', CupertinoIcons.tray_full_fill, () => _openSubmissions(m['id'].toString(), m['title']?.toString() ?? 'Assignment', (m['max_score'] as num?) ?? 100)),
+            if (isQuiz) ...[
+              _smallButton('Questions', CupertinoIcons.list_bullet, () => _openQuizBuilder(m['id'].toString(), m['title']?.toString() ?? 'Quiz', isQuiz: isQuiz)),
+              const SizedBox(width: 6),
+            ],
+            _smallButton('Submissions', CupertinoIcons.tray_full_fill, () => _openSubmissions(m['id'].toString(), m['title']?.toString() ?? (isQuiz ? 'Quiz' : 'Assignment'), (m['max_score'] as num?) ?? 100)),
             const SizedBox(width: 6),
             GestureDetector(
               onTap: () => _editAssessment(m),
@@ -2613,7 +2621,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   Future<void> _addModule({String? parentId, String? parentTitle}) async {
     final title = TextEditingController();
     final sub = parentId != null;
-    final ok = await showFormSheet(context, square: true,
+    final ok = await showFormSheet(context, square: true, big: true,
         title: sub ? 'Add Sub-module to "${parentTitle ?? 'Module'}"' : 'Add Module',
         builder: (_) => [sheetField(title, sub ? 'Sub-module title' : 'Module title', CupertinoIcons.folder)],
         onSubmit: () async {
