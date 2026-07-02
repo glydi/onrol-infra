@@ -890,13 +890,16 @@ class _StudentHomeState extends State<StudentHome> {
         if (b == null) return -1;
         return a.compareTo(b);
       });
+    // Full module order (Day 1, 2, … then Unscheduled) — used for prev/next
+    // navigation in the full-page text reader.
+    final ordered = <Map<String, dynamic>>[for (final k in keys) ...groups[k]!];
     final out = <Widget>[];
     for (final k in keys) {
       final ls = groups[k]!;
       out.add(_DayFolder(
         label: k == null ? 'Unscheduled' : 'Day $k',
         count: ls.length,
-        children: ls.map((ll) => _lessonRow(ll, rebuild)).toList(),
+        children: ls.map((ll) => _lessonRow(ll, rebuild, siblings: ordered)).toList(),
       ));
     }
     return out;
@@ -1013,7 +1016,7 @@ class _StudentHomeState extends State<StudentHome> {
     );
   }
 
-  Widget _lessonRow(Map<String, dynamic> l, VoidCallback onChanged) {
+  Widget _lessonRow(Map<String, dynamic> l, VoidCallback onChanged, {List<Map<String, dynamic>>? siblings}) {
     final type = l['type']?.toString() ?? 'text';
     final done = l['completed'] == true;
     final icon = switch (type) {
@@ -1024,7 +1027,7 @@ class _StudentHomeState extends State<StudentHome> {
     };
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => _openLesson(l),
+      onTap: () => _openLesson(l, siblings: siblings),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(border: Border(bottom: BorderSide(color: _line))),
@@ -1099,7 +1102,7 @@ class _StudentHomeState extends State<StudentHome> {
     } catch (_) {}
   }
 
-  Future<void> _openLesson(Map<String, dynamic> l) async {
+  Future<void> _openLesson(Map<String, dynamic> l, {List<Map<String, dynamic>>? siblings}) async {
     final id = l['id'].toString();
     final url = l['url']?.toString() ?? '';
     final type = l['type']?.toString() ?? 'text';
@@ -1129,10 +1132,22 @@ class _StudentHomeState extends State<StudentHome> {
         await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
       } catch (_) {}
     } else if (url.isNotEmpty) {
-      // Text lesson: show the body.
-      _showPanel(CupertinoIcons.doc_text_fill, l['title']?.toString() ?? 'Lesson', 'Lesson', [
-        Text(url, style: GoogleFonts.poppins(fontSize: 14, color: _navy, height: 1.6)),
-      ]);
+      // Text material: open a full-page reader with Previous/Next navigation
+      // across all the text materials in this module.
+      final texts = (siblings ?? [l])
+          .where((x) => (x['type']?.toString() ?? 'text') == 'text' && (x['url']?.toString() ?? '').isNotEmpty)
+          .toList();
+      var idx = texts.indexWhere((x) => x['id'].toString() == id);
+      if (idx < 0) {
+        texts.add(l);
+        idx = texts.length - 1;
+      }
+      if (mounted) {
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => _TextMaterialScreen(auth: widget.auth, items: texts, index: idx),
+        ));
+      }
+      return; // the reader stamps progress per material it shows
     }
     // Stamp last-access (so Resume returns to this exact lesson — PDFs, notes,
     // links, all of it). Completion is now explicit (the circle in the lesson
@@ -5881,7 +5896,7 @@ class _StudentHomeNotifState extends State<_StudentHomeNotif> {
 class _Pressable extends StatefulWidget {
   const _Pressable({required this.child, required this.onTap});
   final Widget child;
-  final VoidCallback onTap;
+  final VoidCallback? onTap; // null = disabled (no press/hover affordance)
 
   @override
   State<_Pressable> createState() => _PressableState();
@@ -5892,18 +5907,19 @@ class _PressableState extends State<_Pressable> {
   bool _hover = false;
   @override
   Widget build(BuildContext context) {
-    final scale = _down ? 0.96 : (_hover ? 1.03 : 1.0);
+    final enabled = widget.onTap != null;
+    final scale = !enabled ? 1.0 : (_down ? 0.96 : (_hover ? 1.03 : 1.0));
     return MouseRegion(
-      cursor: SystemMouseCursors.click,
+      cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() {
         _hover = false;
         _down = false;
       }),
       child: GestureDetector(
-        onTapDown: (_) => setState(() => _down = true),
-        onTapUp: (_) => setState(() => _down = false),
-        onTapCancel: () => setState(() => _down = false),
+        onTapDown: enabled ? (_) => setState(() => _down = true) : null,
+        onTapUp: enabled ? (_) => setState(() => _down = false) : null,
+        onTapCancel: enabled ? () => setState(() => _down = false) : null,
         onTap: widget.onTap,
         child: AnimatedScale(scale: scale, duration: const Duration(milliseconds: 140), curve: Curves.easeOutCubic, child: widget.child),
       ),
@@ -6527,4 +6543,145 @@ class _NoteMarkdown extends StatelessWidget {
         decoration: BoxDecoration(color: _isDark ? Colors.white.withOpacity(0.05) : const Color(0xFFF3F3F5), border: Border.all(color: _cardBorder)),
         child: Text(s, style: GoogleFonts.robotoMono(fontSize: 13, color: _navy, height: 1.45)),
       );
+}
+
+/// Full-page reader for a text material. Shows one material at a time and lets
+/// the learner page through all the text materials in the module with the
+/// Previous / Next buttons. Renders the body as Markdown (headings, lists, etc).
+class _TextMaterialScreen extends StatefulWidget {
+  const _TextMaterialScreen({required this.auth, required this.items, required this.index});
+  final AuthService auth;
+  final List<Map<String, dynamic>> items; // text materials in module order
+  final int index;
+
+  @override
+  State<_TextMaterialScreen> createState() => _TextMaterialScreenState();
+}
+
+class _TextMaterialScreenState extends State<_TextMaterialScreen> {
+  late int _i;
+  final ScrollController _scroll = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _i = widget.index;
+    _stamp();
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  // Record last-access so Resume returns to the material being read.
+  void _stamp() {
+    final id = widget.items[_i]['id']?.toString();
+    if (id != null) widget.auth.apiPost('/api/v1/me/lessons/$id/progress', {'position': 0}).ignore();
+  }
+
+  void _go(int delta) {
+    final n = _i + delta;
+    if (n < 0 || n >= widget.items.length) return;
+    setState(() => _i = n);
+    _stamp();
+    if (_scroll.hasClients) _scroll.jumpTo(0);
+  }
+
+  Future<void> _complete() async {
+    final it = widget.items[_i];
+    try {
+      await widget.auth.apiPost('/api/v1/me/lessons/${it['id']}/complete', {});
+      if (mounted) setState(() => it['completed'] = true);
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _isDark = Theme.of(context).brightness == Brightness.dark;
+    final it = widget.items[_i];
+    final title = it['title']?.toString() ?? 'Material';
+    final body = it['url']?.toString() ?? '';
+    final done = it['completed'] == true;
+    final hasPrev = _i > 0;
+    final hasNext = _i < widget.items.length - 1;
+    return Scaffold(
+      backgroundColor: _bg,
+      body: SafeArea(
+        child: Column(children: [
+          // Top bar.
+          Container(
+            padding: const EdgeInsets.fromLTRB(6, 6, 14, 6),
+            decoration: BoxDecoration(color: _surface, border: Border(bottom: BorderSide(color: _cardBorder))),
+            child: Row(children: [
+              _Pressable(onTap: () => Navigator.of(context).maybePop(), child: Padding(padding: const EdgeInsets.all(8), child: Icon(CupertinoIcons.chevron_back, size: 22, color: _navy))),
+              const SizedBox(width: 2),
+              Icon(CupertinoIcons.doc_text_fill, size: 16, color: _orange),
+              const SizedBox(width: 6),
+              Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy))),
+              const SizedBox(width: 8),
+              Text('${_i + 1} / ${widget.items.length}', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: _grey)),
+            ]),
+          ),
+          // Body.
+          Expanded(
+            child: SingleChildScrollView(
+              controller: _scroll,
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 760),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Text(title, style: GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w800, color: _navy, height: 1.25)),
+                    const SizedBox(height: 16),
+                    _NoteMarkdown(text: body),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+          // Bottom navigation: Previous / mark done / Next.
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(color: _surface, border: Border(top: BorderSide(color: _cardBorder))),
+            child: Row(children: [
+              _navButton(CupertinoIcons.chevron_back, 'Previous', hasPrev, () => _go(-1)),
+              const Spacer(),
+              _Pressable(
+                onTap: done ? null : _complete,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                  decoration: BoxDecoration(color: done ? _green.withOpacity(0.12) : _orange.withOpacity(0.10), border: Border.all(color: done ? _green : _orange)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(done ? CupertinoIcons.checkmark_alt_circle_fill : CupertinoIcons.circle, size: 16, color: done ? _green : _orange),
+                    const SizedBox(width: 6),
+                    Text(done ? 'Completed' : 'Mark done', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: done ? _green : _orange)),
+                  ]),
+                ),
+              ),
+              const Spacer(),
+              _navButton(CupertinoIcons.chevron_forward, 'Next', hasNext, () => _go(1), trailing: true),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _navButton(IconData icon, String label, bool enabled, VoidCallback onTap, {bool trailing = false}) {
+    final color = enabled ? Colors.white : _grey;
+    final bg = enabled ? _orange : (_isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFECECEF));
+    final row = Row(mainAxisSize: MainAxisSize.min, children: [
+      if (!trailing) Icon(icon, size: 16, color: color),
+      if (!trailing) const SizedBox(width: 5),
+      Text(label, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: color)),
+      if (trailing) const SizedBox(width: 5),
+      if (trailing) Icon(icon, size: 16, color: color),
+    ]);
+    return _Pressable(
+      onTap: enabled ? onTap : null,
+      child: Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), decoration: BoxDecoration(color: bg), child: row),
+    );
+  }
 }
