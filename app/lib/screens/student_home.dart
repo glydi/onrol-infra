@@ -1861,20 +1861,45 @@ class _StudentHomeState extends State<StudentHome> {
         return (CupertinoIcons.doc_text_fill, 'Assignments', 'Quizzes & assignments by day', [
           _future(_apiList('/api/v1/me/assessments', 'assessments'), (List items) {
             if (items.isEmpty) return _emptyText('Nothing assigned yet.');
-            // Group by day_number; day-less items fall under "Unscheduled".
-            final groups = <int?, List<Map<String, dynamic>>>{};
-            for (final a in items) {
-              final m = a as Map<String, dynamic>;
-              final d = (m['day_number'] as num?)?.toInt();
-              groups.putIfAbsent(d, () => []).add(m);
-            }
-            final keys = groups.keys.toList()
-              ..sort((x, y) {
-                if (x == null) return 1;
-                if (y == null) return -1;
-                return x.compareTo(y);
-              });
-            final children = <Widget>[];
+            final courses = (<String>{for (final a in items) (a as Map)['course']?.toString() ?? ''}..remove('')).toList()..sort();
+            String courseFilter = '';
+            return StatefulBuilder(builder: (ctx, setS) {
+              // Course-filter the items, then group by day (day-less → "Unscheduled").
+              final shown = courseFilter.isEmpty ? items : items.where((a) => (a as Map<String, dynamic>)['course']?.toString() == courseFilter).toList();
+              final groups = <int?, List<Map<String, dynamic>>>{};
+              for (final a in shown) {
+                final m = a as Map<String, dynamic>;
+                final d = (m['day_number'] as num?)?.toInt();
+                groups.putIfAbsent(d, () => []).add(m);
+              }
+              final keys = groups.keys.toList()
+                ..sort((x, y) {
+                  if (x == null) return 1;
+                  if (y == null) return -1;
+                  return x.compareTo(y);
+                });
+              Widget courseChip(String label, bool sel, VoidCallback onTap) => _Pressable(
+                    onTap: onTap,
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(color: sel ? _orange : _surface, border: Border.all(color: sel ? _orange : _cardBorder)),
+                      child: Text(label, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: sel ? Colors.white : _navy)),
+                    ),
+                  );
+              final children = <Widget>[];
+              if (courses.length > 1) {
+                children.add(Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(children: [
+                      courseChip('All courses', courseFilter.isEmpty, () => setS(() => courseFilter = '')),
+                      for (final c in courses) courseChip(c, courseFilter == c, () => setS(() => courseFilter = c)),
+                    ]),
+                  ),
+                ));
+              }
             for (final k in keys) {
               children.add(Padding(
                 padding: const EdgeInsets.only(top: 16, bottom: 4),
@@ -1925,7 +1950,8 @@ class _StudentHomeState extends State<StudentHome> {
                 ));
               }
             }
-            return Column(children: children);
+              return Column(children: children);
+            });
           }),
         ]);
       case 'resources':
