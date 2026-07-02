@@ -215,15 +215,15 @@ class _LoginScreenState extends State<LoginScreen> {
                     RichText(
                       textAlign: TextAlign.center,
                       text: TextSpan(children: [
-                        TextSpan(text: 'ONROL ', style: GoogleFonts.poppins(fontSize: 28, fontWeight: FontWeight.w800, color: label)),
-                        TextSpan(text: 'Learn', style: GoogleFonts.poppins(fontSize: 28, fontWeight: FontWeight.w800, color: _orange)),
+                        TextSpan(text: 'ONROL ', style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w800, color: label)),
+                        TextSpan(text: 'Learn', style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w800, color: _orange)),
                       ]),
                     ),
                     const SizedBox(height: 6),
                     Text(
                       _forgot ? (_otpSent ? 'Enter the code we emailed you' : 'Reset your password') : 'Sign in to your account',
                       textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(fontSize: 14, color: grey),
+                      style: GoogleFonts.inter(fontSize: 14, color: grey),
                     ),
                     const SizedBox(height: 28),
                     _glassCard(
@@ -256,7 +256,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         children: [
                           const Icon(CupertinoIcons.exclamationmark_circle_fill, color: AppleColors.red, size: 16),
                           const SizedBox(width: 6),
-                          Expanded(child: Text(_error!, style: GoogleFonts.poppins(fontSize: 12.5, color: AppleColors.red))),
+                          Expanded(child: Text(_error!, style: GoogleFonts.inter(fontSize: 12.5, color: AppleColors.red))),
                         ],
                       ),
                     ],
@@ -277,7 +277,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             child: _remember ? const Icon(CupertinoIcons.checkmark_alt, size: 14, color: Colors.white) : null,
                           ),
                           const SizedBox(width: 8),
-                          Text('Remember me', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: label)),
+                          Text('Remember me', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: label)),
                         ]),
                       ),
                     ],
@@ -293,17 +293,17 @@ class _LoginScreenState extends State<LoginScreen> {
                     if (!_forgot)
                       GestureDetector(
                         onTap: () => _toggleForgot(true),
-                        child: Text('Forgot password?', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _orange)),
+                        child: Text('Forgot password?', textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: _orange)),
                       )
                     else
                       GestureDetector(
                         onTap: () => _toggleForgot(false),
-                        child: Text('← Back to sign in', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _orange)),
+                        child: Text('← Back to sign in', textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: _orange)),
                       ),
                     const SizedBox(height: 16),
                     if (!_forgot)
                       Text('Students, mentors and admins use the same sign-in.\nYour account decides what you see.',
-                          textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 12, color: grey, height: 1.5)),
+                          textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 12, color: grey, height: 1.5)),
                     const SizedBox(height: 22),
                     const ThemeToggle(),
                   ],
@@ -350,7 +350,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           child: _busy
               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
-              : Text(label, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
+              : Text(label, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
         ),
       );
 }

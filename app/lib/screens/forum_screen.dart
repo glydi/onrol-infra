@@ -333,8 +333,8 @@ class _ForumScreenState extends State<ForumScreen> {
         const SizedBox(width: 12),
         Expanded(
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Community', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: _ink)),
-            Text('Servers, channels & chat', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12, color: _muted)),
+            Text('Community', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w800, color: _ink)),
+            Text('Servers, channels & chat', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 12, color: _muted)),
           ]),
         ),
         if (_staff) chip(CupertinoIcons.add, _createServer),
@@ -348,7 +348,7 @@ class _ForumScreenState extends State<ForumScreen> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Icon(CupertinoIcons.chat_bubble_2_fill, size: 40, color: _muted),
             const SizedBox(height: 12),
-            Text(_err ?? 'No communities yet.', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 14, color: _muted)),
+            Text(_err ?? 'No communities yet.', textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 14, color: _muted)),
             if (_staff) ...[
               const SizedBox(height: 16),
               _pill('Create the first server', _createServer),
@@ -403,7 +403,7 @@ class _ForumScreenState extends State<ForumScreen> {
           borderRadius: BorderRadius.zero,
           border: Border.all(color: sel ? Colors.transparent : _line),
         ),
-        child: Text(label, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: sel ? Colors.white : _ink)),
+        child: Text(label, style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w800, color: sel ? Colors.white : _ink)),
       ),
     );
   }
@@ -426,7 +426,7 @@ class _ForumScreenState extends State<ForumScreen> {
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 14, 10, 10),
           child: Row(children: [
-            Expanded(child: Text(s?['name']?.toString() ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800, color: _ink))),
+            Expanded(child: Text(s?['name']?.toString() ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w800, color: _ink))),
             if (_staff) ...[
               GestureDetector(onTap: _addChannel, child: const Icon(CupertinoIcons.add, size: 18, color: _accent)),
               const SizedBox(width: 10),
@@ -455,7 +455,7 @@ class _ForumScreenState extends State<ForumScreen> {
             : '${s['course'] ?? 'Course'} · Batch ${s['batch_number'] ?? ''}';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 11, color: _muted)),
+      child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 11, color: _muted)),
     );
   }
 
@@ -469,9 +469,9 @@ class _ForumScreenState extends State<ForumScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
         decoration: BoxDecoration(color: sel ? _accent.withValues(alpha: 0.12) : Colors.transparent, borderRadius: BorderRadius.zero),
         child: Row(children: [
-          Text('#', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800, color: sel ? _accent : _muted)),
+          Text('#', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w800, color: sel ? _accent : _muted)),
           const SizedBox(width: 8),
-          Expanded(child: Text(ch['name']?.toString() ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 14, fontWeight: sel ? FontWeight.w700 : FontWeight.w500, color: sel ? _ink : _muted))),
+          Expanded(child: Text(ch['name']?.toString() ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 14, fontWeight: sel ? FontWeight.w700 : FontWeight.w500, color: sel ? _ink : _muted))),
         ]),
       ),
     );
@@ -496,7 +496,7 @@ class _ForumScreenState extends State<ForumScreen> {
                         color: ch['id'].toString() == _channelId ? _accent.withValues(alpha: 0.14) : _rail,
                         borderRadius: BorderRadius.zero,
                       ),
-                      child: Text('#${ch['name']}', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _ink)),
+                      child: Text('#${ch['name']}', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: _ink)),
                     ),
                   ),
                 ),
@@ -508,14 +508,14 @@ class _ForumScreenState extends State<ForumScreen> {
 
   Widget _chatPane() {
     if (_channelId == null) {
-      return Center(child: Text('No channels yet.', style: GoogleFonts.poppins(fontSize: 13, color: _muted)));
+      return Center(child: Text('No channels yet.', style: GoogleFonts.inter(fontSize: 13, color: _muted)));
     }
     return Column(children: [
       Expanded(
         child: _loadingMsgs && _messages.isEmpty
             ? const Center(child: CupertinoActivityIndicator())
             : _messages.isEmpty
-                ? Center(child: Text('No messages yet — say hi 👋', style: GoogleFonts.poppins(fontSize: 13, color: _muted)))
+                ? Center(child: Text('No messages yet — say hi 👋', style: GoogleFonts.inter(fontSize: 13, color: _muted)))
                 : ListView.builder(
                     controller: _scroll,
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -552,12 +552,12 @@ class _ForumScreenState extends State<ForumScreen> {
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Text(mine ? 'You' : name, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: mine ? _accent : _ink)),
+              Text(mine ? 'You' : name, style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700, color: mine ? _accent : _ink)),
               const SizedBox(width: 8),
-              Text(_fmt(m['at']?.toString()), style: GoogleFonts.poppins(fontSize: 10.5, color: _muted)),
+              Text(_fmt(m['at']?.toString()), style: GoogleFonts.inter(fontSize: 10.5, color: _muted)),
             ]),
             const SizedBox(height: 2),
-            Text(m['body']?.toString() ?? '', style: GoogleFonts.poppins(fontSize: 14, color: _ink, height: 1.35)),
+            Text(m['body']?.toString() ?? '', style: GoogleFonts.inter(fontSize: 14, color: _ink, height: 1.35)),
           ]),
         ),
       ]),
@@ -577,9 +577,9 @@ class _ForumScreenState extends State<ForumScreen> {
                 controller: _composer,
                 minLines: 1,
                 maxLines: 4,
-                style: GoogleFonts.poppins(fontSize: 14, color: _ink),
+                style: GoogleFonts.inter(fontSize: 14, color: _ink),
                 onSubmitted: (_) => _send(),
-                decoration: InputDecoration(border: InputBorder.none, isDense: true, contentPadding: const EdgeInsets.symmetric(vertical: 12), hintText: 'Message…', hintStyle: GoogleFonts.poppins(fontSize: 14, color: _muted)),
+                decoration: InputDecoration(border: InputBorder.none, isDense: true, contentPadding: const EdgeInsets.symmetric(vertical: 12), hintText: 'Message…', hintStyle: GoogleFonts.inter(fontSize: 14, color: _muted)),
               ),
             ),
           ),
@@ -600,7 +600,7 @@ class _ForumScreenState extends State<ForumScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
           decoration: BoxDecoration(gradient: _accentGrad, borderRadius: BorderRadius.zero),
-          child: Text(label, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
+          child: Text(label, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
         ),
       );
 

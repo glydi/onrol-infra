@@ -59,7 +59,7 @@ class MarkdownView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = GoogleFonts.poppins(fontSize: baseFontSize, color: textColor, height: 1.65);
+    final base = GoogleFonts.inter(fontSize: baseFontSize, color: textColor, height: 1.65);
     final lines = text.split('\n');
     final blocks = <Widget>[];
     var inCode = false;
@@ -92,15 +92,15 @@ class MarkdownView extends StatelessWidget {
         continue;
       }
       if (t.startsWith('### ')) {
-        blocks.add(_pad(_rich(t.substring(4), GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w700, color: textColor, height: 1.3)), top: 8));
+        blocks.add(_pad(_rich(t.substring(4), GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w700, color: textColor, height: 1.3)), top: 8));
         continue;
       }
       if (t.startsWith('## ')) {
-        blocks.add(_pad(_rich(t.substring(3), GoogleFonts.poppins(fontSize: 21, fontWeight: FontWeight.w800, color: textColor, height: 1.3)), top: 10));
+        blocks.add(_pad(_rich(t.substring(3), GoogleFonts.inter(fontSize: 21, fontWeight: FontWeight.w800, color: textColor, height: 1.3)), top: 10));
         continue;
       }
       if (t.startsWith('# ')) {
-        blocks.add(_pad(_rich(t.substring(2), GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w800, color: textColor, height: 1.25)), top: 12));
+        blocks.add(_pad(_rich(t.substring(2), GoogleFonts.inter(fontSize: 26, fontWeight: FontWeight.w800, color: textColor, height: 1.25)), top: 12));
         continue;
       }
       final todo = _todoRe.firstMatch(raw);
