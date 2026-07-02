@@ -73,7 +73,7 @@ class AppleTheme {
     final label = dark ? AppleColors.darkLabel : AppleColors.lightLabel;
     final accent = dark ? AppleColors.blueDark : AppleColors.blue;
 
-    final text = GoogleFonts.ibmPlexMonoTextTheme(
+    final text = GoogleFonts.poppinsTextTheme(
       ThemeData(brightness: b).textTheme,
     ).apply(bodyColor: label, displayColor: label);
 
@@ -93,15 +93,15 @@ class AppleTheme {
 
   // SF-style type ramp.
   static TextStyle largeTitle(BuildContext c) =>
-      GoogleFonts.ibmPlexMono(fontSize: 32, fontWeight: FontWeight.w800, letterSpacing: -0.6, color: Palette.of(c).label);
+      GoogleFonts.poppins(fontSize: 32, fontWeight: FontWeight.w800, letterSpacing: -0.6, color: Palette.of(c).label);
   static TextStyle title2(BuildContext c) =>
-      GoogleFonts.ibmPlexMono(fontSize: 21, fontWeight: FontWeight.w700, letterSpacing: -0.3, color: Palette.of(c).label);
+      GoogleFonts.poppins(fontSize: 21, fontWeight: FontWeight.w700, letterSpacing: -0.3, color: Palette.of(c).label);
   static TextStyle headline(BuildContext c) =>
-      GoogleFonts.ibmPlexMono(fontSize: 17, fontWeight: FontWeight.w600, letterSpacing: -0.2, color: Palette.of(c).label);
+      GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w600, letterSpacing: -0.2, color: Palette.of(c).label);
   static TextStyle body(BuildContext c) =>
-      GoogleFonts.ibmPlexMono(fontSize: 16, fontWeight: FontWeight.w400, color: Palette.of(c).label);
+      GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w400, color: Palette.of(c).label);
   static TextStyle subhead(BuildContext c) =>
-      GoogleFonts.ibmPlexMono(fontSize: 14, fontWeight: FontWeight.w400, color: Palette.of(c).secondary);
+      GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w400, color: Palette.of(c).secondary);
   static TextStyle footnote(BuildContext c) =>
-      GoogleFonts.ibmPlexMono(fontSize: 12.5, fontWeight: FontWeight.w500, color: Palette.of(c).secondary);
+      GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w500, color: Palette.of(c).secondary);
 }
