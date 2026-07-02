@@ -24,11 +24,11 @@ import 'login_screen.dart';
 import 'video_player_screen.dart';
 
 // Palette — bright, lively orange accent.
-const _orange = Color(0xFFFF6A2C);
-// Shared accent gradient — a vivid peach → orange → deep-orange ramp so every
-// surface feels warm and alive (no flat, dull colour).
+const _orange = Color(0xFFFF5A1F);
+// Shared accent gradient — a STRONG orange → deep-orange ramp (no soft peach),
+// so buttons and accents read as a bold, saturated orange.
 const _orangeGrad = LinearGradient(
-  colors: [Color(0xFFFFB877), Color(0xFFFF7A33), Color(0xFFFF5421)],
+  colors: [Color(0xFFFF6A2C), Color(0xFFF23E12)],
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
 );
