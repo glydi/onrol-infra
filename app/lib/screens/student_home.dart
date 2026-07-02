@@ -413,7 +413,7 @@ class _StudentHomeState extends State<StudentHome> {
   // Desktop: top bar across the top, the menu matrix on the left, and the AI
   // news pinned as a right-hand sidebar (its list scrolls internally).
   Widget _wideHome(BoxConstraints c) {
-    final side = (c.maxWidth - 480 - 110).clamp(320.0, 700.0).toDouble();
+    final side = (c.maxWidth - 480 - 110).clamp(320.0, 860.0).toDouble();
     return Padding(
       padding: const EdgeInsets.fromLTRB(40, 8, 36, 20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -467,7 +467,7 @@ class _StudentHomeState extends State<StudentHome> {
             index: 2,
             child: Center(
               child: LayoutBuilder(builder: (_, cc) {
-                final s = (cc.maxWidth < cc.maxHeight ? cc.maxWidth : cc.maxHeight).clamp(240.0, 900.0).toDouble();
+                final s = (cc.maxWidth < cc.maxHeight ? cc.maxWidth : cc.maxHeight).clamp(240.0, 1040.0).toDouble();
                 return _matrix(s);
               }),
             ),
@@ -1265,6 +1265,7 @@ class _StudentHomeState extends State<StudentHome> {
                   } catch (_) {}
                   // Refresh the dashboard so the new quiz XP shows immediately.
                   setState(() {});
+                  _playSubmitAnimation('Submitted!');
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
                 } catch (_) {
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't submit — try again.")));
@@ -1448,7 +1449,7 @@ class _StudentHomeState extends State<StudentHome> {
               setS(() {});
               if (mounted) {
                 setState(() {});
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(autoAward ? 'Submitted ✓ — full marks awarded' : 'Submitted ✓ — awaiting grading')));
+                _playSubmitAnimation(autoAward ? 'Full marks! 🎉' : 'Submitted!');
               }
             } catch (_) {
               if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't submit — try again.")));
@@ -1463,6 +1464,20 @@ class _StudentHomeState extends State<StudentHome> {
         ),
       ]);
     });
+  }
+
+  // A brief success-checkmark pop played when a submit succeeds.
+  void _playSubmitAnimation([String label = 'Submitted!']) {
+    if (!mounted) return;
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'submitted',
+      barrierColor: Colors.black.withOpacity(0.22),
+      transitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (_, __, ___) => _SubmitSuccess(label: label),
+      transitionBuilder: (_, a, __, child) => FadeTransition(opacity: a, child: child),
+    );
   }
 
   void _showPanel(IconData icon, String title, String sub, List<Widget> body, {String? heroTag, bool compact = false}) {
@@ -6599,6 +6614,56 @@ class _NotePageEditorState extends State<_NotePageEditor> {
         btn('Code block', ic(Icons.data_object), () => _insertBlock('```\n\n```\n')),
         btn('Divider', ic(Icons.horizontal_rule), () => _insertBlock('\n---\n')),
       ]),
+    );
+  }
+}
+
+/// Success pop shown after a submit — a checkmark that springs in, then the
+/// dialog auto-dismisses.
+class _SubmitSuccess extends StatefulWidget {
+  const _SubmitSuccess({this.label = 'Submitted!'});
+  final String label;
+  @override
+  State<_SubmitSuccess> createState() => _SubmitSuccessState();
+}
+
+class _SubmitSuccessState extends State<_SubmitSuccess> {
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(milliseconds: 1300), () {
+      if (mounted) Navigator.of(context).pop();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _isDark = Theme.of(context).brightness == Brightness.dark;
+    return Center(
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: 1),
+        duration: const Duration(milliseconds: 650),
+        curve: Curves.elasticOut,
+        builder: (_, t, __) => Transform.scale(
+          scale: (0.55 + 0.45 * t).clamp(0.0, 1.25),
+          child: Opacity(
+            opacity: t.clamp(0.0, 1.0),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 26),
+              decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Container(
+                  width: 66, height: 66,
+                  decoration: const BoxDecoration(color: _green, shape: BoxShape.circle),
+                  child: const Icon(CupertinoIcons.checkmark_alt, color: Colors.white, size: 40),
+                ),
+                const SizedBox(height: 14),
+                Text(widget.label, style: GoogleFonts.poppins(fontSize: 15.5, fontWeight: FontWeight.w800, color: _navy)),
+              ]),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
