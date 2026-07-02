@@ -311,6 +311,11 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Get("/me/assessments", auth, h.MyAssessments)
 	api.Get("/me/assessments/:id", auth, h.TakeAssessment)
 	api.Post("/me/assessments/:id/submit", auth, h.SubmitAssessment)
+	// Personal study notes.
+	api.Get("/me/notes", auth, h.MyNotes)
+	api.Post("/me/notes", auth, h.CreateNote)
+	api.Patch("/me/notes/:id", auth, h.UpdateNote)
+	api.Delete("/me/notes/:id", auth, h.DeleteNote)
 	api.Get("/me/live", auth, h.MyLive)
 	// Simulated-live sessions (a recorded video served as a live stream).
 	api.Get("/me/live/:id/state", auth, h.LiveSessionState)

@@ -1717,11 +1717,8 @@ class _StudentHomeState extends State<StudentHome> {
           _row(CupertinoIcons.doc_text, 'May 2026 — ₹999', 'Pro Plan · Paid', 'Paid', badgeBg: _greenBg, badgeFg: _green),
         ]);
       case 'notes':
-        return (CupertinoIcons.pencil, 'My Notes', 'Quick study notes', [
-          _notif('CSS Flexbox: justify-content aligns on main axis; align-items on cross axis.', 'Web Dev · Saved yesterday'),
-          _notif('Figma: Auto Layout = CSS Flexbox for designers!', 'UI/UX · Saved 2 days ago'),
-          const SizedBox(height: 16),
-          _orangeButton('+ Add New Note', () => Navigator.of(context).pop()),
+        return (CupertinoIcons.square_pencil_fill, 'My Notes', 'Your private study notes', [
+          _NotesView(auth: widget.auth),
         ]);
       case 'quizzes':
         return (CupertinoIcons.lightbulb_fill, 'Quizzes', 'Test your knowledge', [
@@ -6090,6 +6087,161 @@ class _DayFolderState extends State<_DayFolder> {
               : const SizedBox(width: double.infinity),
         ),
       ]),
+    );
+  }
+}
+
+/// Personal notes — list + create/edit/delete against /api/v1/me/notes.
+class _NotesView extends StatefulWidget {
+  const _NotesView({required this.auth});
+  final AuthService auth;
+
+  @override
+  State<_NotesView> createState() => _NotesViewState();
+}
+
+class _NotesViewState extends State<_NotesView> {
+  bool _loading = true;
+  List<Map<String, dynamic>> _notes = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final r = await widget.auth.apiGet('/api/v1/me/notes');
+      _notes = ((ApiClient.decode(r)['notes'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _edit({Map<String, dynamic>? note}) async {
+    final title = TextEditingController(text: note?['title']?.toString() ?? '');
+    final body = TextEditingController(text: note?['body']?.toString() ?? '');
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: Container(
+          margin: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(note == null ? 'New note' : 'Edit note', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: _navy)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: title,
+              style: GoogleFonts.poppins(fontSize: 14, color: _navy, fontWeight: FontWeight.w600),
+              decoration: InputDecoration(hintText: 'Title (optional)', hintStyle: GoogleFonts.poppins(color: _grey, fontSize: 14), isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _cardBorder)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _orange))),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: body,
+              minLines: 4,
+              maxLines: 10,
+              autofocus: true,
+              style: GoogleFonts.poppins(fontSize: 14, color: _navy, height: 1.35),
+              decoration: InputDecoration(hintText: 'Write your note…', hintStyle: GoogleFonts.poppins(color: _grey, fontSize: 14), isDense: true,
+                  contentPadding: const EdgeInsets.all(12),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _cardBorder)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _orange))),
+            ),
+            const SizedBox(height: 14),
+            Row(children: [
+              Expanded(child: _Pressable(onTap: () => Navigator.of(ctx).pop(false), child: Container(alignment: Alignment.center, padding: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(color: const Color(0xFFF0F0F2), borderRadius: BorderRadius.circular(10)), child: Text('Cancel', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: _grey))))),
+              const SizedBox(width: 10),
+              Expanded(child: _Pressable(onTap: () => Navigator.of(ctx).pop(true), child: Container(alignment: Alignment.center, padding: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(10)), child: Text('Save', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: Colors.white))))),
+            ]),
+          ]),
+        ),
+      ),
+    );
+    if (saved != true) return;
+    if (title.text.trim().isEmpty && body.text.trim().isEmpty) return;
+    final payload = {'title': title.text.trim(), 'body': body.text.trim()};
+    try {
+      if (note == null) {
+        await widget.auth.apiPost('/api/v1/me/notes', payload);
+      } else {
+        await widget.auth.apiPatch('/api/v1/me/notes/${note['id']}', payload);
+      }
+      _load();
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not save note'), behavior: SnackBarBehavior.floating));
+    }
+  }
+
+  Future<void> _delete(String id) async {
+    try {
+      await widget.auth.apiDelete('/api/v1/me/notes/$id');
+      _load();
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const Padding(padding: EdgeInsets.symmetric(vertical: 30), child: Center(child: CupertinoActivityIndicator()));
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _Pressable(
+        onTap: () => _edit(),
+        child: Container(
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(vertical: 13),
+          decoration: BoxDecoration(gradient: _orangeGrad, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: _orange.withOpacity(0.18), blurRadius: 8, offset: const Offset(0, 3))]),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            const Icon(CupertinoIcons.add, size: 16, color: Colors.white),
+            const SizedBox(width: 6),
+            Text('Add New Note', style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
+          ]),
+        ),
+      ),
+      const SizedBox(height: 14),
+      if (_notes.isEmpty)
+        Padding(padding: const EdgeInsets.symmetric(vertical: 24), child: Center(child: Text('No notes yet — tap “Add New Note”.', style: GoogleFonts.poppins(fontSize: 13, color: _grey))))
+      else
+        for (var i = 0; i < _notes.length; i++) _noteCard(_notes[i], i),
+    ]);
+  }
+
+  Widget _noteCard(Map<String, dynamic> n, int index) {
+    final title = n['title']?.toString() ?? '';
+    final body = n['body']?.toString() ?? '';
+    return _Entrance(
+      index: index,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _edit(note: n),
+          child: Container(
+            padding: const EdgeInsets.all(13),
+            decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.circular(14), border: Border.all(color: _cardBorder)),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                if (title.isNotEmpty) ...[
+                  Text(title, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
+                  const SizedBox(height: 3),
+                ],
+                if (body.isNotEmpty)
+                  Text(body, maxLines: 4, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontSize: 12.5, color: _grey, height: 1.35)),
+              ])),
+              const SizedBox(width: 8),
+              _Pressable(
+                onTap: () => _delete(n['id'].toString()),
+                child: const Padding(padding: EdgeInsets.only(left: 4, top: 2), child: Icon(CupertinoIcons.trash, size: 17, color: Color(0xFFBDBDBD))),
+              ),
+            ]),
+          ),
+        ),
+      ),
     );
   }
 }
