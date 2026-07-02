@@ -573,6 +573,7 @@ Future<bool?> showFormSheet(
   required List<Widget> Function(void Function(void Function())) builder,
   required Future<String?> Function() onSubmit,
   bool square = false, // admin/LMS panels use squared corners
+  bool big = false, // roomier, width-capped, scrolling body (for long forms)
 }) {
   // Captured from the caller (which is inside the page's SquareScope); the modal
   // itself is mounted on the root navigator, so we re-provide the scope below.
@@ -588,38 +589,54 @@ Future<bool?> showFormSheet(
       bool busy = false;
       String? err;
       return StatefulBuilder(builder: (ctx, setS) {
+        final saveBtn = PrimaryButton(
+          label: 'Save',
+          busy: busy,
+          square: true,
+          onPressed: () async {
+            setS(() { busy = true; err = null; });
+            final e = await onSubmit();
+            if (e == null) {
+              if (ctx.mounted) Navigator.pop(ctx, true);
+            } else {
+              setS(() { busy = false; err = e; });
+            }
+          },
+        );
         return SquareScope(square: sq, child: Padding(
           padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-          child: Container(
-            margin: const EdgeInsets.all(10),
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.zero),
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Center(child: Text(title, style: AppleTheme.title2(ctx))),
-              const SizedBox(height: 16),
-              ...builder(setS),
-              if (err != null) ...[
-                const SizedBox(height: 12),
-                Text(err!, style: AppleTheme.footnote(ctx).copyWith(color: AppleColors.red)),
-              ],
-              const SizedBox(height: 18),
-              PrimaryButton(
-                label: 'Save',
-                busy: busy,
-                square: true,
-                onPressed: () async {
-                  setS(() { busy = true; err = null; });
-                  final e = await onSubmit();
-                  if (e == null) {
-                    if (ctx.mounted) Navigator.pop(ctx, true);
-                  } else {
-                    setS(() { busy = false; err = e; });
-                  }
-                },
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: big ? 720 : double.infinity,
+                maxHeight: MediaQuery.of(ctx).size.height * (big ? 0.92 : 0.85),
               ),
-              const SizedBox(height: 6),
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: TextStyle(color: p.secondary))),
-            ]),
+              child: Container(
+                margin: const EdgeInsets.all(10),
+                padding: EdgeInsets.all(big ? 24 : 20),
+                decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.zero),
+                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Center(child: Text(title, style: AppleTheme.title2(ctx))),
+                  const SizedBox(height: 16),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        ...builder(setS),
+                        if (err != null) ...[
+                          const SizedBox(height: 12),
+                          Text(err!, style: AppleTheme.footnote(ctx).copyWith(color: AppleColors.red)),
+                        ],
+                      ]),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  saveBtn,
+                  const SizedBox(height: 6),
+                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: TextStyle(color: p.secondary))),
+                ]),
+              ),
+            ),
           ),
         ));
       });

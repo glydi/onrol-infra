@@ -2347,29 +2347,33 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     }
   }
 
-  Widget _moduleCard(Map<String, dynamic> m) {
+  Widget _moduleCard(Map<String, dynamic> m, {bool isSub = false}) {
     final lessons = (m['lessons'] as List?) ?? [];
+    final subs = (m['submodules'] as List?) ?? [];
+    final mid = m['id'].toString();
+    final mtitle = m['title']?.toString() ?? 'Module';
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: AppleCard(square: true, 
+      padding: EdgeInsets.only(bottom: isSub ? 8 : 12, left: isSub ? 14 : 0),
+      child: AppleCard(square: true,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => _editModule(m),
               child: Row(children: [
-                Flexible(child: Text(m['title']?.toString() ?? 'Module', style: AppleTheme.headline(context))),
+                if (isSub) Padding(padding: const EdgeInsets.only(right: 6), child: Icon(Icons.subdirectory_arrow_right, size: 16, color: Palette.of(context).secondary)),
+                Flexible(child: Text(mtitle, style: isSub ? AppleTheme.body(context).copyWith(fontWeight: FontWeight.w700) : AppleTheme.headline(context))),
                 const SizedBox(width: 6),
                 Icon(CupertinoIcons.pencil, size: 15, color: Palette.of(context).secondary),
               ]),
             )),
-            _smallButton('Lesson', CupertinoIcons.add, () => _addLesson(m['id'].toString())),
+            _smallButton('Material', CupertinoIcons.add, () => _addLesson(mid)),
             const SizedBox(width: 6),
-            _smallButton('Quiz', CupertinoIcons.doc_text_fill, () => _addAssignment(moduleId: m['id'].toString(), moduleTitle: m['title']?.toString())),
+            _smallButton('Quiz', CupertinoIcons.doc_text_fill, () => _addAssignment(moduleId: mid, moduleTitle: mtitle)),
             const SizedBox(width: 6),
             GestureDetector(
-              onTap: () => _confirmDelete('Delete this module and its lessons?', () =>
-                  widget.auth.apiDelete('/api/v1/manage/modules/${m['id']}')),
+              onTap: () => _confirmDelete(isSub ? 'Delete this sub-module and its lessons?' : 'Delete this module and its lessons?', () =>
+                  widget.auth.apiDelete('/api/v1/manage/modules/$mid')),
               child: const Icon(CupertinoIcons.trash, size: 18, color: AppleColors.red),
             ),
           ]),
@@ -2379,7 +2383,20 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
             ..._lessonsByDay(lessons),
           ],
           // Quizzes & assignments scoped to this module.
-          ..._moduleAssessments(m['id'].toString()),
+          ..._moduleAssessments(mid),
+          // Nested sub-modules.
+          if (subs.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ...subs.map((s) => _moduleCard(s as Map<String, dynamic>, isSub: true)),
+          ],
+          // Add a sub-module (top-level modules only — one level of nesting).
+          if (!isSub) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _smallButton('Sub-module', CupertinoIcons.folder_badge_plus, () => _addModule(parentId: mid, parentTitle: mtitle)),
+            ),
+          ],
         ]),
       ),
     );
@@ -2500,13 +2517,18 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     );
   }
 
-  Future<void> _addModule() async {
+  Future<void> _addModule({String? parentId, String? parentTitle}) async {
     final title = TextEditingController();
-    final ok = await showFormSheet(context, square: true, title: 'Add Module',
-        builder: (_) => [sheetField(title, 'Module title', CupertinoIcons.folder)],
+    final sub = parentId != null;
+    final ok = await showFormSheet(context, square: true,
+        title: sub ? 'Add Sub-module to "${parentTitle ?? 'Module'}"' : 'Add Module',
+        builder: (_) => [sheetField(title, sub ? 'Sub-module title' : 'Module title', CupertinoIcons.folder)],
         onSubmit: () async {
       if (title.text.trim().isEmpty) return 'Title required';
-      await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/modules', {'title': title.text.trim()});
+      await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/modules', {
+        'title': title.text.trim(),
+        if (sub) 'parent_module_id': parentId,
+      });
       return null;
     });
     if (ok == true) _load();
@@ -2519,7 +2541,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     int type = 0; // text, video, link
     int vsrc = 0; // 0 = R2 (MP4), 1 = HLS (.m3u8)
     bool downloadable = true; // documents: may learners download it?
-    final ok = await showFormSheet(context, square: true, title: 'Add Lesson', builder: (setS) => [
+    final ok = await showFormSheet(context, square: true, big: true, title: 'Add Course Material', builder: (setS) => [
       sheetField(title, 'Lesson title', CupertinoIcons.doc_text),
       const SizedBox(height: 10),
       sheetField(day, 'Day in module (e.g. 1) — optional', CupertinoIcons.calendar, keyboard: TextInputType.number),

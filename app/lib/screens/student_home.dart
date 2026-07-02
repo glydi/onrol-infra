@@ -818,52 +818,63 @@ class _StudentHomeState extends State<StudentHome> {
         final modules = (m['modules'] as List?) ?? [];
         if (modules.isEmpty) return _emptyText('No content in this course yet.');
         return StatefulBuilder(builder: (ctx, setS) {
-        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: modules.expand<Widget>((mod) {
-          final md = mod as Map<String, dynamic>;
-          final lessons = (md['lessons'] as List?) ?? [];
-          // Each module is its own bordered box: a tinted title bar on top,
-          // then its day folders (each also boxed) + the comments link.
-          return [
-            Container(
-              margin: const EdgeInsets.only(top: 12),
-              decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: _orange.withOpacity(0.08),
-                    border: Border(bottom: BorderSide(color: _cardBorder)),
-                  ),
-                  child: Text(md['title']?.toString() ?? 'Module', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: _orange)),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    if (lessons.isEmpty) _emptyText('No lessons.') else ..._lessonsByDay(lessons, () => setS(() {})),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: _Pressable(
-                        onTap: () => _openComments(md['id'].toString(), md['title']?.toString() ?? 'Module'),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            Icon(CupertinoIcons.chat_bubble_2_fill, size: 15, color: _orange),
-                            const SizedBox(width: 6),
-                            Text('Comments & Doubts', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _orange)),
-                          ]),
-                        ),
-                      ),
-                    ),
-                  ]),
-                ),
-              ]),
-            ),
-          ];
-        }).toList());
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            for (final mod in modules) _moduleBox(mod as Map<String, dynamic>, () => setS(() {})),
+          ]);
         });
       }),
     ]);
+  }
+
+  // One module as a bordered box: a tinted title bar, its day folders, a
+  // comments link, and any nested sub-modules (indented boxes below).
+  Widget _moduleBox(Map<String, dynamic> md, VoidCallback rebuild, {bool isSub = false}) {
+    final lessons = (md['lessons'] as List?) ?? [];
+    final subs = (md['submodules'] as List?) ?? [];
+    final title = md['title']?.toString() ?? 'Module';
+    return Container(
+      margin: EdgeInsets.only(top: isSub ? 8 : 12, left: isSub ? 10 : 0),
+      decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: _orange.withOpacity(isSub ? 0.05 : 0.08),
+            border: Border(bottom: BorderSide(color: _cardBorder)),
+          ),
+          child: Row(children: [
+            if (isSub) Padding(padding: const EdgeInsets.only(right: 6), child: Icon(Icons.subdirectory_arrow_right, size: 15, color: _orange)),
+            Expanded(child: Text(title, style: GoogleFonts.poppins(fontSize: isSub ? 13.5 : 15, fontWeight: FontWeight.w700, color: _orange))),
+          ]),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (lessons.isEmpty && subs.isEmpty)
+              _emptyText('No lessons.')
+            else if (lessons.isNotEmpty)
+              ..._lessonsByDay(lessons, rebuild),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _Pressable(
+                onTap: () => _openComments(md['id'].toString(), title),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(CupertinoIcons.chat_bubble_2_fill, size: 15, color: _orange),
+                    const SizedBox(width: 6),
+                    Text('Comments & Doubts', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: _orange)),
+                  ]),
+                ),
+              ),
+            ),
+            // Nested sub-modules.
+            for (final s in subs) _moduleBox(s as Map<String, dynamic>, rebuild, isSub: true),
+          ]),
+        ),
+      ]),
+    );
   }
 
   // Group a module's lessons by day (Day 1, Day 2, … then "Unscheduled").

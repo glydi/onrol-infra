@@ -232,7 +232,7 @@ func (h *Handlers) CourseContent(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusForbidden, "not enrolled in this course")
 	}
 	rows, err := h.Pool.Query(c.Context(), `
-		SELECT m.id, m.title, m.position, l.id, l.title, l.type, `+playURLExpr+`, l.position, l.day_number,
+		SELECT m.id, m.title, m.position, m.parent_module_id::text, l.id, l.title, l.type, `+playURLExpr+`, l.position, l.day_number,
 		       COALESCE(l.downloadable, true),
 		       EXISTS(SELECT 1 FROM lesson_progress lp WHERE lp.user_id=$2 AND lp.lesson_id=l.id)
 		FROM modules m LEFT JOIN lessons l ON l.module_id=m.id
@@ -242,19 +242,21 @@ func (h *Handlers) CourseContent(c *fiber.Ctx) error {
 	}
 	defer rows.Close()
 	modules := map[string]fiber.Map{}
+	parent := map[string]*string{}
 	order := []string{}
 	for rows.Next() {
 		var mid, mtitle string
 		var mpos int
-		var lid, ltitle, ltype, lbody *string
+		var mparent, lid, ltitle, ltype, lbody *string
 		var lpos, day *int
 		var done *bool
 		var downloadable bool
-		if err := rows.Scan(&mid, &mtitle, &mpos, &lid, &ltitle, &ltype, &lbody, &lpos, &day, &downloadable, &done); err != nil {
+		if err := rows.Scan(&mid, &mtitle, &mpos, &mparent, &lid, &ltitle, &ltype, &lbody, &lpos, &day, &downloadable, &done); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		if _, ok := modules[mid]; !ok {
-			modules[mid] = fiber.Map{"id": mid, "title": mtitle, "lessons": []fiber.Map{}}
+			modules[mid] = fiber.Map{"id": mid, "title": mtitle, "parent_module_id": derefStr(mparent), "lessons": []fiber.Map{}, "submodules": []fiber.Map{}}
+			parent[mid] = mparent
 			order = append(order, mid)
 		}
 		if lid != nil {
@@ -264,10 +266,7 @@ func (h *Handlers) CourseContent(c *fiber.Ctx) error {
 				"url": derefStr(lbody), "downloadable": downloadable, "completed": done != nil && *done})
 		}
 	}
-	ordered := make([]fiber.Map, 0, len(order))
-	for _, id := range order {
-		ordered = append(ordered, modules[id])
-	}
+	ordered := nestModules(modules, parent, order)
 	return c.JSON(fiber.Map{"course_id": courseID, "modules": ordered})
 }
 

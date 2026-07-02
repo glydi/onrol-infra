@@ -247,14 +247,26 @@ func (h *Handlers) AddModule(c *fiber.Ctx) error {
 	var req struct {
 		Title    string `json:"title"`
 		Position int    `json:"position"`
+		Parent   string `json:"parent_module_id"` // set to nest as a sub-module
 	}
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Title) == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "title required")
 	}
+	// A sub-module's parent must belong to the same course (and itself be top-level).
+	var parent *string
+	if p := strings.TrimSpace(req.Parent); p != "" {
+		var pCourse string
+		var pParent *string
+		if err := h.Pool.QueryRow(c.Context(),
+			`SELECT course_id::text, parent_module_id::text FROM modules WHERE id=$1`, p).Scan(&pCourse, &pParent); err != nil || pCourse != courseID || pParent != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "invalid parent module")
+		}
+		parent = &p
+	}
 	var id string
 	if err := h.Pool.QueryRow(c.Context(),
-		`INSERT INTO modules (course_id, title, position) VALUES ($1,$2,$3) RETURNING id`,
-		courseID, req.Title, req.Position).Scan(&id); err != nil {
+		`INSERT INTO modules (course_id, title, position, parent_module_id) VALUES ($1,$2,$3,$4) RETURNING id`,
+		courseID, req.Title, req.Position, parent).Scan(&id); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": req.Title})
@@ -580,7 +592,7 @@ func (h *Handlers) GetManagedCourse(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, "course not found")
 	}
 	rows, err := h.Pool.Query(c.Context(), `
-		SELECT m.id, m.title, l.id, l.title, l.type, l.day_number
+		SELECT m.id, m.title, m.parent_module_id::text, l.id, l.title, l.type, l.day_number
 		FROM modules m LEFT JOIN lessons l ON l.module_id=m.id
 		WHERE m.course_id=$1 ORDER BY m.position, l.day_number NULLS LAST, l.position`, id)
 	if err != nil {
@@ -588,16 +600,18 @@ func (h *Handlers) GetManagedCourse(c *fiber.Ctx) error {
 	}
 	defer rows.Close()
 	mods := map[string]fiber.Map{}
+	parent := map[string]*string{}
 	order := []string{}
 	for rows.Next() {
 		var mid, mtitle string
-		var lid, ltitle, ltype *string
+		var mparent, lid, ltitle, ltype *string
 		var day *int
-		if err := rows.Scan(&mid, &mtitle, &lid, &ltitle, &ltype, &day); err != nil {
+		if err := rows.Scan(&mid, &mtitle, &mparent, &lid, &ltitle, &ltype, &day); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		if _, ok := mods[mid]; !ok {
-			mods[mid] = fiber.Map{"id": mid, "title": mtitle, "lessons": []fiber.Map{}}
+			mods[mid] = fiber.Map{"id": mid, "title": mtitle, "parent_module_id": derefStr(mparent), "lessons": []fiber.Map{}, "submodules": []fiber.Map{}}
+			parent[mid] = mparent
 			order = append(order, mid)
 		}
 		if lid != nil {
@@ -605,13 +619,27 @@ func (h *Handlers) GetManagedCourse(c *fiber.Ctx) error {
 			m["lessons"] = append(m["lessons"].([]fiber.Map), fiber.Map{"id": *lid, "title": *ltitle, "type": *ltype, "day_number": day})
 		}
 	}
-	ordered := make([]fiber.Map, 0, len(order))
-	for _, k := range order {
-		ordered = append(ordered, mods[k])
-	}
+	ordered := nestModules(mods, parent, order)
 	return c.JSON(fiber.Map{"id": id, "title": title, "status": status,
 		"enroll_type": enrollType, "description": desc, "modules": ordered,
 		"owner_id": ownerID, "instructor": ownerName})
+}
+
+// nestModules attaches child modules (parent set) to their parent's "submodules"
+// list and returns the top-level modules in their original order. Orphans (a
+// parent not present in the set) are treated as top-level so nothing is dropped.
+func nestModules(mods map[string]fiber.Map, parent map[string]*string, order []string) []fiber.Map {
+	ordered := make([]fiber.Map, 0, len(order))
+	for _, k := range order {
+		if p := parent[k]; p != nil && *p != "" {
+			if pm, ok := mods[*p]; ok {
+				pm["submodules"] = append(pm["submodules"].([]fiber.Map), mods[k])
+				continue
+			}
+		}
+		ordered = append(ordered, mods[k])
+	}
+	return ordered
 }
 
 // enrollUserInCourse upserts a course enrollment and grants entitlements to the
