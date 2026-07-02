@@ -1,20 +1,15 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
-
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
 )
 
-// genQuestion mirrors one row of the strict tool schema Claude fills in.
+// genQuestion mirrors one question object we ask the model to return.
 type genQuestion struct {
 	Prompt  string   `json:"prompt"`
 	Type    string   `json:"type"`
@@ -27,9 +22,9 @@ type genQuestion struct {
 // inserts them so they appear in the builder for the instructor to review/edit.
 // Needs AI_API_KEY set on the server; otherwise it reports unavailable.
 func (h *Handlers) GenerateQuizQuestions(c *fiber.Ctx) error {
-	key := strings.TrimSpace(h.Cfg.Integrations.AIAPIKey)
+	key := strings.TrimSpace(h.Cfg.Integrations.GroqAPIKey)
 	if key == "" {
-		return fiber.NewError(fiber.StatusServiceUnavailable, "AI question generation isn't configured (set AI_API_KEY on the server)")
+		return fiber.NewError(fiber.StatusServiceUnavailable, "AI question generation isn't configured (set GROQ_API_KEY on the server)")
 	}
 	assessID := c.Params("id")
 	courseID, err := h.assessmentCourse(c, assessID)
@@ -61,73 +56,41 @@ func (h *Handlers) GenerateQuizQuestions(c *fiber.Ctx) error {
 		req.Types = "a sensible mix of mcq, truefalse, short, and essay"
 	}
 
-	// Strict tool schema → structured questions, no fragile text parsing.
-	tool := anthropic.ToolParam{
-		Name:        "emit_questions",
-		Description: anthropic.String("Return the generated quiz/assignment questions."),
-		Strict:      anthropic.Bool(true),
-		InputSchema: anthropic.ToolInputSchemaParam{
-			Properties: map[string]any{
-				"questions": map[string]any{
-					"type":        "array",
-					"description": "The generated questions, in order.",
-					"items": map[string]any{
-						"type":                 "object",
-						"additionalProperties": false,
-						"required":             []string{"prompt", "type", "options", "correct", "points"},
-						"properties": map[string]any{
-							"prompt":  map[string]any{"type": "string", "description": "The question text."},
-							"type":    map[string]any{"type": "string", "enum": []string{"mcq", "truefalse", "short", "essay"}},
-							"options": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "MCQ choices (3-4). Empty array for truefalse/short/essay."},
-							"correct": map[string]any{"type": "string", "description": "mcq: exact text of the right option. truefalse: 'true' or 'false'. short: the expected answer. essay: empty string (graded manually)."},
-							"points":  map[string]any{"type": "number", "description": "Points for the question (default 1)."},
-						},
-					},
-				},
-			},
-			Required:    []string{"questions"},
-			ExtraFields: map[string]any{"additionalProperties": false},
-		},
-	}
-
+	// Groq (OpenAI-compatible) in JSON mode → a single JSON object we parse.
 	system := "You are an expert instructional designer and assessment author. " +
 		"Write clear, unambiguous, well-calibrated questions aligned to the topic and difficulty. " +
 		"For mcq give 3-4 plausible options and set correct to the EXACT text of the right option. " +
 		"For truefalse use options ['true','false'] and correct 'true' or 'false'. " +
 		"For short give a concise expected answer in correct. " +
 		"For essay use an empty options array and an empty correct (it's graded manually). " +
-		"Always respond by calling the emit_questions tool."
-	user := fmt.Sprintf("Generate %d questions for an assessment titled by the instructor.\nTopic / source material: %s\nDifficulty: %s\nPreferred question types: %s",
+		"Respond with a SINGLE valid JSON object and nothing else (no markdown, no prose)."
+	user := fmt.Sprintf(
+		"Generate %d assessment questions.\nTopic / source material: %s\nDifficulty: %s\nPreferred question types: %s\n\n"+
+			"Return a JSON object of exactly this shape:\n"+
+			`{"questions":[{"prompt":"...","type":"mcq|truefalse|short|essay","options":["..."],"correct":"...","points":1}]}`+
+			"\nReturn JSON only.",
 		req.Count, req.Topic, req.Difficulty, req.Types)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
-	client := anthropic.NewClient(option.WithAPIKey(key))
-	msg, err := client.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:      anthropic.ModelClaudeOpus4_8,
-		MaxTokens:  4096,
-		System:     []anthropic.TextBlockParam{{Text: system}},
-		Tools:      []anthropic.ToolUnionParam{{OfTool: &tool}},
-		ToolChoice: anthropic.ToolChoiceParamOfTool("emit_questions"),
-		Messages: []anthropic.MessageParam{
-			anthropic.NewUserMessage(anthropic.NewTextBlock(user)),
+	body := map[string]any{
+		"model":           h.groqModel(),
+		"temperature":     0.4,
+		"response_format": map[string]string{"type": "json_object"},
+		"messages": []map[string]string{
+			{"role": "system", "content": system},
+			{"role": "user", "content": user},
 		},
-	})
-	if err != nil {
-		log.Printf("ai quiz: messages.new: %v", err)
-		return fiber.NewError(fiber.StatusBadGateway, "AI request failed")
 	}
-
+	raw, err := groqChat(key, body)
+	if err != nil {
+		log.Printf("ai quiz: groq: %v", err)
+		return fiber.NewError(fiber.StatusBadGateway, "AI request failed — check GROQ_API_KEY / model")
+	}
 	var out struct {
 		Questions []genQuestion `json:"questions"`
 	}
-	for _, block := range msg.Content {
-		if tu, ok := block.AsAny().(anthropic.ToolUseBlock); ok {
-			if err := json.Unmarshal(tu.Input, &out); err != nil {
-				log.Printf("ai quiz: parse tool input: %v", err)
-			}
-			break
-		}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		log.Printf("ai quiz: parse: %v  body=%.300s", err, string(raw))
+		return fiber.NewError(fiber.StatusBadGateway, "AI returned an unexpected format — try again")
 	}
 	if len(out.Questions) == 0 {
 		return fiber.NewError(fiber.StatusBadGateway, "AI returned no questions — try again")

@@ -2035,7 +2035,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     final day = TextEditingController();
     int type = 0; // assignment, quiz
     DateTime due = DateTime.now().add(const Duration(days: 7));
-    final ok = await showFormSheet(context, square: true, title: moduleId == null ? 'Add Assignment' : 'Add to "${moduleTitle ?? 'Module'}"', builder: (setS) => [
+    final ok = await showFormSheet(context, square: true, big: true, title: moduleId == null ? 'Add Assignment' : 'Add to "${moduleTitle ?? 'Module'}"', builder: (setS) => [
       sheetField(title, 'Title (e.g. Assignment 1)', CupertinoIcons.doc_text),
       const SizedBox(height: 10),
       AppleSegmented(square: true, labels: const ['Assignment', 'Quiz'], selected: type, onChanged: (i) => setS(() => type = i)),
@@ -2121,6 +2121,8 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                 Text('${isQuiz ? 'Quiz' : 'Assignment'} · ${a['max_score'] ?? 100} pts · $qCount question${qCount == 1 ? '' : 's'}', style: AppleTheme.footnote(context)),
               ]),
             ),
+            _pubToggle(id, a['is_published'] != false),
+            const SizedBox(width: 8),
             _smallButton('Questions', CupertinoIcons.list_bullet, () => _openQuizBuilder(id, title, isQuiz: isQuiz)),
             const SizedBox(width: 6),
             GestureDetector(
@@ -2145,6 +2147,33 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => _QuizBuilder(auth: widget.auth, assessmentId: assessmentId, title: title, isQuiz: isQuiz)));
     _load();
+  }
+
+  // One-tap publish / hide toggle for an assessment (students only see published).
+  Future<void> _toggleAssessmentPublish(String id, bool publish) async {
+    try {
+      await widget.auth.apiPatch('/api/v1/manage/assessments/$id', {'is_published': publish});
+      _toast(publish ? 'Published — students can see it' : 'Hidden from students');
+      _load();
+    } catch (_) {
+      _toast('Could not update');
+    }
+  }
+
+  Widget _pubToggle(String id, bool published) {
+    final c = published ? AppleColors.green : Palette.of(context).secondary;
+    return GestureDetector(
+      onTap: () => _toggleAssessmentPublish(id, !published),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(color: c.withOpacity(0.14)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(published ? CupertinoIcons.eye_fill : CupertinoIcons.eye_slash_fill, size: 13, color: c),
+          const SizedBox(width: 4),
+          Text(published ? 'Visible' : 'Hidden', style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700, color: c)),
+        ]),
+      ),
+    );
   }
 
   // Delete an assessment and everything under it (questions + submissions).
@@ -2178,7 +2207,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     int scope = (a['module_id']?.toString() ?? '').isNotEmpty ? 1 : 0; // 0=day, 1=module
     String moduleId = a['module_id']?.toString() ?? (modules.isNotEmpty ? modules.first['id'].toString() : '');
     DateTime due = DateTime.tryParse(a['due_at']?.toString() ?? '')?.toLocal() ?? DateTime.now().add(const Duration(days: 7));
-    final ok = await showFormSheet(context, square: true, title: 'Edit ${type == 1 ? 'Quiz' : 'Assignment'}', builder: (setS) => [
+    final ok = await showFormSheet(context, square: true, big: true, title: 'Edit ${type == 1 ? 'Quiz' : 'Assignment'}', builder: (setS) => [
       sheetField(title, 'Title', CupertinoIcons.doc_text),
       const SizedBox(height: 10),
       AppleSegmented(square: true, labels: const ['Assignment', 'Quiz'], selected: type, onChanged: (i) => setS(() => type = i)),
@@ -2498,6 +2527,8 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
             Icon(isQuiz ? CupertinoIcons.question_square_fill : CupertinoIcons.doc_text_fill, size: 16, color: isQuiz ? AppleColors.purple : AppleColors.blue),
             const SizedBox(width: 10),
             Expanded(child: Text('${m['title']}${(m['questions'] ?? 0) != 0 ? ' · ${m['questions']} Qs' : ''}', style: AppleTheme.body(context).copyWith(fontSize: 14))),
+            _pubToggle(m['id'].toString(), m['is_published'] != false),
+            const SizedBox(width: 6),
             isQuiz
                 ? _smallButton('Questions', CupertinoIcons.list_bullet, () => _openQuizBuilder(m['id'].toString(), m['title']?.toString() ?? 'Quiz', isQuiz: isQuiz))
                 : _smallButton('Submissions', CupertinoIcons.tray_full_fill, () => _openSubmissions(m['id'].toString(), m['title']?.toString() ?? 'Assignment', (m['max_score'] as num?) ?? 100)),
