@@ -3459,7 +3459,7 @@ class _ForumView extends StatefulWidget {
 }
 
 class _ForumViewState extends State<_ForumView> {
-  late Future<List<dynamic>> _threads = _loadThreads();
+  Future<List<dynamic>>? _threads; // loaded just after the popup finishes opening
   bool _composing = false;
   bool _busy = false;
   bool _coursesLoaded = false;
@@ -3476,7 +3476,15 @@ class _ForumViewState extends State<_ForumView> {
   @override
   void initState() {
     super.initState();
-    _ensureCourses(); // so the filter tabs show courses right away
+    // Defer the network loads until the popup has finished its soft open, so
+    // the forum expands with the same clean Hero+fade as every other panel
+    // (no mid-flight setState fighting the open transition). A brief spinner
+    // shows in the stable body during the open.
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      setState(() => _threads = _loadThreads());
+      _ensureCourses();
+    });
   }
 
   @override
