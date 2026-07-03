@@ -2602,9 +2602,23 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     final out = <Widget>[];
     for (final k in keys) {
       final ls = groups[k]!;
+      final allPub = ls.every((l) => l['is_published'] != false);
+      final tc = allPub ? AppleColors.green : Palette.of(context).secondary;
       out.add(_DayFolder(
         label: k == null ? 'Unscheduled' : 'Day $k',
         count: ls.length,
+        trailing: GestureDetector(
+          onTap: () => _toggleDayLessonsPublish(ls, !allPub),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(color: tc.withOpacity(0.14)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(allPub ? CupertinoIcons.eye_fill : CupertinoIcons.eye_slash_fill, size: 12, color: tc),
+              const SizedBox(width: 4),
+              Text(allPub ? 'Visible' : 'Hidden', style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700, color: tc)),
+            ]),
+          ),
+        ),
         children: [for (var i = 0; i < ls.length; i++) _lessonRow(ls[i], ls, i)],
       ));
     }
@@ -2633,6 +2647,12 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         ),
         const SizedBox(width: 14),
         GestureDetector(
+          onTap: () => _toggleLessonPublish(ll['id'].toString(), ll['is_published'] == false),
+          child: Icon(ll['is_published'] != false ? CupertinoIcons.eye_fill : CupertinoIcons.eye_slash_fill,
+              size: 16, color: ll['is_published'] != false ? AppleColors.green : p.secondary),
+        ),
+        const SizedBox(width: 12),
+        GestureDetector(
           onTap: () => _editLesson(ll),
           child: Icon(CupertinoIcons.pencil, size: 16, color: p.secondary),
         ),
@@ -2644,6 +2664,30 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         ),
       ]),
     );
+  }
+
+  // Publish / hide a single course material (students only see published ones).
+  Future<void> _toggleLessonPublish(String id, bool publish) async {
+    try {
+      await widget.auth.apiPatch('/api/v1/manage/lessons/$id', {'is_published': publish});
+      _toast(publish ? 'Material published' : 'Material hidden from students');
+      _load();
+    } catch (_) {
+      _toast('Could not update');
+    }
+  }
+
+  // Publish / hide EVERY material on a day at once.
+  Future<void> _toggleDayLessonsPublish(List<Map<String, dynamic>> group, bool publish) async {
+    try {
+      await Future.wait([
+        for (final l in group) widget.auth.apiPatch('/api/v1/manage/lessons/${l['id']}', {'is_published': publish}),
+      ]);
+      _toast(publish ? 'Day published' : 'Day hidden from students');
+      _load();
+    } catch (_) {
+      _toast('Could not update');
+    }
   }
 
   // Move a material up/down within its day group: reassign sequential positions
@@ -4485,10 +4529,11 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> {
 /// A collapsible "Day" folder inside a module — tap the header to expand/collapse
 /// its lessons. Open by default so nothing is hidden on first view.
 class _DayFolder extends StatefulWidget {
-  const _DayFolder({required this.label, required this.count, required this.children});
+  const _DayFolder({required this.label, required this.count, required this.children, this.trailing});
   final String label;
   final int count;
   final List<Widget> children;
+  final Widget? trailing; // optional control in the header (e.g. day publish toggle)
 
   @override
   State<_DayFolder> createState() => _DayFolderState();
@@ -4516,6 +4561,7 @@ class _DayFolderState extends State<_DayFolder> {
               const SizedBox(width: 8),
               Expanded(child: Text(widget.label, style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w800, color: p.accent))),
               Text('${widget.count} ${widget.count == 1 ? 'item' : 'items'}', style: AppleTheme.footnote(context).copyWith(color: p.secondary)),
+              if (widget.trailing != null) ...[const SizedBox(width: 10), widget.trailing!],
             ]),
           ),
         ),

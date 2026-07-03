@@ -64,6 +64,7 @@ func (h *Handlers) UpdateLesson(c *fiber.Ctx) error {
 		Downloadable *bool   `json:"downloadable"`
 		DayNumber    *int    `json:"day_number"` // set the module day
 		ClearDay     bool    `json:"clear_day"`  // move back to "unscheduled"
+		IsPublished  *bool   `json:"is_published"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
@@ -75,9 +76,10 @@ func (h *Handlers) UpdateLesson(c *fiber.Ctx) error {
 		   body         = COALESCE($4, body),
 		   position     = COALESCE($5, position),
 		   downloadable = COALESCE($6, downloadable),
-		   day_number   = COALESCE($7, day_number)
+		   day_number   = COALESCE($7, day_number),
+		   is_published = COALESCE($8, is_published)
 		 WHERE id=$1`,
-		id, trimmedPtr(req.Title), trimmedPtr(req.Type), req.Body, req.Position, req.Downloadable, req.DayNumber); err != nil {
+		id, trimmedPtr(req.Title), trimmedPtr(req.Type), req.Body, req.Position, req.Downloadable, req.DayNumber, req.IsPublished); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "update failed")
 	}
 	if req.ClearDay {

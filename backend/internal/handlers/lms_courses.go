@@ -592,7 +592,7 @@ func (h *Handlers) GetManagedCourse(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, "course not found")
 	}
 	rows, err := h.Pool.Query(c.Context(), `
-		SELECT m.id, m.title, m.parent_module_id::text, l.id, l.title, l.type, l.day_number
+		SELECT m.id, m.title, m.parent_module_id::text, l.id, l.title, l.type, l.day_number, l.is_published
 		FROM modules m LEFT JOIN lessons l ON l.module_id=m.id
 		WHERE m.course_id=$1 ORDER BY m.position, l.day_number NULLS LAST, l.position`, id)
 	if err != nil {
@@ -606,7 +606,8 @@ func (h *Handlers) GetManagedCourse(c *fiber.Ctx) error {
 		var mid, mtitle string
 		var mparent, lid, ltitle, ltype *string
 		var day *int
-		if err := rows.Scan(&mid, &mtitle, &mparent, &lid, &ltitle, &ltype, &day); err != nil {
+		var lpub *bool
+		if err := rows.Scan(&mid, &mtitle, &mparent, &lid, &ltitle, &ltype, &day, &lpub); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		if _, ok := mods[mid]; !ok {
@@ -616,7 +617,7 @@ func (h *Handlers) GetManagedCourse(c *fiber.Ctx) error {
 		}
 		if lid != nil {
 			m := mods[mid]
-			m["lessons"] = append(m["lessons"].([]fiber.Map), fiber.Map{"id": *lid, "title": *ltitle, "type": *ltype, "day_number": day})
+			m["lessons"] = append(m["lessons"].([]fiber.Map), fiber.Map{"id": *lid, "title": *ltitle, "type": *ltype, "day_number": day, "is_published": lpub == nil || *lpub})
 		}
 	}
 	ordered := nestModules(mods, parent, order)
