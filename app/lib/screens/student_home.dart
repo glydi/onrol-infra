@@ -815,98 +815,68 @@ class _StudentHomeState extends State<StudentHome> {
   void _openContent(String courseId, String title, {String? imageUrl}) {
     _showPanel(CupertinoIcons.book_fill, title, 'Course content', [
       if (imageUrl != null && imageUrl.isNotEmpty) _courseBanner(imageUrl),
-      _future(_apiMap('/api/v1/me/courses/$courseId/content'), (m) {
+      _future(Future.wait([_apiMap('/api/v1/me/courses/$courseId/content'), _apiList('/api/v1/me/assessments', 'assessments')]), (List d) {
+        final m = d[0] as Map<String, dynamic>;
         final modules = (m['modules'] as List?) ?? [];
-        if (modules.isEmpty) return _emptyText('No content in this course yet.');
+        final assessments = (d[1] as List).where((a) => (a as Map<String, dynamic>)['course']?.toString() == title).toList();
+        if (modules.isEmpty && assessments.isEmpty) return _emptyText('No content in this course yet.');
         return StatefulBuilder(builder: (ctx, setS) {
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            for (final mod in modules) _moduleBox(mod as Map<String, dynamic>, () => setS(() {})),
+            // The course's day-wise assignments & quizzes sit inside the first
+            // module's day boxes, alongside that day's lessons.
+            for (var i = 0; i < modules.length; i++)
+              _moduleBox(modules[i] as Map<String, dynamic>, () => setS(() {}), assessments: i == 0 ? assessments : const []),
+            // No modules but there are assessments → show them as day boxes.
+            if (modules.isEmpty && assessments.isNotEmpty)
+              ..._lessonsByDay(const [], () => setS(() {}), assessments: assessments),
           ]);
         });
-      }),
-      // This course's assignments & quizzes, grouped by day.
-      _future(_apiList('/api/v1/me/assessments', 'assessments'), (List items) {
-        final mine = items.where((a) => (a as Map<String, dynamic>)['course']?.toString() == title).toList();
-        if (mine.isEmpty) return const SizedBox.shrink();
-        return _assessmentsByDayView(mine);
       }),
     ]);
   }
 
-  // A "Assignments & Quizzes" section grouped by day (Day 1, 2, … then
-  // Unscheduled), each row opening the quiz / assignment. Used in the course view.
-  Widget _assessmentsByDayView(List items) {
-    final groups = <int?, List<Map<String, dynamic>>>{};
-    for (final a in items) {
-      final m = a as Map<String, dynamic>;
-      groups.putIfAbsent((m['day_number'] as num?)?.toInt(), () => []).add(m);
-    }
-    final keys = groups.keys.toList()
-      ..sort((x, y) {
-        if (x == null) return 1;
-        if (y == null) return -1;
-        return x.compareTo(y);
-      });
-    final children = <Widget>[
-      Padding(
-        padding: const EdgeInsets.only(top: 18, bottom: 4),
-        child: Row(children: [
-          Icon(CupertinoIcons.doc_text_fill, size: 16, color: _orange),
-          const SizedBox(width: 8),
-          Text('Assignments & Quizzes', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
-        ]),
-      ),
-    ];
-    for (final k in keys) {
-      children.add(Padding(
-        padding: const EdgeInsets.only(top: 12, bottom: 4),
-        child: Text(k == null ? 'Unscheduled' : 'Day $k', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: _orange)),
-      ));
-      for (final m in groups[k]!) {
-        final isQuiz = m['type'] == 'quiz';
-        final submitted = m['submitted'] == true;
-        final course = m['course']?.toString() ?? '';
-        final status = m['status']?.toString() ?? '';
-        final score = m['score'];
-        final maxScore = (m['max_score'] as num?)?.round() ?? 100;
-        String badge;
-        Color? badgeBg, badgeFg;
-        if (submitted) {
-          if (status == 'graded' && score != null) {
-            badge = '${(score as num).round()}/$maxScore pts';
-            badgeBg = _greenBg;
-            badgeFg = _green;
-          } else if (status == 'submitted') {
-            badge = 'Grading…';
-            badgeBg = _orange.withOpacity(0.12);
-            badgeFg = _orange;
-          } else {
-            badge = 'Submitted';
-            badgeBg = _greenBg;
-            badgeFg = _green;
-          }
-        } else {
-          badge = isQuiz ? 'Start' : 'Pending';
-        }
-        children.add(GestureDetector(
-          onTap: () => _openAssessment(m),
-          child: _row(
-            isQuiz ? CupertinoIcons.question_square_fill : CupertinoIcons.doc_text_fill,
-            m['title']?.toString() ?? 'Assessment',
-            '$course · ${isQuiz ? 'Quiz' : 'Assignment'} · $maxScore pts',
-            badge,
-            badgeBg: badgeBg,
-            badgeFg: badgeFg,
-          ),
-        ));
+  // A single assessment row (tap to open the quiz / assignment).
+  Widget _assessmentTile(Map<String, dynamic> m) {
+    final isQuiz = m['type'] == 'quiz';
+    final submitted = m['submitted'] == true;
+    final status = m['status']?.toString() ?? '';
+    final score = m['score'];
+    final maxScore = (m['max_score'] as num?)?.round() ?? 100;
+    String badge;
+    Color? badgeBg, badgeFg;
+    if (submitted) {
+      if (status == 'graded' && score != null) {
+        badge = '${(score as num).round()}/$maxScore pts';
+        badgeBg = _greenBg;
+        badgeFg = _green;
+      } else if (status == 'submitted') {
+        badge = 'Grading…';
+        badgeBg = _orange.withOpacity(0.12);
+        badgeFg = _orange;
+      } else {
+        badge = 'Submitted';
+        badgeBg = _greenBg;
+        badgeFg = _green;
       }
+    } else {
+      badge = isQuiz ? 'Start' : 'Pending';
     }
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
+    return GestureDetector(
+      onTap: () => _openAssessment(m),
+      child: _row(
+        isQuiz ? CupertinoIcons.question_square_fill : CupertinoIcons.doc_text_fill,
+        m['title']?.toString() ?? 'Assessment',
+        '${isQuiz ? 'Quiz' : 'Assignment'} · $maxScore pts',
+        badge,
+        badgeBg: badgeBg,
+        badgeFg: badgeFg,
+      ),
+    );
   }
 
   // One module as a bordered box: a tinted title bar, its day folders, a
   // comments link, and any nested sub-modules (indented boxes below).
-  Widget _moduleBox(Map<String, dynamic> md, VoidCallback rebuild, {bool isSub = false}) {
+  Widget _moduleBox(Map<String, dynamic> md, VoidCallback rebuild, {bool isSub = false, List assessments = const []}) {
     final lessons = (md['lessons'] as List?) ?? [];
     final subs = (md['submodules'] as List?) ?? [];
     final title = md['title']?.toString() ?? 'Module';
@@ -929,10 +899,10 @@ class _StudentHomeState extends State<StudentHome> {
         Padding(
           padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            if (lessons.isEmpty && subs.isEmpty)
+            if (lessons.isEmpty && subs.isEmpty && assessments.isEmpty)
               _emptyText('No lessons.')
-            else if (lessons.isNotEmpty)
-              ..._lessonsByDay(lessons, rebuild),
+            else if (lessons.isNotEmpty || assessments.isNotEmpty)
+              ..._lessonsByDay(lessons, rebuild, assessments: assessments),
             Align(
               alignment: Alignment.centerLeft,
               child: _Pressable(
@@ -955,29 +925,39 @@ class _StudentHomeState extends State<StudentHome> {
     );
   }
 
-  // Group a module's lessons by day (Day 1, Day 2, … then "Unscheduled").
-  List<Widget> _lessonsByDay(List lessons, VoidCallback rebuild) {
+  // Group a module's lessons by day (Day 1, Day 2, … then "Unscheduled"). Any
+  // [assessments] are grouped by the same day and shown inside that day's box.
+  List<Widget> _lessonsByDay(List lessons, VoidCallback rebuild, {List assessments = const []}) {
     final groups = <int?, List<Map<String, dynamic>>>{};
     for (final l in lessons) {
       final ll = l as Map<String, dynamic>;
       groups.putIfAbsent((ll['day_number'] as num?)?.toInt(), () => []).add(ll);
     }
-    final keys = groups.keys.toList()
+    final aGroups = <int?, List<Map<String, dynamic>>>{};
+    for (final a in assessments) {
+      final am = a as Map<String, dynamic>;
+      aGroups.putIfAbsent((am['day_number'] as num?)?.toInt(), () => []).add(am);
+    }
+    final keys = <int?>{...groups.keys, ...aGroups.keys}.toList()
       ..sort((a, b) {
         if (a == null) return 1;
         if (b == null) return -1;
         return a.compareTo(b);
       });
-    // Full module order (Day 1, 2, … then Unscheduled) — used for prev/next
-    // navigation in the full-page text reader.
-    final ordered = <Map<String, dynamic>>[for (final k in keys) ...groups[k]!];
+    // Full lesson order (Day 1, 2, … then Unscheduled) for the reader's prev/next.
+    final ordered = <Map<String, dynamic>>[for (final k in keys) ...(groups[k] ?? const [])];
     final out = <Widget>[];
     for (final k in keys) {
-      final ls = groups[k]!;
+      final ls = groups[k] ?? const [];
+      final asmts = aGroups[k] ?? const [];
+      final children = <Widget>[
+        ...ls.map((ll) => _lessonRow(ll, rebuild, siblings: ordered)),
+        ...asmts.map((m) => _assessmentTile(m)),
+      ];
       out.add(_DayFolder(
         label: k == null ? 'Unscheduled' : 'Day $k',
-        count: ls.length,
-        children: ls.map((ll) => _lessonRow(ll, rebuild, siblings: ordered)).toList(),
+        count: children.length,
+        children: children,
       ));
     }
     return out;

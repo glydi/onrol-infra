@@ -2196,12 +2196,46 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     for (final k in keys) {
       out.add(Padding(
         padding: const EdgeInsets.only(bottom: 8, top: 4),
-        child: Text(k == null ? 'Unscheduled' : 'Day $k',
-            style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700)),
+        child: Row(children: [
+          Text(k == null ? 'Unscheduled' : 'Day $k',
+              style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700)),
+          const Spacer(),
+          _dayPubToggle(groups[k]!),
+        ]),
       ));
       out.addAll(groups[k]!.map(_assessmentCard));
     }
     return out;
+  }
+
+  // Publish / hide EVERY assessment on a day in one tap.
+  Future<void> _toggleDayPublish(List<Map<String, dynamic>> group, bool publish) async {
+    try {
+      await Future.wait([
+        for (final a in group) widget.auth.apiPatch('/api/v1/manage/assessments/${a['id']}', {'is_published': publish}),
+      ]);
+      _toast(publish ? 'Day published — students can see it' : 'Day hidden from students');
+      _load();
+    } catch (_) {
+      _toast('Could not update');
+    }
+  }
+
+  Widget _dayPubToggle(List<Map<String, dynamic>> group) {
+    final allPub = group.every((a) => a['is_published'] != false);
+    final c = allPub ? AppleColors.green : Palette.of(context).secondary;
+    return GestureDetector(
+      onTap: () => _toggleDayPublish(group, !allPub),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        decoration: BoxDecoration(color: c.withOpacity(0.14)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(allPub ? CupertinoIcons.eye_fill : CupertinoIcons.eye_slash_fill, size: 13, color: c),
+          const SizedBox(width: 4),
+          Text(allPub ? 'Day visible' : 'Day hidden', style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700, color: c)),
+        ]),
+      ),
+    );
   }
 
   Widget _assessmentCard(Map<String, dynamic> a) {
