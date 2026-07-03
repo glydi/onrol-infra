@@ -831,12 +831,19 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
             Text(status == 'archived' ? 'Archived' : status == 'published' ? 'Visible' : 'Hidden',
                 style: AppleTheme.footnote(context).copyWith(color: status == 'published' ? AppleColors.green : color)),
           ]),
-          // Archive / delete actions.
+          // Archive / delete actions — a proper boxed button (easy tap target).
+          const SizedBox(width: 8),
           GestureDetector(
             onTap: () => _courseMenu(c),
-            child: Padding(
-              padding: const EdgeInsets.only(left: 6),
-              child: Icon(CupertinoIcons.ellipsis_vertical, size: 20, color: Palette.of(context).secondary),
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(color: Palette.of(context).card2, border: Border.all(color: Palette.of(context).separator)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(CupertinoIcons.ellipsis, size: 17, color: Palette.of(context).label),
+                const SizedBox(width: 6),
+                Text('Options', style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700, color: Palette.of(context).label)),
+              ]),
             ),
           ),
         ]),
