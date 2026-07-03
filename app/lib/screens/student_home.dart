@@ -3558,31 +3558,29 @@ class _ForumViewState extends State<_ForumView> {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 320),
-      curve: Curves.easeOutCubic,
-      alignment: Alignment.topCenter,
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 260),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeIn,
-        transitionBuilder: _smoothSwitch,
-        layoutBuilder: _topSwitcherLayout,
-        child: _openId == null
-            ? _list(const ValueKey('list'))
-            : _ForumThread(
-                key: ValueKey(_openId),
-                auth: widget.auth,
-                threadId: _openId!,
-                title: _openTitle,
-                canDeleteThread: _openCanDelete,
-                onDeleteThread: () => _deleteThread(_openId!),
-                onBack: () {
-                  setState(() => _openId = null);
-                  _reload();
-                },
-              ),
-      ),
+    // No top-level AnimatedSize here: the popup's own scroll body absorbs
+    // height changes (like every other panel), so the forum opens with the
+    // same single, soft Hero+fade as the others — no post-open height jump.
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 260),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeIn,
+      transitionBuilder: _smoothSwitch,
+      layoutBuilder: _topSwitcherLayout,
+      child: _openId == null
+          ? _list(const ValueKey('list'))
+          : _ForumThread(
+              key: ValueKey(_openId),
+              auth: widget.auth,
+              threadId: _openId!,
+              title: _openTitle,
+              canDeleteThread: _openCanDelete,
+              onDeleteThread: () => _deleteThread(_openId!),
+              onBack: () {
+                setState(() => _openId = null);
+                _reload();
+              },
+            ),
     );
   }
 
