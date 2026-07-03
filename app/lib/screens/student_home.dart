@@ -515,7 +515,16 @@ class _StudentHomeState extends State<StudentHome> {
                 ]),
               ]),
             ),
-            Icon(CupertinoIcons.gear_alt_fill, size: 18, color: _orange.withOpacity(0.55)),
+            // Gear opens the Settings panel (not the profile) — its own tap
+            // wins over the card's, so only this icon goes to Settings.
+            _Pressable(
+              onTap: () => _openPanel('settings'),
+              child: Container(
+                width: 34, height: 34, alignment: Alignment.center,
+                decoration: BoxDecoration(color: _orange.withOpacity(0.10), border: Border.all(color: _orange.withOpacity(0.22))),
+                child: Icon(CupertinoIcons.gear_alt_fill, size: 18, color: _orange.withOpacity(0.8)),
+              ),
+            ),
           ]),
     );
   }
