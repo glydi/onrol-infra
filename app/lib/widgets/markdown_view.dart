@@ -55,10 +55,11 @@ class MarkdownView extends StatelessWidget {
     return out;
   }
 
-  Widget _rich(String s, TextStyle base) => RichText(text: TextSpan(children: _spans(s, base)));
+  Widget _rich(String s, TextStyle base, TextScaler ts) => RichText(textScaler: ts, text: TextSpan(children: _spans(s, base)));
 
   @override
   Widget build(BuildContext context) {
+    final ts = MediaQuery.textScalerOf(context); // so the material text respects the font-size setting
     final base = GoogleFonts.inter(fontSize: baseFontSize, color: textColor, height: 1.65);
     final lines = text.split('\n');
     final blocks = <Widget>[];
@@ -92,15 +93,15 @@ class MarkdownView extends StatelessWidget {
         continue;
       }
       if (t.startsWith('### ')) {
-        blocks.add(_pad(_rich(t.substring(4), GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w700, color: textColor, height: 1.3)), top: 8));
+        blocks.add(_pad(_rich(t.substring(4), GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w700, color: textColor, height: 1.3), ts), top: 8));
         continue;
       }
       if (t.startsWith('## ')) {
-        blocks.add(_pad(_rich(t.substring(3), GoogleFonts.inter(fontSize: 21, fontWeight: FontWeight.w800, color: textColor, height: 1.3)), top: 10));
+        blocks.add(_pad(_rich(t.substring(3), GoogleFonts.inter(fontSize: 21, fontWeight: FontWeight.w800, color: textColor, height: 1.3), ts), top: 10));
         continue;
       }
       if (t.startsWith('# ')) {
-        blocks.add(_pad(_rich(t.substring(2), GoogleFonts.inter(fontSize: 26, fontWeight: FontWeight.w800, color: textColor, height: 1.25)), top: 12));
+        blocks.add(_pad(_rich(t.substring(2), GoogleFonts.inter(fontSize: 26, fontWeight: FontWeight.w800, color: textColor, height: 1.25), ts), top: 12));
         continue;
       }
       final todo = _todoRe.firstMatch(raw);
@@ -122,7 +123,7 @@ class MarkdownView extends StatelessWidget {
                   child: checked ? const Icon(CupertinoIcons.checkmark, size: 12, color: Colors.white) : null,
                 ),
               ),
-              Expanded(child: _rich(content, base.copyWith(color: checked ? mutedColor : textColor, decoration: checked ? TextDecoration.lineThrough : null))),
+              Expanded(child: _rich(content, base.copyWith(color: checked ? mutedColor : textColor, decoration: checked ? TextDecoration.lineThrough : null), ts)),
             ]),
           ),
         ));
@@ -130,12 +131,12 @@ class MarkdownView extends StatelessWidget {
       }
       final bullet = _bulletRe.firstMatch(raw);
       if (bullet != null) {
-        blocks.add(_listItem('•  ', bullet.group(1) ?? '', base));
+        blocks.add(_listItem('•  ', bullet.group(1) ?? '', base, ts));
         continue;
       }
       final num = _numRe.firstMatch(raw);
       if (num != null) {
-        blocks.add(_listItem('${num.group(1)}.  ', num.group(2) ?? '', base));
+        blocks.add(_listItem('${num.group(1)}.  ', num.group(2) ?? '', base, ts));
         continue;
       }
       if (t.startsWith('> ')) {
@@ -144,12 +145,12 @@ class MarkdownView extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
             decoration: BoxDecoration(border: Border(left: BorderSide(color: accent, width: 3))),
-            child: _rich(t.substring(2), base.copyWith(color: mutedColor, fontStyle: FontStyle.italic)),
+            child: _rich(t.substring(2), base.copyWith(color: mutedColor, fontStyle: FontStyle.italic), ts),
           ),
         ));
         continue;
       }
-      blocks.add(_pad(_rich(t, base), top: 2));
+      blocks.add(_pad(_rich(t, base, ts), top: 2));
     }
     if (inCode && codeBuf.isNotEmpty) blocks.add(_code(codeBuf.join('\n')));
     if (blocks.isEmpty) {
@@ -160,11 +161,11 @@ class MarkdownView extends StatelessWidget {
 
   Widget _pad(Widget child, {double top = 0}) => Padding(padding: EdgeInsets.only(top: top, bottom: 2), child: child);
 
-  Widget _listItem(String marker, String content, TextStyle base) => Padding(
+  Widget _listItem(String marker, String content, TextStyle base, TextScaler ts) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Padding(padding: const EdgeInsets.only(right: 2), child: Text(marker, style: base.copyWith(fontWeight: FontWeight.w700))),
-          Expanded(child: _rich(content, base)),
+          Expanded(child: _rich(content, base, ts)),
         ]),
       );
 

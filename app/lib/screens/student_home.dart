@@ -6004,18 +6004,26 @@ class _SettingsViewState extends State<_SettingsView> {
   }
 
   Widget _fontRow() {
-    const scales = [0.9, 1.0, 1.15];
     final cur = textScaleNotifier.value;
-    var sel = 1;
-    var best = 1e9;
-    for (var i = 0; i < scales.length; i++) {
-      final d = (cur - scales[i]).abs();
-      if (d < best) {
-        best = d;
-        sel = i;
-      }
-    }
-    return _ctrlRow(CupertinoIcons.textformat_size, 'Font size', 'Make text smaller or larger', _seg(['Small', 'Default', 'Large'], sel, (i) => setTextScale(scales[i])));
+    return _ctrlRow(CupertinoIcons.textformat_size, 'Font size', 'Tap − / + to make text smaller or larger', _fontStepper(cur));
+  }
+
+  // A −  %  + stepper for the app text scale (0.8–1.4 in 0.05 steps).
+  Widget _fontStepper(double cur) {
+    const step = 0.05, minS = 0.8, maxS = 1.4;
+    Widget btn(IconData ic, bool on, VoidCallback onTap) => _Pressable(
+          onTap: on ? onTap : null,
+          child: Container(
+            width: 40, height: 34, alignment: Alignment.center,
+            decoration: BoxDecoration(color: on ? _orange.withOpacity(0.10) : _bg, border: Border.all(color: on ? _orange : _cardBorder)),
+            child: Icon(ic, size: 18, color: on ? _orange : _grey),
+          ),
+        );
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      btn(CupertinoIcons.minus, cur > minS + 0.001, () => setTextScale(((cur - step).clamp(minS, maxS)).toDouble())),
+      Container(width: 54, alignment: Alignment.center, child: Text('${(cur * 100).round()}%', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: _navy))),
+      btn(CupertinoIcons.plus, cur < maxS - 0.001, () => setTextScale(((cur + step).clamp(minS, maxS)).toDouble())),
+    ]);
   }
 
   // ---- Security -------------------------------------------------------------
@@ -6981,7 +6989,12 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
               Icon(CupertinoIcons.doc_text_fill, size: 16, color: _orange),
               const SizedBox(width: 6),
               Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: _navy))),
-              const SizedBox(width: 8),
+              if (type == 'text') ...[
+                _readerFontBtn(CupertinoIcons.minus, textScaleNotifier.value > 0.801, () => setTextScale(((textScaleNotifier.value - 0.05).clamp(0.8, 1.4)).toDouble())),
+                const SizedBox(width: 6),
+                _readerFontBtn(CupertinoIcons.plus, textScaleNotifier.value < 1.399, () => setTextScale(((textScaleNotifier.value + 0.05).clamp(0.8, 1.4)).toDouble())),
+                const SizedBox(width: 10),
+              ],
               Text('${_i + 1} / ${widget.items.length}', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: _grey)),
             ]),
           ),
@@ -7096,6 +7109,16 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
       const SizedBox(height: 8),
     ]);
   }
+
+  // Small − / + button in the reader header to resize the reading text.
+  Widget _readerFontBtn(IconData ic, bool on, VoidCallback onTap) => _Pressable(
+        onTap: on ? onTap : null,
+        child: Container(
+          width: 30, height: 28, alignment: Alignment.center,
+          decoration: BoxDecoration(color: on ? _orange.withOpacity(0.10) : _bg, border: Border.all(color: on ? _orange : _cardBorder)),
+          child: Icon(ic, size: 15, color: on ? _orange : _grey),
+        ),
+      );
 
   Widget _navButton(IconData icon, String label, bool enabled, VoidCallback onTap, {bool trailing = false}) {
     final color = enabled ? Colors.white : _grey;
