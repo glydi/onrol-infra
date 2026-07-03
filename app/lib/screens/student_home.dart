@@ -1208,10 +1208,13 @@ class _StudentHomeState extends State<StudentHome> {
       }
       return; // the reader stamps progress per material it shows
     }
-    // Stamp last-access (so Resume returns to this exact lesson — PDFs, notes,
-    // links, all of it). Completion is now explicit (the circle in the lesson
-    // list), so opening a doc no longer instantly skips it in Resume.
+    // Stamp last-access, and auto-mark link/document materials complete on open
+    // (text auto-completes in the reader; videos complete when watched).
     widget.auth.apiPost('/api/v1/me/lessons/$id/progress', {'position': 0}).ignore();
+    if (type == 'link' || type == 'file') {
+      l['completed'] = true;
+      widget.auth.apiPost('/api/v1/me/lessons/$id/complete', {}).ignore();
+    }
   }
 
   // Opens a quiz (loads questions, collects answers) or an assignment (a
@@ -6924,10 +6927,17 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
     super.dispose();
   }
 
-  // Record last-access so Resume returns to the material being read.
+  // Record last-access so Resume returns here, and auto-mark the material
+  // complete on view (videos complete when watched, not on open).
   void _stamp() {
-    final id = widget.items[_i]['id']?.toString();
-    if (id != null) widget.auth.apiPost('/api/v1/me/lessons/$id/progress', {'position': 0}).ignore();
+    final it = widget.items[_i];
+    final id = it['id']?.toString();
+    if (id == null) return;
+    widget.auth.apiPost('/api/v1/me/lessons/$id/progress', {'position': 0}).ignore();
+    if ((it['type']?.toString() ?? 'text') != 'video' && it['completed'] != true) {
+      it['completed'] = true;
+      widget.auth.apiPost('/api/v1/me/lessons/$id/complete', {}).ignore();
+    }
   }
 
   void _go(int delta) {

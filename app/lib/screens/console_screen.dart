@@ -284,16 +284,17 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       final raw = s['course_label']?.toString().trim() ?? '';
       byLabel.putIfAbsent(raw, () => []).add(s);
     }
-    final keys = byLabel.keys.toList()
-      ..sort((a, b) {
-        if (a.isEmpty) return 1;
-        if (b.isEmpty) return -1;
-        return a.compareTo(b);
-      });
+    // Students with no course_label are the "unassigned" list, shown separately
+    // (a fully viewable + manageable group) rather than a dead course card.
+    final unassigned = byLabel.remove('') ?? const <dynamic>[];
+    final keys = byLabel.keys.toList()..sort((a, b) => a.compareTo(b));
     final out = <Widget>[const SectionHeader('Courses')];
-    if (keys.isEmpty) {
+    if (keys.isEmpty && unassigned.isEmpty) {
       out.add(AppleCard(square: true, child: Text('No students yet.', style: AppleTheme.footnote(context))));
       return out;
+    }
+    if (keys.isEmpty) {
+      out.add(AppleCard(square: true, child: Text('No students assigned to a course yet.', style: AppleTheme.footnote(context))));
     }
     for (final c in keys) {
       final list = byLabel[c]!;
@@ -334,6 +335,10 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           ]),
         ),
       ));
+    }
+    if (unassigned.isNotEmpty) {
+      out.add(const SizedBox(height: 18));
+      out.add(_peopleGroup('Unassigned — no course (${unassigned.length})', unassigned, manage: true));
     }
     return out;
   }
