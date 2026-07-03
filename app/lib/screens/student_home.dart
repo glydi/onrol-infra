@@ -7010,23 +7010,25 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
                   constraints: BoxConstraints(maxWidth: isVideo ? 1180 : 1100),
                   // The material sits in a bordered "page" box so the text isn't
                   // floating on the bare background.
-                  child: Container(
-                    width: double.infinity,
-                    padding: isVideo ? const EdgeInsets.all(12) : const EdgeInsets.fromLTRB(22, 22, 22, 26),
-                    decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                      Text(title, style: GoogleFonts.inter(fontSize: 26, fontWeight: FontWeight.w800, color: _navy, height: 1.25)),
-                      const SizedBox(height: 16),
-                      if (type == 'text')
-                        (body.trim().isEmpty
-                            ? Text('No content in this material.', style: GoogleFonts.inter(fontSize: 14, color: _grey))
-                            : _NoteMarkdown(text: body))
-                      else if (type == 'video' && body.isNotEmpty)
-                        _videoPlayer(it, body)
-                      else
-                        _openCard(type, it),
-                    ]),
-                  ),
+                  // Text materials: each main (##) section becomes its own box.
+                  child: type == 'text'
+                      ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                          _sectionBox(Text(title, style: GoogleFonts.inter(fontSize: 26, fontWeight: FontWeight.w800, color: _navy, height: 1.25))),
+                          if (body.trim().isEmpty)
+                            _sectionBox(Text('No content in this material.', style: GoogleFonts.inter(fontSize: 14, color: _grey)))
+                          else
+                            for (final s in _splitSections(body)) _sectionBox(_NoteMarkdown(text: s)),
+                        ])
+                      : Container(
+                          width: double.infinity,
+                          padding: isVideo ? const EdgeInsets.all(12) : const EdgeInsets.fromLTRB(22, 22, 22, 26),
+                          decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                            Text(title, style: GoogleFonts.inter(fontSize: 26, fontWeight: FontWeight.w800, color: _navy, height: 1.25)),
+                            const SizedBox(height: 16),
+                            if (type == 'video' && body.isNotEmpty) _videoPlayer(it, body) else _openCard(type, it),
+                          ]),
+                        ),
                 ),
               ),
             ),
@@ -7108,6 +7110,34 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
       ),
       const SizedBox(height: 8),
     ]);
+  }
+
+  // A bordered "card" for one section of a text material.
+  Widget _sectionBox(Widget child) => Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.fromLTRB(22, 18, 22, 20),
+        decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
+        child: child,
+      );
+
+  // Split a material's Markdown at each main "## " heading — content before the
+  // first heading is its own section — so each section renders in its own box.
+  List<String> _splitSections(String md) {
+    final sections = <String>[];
+    final buf = <String>[];
+    for (final line in md.split('\n')) {
+      final t = line.trimLeft();
+      if (t.startsWith('## ') && !t.startsWith('### ') && buf.isNotEmpty) {
+        final chunk = buf.join('\n').trim();
+        if (chunk.isNotEmpty) sections.add(chunk);
+        buf.clear();
+      }
+      buf.add(line);
+    }
+    final last = buf.join('\n').trim();
+    if (last.isNotEmpty) sections.add(last);
+    return sections.isEmpty ? [md.trim()] : sections;
   }
 
   // Small − / + button in the reader header to resize the reading text.
