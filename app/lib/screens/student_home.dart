@@ -1921,7 +1921,9 @@ class _StudentHomeState extends State<StudentHome> {
         ]);
       case 'forum':
         return (CupertinoIcons.bubble_left_bubble_right_fill, 'Discussion Forum', 'Ask, answer & discuss with your peers', [
-          _ForumView(auth: widget.auth),
+          // Deferred so the popup's Hero-morph open stays smooth (the heavy
+          // forum body mounts once the panel has expanded from its tile).
+          _DeferredBody(child: _ForumView(auth: widget.auth)),
         ]);
       case 'messages':
         return (CupertinoIcons.chat_bubble_2_fill, 'Messages', 'Your inbox', [
@@ -3447,6 +3449,42 @@ class _LiveCardState extends State<_LiveCard> {
   }
 }
 
+/// Mounts [child] only after a short delay, showing a light spinner meanwhile.
+/// Used so a heavy panel body (e.g. the forum) doesn't build during the popup's
+/// Hero-morph open — keeping the "expand from the tile" animation buttery, then
+/// fading the real content in.
+class _DeferredBody extends StatefulWidget {
+  const _DeferredBody({required this.child, this.delay = const Duration(milliseconds: 480)});
+  final Widget child;
+  final Duration delay;
+  @override
+  State<_DeferredBody> createState() => _DeferredBodyState();
+}
+
+class _DeferredBodyState extends State<_DeferredBody> {
+  bool _ready = false;
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(widget.delay, () {
+      if (mounted) setState(() => _ready = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedSwitcher(
+        duration: const Duration(milliseconds: 260),
+        switchInCurve: Curves.easeOut,
+        child: _ready
+            ? widget.child
+            : const Padding(
+                key: ValueKey('deferred-loading'),
+                padding: EdgeInsets.symmetric(vertical: 48),
+                child: Center(child: CircularProgressIndicator(color: _orange, strokeWidth: 2.5)),
+              ),
+      );
+}
+
 /// Discussion forum: a list of threads (newest activity first) with a composer,
 /// and a tap-through thread view with chat-style posts + a reply box. Switching
 /// between list and thread animates.
@@ -3459,7 +3497,7 @@ class _ForumView extends StatefulWidget {
 }
 
 class _ForumViewState extends State<_ForumView> {
-  Future<List<dynamic>>? _threads; // loaded just after the popup finishes opening
+  late Future<List<dynamic>> _threads = _loadThreads();
   bool _composing = false;
   bool _busy = false;
   bool _coursesLoaded = false;
@@ -3476,15 +3514,7 @@ class _ForumViewState extends State<_ForumView> {
   @override
   void initState() {
     super.initState();
-    // Defer the network loads until the popup has finished its soft open, so
-    // the forum expands with the same clean Hero+fade as every other panel
-    // (no mid-flight setState fighting the open transition). A brief spinner
-    // shows in the stable body during the open.
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (!mounted) return;
-      setState(() => _threads = _loadThreads());
-      _ensureCourses();
-    });
+    _ensureCourses(); // filter tabs show courses right away
   }
 
   @override
