@@ -2602,27 +2602,102 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     final out = <Widget>[];
     for (final k in keys) {
       final ls = groups[k]!;
-      final allPub = ls.every((l) => l['is_published'] != false);
-      final tc = allPub ? AppleColors.green : Palette.of(context).secondary;
       out.add(_DayFolder(
         label: k == null ? 'Unscheduled' : 'Day $k',
         count: ls.length,
-        trailing: GestureDetector(
-          onTap: () => _toggleDayLessonsPublish(ls, !allPub),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(color: tc.withOpacity(0.14)),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(allPub ? CupertinoIcons.eye_fill : CupertinoIcons.eye_slash_fill, size: 12, color: tc),
-              const SizedBox(width: 4),
-              Text(allPub ? 'Visible' : 'Hidden', style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700, color: tc)),
-            ]),
-          ),
-        ),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          _dayScheduleControl(ls),
+          const SizedBox(width: 8),
+          _dayVisibleToggle(ls),
+        ]),
         children: [for (var i = 0; i < ls.length; i++) _lessonRow(ls[i], ls, i)],
       ));
     }
     return out;
+  }
+
+  Widget _dayVisibleToggle(List<Map<String, dynamic>> ls) {
+    final allPub = ls.every((l) => l['is_published'] != false);
+    final tc = allPub ? AppleColors.green : Palette.of(context).secondary;
+    return GestureDetector(
+      onTap: () => _toggleDayLessonsPublish(ls, !allPub),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(color: tc.withOpacity(0.14)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(allPub ? CupertinoIcons.eye_fill : CupertinoIcons.eye_slash_fill, size: 12, color: tc),
+          const SizedBox(width: 4),
+          Text(allPub ? 'Visible' : 'Hidden', style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700, color: tc)),
+        ]),
+      ),
+    );
+  }
+
+  // A calendar chip on the day header: schedule when the whole day's materials
+  // go live. Tap to pick a date; tap the × (when scheduled) to clear.
+  Widget _dayScheduleControl(List<Map<String, dynamic>> ls) {
+    final p = Palette.of(context);
+    DateTime? sched;
+    for (final l in ls) {
+      final s = l['publish_at']?.toString() ?? '';
+      if (s.isNotEmpty) {
+        final d = DateTime.tryParse(s)?.toLocal();
+        if (d != null && (sched == null || d.isAfter(sched))) sched = d;
+      }
+    }
+    const mon = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    if (sched == null) {
+      return GestureDetector(
+        onTap: () => _scheduleDay(ls),
+        child: Icon(CupertinoIcons.calendar_badge_plus, size: 16, color: p.secondary),
+      );
+    }
+    return GestureDetector(
+      onTap: () => _scheduleDay(ls),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(color: AppleColors.blue.withOpacity(0.14)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(CupertinoIcons.calendar, size: 12, color: AppleColors.blue),
+          const SizedBox(width: 4),
+          Text('${sched.day} ${mon[sched.month]}', style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700, color: AppleColors.blue)),
+          const SizedBox(width: 6),
+          GestureDetector(onTap: () => _setDayPublishAt(ls, null), child: Icon(CupertinoIcons.xmark, size: 11, color: AppleColors.blue)),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _scheduleDay(List<Map<String, dynamic>> ls) async {
+    DateTime init = DateTime.now().add(const Duration(days: 1));
+    for (final l in ls) {
+      final s = l['publish_at']?.toString() ?? '';
+      if (s.isNotEmpty) {
+        final d = DateTime.tryParse(s)?.toLocal();
+        if (d != null) init = d;
+      }
+    }
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: init,
+      firstDate: DateTime.now().subtract(const Duration(days: 1)),
+      lastDate: DateTime.now().add(const Duration(days: 730)),
+    );
+    if (picked == null) return;
+    final dt = DateTime(picked.year, picked.month, picked.day); // local midnight
+    await _setDayPublishAt(ls, dt.toUtc().toIso8601String());
+  }
+
+  Future<void> _setDayPublishAt(List<Map<String, dynamic>> ls, String? iso) async {
+    try {
+      await Future.wait([
+        for (final l in ls) widget.auth.apiPatch('/api/v1/manage/lessons/${l['id']}', {'publish_at': iso ?? ''}),
+      ]);
+      _toast(iso == null ? 'Publishes immediately now' : 'Day scheduled — publishes on that date');
+      _load();
+    } catch (_) {
+      _toast('Could not update');
+    }
   }
 
   Widget _lessonRow(Map<String, dynamic> ll, List<Map<String, dynamic>> group, int index) {

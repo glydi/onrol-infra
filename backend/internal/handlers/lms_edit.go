@@ -65,6 +65,7 @@ func (h *Handlers) UpdateLesson(c *fiber.Ctx) error {
 		DayNumber    *int    `json:"day_number"` // set the module day
 		ClearDay     bool    `json:"clear_day"`  // move back to "unscheduled"
 		IsPublished  *bool   `json:"is_published"`
+		PublishAt    *string `json:"publish_at"` // ISO8601; "" clears (publish now)
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
@@ -84,6 +85,13 @@ func (h *Handlers) UpdateLesson(c *fiber.Ctx) error {
 	}
 	if req.ClearDay {
 		_, _ = h.Pool.Exec(c.Context(), `UPDATE lessons SET day_number=NULL WHERE id=$1`, id)
+	}
+	if req.PublishAt != nil {
+		if strings.TrimSpace(*req.PublishAt) == "" {
+			_, _ = h.Pool.Exec(c.Context(), `UPDATE lessons SET publish_at=NULL WHERE id=$1`, id)
+		} else {
+			_, _ = h.Pool.Exec(c.Context(), `UPDATE lessons SET publish_at=$2::timestamptz WHERE id=$1`, id, strings.TrimSpace(*req.PublishAt))
+		}
 	}
 	return c.JSON(fiber.Map{"id": id, "updated": true})
 }
