@@ -20,7 +20,6 @@ import '../services/push.dart';
 import '../theme_controller.dart';
 import '../widgets/download_stub.dart' if (dart.library.html) '../widgets/download_web.dart';
 import '../widgets/markdown_view.dart';
-import 'forum_screen.dart';
 import 'live_screen.dart';
 import 'live_session_screen.dart';
 import 'login_screen.dart';
@@ -780,22 +779,8 @@ class _StudentHomeState extends State<StudentHome> {
   // ---- Modal panels --------------------------------------------------------
 
   void _openPanel(String key, {Offset? origin}) {
-    // The community forum opens like the other panels — a frosted card over the
-    // blurred dashboard. Push a transparent route so the dashboard stays behind.
-    if (key == 'forum') {
-      Navigator.of(context).push(PageRouteBuilder(
-        opaque: false,
-        barrierColor: Colors.transparent,
-        transitionDuration: const Duration(milliseconds: 280),
-        reverseTransitionDuration: const Duration(milliseconds: 220),
-        pageBuilder: (_, __, ___) => ForumScreen(auth: widget.auth),
-        transitionsBuilder: (_, anim, __, child) => FadeTransition(
-          opacity: anim,
-          child: ScaleTransition(scale: Tween(begin: 0.97, end: 1.0).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)), child: child),
-        ),
-      ));
-      return;
-    }
+    // Every tile — including the forum — opens through the same shared-element
+    // route, so it expands out of its tile (iOS-style) exactly like the others.
     final d = _panel(key);
     _showPanel(d.$1, d.$2, d.$3, d.$4, heroTag: 'panel-$key', compact: key == 'logout');
   }
