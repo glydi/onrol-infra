@@ -574,6 +574,7 @@ Future<bool?> showFormSheet(
   required Future<String?> Function() onSubmit,
   bool square = false, // admin/LMS panels use squared corners
   bool big = false, // roomier, width-capped, scrolling body (for long forms)
+  bool full = false, // nearly full-screen centered panel (for big editors)
 }) {
   // Captured from the caller (which is inside the page's SquareScope); the modal
   // itself is mounted on the root navigator, so we re-provide the scope below.
@@ -604,23 +605,25 @@ Future<bool?> showFormSheet(
           },
         );
         final screenH = MediaQuery.of(ctx).size.height;
-        // `big` renders a large CENTERED panel (not a shrink-to-content bottom
-        // sheet) with a generous fixed height, so long forms feel roomy.
+        final screenW = MediaQuery.of(ctx).size.width;
+        final wide = big || full; // centered panel (not a shrink-to-content sheet)
+        // `big` renders a large CENTERED panel with a generous fixed height;
+        // `full` goes nearly edge-to-edge (for big editors) but never truly full.
         return SquareScope(square: sq, child: Padding(
           padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
           child: Align(
-            alignment: big ? Alignment.center : Alignment.bottomCenter,
+            alignment: wide ? Alignment.center : Alignment.bottomCenter,
             child: ConstrainedBox(
               constraints: BoxConstraints(
-                maxWidth: big ? 760 : double.infinity,
-                maxHeight: screenH * (big ? 0.9 : 0.85),
+                maxWidth: full ? screenW * 0.96 : (big ? 760 : double.infinity),
+                maxHeight: screenH * (full ? 0.97 : (wide ? 0.9 : 0.85)),
               ),
               child: Container(
-                margin: EdgeInsets.all(big ? 16 : 10),
-                height: big ? (screenH * 0.82).clamp(0.0, 820.0) : null,
-                padding: EdgeInsets.all(big ? 26 : 20),
+                margin: EdgeInsets.all(full ? 12 : (big ? 16 : 10)),
+                height: full ? screenH * 0.9 : (big ? (screenH * 0.82).clamp(0.0, 820.0) : null),
+                padding: EdgeInsets.all(full ? 22 : (big ? 26 : 20)),
                 decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.zero),
-                child: Column(mainAxisSize: big ? MainAxisSize.max : MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                child: Column(mainAxisSize: wide ? MainAxisSize.max : MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   Center(child: Text(title, style: AppleTheme.title2(ctx))),
                   const SizedBox(height: 16),
                   Flexible(

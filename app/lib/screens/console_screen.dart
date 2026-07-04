@@ -2899,7 +2899,8 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   // Add & Edit Course Material so text materials get a real writing surface
   // (fills ~half the screen height) instead of a couple of lines.
   List<Widget> _mdEditor({required TextEditingController body, required bool preview, required void Function(bool) onPreview}) {
-    final h = (MediaQuery.of(context).size.height * 0.5).clamp(320.0, 620.0);
+    // Fills most of the near-full-screen sheet — a real writing surface.
+    final h = (MediaQuery.of(context).size.height * 0.62).clamp(360.0, 1100.0);
     return [
       _label(context, 'Content — Markdown supported (# headings, **bold**, - lists, > quote, `code`). Paste Markdown here.'),
       const SizedBox(height: 6),
@@ -2950,7 +2951,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     int vsrc = 0; // 0 = R2 (MP4), 1 = HLS (.m3u8)
     bool downloadable = true; // documents: may learners download it?
     bool preview = false; // text content: Write ⇄ Preview (rendered Markdown)
-    final ok = await showFormSheet(context, square: true, big: true, title: 'Add Course Material', builder: (setS) => [
+    final ok = await showFormSheet(context, square: true, full: true, title: 'Add Course Material', builder: (setS) => [
       sheetField(title, 'Lesson title', CupertinoIcons.doc_text),
       const SizedBox(height: 10),
       sheetField(day, 'Day in module (e.g. 1) — optional', CupertinoIcons.calendar, keyboard: TextInputType.number),
@@ -3110,7 +3111,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     if (type < 0) type = 0;
     bool downloadable = l['downloadable'] != false;
     bool preview = false; // text content: Write ⇄ Preview (rendered Markdown)
-    final ok = await showFormSheet(context, square: true, big: true, title: 'Edit Course Material', builder: (setS) => [
+    final ok = await showFormSheet(context, square: true, full: true, title: 'Edit Course Material', builder: (setS) => [
       sheetField(title, 'Lesson title', CupertinoIcons.doc_text),
       const SizedBox(height: 10),
       sheetField(day, 'Day in module (e.g. 1) — blank = unscheduled', CupertinoIcons.calendar, keyboard: TextInputType.number),
