@@ -51,14 +51,21 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
 	}
-	// The identifier may be an email or a username (both lower-cased).
-	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	// The identifier may be an email, a username, or a phone number.
+	idRaw := strings.TrimSpace(req.Email)
+	req.Email = strings.ToLower(idRaw)
 
-	// 1. Verify credentials.
+	// 1. Verify credentials. Phone matches on digits only (ignore +, spaces, -),
+	//    and only when the identifier has at least 6 digits so an email never
+	//    collides with a blank phone.
 	var user models.User
 	err := h.Pool.QueryRow(c.Context(),
 		`SELECT id, email, full_name, role, password_hash, max_devices, is_active
-		 FROM users WHERE email=$1 OR lower(username)=$1`, req.Email,
+		 FROM users
+		 WHERE email=$1 OR lower(username)=$1
+		    OR (length(regexp_replace($2,'\D','','g')) >= 6
+		        AND regexp_replace(COALESCE(phone,''),'\D','','g') = regexp_replace($2,'\D','','g'))`,
+		req.Email, idRaw,
 	).Scan(&user.ID, &user.Email, &user.FullName, &user.Role, &user.PasswordHash, &user.MaxDevices, &user.IsActive)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fiber.NewError(fiber.StatusUnauthorized, "invalid credentials")

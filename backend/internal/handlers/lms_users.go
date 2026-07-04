@@ -89,7 +89,7 @@ func (h *Handlers) CreateManagedUser(c *fiber.Ctx) error {
 	// New users get a known default password unless one is supplied; the admin
 	// can change it later (or the user can in Settings).
 	if strings.TrimSpace(req.Password) == "" {
-		req.Password = "onrol@ai"
+		req.Password = "onrol@aiee"
 	}
 	if req.Role == "" {
 		req.Role = "student"

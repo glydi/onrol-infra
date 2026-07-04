@@ -232,7 +232,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         children: [
                           const SizedBox(height: 14),
                           if (!_forgot) ...[
-                            AppleField(controller: _email, hint: 'Email or username', icon: CupertinoIcons.person, keyboard: TextInputType.text, autofillHints: const [AutofillHints.username, AutofillHints.email]),
+                            AppleField(controller: _email, hint: 'Email or phone number', icon: CupertinoIcons.person, keyboard: TextInputType.text, autofillHints: const [AutofillHints.username, AutofillHints.email, AutofillHints.telephoneNumber]),
                             const SizedBox(height: 12),
                             Divider(height: 1, color: p.separator),
                             const SizedBox(height: 12),

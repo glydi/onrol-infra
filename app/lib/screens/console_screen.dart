@@ -663,7 +663,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     final email = TextEditingController();
     final username = TextEditingController();
     final name = TextEditingController();
-    final pass = TextEditingController(text: 'onrol@ai'); // default password
+    final pass = TextEditingController(text: 'onrol@aiee'); // default password
     final phone = TextEditingController();
     final courseLabel = TextEditingController();
     final batch = TextEditingController();
@@ -682,7 +682,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       const SizedBox(height: 10),
       sheetField(username, 'Username (optional — for sign-in)', CupertinoIcons.at),
       const SizedBox(height: 10),
-      sheetField(pass, 'Password (default: onrol@ai)', CupertinoIcons.lock),
+      sheetField(pass, 'Password (default: onrol@aiee)', CupertinoIcons.lock),
       if (isStudent) ...[
         const SizedBox(height: 10),
         sheetField(courseLabel, 'Course label (e.g. aigeneralist)', CupertinoIcons.book),
