@@ -374,6 +374,40 @@ class _StudentHomeState extends State<StudentHome> {
         child: Text(t, textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 13, color: _grey)),
       );
 
+  // "Coming soon" placeholder for features that are built but not yet live to
+  // students (currently Leaderboard & Forum). Keeps the tile openable so it still
+  // expands with the shared Hero-morph, just showing a friendly holding state.
+  static Widget _comingSoon(IconData icon, String title, String blurb) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 76,
+            height: 76,
+            decoration: BoxDecoration(
+              color: _orange.withValues(alpha: 0.10),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 34, color: _orange),
+          ),
+          const SizedBox(height: 20),
+          Text(title, textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w700, color: _isDark ? Colors.white : const Color(0xFF1A1712))),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: _orange.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text('Coming soon', style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.6, color: _orange)),
+          ),
+          const SizedBox(height: 14),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 340),
+            child: Text(blurb, textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 13.5, height: 1.5, color: _grey)),
+          ),
+        ]),
+      );
+
   static String _fmtAt(String? iso) {
     if (iso == null || iso.isEmpty) return '';
     final dt = DateTime.tryParse(iso)?.toLocal();
@@ -1887,7 +1921,7 @@ class _StudentHomeState extends State<StudentHome> {
         ]);
       case 'leaderboard':
         return (CupertinoIcons.list_number, 'Leaderboard', 'Ranked by XP — overall & per course', [
-          _LeaderboardView(auth: widget.auth),
+          _comingSoon(CupertinoIcons.list_number, 'Leaderboard', 'Climb the ranks and see how you stack up against your cohort by XP. We’re putting the finishing touches on it — check back soon.'),
         ]);
       case 'schedule':
         return (CupertinoIcons.calendar, 'Calendar', 'Classes, deadlines & activities', [
@@ -1898,9 +1932,7 @@ class _StudentHomeState extends State<StudentHome> {
         ]);
       case 'forum':
         return (CupertinoIcons.bubble_left_bubble_right_fill, 'Discussion Forum', 'Ask, answer & discuss with your peers', [
-          // Deferred so the popup's Hero-morph open stays smooth (the heavy
-          // forum body mounts once the panel has expanded from its tile).
-          _DeferredBody(child: _ForumView(auth: widget.auth)),
+          _comingSoon(CupertinoIcons.bubble_left_bubble_right_fill, 'Discussion Forum', 'Ask questions, answer your peers and discuss lessons together. The forum is almost ready — it’ll open up here shortly.'),
         ]);
       case 'messages':
         return (CupertinoIcons.chat_bubble_2_fill, 'Messages', 'Your inbox', [
@@ -3430,6 +3462,7 @@ class _LiveCardState extends State<_LiveCard> {
 /// Used so a heavy panel body (e.g. the forum) doesn't build during the popup's
 /// Hero-morph open — keeping the "expand from the tile" animation buttery, then
 /// fading the real content in.
+// ignore: unused_element
 class _DeferredBody extends StatefulWidget {
   const _DeferredBody({required this.child, this.delay = const Duration(milliseconds: 480)});
   final Widget child;
@@ -3465,6 +3498,7 @@ class _DeferredBodyState extends State<_DeferredBody> {
 /// Discussion forum: a list of threads (newest activity first) with a composer,
 /// and a tap-through thread view with chat-style posts + a reply box. Switching
 /// between list and thread animates.
+// ignore: unused_element
 class _ForumView extends StatefulWidget {
   const _ForumView({required this.auth});
   final AuthService auth;
@@ -4073,6 +4107,7 @@ class _ForumThreadState extends State<_ForumThread> {
 
 /// Leaderboard with an "Overall" (total XP) tab plus one tab per enrolled
 /// course (ranked by XP earned in that course). Switching tabs animates.
+// ignore: unused_element
 class _LeaderboardView extends StatefulWidget {
   const _LeaderboardView({required this.auth});
   final AuthService auth;
