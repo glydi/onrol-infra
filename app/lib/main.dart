@@ -38,6 +38,26 @@ class _OnrolAppState extends State<OnrolApp> {
   late final ApiClient _api = ApiClient(_device);
   late final AuthService _auth = AuthService(_api, _device);
   late final Future<bool> _restored = _auth.restore();
+  final _navKey = GlobalKey<NavigatorState>();
+  bool _bouncing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // When any authed call reports the token is dead (expired after its TTL, or
+    // its device was revoked), clear the session and bounce to login — so it
+    // surfaces as a re-login prompt, not a silent "nothing works" failure.
+    ApiClient.onAuthExpired = () async {
+      if (_bouncing || _auth.user == null) return;
+      _bouncing = true;
+      await _auth.logout();
+      _navKey.currentState?.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => LoginScreen(auth: _auth)),
+        (route) => false,
+      );
+      _bouncing = false;
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,6 +70,7 @@ class _OnrolAppState extends State<OnrolApp> {
         // (a fresh Navigator) — every screen + any open popup reopens cleanly in
         // the new theme, with no stale cached-blur/colour left behind.
         key: ValueKey(mode),
+        navigatorKey: _navKey,
         title: 'ONROL Learn',
         debugShowCheckedModeBanner: false,
         theme: AppleTheme.light(),

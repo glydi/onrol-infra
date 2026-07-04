@@ -12,6 +12,12 @@ class ApiClient {
   final DeviceService _device;
   String? _token;
 
+  /// Fired when an authenticated request is rejected because the token is dead
+  /// (expired, or its device was revoked). The app root wires this to clear the
+  /// session and bounce to the login screen, so a stale token surfaces as a
+  /// re-login prompt instead of silent per-call failures.
+  static void Function()? onAuthExpired;
+
   set token(String? t) => _token = t;
   String? get token => _token;
   bool get isAuthed => _token != null;
@@ -82,6 +88,12 @@ class ApiClient {
     final data = r.body.isNotEmpty
         ? jsonDecode(r.body) as Map<String, dynamic>
         : <String, dynamic>{};
+    if (r.statusCode == 401) {
+      // A rejected token on an authed request (these messages only come from the
+      // auth middleware, never from the login endpoint) => the session is dead.
+      const authFails = {'invalid token', 'missing bearer token', 'device mismatch', 'device not active'};
+      if (authFails.contains(data['error']?.toString())) onAuthExpired?.call();
+    }
     if (r.statusCode < 200 || r.statusCode >= 300) {
       throw ApiException(r.statusCode, data['error']?.toString() ?? 'request failed', data);
     }
