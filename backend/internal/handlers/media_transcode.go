@@ -108,15 +108,16 @@ func (h *Handlers) transcodeToHLS(assetID, sourceKey string) {
 		"-hls_segment_filename", filepath.Join(out, "seg_%03d.ts"),
 		filepath.Join(out, "index.m3u8"),
 	}
-	// Full re-encode: scale down to <=1080p, CRF 21 for near-transparent quality,
-	// capped at 6 Mbps so it streams smoothly anywhere. This is the expensive path
-	// (minutes of CPU on libx264) and only runs when the source isn't already a
-	// web-ready H.264 file.
-	encodeArgs := append([]string{"-y", "-i", input,
+	// Full re-encode: scale down to <=1080p, capped at 6 Mbps so it streams
+	// smoothly anywhere. This is the expensive path (only runs when the source
+	// isn't already a web-ready H.264 file, e.g. AV1/HEVC uploads). The box is
+	// single-core, so we use x264 'ultrafast' + threaded decode to cut the encode
+	// time as much as possible; -crf 23 (with the maxrate cap) keeps files sane.
+	encodeArgs := append([]string{"-y", "-threads", "0", "-i", input,
 		"-map", "0:v:0", "-map", "0:a:0?",
 		"-vf", "scale='min(1920,iw)':'-2'",
-		"-c:v", "libx264", "-preset", "veryfast", "-profile:v", "high", "-pix_fmt", "yuv420p",
-		"-crf", "21", "-maxrate", "6M", "-bufsize", "12M",
+		"-c:v", "libx264", "-preset", "ultrafast", "-profile:v", "high", "-pix_fmt", "yuv420p",
+		"-crf", "23", "-maxrate", "6M", "-bufsize", "12M",
 		"-c:a", "aac", "-b:a", "128k", "-ac", "2"}, hlsTail...)
 
 	// Cheap path: if the upload is already H.264 within our size/bitrate limits we
