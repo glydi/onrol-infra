@@ -16,8 +16,8 @@ import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import 'package:file_picker/file_picker.dart';
 
-import '../services/push.dart';
 import '../theme_controller.dart';
+import '../services/tab_badge_stub.dart' if (dart.library.html) '../services/tab_badge_web.dart';
 import '../widgets/download_stub.dart' if (dart.library.html) '../widgets/download_web.dart';
 import '../widgets/markdown_view.dart';
 import 'live_screen.dart';
@@ -602,6 +602,8 @@ class _StudentHomeState extends State<StudentHome> {
         (List d) {
           final personal = (d[0] as List);
           final unseen = personal.where((n) => (n as Map)['read'] != true).length;
+          // Mirror the unread count onto the browser tab title (web only).
+          setUnreadBadge(unseen);
           final all = <Map<String, dynamic>>[];
           for (final n in personal) {
             final m = n as Map<String, dynamic>;
@@ -1778,8 +1780,10 @@ class _StudentHomeState extends State<StudentHome> {
               _apiList('/api/v1/me/announcements', 'announcements'),
             ]),
             (List d) {
-              // Mark personal notifications read (best-effort) once viewed.
+              // Mark personal notifications read (best-effort) once viewed, and
+              // clear the browser-tab unread badge right away (web only).
               widget.auth.apiPost('/api/v1/me/notifications/read', {}).ignore();
+              setUnreadBadge(0);
               final entries = <Map<String, dynamic>>[];
               for (final n in (d[0] as List)) {
                 final m = n as Map<String, dynamic>;
@@ -5776,7 +5780,6 @@ class _SettingsViewState extends State<_SettingsView> {
   bool _pwOpen = false;
   bool _actOpen = false;
   bool _savingPw = false;
-  bool _pushBusy = false; // enabling Web Push
   String? _pwErr; // inline password error (shown in the form, not a toast)
   bool _pwSaved = false; // inline success after a password change
   final _cur = TextEditingController();
@@ -5811,19 +5814,6 @@ class _SettingsViewState extends State<_SettingsView> {
       c.dispose();
     }
     super.dispose();
-  }
-
-  void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
-
-  // Ask the browser for notification permission and subscribe this device.
-  Future<void> _enablePush() async {
-    setState(() => _pushBusy = true);
-    final ok = await Push.enable(widget.auth, prompt: true);
-    if (!mounted) return;
-    setState(() => _pushBusy = false);
-    _toast(ok
-        ? 'Push notifications enabled on this device'
-        : 'Could not enable push — allow notifications in your browser settings');
   }
 
   Future<void> _savePassword() async {
@@ -5901,24 +5891,6 @@ class _SettingsViewState extends State<_SettingsView> {
           _fontRow(),
         ]),
       ),
-      // Web Push enable (browser/PWA only — no-op on native, so hidden there).
-      if (kIsWeb) ...[
-        const SizedBox(height: 14),
-        _Entrance(
-          index: 1,
-          child: _section('Notifications', CupertinoIcons.bell_fill, [
-            _tapRow(
-              CupertinoIcons.bell_circle_fill,
-              'Push notifications',
-              'Get announcements & alerts on this device',
-              _pushBusy ? () {} : _enablePush,
-              trailing: _pushBusy
-                  ? const CupertinoActivityIndicator(radius: 9)
-                  : null,
-            ),
-          ]),
-        ),
-      ],
       const SizedBox(height: 14),
       _Entrance(
         index: 2,
