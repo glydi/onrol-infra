@@ -2895,6 +2895,53 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     if (ok == true) _load();
   }
 
+  // A tall, roomy Markdown editor with a Write ⇄ Preview toggle — shared by
+  // Add & Edit Course Material so text materials get a real writing surface
+  // (fills ~half the screen height) instead of a couple of lines.
+  List<Widget> _mdEditor({required TextEditingController body, required bool preview, required void Function(bool) onPreview}) {
+    final h = (MediaQuery.of(context).size.height * 0.5).clamp(320.0, 620.0);
+    return [
+      _label(context, 'Content — Markdown supported (# headings, **bold**, - lists, > quote, `code`). Paste Markdown here.'),
+      const SizedBox(height: 6),
+      AppleSegmented(square: true, labels: const ['Write', 'Preview'], selected: preview ? 1 : 0, onChanged: (i) => onPreview(i == 1)),
+      const SizedBox(height: 8),
+      SizedBox(
+        height: h,
+        child: preview
+            ? Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: Palette.of(context).card2, border: Border.all(color: Palette.of(context).separator)),
+                child: SingleChildScrollView(
+                  child: MarkdownView(
+                    text: body.text,
+                    textColor: Palette.of(context).label,
+                    mutedColor: Palette.of(context).secondary,
+                    accent: Palette.of(context).accent,
+                    borderColor: Palette.of(context).separator,
+                    dark: Palette.of(context).dark,
+                    emptyLabel: 'Nothing to preview yet — write some Markdown.',
+                  ),
+                ),
+              )
+            : Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(color: Palette.of(context).card2, border: Border.all(color: Palette.of(context).separator)),
+                child: TextField(
+                  controller: body,
+                  expands: true,
+                  maxLines: null,
+                  minLines: null,
+                  textAlignVertical: TextAlignVertical.top,
+                  keyboardType: TextInputType.multiline,
+                  style: TextStyle(color: Palette.of(context).label, fontSize: 15, height: 1.5),
+                  decoration: InputDecoration(border: InputBorder.none, isDense: true, hintText: 'Paste or write Markdown…', hintStyle: TextStyle(color: Palette.of(context).secondary)),
+                ),
+              ),
+      ),
+    ];
+  }
+
   Future<void> _addLesson(String moduleId) async {
     final title = TextEditingController();
     final body = TextEditingController();
@@ -2932,41 +2979,9 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         ],
       ],
       const SizedBox(height: 10),
-      if (type == 0) ...[
-        // Text material: paste/write Markdown, with a live Preview.
-        _label(context, 'Content — Markdown supported (# headings, **bold**, - lists, > quote, `code`). Paste Markdown here.'),
-        const SizedBox(height: 6),
-        AppleSegmented(square: true, labels: const ['Write', 'Preview'], selected: preview ? 1 : 0, onChanged: (i) => setS(() => preview = i == 1)),
-        const SizedBox(height: 8),
-        if (preview)
-          Container(
-            width: double.infinity,
-            constraints: const BoxConstraints(minHeight: 140),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: Palette.of(context).card2, border: Border.all(color: Palette.of(context).separator)),
-            child: MarkdownView(
-              text: body.text,
-              textColor: Palette.of(context).label,
-              mutedColor: Palette.of(context).secondary,
-              accent: Palette.of(context).accent,
-              borderColor: Palette.of(context).separator,
-              dark: Palette.of(context).dark,
-              emptyLabel: 'Nothing to preview yet — write some Markdown.',
-            ),
-          )
-        else
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(color: Palette.of(context).card2, borderRadius: BorderRadius.zero),
-            child: TextField(
-              controller: body,
-              minLines: 7,
-              maxLines: 16,
-              style: TextStyle(color: Palette.of(context).label, fontSize: 15, height: 1.4),
-              decoration: InputDecoration(border: InputBorder.none, isDense: true, hintText: 'Paste or write Markdown…', hintStyle: TextStyle(color: Palette.of(context).secondary)),
-            ),
-          ),
-      ] else
+      if (type == 0)
+        ..._mdEditor(body: body, preview: preview, onPreview: (v) => setS(() => preview = v))
+      else
         sheetField(
           body,
           type == 1
@@ -3094,18 +3109,22 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     int type = types.indexOf(l['type']?.toString() ?? 'text');
     if (type < 0) type = 0;
     bool downloadable = l['downloadable'] != false;
-    final ok = await showFormSheet(context, square: true, title: 'Edit Lesson', builder: (setS) => [
+    bool preview = false; // text content: Write ⇄ Preview (rendered Markdown)
+    final ok = await showFormSheet(context, square: true, big: true, title: 'Edit Course Material', builder: (setS) => [
       sheetField(title, 'Lesson title', CupertinoIcons.doc_text),
       const SizedBox(height: 10),
       sheetField(day, 'Day in module (e.g. 1) — blank = unscheduled', CupertinoIcons.calendar, keyboard: TextInputType.number),
       const SizedBox(height: 10),
       AppleSegmented(square: true, labels: const ['Text', 'Video', 'Link', 'Document'], selected: type, onChanged: (i) => setS(() => type = i)),
       const SizedBox(height: 10),
-      sheetField(
-        body,
-        type == 0 ? 'Content' : (type == 1 ? 'Video URL' : (type == 3 ? 'Document URL' : 'URL')),
-        type == 1 ? CupertinoIcons.play_rectangle : (type == 3 ? CupertinoIcons.doc_richtext : CupertinoIcons.link),
-      ),
+      if (type == 0)
+        ..._mdEditor(body: body, preview: preview, onPreview: (v) => setS(() => preview = v))
+      else
+        sheetField(
+          body,
+          type == 1 ? 'Video URL' : (type == 3 ? 'Document URL' : 'URL'),
+          type == 1 ? CupertinoIcons.play_rectangle : (type == 3 ? CupertinoIcons.doc_richtext : CupertinoIcons.link),
+        ),
       if (type == 3) ...[
         const SizedBox(height: 10),
         Row(children: [
