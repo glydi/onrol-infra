@@ -1117,40 +1117,35 @@ class _StudentHomeState extends State<StudentHome> {
       'scorm' || 'xapi' => CupertinoIcons.cube_box_fill,
       _ => CupertinoIcons.doc_text_fill,
     };
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return _HoverRow(
       onTap: () => _openLesson(l, siblings: siblings),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: _line))),
-        child: Row(children: [
-          Icon(icon, size: 20, color: _orange),
-          const SizedBox(width: 12),
-          Expanded(child: Text(l['title']?.toString() ?? 'Lesson', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy))),
-          if (type == 'file') ...[
-            Icon(l['downloadable'] == true ? CupertinoIcons.cloud_download_fill : CupertinoIcons.eye_fill, size: 15, color: _grey),
-            const SizedBox(width: 8),
-          ],
-          // Tappable completion toggle (works for every lesson type). Tap the
-          // circle to mark done; until then Resume keeps bringing you back here.
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: done
-                ? null
-                : () async {
-                    try {
-                      await widget.auth.apiPost('/api/v1/me/lessons/${l['id']}/complete', {});
-                      l['completed'] = true;
-                      onChanged();
-                    } catch (_) {}
-                  },
-            child: Padding(
-              padding: const EdgeInsets.all(2),
-              child: Icon(done ? CupertinoIcons.checkmark_alt_circle_fill : CupertinoIcons.circle, size: 22, color: done ? _green : _grey),
-            ),
+      child: Row(children: [
+        Icon(icon, size: 20, color: _orange),
+        const SizedBox(width: 12),
+        Expanded(child: Text(l['title']?.toString() ?? 'Lesson', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy))),
+        if (type == 'file') ...[
+          Icon(l['downloadable'] == true ? CupertinoIcons.cloud_download_fill : CupertinoIcons.eye_fill, size: 15, color: _grey),
+          const SizedBox(width: 8),
+        ],
+        // Tappable completion toggle (works for every lesson type). Tap the
+        // circle to mark done; until then Resume keeps bringing you back here.
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: done
+              ? null
+              : () async {
+                  try {
+                    await widget.auth.apiPost('/api/v1/me/lessons/${l['id']}/complete', {});
+                    l['completed'] = true;
+                    onChanged();
+                  } catch (_) {}
+                },
+          child: Padding(
+            padding: const EdgeInsets.all(2),
+            child: Icon(done ? CupertinoIcons.checkmark_alt_circle_fill : CupertinoIcons.circle, size: 22, color: done ? _green : _grey),
           ),
-        ]),
-      ),
+        ),
+      ]),
     );
   }
 
@@ -6404,6 +6399,48 @@ class _PressableState extends State<_Pressable> {
 }
 
 /// Collapsible "Day" folder inside a module on the student course view.
+/// A course-content list row (a lesson / material) that washes orange, grows a
+/// left accent bar, and nudges its content on hover — while keeping the flat
+/// bottom-divider list styling. Pointer-only affordance; taps still open it.
+class _HoverRow extends StatefulWidget {
+  const _HoverRow({required this.child, this.onTap});
+  final Widget child;
+  final VoidCallback? onTap;
+
+  @override
+  State<_HoverRow> createState() => _HoverRowState();
+}
+
+class _HoverRowState extends State<_HoverRow> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: widget.onTap != null ? SystemMouseCursors.click : MouseCursor.defer,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            color: _hover ? Color.alphaBlend(_orange.withOpacity(0.06), _surface) : Colors.transparent,
+            border: Border(
+              bottom: BorderSide(color: _line),
+              left: BorderSide(color: _hover ? _orange : Colors.transparent, width: 3),
+            ),
+          ),
+          padding: EdgeInsets.only(left: _hover ? 12 : 0, top: 12, bottom: 12),
+          child: widget.child,
+        ),
+      ),
+    );
+  }
+}
+
 class _DayFolder extends StatefulWidget {
   const _DayFolder({required this.label, required this.count, required this.children});
   final String label;
@@ -6416,6 +6453,7 @@ class _DayFolder extends StatefulWidget {
 
 class _DayFolderState extends State<_DayFolder> {
   bool _open = true;
+  bool _hover = false;
 
   @override
   Widget build(BuildContext context) {
@@ -6425,13 +6463,19 @@ class _DayFolderState extends State<_DayFolder> {
       margin: const EdgeInsets.only(top: 8),
       decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        GestureDetector(
+        MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setState(() => _hover = true),
+          onExit: (_) => setState(() => _hover = false),
+          child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => setState(() => _open = !_open),
-          child: Container(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOutCubic,
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: _orange.withOpacity(0.08),
+              color: _orange.withOpacity(_hover ? 0.15 : 0.08),
               border: _open ? Border(bottom: BorderSide(color: _cardBorder)) : null,
             ),
             child: Row(children: [
@@ -6443,6 +6487,7 @@ class _DayFolderState extends State<_DayFolder> {
               Text('${widget.count} ${widget.count == 1 ? 'item' : 'items'}', style: GoogleFonts.inter(fontSize: 11.5, color: _grey)),
             ]),
           ),
+        ),
         ),
         AnimatedSize(
           duration: const Duration(milliseconds: 200),
