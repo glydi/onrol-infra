@@ -110,6 +110,9 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
     final p = Palette.of(context);
     final hp = MediaQuery.of(context).size.width > 720 ? 28.0 : 16.0;
     final selEvs = [...(_byDay[_dk(_selected)] ?? const <Map<String, dynamic>>[])]..sort((a, b) => (a['_dt'] as DateTime).compareTo(b['_dt'] as DateTime));
+    // Finished live classes, newest first — a running history of past sessions.
+    final history = _byDay.values.expand((l) => l).where((m) => m['kind']?.toString() == 'session' && m['ended'] == true).toList()
+      ..sort((a, b) => (b['_dt'] as DateTime).compareTo(a['_dt'] as DateTime));
     return RefreshIndicator(
       color: p.accent,
       onRefresh: _load,
@@ -144,8 +147,39 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
             AppleCard(square: true, child: Text('Nothing on this day. Tap “Add Event”.', style: AppleTheme.footnote(context)))
           else
             ...selEvs.map(_itemCard),
+          if (history.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            Row(children: [
+              Icon(CupertinoIcons.clock_fill, size: 16, color: p.secondary),
+              const SizedBox(width: 8),
+              Text('Live class history', style: AppleTheme.headline(context)),
+              const SizedBox(width: 8),
+              Text('${history.length}', style: AppleTheme.footnote(context).copyWith(color: p.secondary)),
+            ]),
+            const SizedBox(height: 10),
+            ...history.take(60).map(_historyCard),
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _historyCard(Map<String, dynamic> m) {
+    final p = Palette.of(context);
+    final dt = m['_dt'] as DateTime;
+    final course = m['course']?.toString() ?? '';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: AppleCard(square: true, child: Row(children: [
+        Icon(CupertinoIcons.checkmark_alt_circle, size: 20, color: p.secondary),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(m['title']?.toString() ?? 'Live class', style: AppleTheme.body(context).copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          Text([if (course.isNotEmpty) course, '${_months[dt.month - 1]} ${dt.day}, ${dt.year}'].join(' · '), style: AppleTheme.footnote(context).copyWith(color: p.secondary)),
+        ])),
+        Text('Ended', style: AppleTheme.footnote(context).copyWith(color: p.secondary, fontWeight: FontWeight.w700)),
+      ])),
     );
   }
 

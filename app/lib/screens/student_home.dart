@@ -4591,7 +4591,63 @@ class _CalendarViewState extends State<_CalendarView> {
           child: KeyedSubtree(key: ValueKey(_k(_selected)), child: _agenda(selEvs)),
         ),
       ),
+      _history(),
     ]);
+  }
+
+  // Finished live classes, newest first — a running history below the calendar.
+  Widget _history() {
+    final past = widget.items
+        .whereType<Map>()
+        .where((m) => m['kind']?.toString() == 'session' && m['ended'] == true)
+        .map((m) => m.cast<String, dynamic>())
+        .toList()
+      ..sort((a, b) => (DateTime.tryParse(b['at']?.toString() ?? '') ?? DateTime(0))
+          .compareTo(DateTime.tryParse(a['at']?.toString() ?? '') ?? DateTime(0)));
+    if (past.isEmpty) return const SizedBox.shrink();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const SizedBox(height: 20),
+      Divider(color: _cardBorder, height: 1),
+      const SizedBox(height: 14),
+      Row(children: [
+        Icon(CupertinoIcons.clock_fill, size: 15, color: _grey),
+        const SizedBox(width: 8),
+        Text('Live class history', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w800, color: _navy)),
+        const SizedBox(width: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+          decoration: BoxDecoration(color: _grey.withOpacity(0.14), borderRadius: BorderRadius.zero),
+          child: Text('${past.length}', style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w700, color: _grey)),
+        ),
+      ]),
+      const SizedBox(height: 10),
+      for (final m in past.take(40)) _historyTile(m),
+    ]);
+  }
+
+  Widget _historyTile(Map<String, dynamic> m) {
+    final dt = DateTime.tryParse(m['at']?.toString() ?? '')?.toLocal();
+    final when = dt == null ? '' : '${_monthNames[dt.month - 1]} ${dt.day}, ${dt.year}';
+    final course = m['course']?.toString() ?? '';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
+      child: Row(children: [
+        Container(
+          width: 36, height: 36, alignment: Alignment.center,
+          decoration: BoxDecoration(color: _grey.withOpacity(0.12), shape: BoxShape.circle),
+          child: Icon(CupertinoIcons.checkmark_alt, size: 18, color: _grey),
+        ),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(m['title']?.toString() ?? 'Live class', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 13.5, fontWeight: FontWeight.w700, color: _navy)),
+          const SizedBox(height: 2),
+          Text([if (course.isNotEmpty) course, when].where((e) => e.isNotEmpty).join(' · '), style: GoogleFonts.inter(fontSize: 11.5, color: _grey)),
+        ])),
+        Text('Ended', style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w700, color: _grey)),
+      ]),
+    );
   }
 
   Widget _navBtn(IconData ic, VoidCallback onTap) => _Pressable(

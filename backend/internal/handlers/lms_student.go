@@ -634,17 +634,22 @@ func (h *Handlers) MyCalendar(c *fiber.Ctx) error {
 		SELECT 'session' AS kind, cs.title, cs.starts_at AS at, c.title AS course,
 		       cs.id::text AS ref_id,
 		       CASE WHEN cs.media_asset_id IS NOT NULL THEN 'simulated' ELSE 'external' END AS live_kind,
-		       COALESCE(cs.join_url,'') AS join_url
+		       COALESCE(cs.join_url,'') AS join_url,
+		       (now() > COALESCE(cs.ends_at,
+		           CASE WHEN cs.media_asset_id IS NOT NULL AND ma.duration_seconds > 0
+		                THEN cs.starts_at + make_interval(secs => ma.duration_seconds)
+		                ELSE cs.starts_at + interval '2 hours' END)) AS ended
 		FROM class_sessions cs JOIN courses c ON c.id=cs.course_id
 		JOIN course_enrollments ce ON ce.course_id=c.id AND ce.user_id=$1
-		WHERE cs.starts_at >= now() - interval '7 days'
+		LEFT JOIN media_assets ma ON ma.id=cs.media_asset_id
+		WHERE cs.starts_at >= now() - interval '180 days'
 		UNION ALL
-		SELECT 'assessment_due', a.title, a.due_at, c.title, ''::text, ''::text, ''::text
+		SELECT 'assessment_due', a.title, a.due_at, c.title, ''::text, ''::text, ''::text, false
 		FROM assessments a JOIN courses c ON c.id=a.course_id
 		JOIN course_enrollments ce ON ce.course_id=c.id AND ce.user_id=$1
 		WHERE a.due_at IS NOT NULL AND a.due_at >= now() - interval '7 days' AND a.is_published
 		UNION ALL
-		SELECT 'announcement', an.title, an.created_at, COALESCE(c.title,''), ''::text, ''::text, ''::text
+		SELECT 'announcement', an.title, an.created_at, COALESCE(c.title,''), ''::text, ''::text, ''::text, false
 		FROM announcements an
 		LEFT JOIN courses c ON c.id=an.course_id
 		JOIN users me ON me.id=$1
@@ -656,7 +661,7 @@ func (h *Handlers) MyCalendar(c *fiber.Ctx) error {
 		     OR (an.course_id IS NOT NULL AND EXISTS (
 		            SELECT 1 FROM course_enrollments ce WHERE ce.course_id=an.course_id AND ce.user_id=me.id)) )
 		UNION ALL
-		SELECT 'event', e.title, e.starts_at, COALESCE(e.location,''), ''::text, ''::text, ''::text
+		SELECT 'event', e.title, e.starts_at, COALESCE(e.location,''), ''::text, ''::text, ''::text, false
 		FROM calendar_events e JOIN users me ON me.id=$1
 		WHERE e.starts_at >= now() - interval '7 days'
 		  AND ( e.audience='all'
@@ -671,7 +676,8 @@ func (h *Handlers) MyCalendar(c *fiber.Ctx) error {
 	for rows.Next() {
 		var kind, title, course, refID, liveKind, joinURL string
 		var at any
-		if err := rows.Scan(&kind, &title, &at, &course, &refID, &liveKind, &joinURL); err != nil {
+		var ended bool
+		if err := rows.Scan(&kind, &title, &at, &course, &refID, &liveKind, &joinURL, &ended); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		row := fiber.Map{"kind": kind, "title": title, "at": at, "course": course}
@@ -679,6 +685,7 @@ func (h *Handlers) MyCalendar(c *fiber.Ctx) error {
 			row["id"] = refID
 			row["live_kind"] = liveKind
 			row["join_url"] = joinURL
+			row["ended"] = ended
 		}
 		out = append(out, row)
 	}
