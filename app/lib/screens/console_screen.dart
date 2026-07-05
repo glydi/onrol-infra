@@ -850,13 +850,23 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           Text('$roleLabel Console', style: AppleTheme.largeTitle(context)),
           Text('Create and manage your courses', style: AppleTheme.subhead(context)),
           const SizedBox(height: 16),
-          PrimaryButton(
-            label: 'Video Store',
-            icon: CupertinoIcons.film,
-            square: true,
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => VideoStoreScreen(auth: widget.auth))),
-          ),
+          Row(children: [
+            Expanded(child: PrimaryButton(
+              label: 'Video Store',
+              icon: CupertinoIcons.film,
+              square: true,
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => VideoStoreScreen(auth: widget.auth))),
+            )),
+            const SizedBox(width: 12),
+            Expanded(child: PrimaryButton(
+              label: 'Explore Courses',
+              icon: CupertinoIcons.compass_fill,
+              square: true,
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => ExploreCoursesScreen(auth: widget.auth))).then((_) => _load()),
+            )),
+          ]),
           const SizedBox(height: 20),
           if (_requests.isNotEmpty) ...[
             SectionHeader('Enrollment Requests (${_requests.length})'),
@@ -4009,6 +4019,112 @@ class _LeadDetailSheet extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(child: Text(value, style: AppleTheme.body(context))),
       ]),
+    );
+  }
+}
+
+/// Curate the student Explore catalog: toggle which courses are listed — a
+/// course can appear in Explore even while it's still a draft.
+class ExploreCoursesScreen extends StatefulWidget {
+  const ExploreCoursesScreen({super.key, required this.auth});
+  final AuthService auth;
+
+  @override
+  State<ExploreCoursesScreen> createState() => _ExploreCoursesScreenState();
+}
+
+class _ExploreCoursesScreenState extends State<ExploreCoursesScreen> {
+  List<Map<String, dynamic>> _courses = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (mounted) setState(() => _loading = true);
+    try {
+      _courses = ((ApiClient.decode(await widget.auth.apiGet('/api/v1/manage/courses'))['courses'] as List?) ?? [])
+          .map((e) => (e as Map).cast<String, dynamic>())
+          .toList();
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _toggle(Map<String, dynamic> c, bool v) async {
+    setState(() => c['in_explore'] = v);
+    try {
+      await widget.auth.apiPatch('/api/v1/manage/courses/${c['id']}', {'in_explore': v});
+    } catch (_) {
+      if (mounted) {
+        setState(() => c['in_explore'] = !v);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not update')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final hp = MediaQuery.of(context).size.width > 760 ? 28.0 : 16.0;
+    final inCount = _courses.where((c) => c['in_explore'] == true).length;
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: p.bg,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: IconButton(icon: const Icon(CupertinoIcons.chevron_left), onPressed: () => Navigator.pop(context)),
+        title: Text('Explore Courses ($inCount)', style: AppleTheme.headline(context)),
+        actions: [IconButton(tooltip: 'Refresh', icon: const Icon(CupertinoIcons.arrow_clockwise), onPressed: _load)],
+      ),
+      body: _loading
+          ? const Center(child: CupertinoActivityIndicator())
+          : ListView(
+              padding: EdgeInsets.fromLTRB(hp, 14, hp, 40),
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(color: p.accent.withOpacity(0.08), border: Border.all(color: p.accent.withOpacity(0.25))),
+                  child: Row(children: [
+                    Icon(CupertinoIcons.compass, size: 16, color: p.accent),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text('Toggle which courses show in students’ Explore. A course can appear here even while it’s still a draft, and students can enroll in it.',
+                        style: AppleTheme.footnote(context).copyWith(color: p.secondary))),
+                  ]),
+                ),
+                const SizedBox(height: 14),
+                if (_courses.isEmpty)
+                  AppleCard(square: true, child: Text('No courses yet — create one from the Console.', style: AppleTheme.footnote(context)))
+                else
+                  ..._courses.map((c) {
+                    final status = c['status']?.toString() ?? 'draft';
+                    final on = c['in_explore'] == true;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: AppleCard(square: true, child: Row(children: [
+                        Container(
+                          width: 42, height: 42,
+                          decoration: BoxDecoration(color: AppleColors.blue.withOpacity(0.12), borderRadius: BorderRadius.zero),
+                          child: const Icon(CupertinoIcons.book_fill, color: AppleColors.blue, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(c['title']?.toString() ?? 'Course', style: AppleTheme.body(context).copyWith(fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 2),
+                          Text('$status · ${c['enroll_type'] ?? ''} enrollment', style: AppleTheme.footnote(context).copyWith(color: p.secondary)),
+                        ])),
+                        Column(mainAxisSize: MainAxisSize.min, children: [
+                          CupertinoSwitch(value: on, activeTrackColor: AppleColors.green, onChanged: (v) => _toggle(c, v)),
+                          Text(on ? 'In Explore' : 'Hidden', style: AppleTheme.footnote(context).copyWith(color: on ? AppleColors.green : p.secondary)),
+                        ]),
+                      ])),
+                    );
+                  }),
+              ],
+            ),
     );
   }
 }

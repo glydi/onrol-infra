@@ -134,7 +134,7 @@ func (h *Handlers) Catalog(c *fiber.Ctx) error {
 	rows, err := h.Pool.Query(c.Context(), `
 		SELECT c.id, c.title, c.description, c.enroll_type, COALESCE(cc.name,'')
 		FROM courses c LEFT JOIN course_categories cc ON cc.id=c.category_id
-		WHERE c.status='published'
+		WHERE (c.status='published' OR c.in_explore) AND c.status<>'archived'
 		  AND NOT EXISTS (SELECT 1 FROM course_enrollments ce WHERE ce.course_id=c.id AND ce.user_id=$1)
 		  AND NOT EXISTS (SELECT 1 FROM enrollment_requests er WHERE er.course_id=c.id AND er.user_id=$1 AND er.status='pending')
 		ORDER BY c.created_at DESC LIMIT 500`, callerID(c))
@@ -158,11 +158,13 @@ func (h *Handlers) Catalog(c *fiber.Ctx) error {
 func (h *Handlers) SelfEnroll(c *fiber.Ctx) error {
 	courseID := c.Params("id")
 	var status, enrollType string
+	var inExplore bool
 	if err := h.Pool.QueryRow(c.Context(),
-		`SELECT status, enroll_type FROM courses WHERE id=$1`, courseID).Scan(&status, &enrollType); err != nil {
+		`SELECT status, enroll_type, in_explore FROM courses WHERE id=$1`, courseID).Scan(&status, &enrollType, &inExplore); err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "course not found")
 	}
-	if status != "published" {
+	// A course is joinable if it's published OR explicitly listed in Explore.
+	if status != "published" && !inExplore {
 		return fiber.NewError(fiber.StatusForbidden, "course not open")
 	}
 	// Enforce prerequisites (must be completed).
