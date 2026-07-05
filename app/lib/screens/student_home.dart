@@ -2432,6 +2432,17 @@ class _ExploreListState extends State<_ExploreList> {
     }
   }
 
+  Future<void> _openLink(String url) async {
+    var u = url.trim();
+    if (u.isEmpty) return;
+    if (!u.startsWith('http://') && !u.startsWith('https://')) u = 'https://$u';
+    final uri = Uri.tryParse(u);
+    if (uri == null) return;
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<dynamic>>(
@@ -2469,6 +2480,7 @@ class _ExploreListState extends State<_ExploreList> {
     final title = m['title']?.toString() ?? 'Course';
     final desc = m['description']?.toString() ?? '';
     final img = m['image_url']?.toString() ?? '';
+    final link = m['explore_link']?.toString().trim() ?? '';
     final enrolled = _enrolled.contains(id);
     final requested = _requested.contains(id);
     final busy = _busy.contains(id);
@@ -2491,9 +2503,8 @@ class _ExploreListState extends State<_ExploreList> {
                 Text(desc, maxLines: 3, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 13, color: _grey, height: 1.45)),
               ],
               const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: _Pressable(
+              Row(children: [
+                _Pressable(
                   onTap: done || busy ? null : () => _enroll(id, title, self),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
@@ -2505,7 +2516,22 @@ class _ExploreListState extends State<_ExploreList> {
                     ]),
                   ),
                 ),
-              ),
+                if (link.isNotEmpty) ...[
+                  const SizedBox(width: 10),
+                  _Pressable(
+                    onTap: () => _openLink(link),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(CupertinoIcons.info_circle, size: 15, color: _orange),
+                        const SizedBox(width: 6),
+                        Text('Know more', style: GoogleFonts.inter(fontSize: 13.5, fontWeight: FontWeight.w700, color: _orange)),
+                      ]),
+                    ),
+                  ),
+                ],
+              ]),
             ]),
           ),
         ]),

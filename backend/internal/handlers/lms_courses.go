@@ -156,6 +156,7 @@ func (h *Handlers) UpdateCourse(c *fiber.Ctx) error {
 		BatchAuto    *bool   `json:"batch_auto"`    // auto allocation is the default mode
 		InstructorID *string `json:"instructor_id"` // assign/reassign the course instructor (owner)
 		InExplore    *bool   `json:"in_explore"`    // show in the student Explore catalog
+		ExploreLink  *string `json:"explore_link"`  // "Know more" link on the Explore tile
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
@@ -200,9 +201,10 @@ func (h *Handlers) UpdateCourse(c *fiber.Ctx) error {
 			batch_auto=COALESCE($8,batch_auto),
 			label=COALESCE($9,label),
 			owner_id=COALESCE($10,owner_id),
-			in_explore=COALESCE($11,in_explore)
+			in_explore=COALESCE($11,in_explore),
+			explore_link=COALESCE($12,explore_link)
 		WHERE id=$1`, id, req.Title, req.Description, req.Status, req.EnrollType, req.ImageURL,
-		req.BatchSize, req.BatchAuto, label, owner, req.InExplore)
+		req.BatchSize, req.BatchAuto, label, owner, req.InExplore, req.ExploreLink)
 	if err != nil {
 		if strings.Contains(err.Error(), "idx_courses_label") {
 			return fiber.NewError(fiber.StatusConflict, "a course with this Course ID already exists")
@@ -214,7 +216,7 @@ func (h *Handlers) UpdateCourse(c *fiber.Ctx) error {
 
 func (h *Handlers) ListCourses(c *fiber.Ctx) error {
 	// Admin/manager + superadmin see ALL courses; an instructor sees only theirs.
-	q := `SELECT id, title, status, enroll_type, COALESCE(group_id::text,''), COALESCE(image_url,''), COALESCE(label,''), created_at, in_explore FROM courses`
+	q := `SELECT id, title, status, enroll_type, COALESCE(group_id::text,''), COALESCE(image_url,''), COALESCE(label,''), created_at, in_explore, COALESCE(explore_link,'') FROM courses`
 	args := []any{}
 	if callerRole(c) == "instructor" {
 		q += ` WHERE owner_id=$1`
@@ -228,14 +230,14 @@ func (h *Handlers) ListCourses(c *fiber.Ctx) error {
 	defer r.Close()
 	out := []fiber.Map{}
 	for r.Next() {
-		var id, title, status, et, grp, img, label string
+		var id, title, status, et, grp, img, label, link string
 		var created any
 		var inExplore bool
-		if err := r.Scan(&id, &title, &status, &et, &grp, &img, &label, &created, &inExplore); err != nil {
+		if err := r.Scan(&id, &title, &status, &et, &grp, &img, &label, &created, &inExplore, &link); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		out = append(out, fiber.Map{"id": id, "title": title, "status": status,
-			"enroll_type": et, "group_id": grp, "image_url": img, "label": label, "created_at": created, "in_explore": inExplore})
+			"enroll_type": et, "group_id": grp, "image_url": img, "label": label, "created_at": created, "in_explore": inExplore, "explore_link": link})
 	}
 	return c.JSON(fiber.Map{"courses": out})
 }

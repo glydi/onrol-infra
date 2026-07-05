@@ -4093,11 +4093,14 @@ class _ExploreCoursesScreenState extends State<ExploreCoursesScreen> {
     final title = TextEditingController(text: c['title']?.toString() ?? '');
     final desc = TextEditingController(text: c['description']?.toString() ?? '');
     final imageUrl = TextEditingController(text: c['image_url']?.toString() ?? '');
+    final link = TextEditingController(text: c['explore_link']?.toString() ?? '');
     String? imageData;
     final ok = await showFormSheet(context, square: true, full: true, title: 'Edit Explore Tile', builder: (setS) => [
       sheetField(title, 'Title (shown on the tile)', CupertinoIcons.textformat),
       const SizedBox(height: 10),
       sheetField(desc, 'Description (shown on the tile)', CupertinoIcons.text_alignleft),
+      const SizedBox(height: 10),
+      sheetField(link, '“Know more” link (landing page / brochure URL)', CupertinoIcons.link),
       const SizedBox(height: 16),
       _label(context, 'Cover image'),
       const SizedBox(height: 6),
@@ -4116,7 +4119,7 @@ class _ExploreCoursesScreenState extends State<ExploreCoursesScreen> {
       ),
     ], onSubmit: () async {
       if (title.text.trim().isEmpty) return 'Title required';
-      final body = <String, dynamic>{'title': title.text.trim(), 'description': desc.text.trim()};
+      final body = <String, dynamic>{'title': title.text.trim(), 'description': desc.text.trim(), 'explore_link': link.text.trim()};
       final image = imageData ?? (imageUrl.text.trim().isNotEmpty ? imageUrl.text.trim() : null);
       if (image != null) body['image_url'] = image;
       try {
