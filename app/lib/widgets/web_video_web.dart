@@ -566,13 +566,15 @@ Widget liveHlsVideoElement(
       ..controls = false
       ..autoplay = true
       ..muted = true
+      ..tabIndex = -1 // not keyboard-focusable → no space/arrow seek or pause
       ..style.width = '100%'
       ..style.height = '100%'
       ..style.display = 'block'
       ..style.backgroundColor = 'black'
       ..setAttribute('controlsList', 'nodownload noplaybackrate noremoteplayback')
       ..setAttribute('playsinline', 'true')
-      ..setAttribute('disablePictureInPicture', 'true');
+      ..setAttribute('disablePictureInPicture', 'true')
+      ..setAttribute('disableRemotePlayback', 'true'); // no cast/AirPlay handoff
 
     final container = html.DivElement()
       ..style.position = 'relative'
@@ -582,6 +584,9 @@ Widget liveHlsVideoElement(
       ..style.overflow = 'hidden';
     container.append(video);
     video.onContextMenu.listen((e) => e.preventDefault());
+    // Swallow any keyboard event that reaches the element (space/arrows/media
+    // keys) so there is no keyboard seek/pause path either.
+    video.onKeyDown.listen((e) => e.preventDefault());
 
     // ---- LIVE badge (top-left) ----------------------------------------------
     final dot = html.DivElement()
@@ -673,48 +678,27 @@ Widget liveHlsVideoElement(
     // in sync if the volume changes by any other means.
     video.onVolumeChange.listen((_) => setIcon(muteBtn, video.muted ? _icVolOff : _icVolUp, size: 26));
 
-    // Exact position "now" = (device clock + server skew) − scheduled start, in
-    // seconds. skewMs normalizes a wrong device clock/timezone to the server, so
-    // every viewer lands on the same second. -1 until the start is known.
-    double target() {
-      if (startEpochMs <= 0) return -1;
-      return (DateTime.now().millisecondsSinceEpoch + skewMs - startEpochMs) / 1000.0;
-    }
-
-    // Pin the playhead to wall-clock time. The recording is loaded as VOD, so
-    // hls.js buffers far ahead (smooth — no live-edge starvation). If playback
-    // drifts BEHIND (a stall), skip FORWARD to "now"; the missed seconds are
-    // dropped, never replayed. Tiny drifts are ignored so we don't re-seek
-    // constantly. Before start (t<0) we hold at 0 and stay paused.
-    // seekedOnce: the first alignment is a hard seek; after that we only re-seek
-    // when we've genuinely drifted. (Forcing a seek on every canplay caused a
-    // seek→canplay→seek loop in hls.js/Chrome — Safari plays HLS natively and
-    // didn't, which is why it was fine on iPad but choppy on Windows.)
-    var seekedOnce = false;
-    void syncToTime({bool initial = false}) {
-      final t = target();
-      final dur = video.duration;
-      final cap = (dur.isFinite && dur > 0) ? dur.toDouble() : null;
-      if (t < 0) {
-        if (video.currentTime > 0.5) {
+    // The source is the server's sliding-window LIVE playlist (no
+    // #EXT-X-ENDLIST while live), so hls.js runs in live mode and video.duration
+    // is Infinity — that is what makes the browser/OS expose NO scrubber and NO
+    // forward/back seek. We deliberately do NOT pin to an absolute time (that
+    // needs a finite, seekable VOD, which is exactly what brings the media-popup
+    // seek bar back). Instead we let hls.js hold the live edge and only nudge
+    // FORWARD to hls.liveSyncPosition when we've genuinely fallen behind (a stall
+    // or a backgrounded tab); we never replay. Cross-viewer sync is handled
+    // server-side: every viewer's window ends at the same wall-clock second.
+    js.JsObject? hlsRef;
+    void toEdge() {
+      try {
+        final h = hlsRef;
+        final lsp = h != null ? h['liveSyncPosition'] : null;
+        final want = (lsp is num) ? lsp.toDouble() : double.nan;
+        if (want.isFinite && want - video.currentTime > 8) {
           try {
-            video.currentTime = 0;
+            video.currentTime = want;
           } catch (_) {}
         }
-        video.pause();
-        return;
-      }
-      final want = (cap != null && t > cap) ? cap : t;
-      final cur = video.currentTime.toDouble();
-      final drift = (cur - want).abs();
-      // Hard-seek only for the first alignment or a real drift (>2s). Never seek
-      // for sub-second noise (that's what looped on Chrome).
-      if ((initial && !seekedOnce) || drift > 2.0) {
-        seekedOnce = true;
-        try {
-          video.currentTime = want;
-        } catch (_) {}
-      }
+      } catch (_) {}
       if (video.paused && container.isConnected == true && html.document.fullscreenElement == null) {
         video.play();
       }
@@ -723,23 +707,32 @@ Widget liveHlsVideoElement(
     final isHls = url.toLowerCase().contains('.m3u8');
     final hlsAvailable = js.context.hasProperty('Hls');
     if (isHls && hlsAvailable && (js.context['Hls'].callMethod('isSupported') as bool? ?? false)) {
-      // Plain VOD config → hls.js prebuffers ahead (smooth). Only the AES key
-      // request needs the JWT (the R2 playlist + segments are public).
-      final config = js.JsObject.jsify(<String, dynamic>{'backBufferLength': 30});
-      if (authToken.isNotEmpty && js.context.hasProperty('onrolKeyXhrSetup')) {
-        config['xhrSetup'] = js.context.callMethod('onrolKeyXhrSetup', [authToken]);
+      // LIVE config: no back-buffer, follow the edge (~3 target durations behind
+      // for stability, auto-catch-up if it drifts too far). Both the playlist AND
+      // the AES key are auth-gated /api/v1/me/live/ routes, so attach the JWT to
+      // every live XHR; segments are public R2 (a different path), so the token
+      // never leaks to the CDN.
+      final config = js.JsObject.jsify(<String, dynamic>{
+        'backBufferLength': 0,
+        'liveSyncDurationCount': 3,
+        'liveMaxLatencyDurationCount': 10,
+        'lowLatencyMode': false,
+      });
+      if (authToken.isNotEmpty && js.context.hasProperty('onrolLiveXhrSetup')) {
+        config['xhrSetup'] = js.context.callMethod('onrolLiveXhrSetup', [authToken]);
       }
       final hls = js.JsObject(js.context['Hls'] as js.JsFunction, [config]);
+      hlsRef = hls;
       if (js.context.hasProperty('onrolLiveGuard')) {
         js.context.callMethod('onrolLiveGuard', [hls]);
       }
       hls.callMethod('loadSource', [url]);
       hls.callMethod('attachMedia', [video]);
     } else {
-      video.src = url; // Safari / mp4
+      video.src = url; // Safari plays the live HLS natively (follows the edge)
     }
 
-    // Fully suppress the OS media notification for live (no metadata/evidence,
+    // Fully suppress the OS / browser media notification for live (no metadata,
     // and no controls that could drive the stream). Re-applied on play and every
     // second below, since the browser re-populates the session on state changes.
     void neuterMediaSession() {
@@ -749,19 +742,21 @@ Widget liveHlsVideoElement(
     }
 
     video.onPlay.listen((_) => neuterMediaSession());
-
-    // Align once when ready (loadedmetadata/canplay), then just hold position
-    // each second — re-seeking only on a real drift, so no seek loop on Chrome.
-    video.onLoadedMetadata.listen((_) => syncToTime(initial: true));
-    video.onCanPlay.listen((_) {
-      syncToTime(initial: true);
+    video.onLoadedMetadata.listen((_) {
       neuterMediaSession();
+      toEdge();
     });
+    video.onCanPlay.listen((_) {
+      neuterMediaSession();
+      if (video.paused) video.play();
+    });
+    // No user-facing pause exists; if anything (tab/OS) pauses us, resume and
+    // realign to the live edge.
     video.onPause.listen((_) {
-      if (container.isConnected == true && html.document.fullscreenElement == null) syncToTime();
+      if (container.isConnected == true && html.document.fullscreenElement == null) toEdge();
     });
     html.document.onVisibilityChange.listen((_) {
-      if (html.document.hidden == false) syncToTime();
+      if (html.document.hidden == false) toEdge();
     });
     _liveGuardTimer?.cancel();
     _liveGuardTimer = Timer.periodic(const Duration(seconds: 1), (t) {
@@ -769,8 +764,10 @@ Widget liveHlsVideoElement(
         t.cancel();
         return;
       }
-      syncToTime();
       neuterMediaSession(); // keep the media notification wiped while live
+      if (video.paused && html.document.fullscreenElement == null && container.isConnected == true) {
+        video.play();
+      }
     });
     return container;
   });

@@ -30,9 +30,9 @@ class LivePlayer extends StatefulWidget {
   /// JWT — needed because both the playlist and the AES-128 key are auth-gated.
   final String authToken;
 
-  /// Scheduled start (UTC ms since epoch) and device→server clock skew (ms).
-  /// Playback position is pinned to (now + skew - start), skipping forward on
-  /// drift so every video-second aligns with every real second.
+  /// Scheduled start (UTC ms since epoch) and device→server clock skew (ms),
+  /// passed through to the web player. The stream itself follows the server's
+  /// live edge, so every viewer stays on the same server-defined second.
   final int startEpochMs;
   final int skewMs;
 
@@ -51,30 +51,23 @@ class _LivePlayerState extends State<LivePlayer> {
   Widget? _webView;
   Timer? _syncTimer;
 
-  // Exact video position "now" = (device clock + server skew) − scheduled start,
-  // in seconds. skewMs normalizes a wrong device clock to the server so every
-  // viewer is on the same second.
-  double _target() {
-    if (widget.startEpochMs <= 0) return -1;
-    return (DateTime.now().millisecondsSinceEpoch + widget.skewMs - widget.startEpochMs) / 1000.0;
-  }
-
-  // Skip FORWARD to the wall-clock position whenever playback drifts behind
-  // (buffering); never replay the missed seconds. Before start, hold at 0/paused.
-  void _syncMobile({bool force = false}) {
+  // Follow the live edge. The server's sliding-window playlist has no end while
+  // live, so the player treats it as a genuine live stream — there is nothing to
+  // seek past and the OS media notification shows no scrubber. If we fall behind
+  // the newest segment (a stall), jump FORWARD to the edge; never replay. All
+  // viewers share the same server-defined window, so the edge is the same
+  // wall-clock second for everyone. (On iOS the live duration is reported as
+  // indefinite and AVPlayer holds the edge itself — there we just keep playing.)
+  void _followEdge({bool force = false}) {
     final c = _c;
     if (c == null || !c.value.isInitialized) return;
-    final t = _target();
     final durS = c.value.duration.inMilliseconds / 1000.0;
-    if (t < 0) {
-      c.seekTo(Duration.zero);
-      c.pause();
-      return;
-    }
-    final want = (durS > 0 && t > durS) ? durS : t;
-    final cur = c.value.position.inMilliseconds / 1000.0;
-    if (force || (cur - want).abs() > 1.5) {
-      c.seekTo(Duration(milliseconds: (want * 1000).round()));
+    if (durS > 2) {
+      final edge = durS - 1.5; // sit ~1.5s behind the newest segment
+      final cur = c.value.position.inMilliseconds / 1000.0;
+      if (force || cur < edge - 4) {
+        c.seekTo(Duration(milliseconds: (edge * 1000).round()));
+      }
     }
     if (!c.value.isPlaying) c.play();
   }
@@ -89,12 +82,12 @@ class _LivePlayerState extends State<LivePlayer> {
       );
       _c!.initialize().then((_) {
         _c!.play();
-        _syncMobile(force: true);
+        _followEdge(force: true);
         if (mounted) setState(() => _ready = true);
       }).catchError((_) {
         if (mounted) setState(() => _error = 'Could not load the live stream.');
       });
-      _syncTimer = Timer.periodic(const Duration(seconds: 1), (_) => _syncMobile());
+      _syncTimer = Timer.periodic(const Duration(seconds: 1), (_) => _followEdge());
     }
   }
 

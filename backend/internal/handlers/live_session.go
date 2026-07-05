@@ -120,12 +120,18 @@ func (h *Handlers) LiveSessionState(c *fiber.Ctx) error {
 		"viewers":             viewers,
 		"is_host":             isStaff,
 	}
-	// Serve the recording's static R2 VOD playlist directly: the player buffers
-	// ahead freely (smooth) and pins its position to the device clock. No
-	// per-request server playlist. The AES key URI inside it is the existing
-	// auth-gated /me/videos/:id/hls.key.
+	// Serve the server's sliding-window LIVE playlist (h.LivePlaylist), NOT the
+	// static VOD. It only ever names segments up to "now" and carries no
+	// #EXT-X-ENDLIST while live, so hls.js / ExoPlayer treat it as a genuine live
+	// stream: video.duration is Infinity. That is precisely what makes there be
+	// NO scrubber and NO forward/back seek anywhere — not in our player, not in
+	// the browser's media popup, and not in the OS / lock-screen media controls
+	// (a finite VOD makes the browser render a seek bar there that we cannot
+	// remove). The window is re-derived from the server clock every request, so a
+	// reload resumes at the correct wall-clock second. Its AES key is the
+	// auth-gated /me/live/:id/hls.key.
 	if status == "live" && hlsURL != "" {
-		out["playlist_url"] = hlsURL
+		out["playlist_url"] = h.Cfg.AppBaseURL + "/api/v1/me/live/" + sessionID + "/playlist.m3u8"
 	}
 	return c.JSON(out)
 }
