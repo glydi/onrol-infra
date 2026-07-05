@@ -114,7 +114,7 @@ func scanAnnouncements(rows interface {
 	out := []fiber.Map{}
 	for rows.Next() {
 		var id, title, body, audience, author, course string
-		var batch *int
+		var batch *string
 		var role *string
 		var at any
 		if err := rows.Scan(&id, &title, &body, &audience, &batch, &role, &at, &author, &course); err != nil {

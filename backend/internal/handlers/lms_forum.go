@@ -38,7 +38,7 @@ func (h *Handlers) MyForumServers(c *fiber.Ctx) error {
 	byID := map[string]fiber.Map{}
 	for rows.Next() {
 		var id, name, scope, courseID, icon, course string
-		var batch *int
+		var batch *string
 		if err := rows.Scan(&id, &name, &scope, &courseID, &batch, &icon, &course); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
@@ -184,7 +184,7 @@ func (h *Handlers) ListForumServers(c *fiber.Ctx) error {
 	byID := map[string]fiber.Map{}
 	for rows.Next() {
 		var id, name, scope, courseID, icon, course string
-		var batch *int
+		var batch *string
 		if err := rows.Scan(&id, &name, &scope, &courseID, &batch, &icon, &course); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
@@ -216,11 +216,11 @@ func (h *Handlers) ListForumServers(c *fiber.Ctx) error {
 // CreateForumServer creates a global/course/batch server + a default #general.
 func (h *Handlers) CreateForumServer(c *fiber.Ctx) error {
 	var req struct {
-		Name        string `json:"name"`
-		Scope       string `json:"scope"`
-		CourseID    string `json:"course_id"`
-		BatchNumber *int   `json:"batch_number"`
-		Icon        string `json:"icon"`
+		Name        string  `json:"name"`
+		Scope       string  `json:"scope"`
+		CourseID    string  `json:"course_id"`
+		BatchNumber *string `json:"batch_number"`
+		Icon        string  `json:"icon"`
 	}
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Name) == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "name required")

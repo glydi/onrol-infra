@@ -28,7 +28,7 @@ func (h *Handlers) ListUsers(c *fiber.Ctx) error {
 		var id, email, name, role string
 		var active bool
 		var created any
-		var batch *int
+		var batch *string
 		var username, courseLabel *string
 		if err := rows.Scan(&id, &email, &name, &role, &active, &created, &batch, &username, &courseLabel); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
@@ -64,19 +64,19 @@ func (h *Handlers) ListInstructors(c *fiber.Ctx) error {
 // the caller's scope. Managers cannot mint superadmins.
 func (h *Handlers) CreateManagedUser(c *fiber.Ctx) error {
 	var req struct {
-		Email       string `json:"email"`
-		Username    string `json:"username"`
-		FullName    string `json:"full_name"`
-		Phone       string `json:"phone"`
-		Password    string `json:"password"`
-		Role        string `json:"role"`
-		GroupID     string `json:"group_id"`
-		Batch       *int   `json:"batch"`
-		CourseLabel string `json:"course_label"`
-		Occupation  string `json:"occupation"`
-		Location    string `json:"location"`
-		Linkedin    string `json:"linkedin"`
-		Github      string `json:"github"`
+		Email       string  `json:"email"`
+		Username    string  `json:"username"`
+		FullName    string  `json:"full_name"`
+		Phone       string  `json:"phone"`
+		Password    string  `json:"password"`
+		Role        string  `json:"role"`
+		GroupID     string  `json:"group_id"`
+		Batch       *string `json:"batch"`
+		CourseLabel string  `json:"course_label"`
+		Occupation  string  `json:"occupation"`
+		Location    string  `json:"location"`
+		Linkedin    string  `json:"linkedin"`
+		Github      string  `json:"github"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
@@ -126,8 +126,8 @@ func (h *Handlers) CreateManagedUser(c *fiber.Ctx) error {
 		return nil
 	}
 	var batch any
-	if req.Batch != nil && *req.Batch > 0 {
-		batch = *req.Batch
+	if req.Batch != nil && strings.TrimSpace(*req.Batch) != "" {
+		batch = strings.TrimSpace(*req.Batch)
 	}
 	err = tx.QueryRow(c.Context(),
 		`INSERT INTO users (email, username, phone, full_name, password_hash, role, max_devices,
@@ -263,7 +263,7 @@ func (h *Handlers) PurgeUser(c *fiber.Ctx) error {
 func (h *Handlers) SetUserBatch(c *fiber.Ctx) error {
 	target := c.Params("id")
 	var req struct {
-		Batch *int `json:"batch"`
+		Batch *string `json:"batch"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
@@ -274,8 +274,8 @@ func (h *Handlers) SetUserBatch(c *fiber.Ctx) error {
 		}
 	}
 	var batch any
-	if req.Batch != nil && *req.Batch > 0 {
-		batch = *req.Batch
+	if req.Batch != nil && strings.TrimSpace(*req.Batch) != "" {
+		batch = strings.TrimSpace(*req.Batch)
 	}
 	tag, err := h.Pool.Exec(c.Context(), `UPDATE users SET batch=$2, updated_at=now() WHERE id=$1`, target, batch)
 	if err != nil {
@@ -293,7 +293,7 @@ func (h *Handlers) SetUserBatch(c *fiber.Ctx) error {
 func (h *Handlers) AssignBatch(c *fiber.Ctx) error {
 	var req struct {
 		UserIDs []string `json:"user_ids"`
-		Batch   *int     `json:"batch"`
+		Batch   *string  `json:"batch"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
@@ -309,8 +309,8 @@ func (h *Handlers) AssignBatch(c *fiber.Ctx) error {
 		}
 	}
 	var batch any
-	if req.Batch != nil && *req.Batch > 0 {
-		batch = *req.Batch
+	if req.Batch != nil && strings.TrimSpace(*req.Batch) != "" {
+		batch = strings.TrimSpace(*req.Batch)
 	}
 	tag, err := h.Pool.Exec(c.Context(),
 		`UPDATE users SET batch=$2, updated_at=now() WHERE id = ANY($1::uuid[])`, req.UserIDs, batch)
@@ -325,41 +325,7 @@ func (h *Handlers) AssignBatch(c *fiber.Ctx) error {
 // number (starting one past the highest batch in use). This is the "auto" mode of
 // batch allocation; AssignBatch is the "manual" mode (one explicit number).
 func (h *Handlers) AutoBatch(c *fiber.Ctx) error {
-	var req struct {
-		UserIDs []string `json:"user_ids"`
-		Size    int      `json:"size"`
-	}
-	if err := c.BodyParser(&req); err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
-	}
-	if len(req.UserIDs) == 0 {
-		return fiber.NewError(fiber.StatusBadRequest, "user_ids is required")
-	}
-	if req.Size <= 0 {
-		return fiber.NewError(fiber.StatusBadRequest, "size must be a positive number")
-	}
-	if callerRole(c) != "superadmin" {
-		for _, id := range req.UserIDs {
-			if err := h.requireUserInScope(c, id); err != nil {
-				return err
-			}
-		}
-	}
-	// Allocate in one statement: ordinal position / size gives the chunk index,
-	// offset from the next free batch number. Atomic, no per-chunk round-trips.
-	tag, err := h.Pool.Exec(c.Context(), `
-		WITH start AS (SELECT COALESCE(MAX(batch), 0) + 1 AS s FROM users),
-		     items AS (SELECT id, ord FROM unnest($1::uuid[]) WITH ORDINALITY AS t(id, ord))
-		UPDATE users u
-		   SET batch = (SELECT s FROM start) + ((i.ord - 1) / $2::int),
-		       updated_at = now()
-		  FROM items i
-		 WHERE u.id = i.id`, req.UserIDs, req.Size)
-	if err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, "auto-allocate failed")
-	}
-	batches := (len(req.UserIDs) + req.Size - 1) / req.Size
-	return c.JSON(fiber.Map{"updated": tag.RowsAffected(), "batches": batches})
+	return fiber.NewError(fiber.StatusGone, "auto batch numbering has been removed — assign a batch code instead")
 }
 
 // ConvertedLeads lists every converted lead from converted_leads_backup with its

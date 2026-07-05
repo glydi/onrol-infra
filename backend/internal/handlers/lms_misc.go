@@ -111,12 +111,12 @@ func (h *Handlers) AttendanceReport(c *fiber.Ctx) error {
 
 func (h *Handlers) CreateAnnouncement(c *fiber.Ctx) error {
 	var req struct {
-		CourseID    string `json:"course_id"`
-		Title       string `json:"title"`
-		Body        string `json:"body"`
-		Audience    string `json:"audience"`     // all | batch | role (used when no course_id)
-		BatchNumber *int   `json:"batch_number"` // for audience=batch
-		Role        string `json:"role"`         // for audience=role
+		CourseID    string  `json:"course_id"`
+		Title       string  `json:"title"`
+		Body        string  `json:"body"`
+		Audience    string  `json:"audience"`     // all | batch | role (used when no course_id)
+		BatchNumber *string `json:"batch_number"` // for audience=batch
+		Role        string  `json:"role"`         // for audience=role
 	}
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Title) == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "title required")

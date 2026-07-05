@@ -650,3 +650,93 @@ Future<bool?> showFormSheet(
     },
   );
 }
+
+// Canonical batch code, e.g. "AIG 01 07 26" — course short form (upper) + batch
+// number + start month + start year, numeric parts zero-padded to 2 digits.
+// Returns '' if any part is blank (an incomplete code).
+String buildBatchCode(String course, String batch, String month, String year) {
+  final c = course.trim().toUpperCase();
+  String pad(String s) {
+    final n = s.trim();
+    return n.isEmpty ? '' : n.padLeft(2, '0');
+  }
+  final b = pad(batch), m = pad(month), y = pad(year);
+  if (c.isEmpty || b.isEmpty || m.isEmpty || y.isEmpty) return '';
+  return '$c $b $m $y';
+}
+
+/// Four-field batch-code input (course short form · batch no. · start month ·
+/// start year) that builds a code like "AIG 01 07 26". Replaces the old plain
+/// integer batch everywhere a batch is entered.
+class BatchCodeField extends StatefulWidget {
+  const BatchCodeField({this.initial, required this.onChanged});
+  final String? initial;
+  final ValueChanged<String> onChanged; // full code, or '' when incomplete
+
+  @override
+  State<BatchCodeField> createState() => BatchCodeFieldState();
+}
+
+class BatchCodeFieldState extends State<BatchCodeField> {
+  late final TextEditingController _course, _batch, _month, _year;
+
+  @override
+  void initState() {
+    super.initState();
+    final raw = (widget.initial ?? '').trim();
+    final parts = raw.isEmpty ? <String>[] : raw.split(RegExp(r'\s+'));
+    final ok = parts.length == 4;
+    String at(int i) => ok ? parts[i] : '';
+    _course = TextEditingController(text: at(0));
+    _batch = TextEditingController(text: at(1));
+    _month = TextEditingController(text: at(2));
+    _year = TextEditingController(text: at(3));
+  }
+
+  @override
+  void dispose() {
+    for (final c in [_course, _batch, _month, _year]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _emit() => widget.onChanged(buildBatchCode(_course.text, _batch.text, _month.text, _year.text));
+
+  Widget _cell(TextEditingController c, String label, String hint, {int flex = 1, bool upper = false, bool digits = false}) {
+    final p = Palette.of(context);
+    return Expanded(
+      flex: flex,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: AppleTheme.footnote(context).copyWith(color: p.secondary, fontSize: 11)),
+        const SizedBox(height: 4),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+          child: TextField(
+            controller: c,
+            textCapitalization: upper ? TextCapitalization.characters : TextCapitalization.none,
+            keyboardType: digits ? TextInputType.number : TextInputType.text,
+            textAlign: TextAlign.center,
+            onChanged: (_) => _emit(),
+            style: AppleTheme.body(context),
+            decoration: InputDecoration(border: InputBorder.none, isDense: true, hintText: hint, hintStyle: TextStyle(color: p.secondary)),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+      _cell(_course, 'Course', 'AIG', flex: 3, upper: true),
+      const SizedBox(width: 8),
+      _cell(_batch, 'Batch', '01', digits: true),
+      const SizedBox(width: 8),
+      _cell(_month, 'Month', '07', digits: true),
+      const SizedBox(width: 8),
+      _cell(_year, 'Year', '26', digits: true),
+    ]);
+  }
+}

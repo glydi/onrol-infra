@@ -394,7 +394,7 @@ func (h *Handlers) ListCourseStudents(c *fiber.Ctx) error {
 	out := []fiber.Map{}
 	for rows.Next() {
 		var id, name, email, status string
-		var batch *int
+		var batch *string
 		var done, total int
 		if err := rows.Scan(&id, &name, &email, &status, &batch, &done, &total); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
@@ -438,15 +438,15 @@ func (h *Handlers) CourseBatches(c *fiber.Ctx) error {
 	}
 	defer rows.Close()
 	// Bucket students by batch, preserving first-seen order (queue first).
-	order := []int{}            // -1 sentinel = unassigned/queue
-	buckets := map[int][]fiber.Map{}
+	order := []string{}         // "" sentinel = unassigned/queue
+	buckets := map[string][]fiber.Map{}
 	for rows.Next() {
 		var id, name, email string
-		var batch *int
+		var batch *string
 		if err := rows.Scan(&id, &name, &email, &batch); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
-		key := -1
+		key := ""
 		if batch != nil {
 			key = *batch
 		}
@@ -458,7 +458,7 @@ func (h *Handlers) CourseBatches(c *fiber.Ctx) error {
 	out := []fiber.Map{}
 	for _, key := range order {
 		var b any
-		if key >= 0 {
+		if key != "" {
 			b = key
 		}
 		out = append(out, fiber.Map{"batch": b, "count": len(buckets[key]), "students": buckets[key]})

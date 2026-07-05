@@ -55,7 +55,7 @@ func (h *Handlers) PushUnsubscribe(c *fiber.Ctx) error {
 
 // pushAudience resolves an announcement's audience to user IDs and pushes to
 // them. Runs in its own goroutine (background ctx) — never blocks the request.
-func (h *Handlers) pushAnnouncement(courseID, audience, title, body string, batch *int, role string) {
+func (h *Handlers) pushAnnouncement(courseID, audience, title, body string, batch *string, role string) {
 	if h.Push == nil {
 		return
 	}

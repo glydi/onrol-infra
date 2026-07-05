@@ -295,7 +295,7 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
     final title = TextEditingController(text: ev?['title']?.toString() ?? '');
     final desc = TextEditingController(text: ev?['description']?.toString() ?? '');
     final loc = TextEditingController(text: ev?['location']?.toString() ?? '');
-    final batch = TextEditingController(text: ev?['batch_number']?.toString() ?? '');
+    String batchCode = ev?['batch_number']?.toString() ?? '';
     final base = day ?? _selected;
     final nowT = TimeOfDay.now();
     DateTime start = DateTime.tryParse(ev?['starts_at']?.toString() ?? '')?.toLocal() ?? DateTime(base.year, base.month, base.day, nowT.hour, nowT.minute);
@@ -326,11 +326,11 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
       const SizedBox(height: 14),
       _lbl('Who can see it'),
       AppleSegmented(square: true, labels: const ['Everyone', 'Batch', 'Role'], selected: aud, onChanged: (i) => setS(() => aud = i)),
-      if (aud == 1) ...[const SizedBox(height: 10), sheetField(batch, 'Batch number', CupertinoIcons.number, keyboard: TextInputType.number)],
+      if (aud == 1) ...[const SizedBox(height: 10), _lbl('Batch code'), BatchCodeField(initial: batchCode, onChanged: (v) => batchCode = v)],
       if (aud == 2) ...[const SizedBox(height: 10), AppleSegmented(square: true, labels: const ['Students', 'Instructors', 'Managers'], selected: roleIdx, onChanged: (i) => setS(() => roleIdx = i))],
     ], onSubmit: () async {
       if (title.text.trim().isEmpty) return 'Title required';
-      if (aud == 1 && int.tryParse(batch.text.trim()) == null) return 'Enter a batch number';
+      if (aud == 1 && batchCode.trim().isEmpty) return 'Enter the full batch code';
       final body = <String, dynamic>{
         'title': title.text.trim(),
         'description': desc.text.trim(),
@@ -340,7 +340,7 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
         'audience': const ['all', 'batch', 'role'][aud],
         'event_type': etype,
       };
-      if (aud == 1) body['batch_number'] = int.tryParse(batch.text.trim());
+      if (aud == 1) body['batch_number'] = batchCode.trim();
       if (aud == 2) body['role'] = _roles[roleIdx];
       try {
         if (isEdit) {

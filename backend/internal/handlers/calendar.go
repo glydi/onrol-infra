@@ -11,15 +11,15 @@ import (
 
 // calendarEventReq is the create/update body. audience: all | batch | role.
 type calendarEventReq struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Location    string `json:"location"`
-	StartsAt    string `json:"starts_at"`
-	EndsAt      string `json:"ends_at"`
-	Audience    string `json:"audience"`
-	BatchNumber *int   `json:"batch_number"`
-	Role        string `json:"role"`
-	EventType   string `json:"event_type"` // batch_start | live | exam | holiday | … (app-defined)
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	Location    string  `json:"location"`
+	StartsAt    string  `json:"starts_at"`
+	EndsAt      string  `json:"ends_at"`
+	Audience    string  `json:"audience"`
+	BatchNumber *string `json:"batch_number"`
+	Role        string  `json:"role"`
+	EventType   string  `json:"event_type"` // batch_start | live | exam | holiday | … (app-defined)
 }
 
 // eventType returns the type key, defaulting to "general".
@@ -68,7 +68,7 @@ func (h *Handlers) ListCalendarEvents(c *fiber.Ctx) error {
 		var id, title, desc, loc, audience, role, etype string
 		var startsAt any
 		var endsAt any
-		var batch *int
+		var batch *string
 		if err := rows.Scan(&id, &title, &desc, &loc, &startsAt, &endsAt, &audience, &batch, &role, &etype); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}

@@ -354,9 +354,11 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     }
     return courseLabel;
   }
-  // Parses a user's batch number, treating missing/blank as unassigned (null).
-  int? _batchOf(dynamic s) =>
-      (s['batch'] is int) ? s['batch'] as int : int.tryParse('${s['batch'] ?? ''}');
+  // A user's batch code, treating missing/blank as unassigned (null).
+  String? _batchOf(dynamic s) {
+    final b = s['batch']?.toString().trim() ?? '';
+    return b.isEmpty ? null : b;
+  }
 
   // Show the original converted-lead record for a student (source, campaign,
   // program, score, UTM, ...) pulled from the database.
@@ -412,12 +414,12 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
                     ),
                     const SizedBox(width: 12),
                     HoverTap(
-                      onTap: () => _setBatch(u['id'].toString(), u['full_name']?.toString() ?? 'Student', (u['batch'] is int) ? u['batch'] as int : int.tryParse('${u['batch'] ?? ''}')),
+                      onTap: () => _setBatch(u['id'].toString(), u['full_name']?.toString() ?? 'Student', _batchOf(u)),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(color: Palette.of(context).accent.withOpacity(0.12), borderRadius: BorderRadius.zero),
                         child: Text(
-                          u['batch'] == null ? 'Set batch' : 'Batch ${u['batch']}',
+                          _batchOf(u) ?? 'Set batch',
                           style: TextStyle(color: Palette.of(context).accent, fontSize: 12, fontWeight: FontWeight.w600),
                         ),
                       ),
@@ -449,7 +451,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     final name = u['full_name']?.toString() ?? 'User';
     final email = u['email']?.toString() ?? '';
     final isStudent = u['role'] == 'student';
-    final batch = (u['batch'] is int) ? u['batch'] as int : int.tryParse('${u['batch'] ?? ''}');
+    final batch = _batchOf(u);
     final v = await showSquareMenu(context, title: name, items: [
       if (isStudent) const SquareMenuItem('Enroll in a course', value: 'enroll', icon: CupertinoIcons.book),
       if (isStudent) const SquareMenuItem('Set / change batch', value: 'batch', icon: CupertinoIcons.number),
@@ -582,15 +584,19 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     }
   }
 
-  // Assign a student to a batch number (blank/0 clears it).
-  Future<void> _setBatch(String userId, String name, int? current) async {
-    final ctrl = TextEditingController(text: current?.toString() ?? '');
+  // Assign a student to a batch by its code (leave blank to clear).
+  Future<void> _setBatch(String userId, String name, String? current) async {
+    String code = current ?? '';
     final ok = await showFormSheet(context, square: true, title: 'Set Batch — $name',
-        builder: (_) => [sheetField(ctrl, 'Batch number (blank to clear)', CupertinoIcons.number)],
+        builder: (_) => [
+          _label(context, 'Batch code — leave blank to clear'),
+          const SizedBox(height: 8),
+          BatchCodeField(initial: current, onChanged: (v) => code = v),
+        ],
         onSubmit: () async {
-      final n = int.tryParse(ctrl.text.trim());
       try {
-        await widget.auth.apiPost('/api/v1/manage/users/$userId/batch', {'batch': n});
+        // Empty string clears the batch (server treats blank as unassigned).
+        await widget.auth.apiPost('/api/v1/manage/users/$userId/batch', {'batch': code.trim()});
         return null;
       } on ApiException catch (e) {
         return e.message;
@@ -614,7 +620,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     if (!mounted) return;
     final title = TextEditingController();
     final body = TextEditingController();
-    final batch = TextEditingController();
+    String batchCode = '';
     int audience = 0; // 0=Everyone, 1=Batch, 2=Course
     bool preview = false;
     String? courseId = courses.isNotEmpty ? courses.first['id'].toString() : null;
@@ -631,7 +637,9 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       AppleSegmented(square: true, labels: const ['Everyone', 'Batch', 'Course'], selected: audience, onChanged: (i) => setS(() => audience = i)),
       if (audience == 1) ...[
         const SizedBox(height: 10),
-        sheetField(batch, 'Batch number', CupertinoIcons.number, keyboard: TextInputType.number),
+        _label(context, 'Batch code — notifies students in this batch'),
+        const SizedBox(height: 8),
+        BatchCodeField(onChanged: (v) => batchCode = v),
       ],
       if (audience == 2) ...[
         const SizedBox(height: 10),
@@ -665,10 +673,9 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       if (audience == 0) {
         payload['audience'] = 'all';
       } else if (audience == 1) {
-        final n = int.tryParse(batch.text.trim());
-        if (n == null) return 'Enter a batch number';
+        if (batchCode.trim().isEmpty) return 'Enter the full batch code';
         payload['audience'] = 'batch';
-        payload['batch_number'] = n;
+        payload['batch_number'] = batchCode.trim();
       } else {
         if (courseId == null) return 'Pick a course';
         payload['course_id'] = courseId; // course-scoped: its students only
@@ -710,7 +717,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     final pass = TextEditingController(text: 'onrol@aiee'); // default password
     final phone = TextEditingController();
     final courseLabel = TextEditingController();
-    final batch = TextEditingController();
+    String batchCode = '';
     final occupation = TextEditingController();
     final location = TextEditingController();
     final linkedin = TextEditingController();
@@ -731,7 +738,9 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         const SizedBox(height: 10),
         sheetField(courseLabel, 'Course label (e.g. aigeneralist)', CupertinoIcons.book),
         const SizedBox(height: 10),
-        sheetField(batch, 'Batch number (optional)', CupertinoIcons.number, keyboard: TextInputType.number),
+        _label(context, 'Batch code (optional)'),
+        const SizedBox(height: 8),
+        BatchCodeField(onChanged: (v) => batchCode = v),
       ],
       const SizedBox(height: 10),
       sheetField(occupation, 'Occupation (optional)', CupertinoIcons.briefcase),
@@ -744,7 +753,6 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     ], onSubmit: () async {
       if (name.text.trim().isEmpty || email.text.trim().isEmpty) return 'Name and email required';
       if (pass.text.trim().isNotEmpty && pass.text.trim().length < 8) return 'Password must be at least 8 characters';
-      final batchN = int.tryParse(batch.text.trim());
       try {
         await widget.auth.apiPost('/api/v1/manage/users', {
           'full_name': name.text.trim(),
@@ -754,7 +762,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           'password': pass.text.trim(),
           'role': role,
           if (isStudent && courseLabel.text.trim().isNotEmpty) 'course_label': courseLabel.text.trim(),
-          if (isStudent && batchN != null && batchN > 0) 'batch': batchN,
+          if (isStudent && batchCode.trim().isNotEmpty) 'batch': batchCode.trim(),
           if (occupation.text.trim().isNotEmpty) 'occupation': occupation.text.trim(),
           if (location.text.trim().isNotEmpty) 'location': location.text.trim(),
           if (linkedin.text.trim().isNotEmpty) 'linkedin': linkedin.text.trim(),
@@ -1168,17 +1176,19 @@ class _IssueCertificatesState extends State<_IssueCertificates> {
   }
 
   Future<void> _issueByBatch() async {
-    final batch = TextEditingController();
+    String code = '';
     final ok = await showFormSheet(context, square: true, title: 'Issue by batch',
-        builder: (_) => [sheetField(batch, 'Batch number (e.g. 1)', CupertinoIcons.number, keyboard: TextInputType.number)],
+        builder: (_) => [
+          _label(context, 'Batch code'),
+          const SizedBox(height: 8),
+          BatchCodeField(onChanged: (v) => code = v),
+        ],
         onSubmit: () async {
-      final n = int.tryParse(batch.text.trim());
-      if (n == null) return 'Enter a batch number';
+      if (code.trim().isEmpty) return 'Enter the full batch code';
       return null;
     });
-    if (ok == true) {
-      final n = int.tryParse(batch.text.trim());
-      if (n != null) _issue({'batch': n}, 'batch $n');
+    if (ok == true && code.trim().isNotEmpty) {
+      _issue({'batch': code.trim()}, 'batch ${code.trim()}');
     }
   }
 
@@ -3631,55 +3641,41 @@ class _CourseBatchesScreenState extends State<CourseBatchesScreen> {
     if (ok == true) { _toast('Settings saved'); _load(); }
   }
 
-  // Create batches from this course's queue (manual one-number, or auto split).
+  // Stamp all queued (unassigned) students with one batch code.
   Future<void> _createBatch() async {
     final queue = _queue;
     if (queue.isEmpty) { _toast('No unassigned students in the queue'); return; }
-    final manualCtrl = TextEditingController();
-    final sizeCtrl = TextEditingController(text: (_batchSize ?? 30).toString());
-    var mode = _batchAuto ? 1 : 0; // prefill from course default
+    String code = '';
     final ids = queue.map((s) => (s as Map)['id'].toString()).toList();
     final ok = await showFormSheet(context, square: true, title: 'Create Batch — ${widget.title}',
         builder: (setS) => [
-          Text('${queue.length} unassigned student(s) in the queue.', style: AppleTheme.footnote(context)),
-          const SizedBox(height: 10),
-          AppleSegmented(square: true, labels: const ['Manual', 'Auto'], selected: mode, onChanged: (i) => setS(() => mode = i)),
-          const SizedBox(height: 10),
-          if (mode == 0)
-            sheetField(manualCtrl, 'Batch number', CupertinoIcons.number, keyboard: TextInputType.number)
-          else ...[
-            sheetField(sizeCtrl, 'Students per batch', CupertinoIcons.number, keyboard: TextInputType.number),
-            const SizedBox(height: 6),
-            Text('Splits the queue into batches of this size, numbered automatically.', style: AppleTheme.footnote(context)),
-          ],
+          Text('${queue.length} unassigned student(s) in the queue — assign them a batch code.', style: AppleTheme.footnote(context)),
+          const SizedBox(height: 12),
+          BatchCodeField(onChanged: (v) => code = v),
         ], onSubmit: () async {
+      if (code.trim().isEmpty) return 'Enter the full batch code';
       try {
-        if (mode == 0) {
-          final n = int.tryParse(manualCtrl.text.trim());
-          if (n == null || n <= 0) return 'Enter a valid batch number';
-          await widget.auth.apiPost('/api/v1/manage/users/batch-assign', {'user_ids': ids, 'batch': n});
-        } else {
-          final size = int.tryParse(sizeCtrl.text.trim());
-          if (size == null || size <= 0) return 'Enter a valid batch size';
-          await widget.auth.apiPost('/api/v1/manage/users/auto-batch', {'user_ids': ids, 'size': size});
-        }
+        await widget.auth.apiPost('/api/v1/manage/users/batch-assign', {'user_ids': ids, 'batch': code.trim()});
         return null;
       } on ApiException catch (e) {
         return e.message;
       }
     });
-    if (ok == true) { _toast(mode == 0 ? 'Batch created' : 'Batches allocated'); _load(); }
+    if (ok == true) { _toast('Batch created'); _load(); }
   }
 
-  // Move a student to a different batch (blank/0 returns them to the queue).
+  // Move a student to a different batch code (leave blank to return to the queue).
   Future<void> _reassign(String userId, String name, dynamic current) async {
-    final ctrl = TextEditingController(text: current?.toString() ?? '');
+    String code = current?.toString() ?? '';
     final ok = await showFormSheet(context, square: true, title: 'Move — $name',
-        builder: (_) => [sheetField(ctrl, 'Batch number (blank for queue)', CupertinoIcons.number, keyboard: TextInputType.number)],
+        builder: (_) => [
+          Text('Batch code — leave blank to return to the queue', style: AppleTheme.footnote(context)),
+          const SizedBox(height: 8),
+          BatchCodeField(initial: current?.toString(), onChanged: (v) => code = v),
+        ],
         onSubmit: () async {
-      final n = int.tryParse(ctrl.text.trim());
       try {
-        await widget.auth.apiPost('/api/v1/manage/users/$userId/batch', {'batch': n});
+        await widget.auth.apiPost('/api/v1/manage/users/$userId/batch', {'batch': code.trim()});
         return null;
       } on ApiException catch (e) {
         return e.message;

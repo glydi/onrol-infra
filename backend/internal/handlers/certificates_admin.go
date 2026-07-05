@@ -37,7 +37,7 @@ func (h *Handlers) IssueCertificates(c *fiber.Ctx) error {
 	}
 	var req struct {
 		UserIDs []string `json:"user_ids"`
-		Batch   *int     `json:"batch"`
+		Batch   *string  `json:"batch"`
 		All     bool     `json:"all"`
 	}
 	if err := c.BodyParser(&req); err != nil {
