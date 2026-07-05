@@ -38,6 +38,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   List<dynamic> _requests = [];
   List<dynamic> _people = [];
   String _peopleQuery = ''; // People-tab search across all users
+  bool _allStudents = false; // People tab: flat list of every student vs by-course
 
   bool get _isAdmin => widget.auth.user?.role == 'manager' || widget.auth.user?.role == 'superadmin';
 
@@ -246,8 +247,16 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           if (others.isNotEmpty) ...[_peopleGroup('Admins', others, manage: true), const SizedBox(height: 18)],
           _peopleGroup('Instructors (${instructors.length})', instructors, manage: true),
           const SizedBox(height: 18),
-          // A tappable list of courses — each opens its own students/batches page.
-          ..._courseList(students),
+          // Students: browse by course (queues/batches), or a flat list of every
+          // student across all courses.
+          Text('Students (${students.length})', style: AppleTheme.headline(context)),
+          const SizedBox(height: 8),
+          AppleSegmented(square: true, labels: const ['By course', 'All students'], selected: _allStudents ? 1 : 0, onChanged: (i) => setState(() => _allStudents = i == 1)),
+          const SizedBox(height: 14),
+          if (_allStudents)
+            _peopleGroup('All students (${students.length})', students, manage: true)
+          else
+            ..._courseList(students),
         ],
       ],
     ));
