@@ -149,6 +149,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Delete("/manage/sessions/:id", auth, inst, h.DeleteSession)
 	api.Post("/manage/sessions/:id/attendance", auth, inst, h.MarkAttendance)
 	api.Get("/manage/announcements", auth, inst, h.ListAnnouncements)
+	api.Delete("/manage/announcements/:id", auth, inst, h.DeleteAnnouncement)
 
 	// ---- CRM: admins only (manager / superadmin) -------------------------
 	api.Get("/manage/crm/leads", auth, mgr, h.ListLeads)

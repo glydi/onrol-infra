@@ -24,6 +24,21 @@ func (h *Handlers) ListAnnouncements(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"announcements": scanAnnouncements(rows)})
 }
 
+// DeleteAnnouncement removes an announcement (staff). It also clears any
+// per-user notifications that were spawned from it is not needed — those are a
+// separate feed — so this just drops the broadcast.
+func (h *Handlers) DeleteAnnouncement(c *fiber.Ctx) error {
+	id := c.Params("id")
+	ct, err := h.Pool.Exec(c.Context(), `DELETE FROM announcements WHERE id=$1`, id)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "delete failed")
+	}
+	if ct.RowsAffected() == 0 {
+		return fiber.NewError(fiber.StatusNotFound, "announcement not found")
+	}
+	return c.JSON(fiber.Map{"id": id, "deleted": true})
+}
+
 // MyAnnouncements returns announcements targeted at the caller: those for
 // "all", for the caller's batch, for the caller's role, or course-scoped ones
 // for courses the caller is enrolled in.

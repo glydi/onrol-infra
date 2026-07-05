@@ -202,7 +202,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         ]),
         const SizedBox(height: 12),
         Row(children: [
-          Expanded(child: PrimaryButton(label: 'Send Announcement', icon: CupertinoIcons.speaker_2_fill, square: true, onPressed: _sendAnnouncement)),
+          Expanded(child: PrimaryButton(label: 'Announcements', icon: CupertinoIcons.speaker_2_fill, square: true, onPressed: _manageAnnouncements)),
           const SizedBox(width: 12),
           Expanded(child: PrimaryButton(label: 'Converted Leads', icon: CupertinoIcons.person_2_square_stack, square: true, onPressed: () => Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => ConvertedLeadsScreen(auth: widget.auth),
@@ -647,6 +647,16 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       }
     });
     if (ok == true) _toast('Announcement sent');
+  }
+
+  // Announcements hub: compose new ones and remove existing ones.
+  Future<void> _manageAnnouncements() async {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AnnouncementsSheet(auth: widget.auth, onNew: _sendAnnouncement),
+    );
   }
 
   // Manage a student: devices + assign to a course.
@@ -3171,6 +3181,131 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       }
     });
     if (ok == true) _toast('Student enrolled');
+  }
+}
+
+/// Announcements hub — compose new broadcasts and delete existing ones.
+class _AnnouncementsSheet extends StatefulWidget {
+  const _AnnouncementsSheet({required this.auth, required this.onNew});
+  final AuthService auth;
+  final Future<void> Function() onNew; // opens the compose sheet
+
+  @override
+  State<_AnnouncementsSheet> createState() => _AnnouncementsSheetState();
+}
+
+class _AnnouncementsSheetState extends State<_AnnouncementsSheet> {
+  List<dynamic> _items = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (mounted) setState(() => _loading = true);
+    try {
+      _items = (ApiClient.decode(await widget.auth.apiGet('/api/v1/manage/announcements'))['announcements'] as List?) ?? [];
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _delete(Map<String, dynamic> a) async {
+    final yes = await showSquareConfirm(context,
+        title: 'Delete announcement?',
+        message: '"${a['title'] ?? ''}" will be removed for everyone.',
+        confirmLabel: 'Delete', destructive: true);
+    if (!yes) return;
+    try {
+      await widget.auth.apiDelete('/api/v1/manage/announcements/${a['id']}');
+    } catch (_) {}
+    await _load();
+  }
+
+  String _audience(Map<String, dynamic> a) {
+    switch (a['audience']?.toString()) {
+      case 'batch':
+        return 'Batch ${a['batch_number'] ?? ''}';
+      case 'role':
+        return '${a['role'] ?? ''}s';
+      default:
+        return 'Everyone';
+    }
+  }
+
+  String _fmtDate(String? iso) {
+    final dt = DateTime.tryParse(iso ?? '')?.toLocal();
+    if (dt == null) return '';
+    const m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${m[dt.month - 1]} ${dt.day}, ${dt.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final h = MediaQuery.of(context).size.height;
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Align(
+        alignment: Alignment.center,
+        child: Container(
+          margin: const EdgeInsets.all(16),
+          constraints: BoxConstraints(maxWidth: 720, maxHeight: h * 0.85),
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(color: p.card),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              Expanded(child: Text('Announcements', style: AppleTheme.title2(context))),
+              GestureDetector(behavior: HitTestBehavior.opaque, onTap: () => Navigator.pop(context), child: Icon(CupertinoIcons.xmark, color: p.secondary)),
+            ]),
+            const SizedBox(height: 14),
+            PrimaryButton(label: 'New announcement', icon: CupertinoIcons.add, square: true, onPressed: () async {
+              await widget.onNew();
+              await _load();
+            }),
+            const SizedBox(height: 14),
+            Flexible(
+              child: _loading
+                  ? const Padding(padding: EdgeInsets.symmetric(vertical: 40), child: Center(child: CupertinoActivityIndicator()))
+                  : _items.isEmpty
+                      ? Padding(padding: const EdgeInsets.symmetric(vertical: 30), child: Text('No announcements yet.', textAlign: TextAlign.center, style: AppleTheme.footnote(context)))
+                      : ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: _items.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          itemBuilder: (_, i) {
+                            final a = _items[i] as Map<String, dynamic>;
+                            final body = a['body']?.toString() ?? '';
+                            return Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+                              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  Text(a['title']?.toString() ?? '', style: AppleTheme.body(context).copyWith(fontWeight: FontWeight.w700)),
+                                  if (body.isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    Text(body, maxLines: 2, overflow: TextOverflow.ellipsis, style: AppleTheme.footnote(context)),
+                                  ],
+                                  const SizedBox(height: 4),
+                                  Text('${_audience(a)} · ${_fmtDate(a['at']?.toString())}', style: AppleTheme.footnote(context).copyWith(color: p.secondary)),
+                                ])),
+                                const SizedBox(width: 8),
+                                GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: () => _delete(a),
+                                  child: const Padding(padding: EdgeInsets.all(2), child: Icon(CupertinoIcons.trash, size: 18, color: AppleColors.red)),
+                                ),
+                              ]),
+                            );
+                          },
+                        ),
+            ),
+          ]),
+        ),
+      ),
+    );
   }
 }
 
