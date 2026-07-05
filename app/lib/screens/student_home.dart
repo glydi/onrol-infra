@@ -2541,19 +2541,23 @@ class _ExploreListState extends State<_ExploreList> {
 
   Widget _tileCover(String url) {
     final fallback = Container(
-      height: 130,
       decoration: const BoxDecoration(gradient: _orangeGrad),
-      child: Center(child: Icon(CupertinoIcons.book_fill, color: Colors.white.withOpacity(0.9), size: 38)),
+      child: Center(child: Icon(CupertinoIcons.book_fill, color: Colors.white.withOpacity(0.9), size: 40)),
     );
-    if (url.trim().isEmpty) return fallback;
-    if (url.startsWith('data:')) {
+    Widget inner;
+    if (url.trim().isEmpty) {
+      inner = fallback;
+    } else if (url.startsWith('data:')) {
       try {
-        return Image.memory(base64Decode(url.substring(url.indexOf(',') + 1)), height: 130, width: double.infinity, fit: BoxFit.cover);
+        inner = Image.memory(base64Decode(url.substring(url.indexOf(',') + 1)), width: double.infinity, fit: BoxFit.cover);
       } catch (_) {
-        return fallback;
+        inner = fallback;
       }
+    } else {
+      inner = Image.network(url, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => fallback);
     }
-    return Image.network(url, height: 130, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => fallback);
+    // Fixed 4:3 cover — the image fills and crops to fit.
+    return AspectRatio(aspectRatio: 4 / 3, child: SizedBox.expand(child: inner));
   }
 }
 
