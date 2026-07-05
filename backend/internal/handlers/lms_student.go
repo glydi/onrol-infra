@@ -28,24 +28,24 @@ const playURLExpr = `COALESCE(
 // ---- Profile & preferences -------------------------------------------------
 
 func (h *Handlers) GetMyProfile(c *fiber.Ctx) error {
-	var email, name, phone, role, avatar, username, occupation, location, linkedin, github, courseLabel, courseName string
+	var email, name, phone, role, avatar, username, occupation, location, linkedin, github, courseLabel, courseName, loginID string
 	var batch *string
 	if err := h.Pool.QueryRow(c.Context(),
 		`SELECT u.email, u.full_name, COALESCE(u.phone,''), u.role, COALESCE(u.avatar,''),
 		        COALESCE(u.username,''), COALESCE(u.occupation,''), COALESCE(u.location,''),
 		        COALESCE(u.linkedin,''), COALESCE(u.github,''),
-		        u.batch, COALESCE(u.course_label,''), COALESCE(c.title,'')
+		        u.batch, COALESCE(u.course_label,''), COALESCE(c.title,''), COALESCE(u.login_id,'')
 		   FROM users u
 		   LEFT JOIN courses c ON lower(c.label)=lower(u.course_label)
 		  WHERE u.id=$1`, callerID(c),
 	).Scan(&email, &name, &phone, &role, &avatar, &username, &occupation, &location, &linkedin, &github,
-		&batch, &courseLabel, &courseName); err != nil {
+		&batch, &courseLabel, &courseName, &loginID); err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "user not found")
 	}
 	return c.JSON(fiber.Map{
 		"id": callerID(c), "email": email, "full_name": name, "phone": phone, "role": role, "avatar": avatar,
 		"username": username, "occupation": occupation, "location": location, "linkedin": linkedin, "github": github,
-		"batch": batch, "course_label": courseLabel, "course": courseName,
+		"batch": batch, "course_label": courseLabel, "course": courseName, "login_id": loginID,
 	})
 }
 

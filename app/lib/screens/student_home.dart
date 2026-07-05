@@ -1869,6 +1869,19 @@ class _StudentHomeState extends State<StudentHome> {
                 const SizedBox(height: 2),
                 Text(widget.auth.user!.email, style: GoogleFonts.inter(fontSize: 12.5, color: _grey)),
               ],
+              // Login ID — the short code the student can sign in with.
+              _future(_apiMap('/api/v1/me/profile'), (Map m) {
+                final lid = (m['login_id'] ?? '').toString();
+                if (lid.isEmpty) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(color: _orange.withOpacity(0.10), border: Border.all(color: _orange.withOpacity(0.28))),
+                    child: Text('Login ID: $lid', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 0.5, color: _orange)),
+                  ),
+                );
+              }),
               const SizedBox(height: 16),
               // Streak + notifications, consolidated into the profile panel.
               Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [

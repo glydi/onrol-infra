@@ -409,7 +409,11 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
               ListTile(
                 leading: Avatar(name: u['full_name']?.toString() ?? '?', size: 36),
                 title: Text(u['full_name']?.toString() ?? '', style: AppleTheme.body(context)),
-                subtitle: Text(u['email']?.toString() ?? '', style: AppleTheme.footnote(context)),
+                subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(u['email']?.toString() ?? '', style: AppleTheme.footnote(context)),
+                  if ((u['login_id']?.toString() ?? '').isNotEmpty)
+                    Text('Login ID: ${u['login_id']}', style: AppleTheme.footnote(context).copyWith(color: Palette.of(context).accent, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                ]),
                 onTap: () => _manageDevices(u['id'].toString(), u['full_name']?.toString() ?? 'User', u['email']?.toString() ?? ''),
                 trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                   if (u['is_active'] == false) const Padding(
@@ -3890,7 +3894,11 @@ class _CourseBatchesScreenState extends State<CourseBatchesScreen> {
             ListTile(
               leading: Avatar(name: s['name']?.toString() ?? '?', size: 36),
               title: Text(s['name']?.toString() ?? '', style: AppleTheme.body(context)),
-              subtitle: Text(s['email']?.toString() ?? '', style: AppleTheme.footnote(context)),
+              subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(s['email']?.toString() ?? '', style: AppleTheme.footnote(context)),
+                if ((s['login_id']?.toString() ?? '').isNotEmpty)
+                  Text('Login ID: ${s['login_id']}', style: AppleTheme.footnote(context).copyWith(color: Palette.of(context).accent, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+              ]),
               trailing: Icon(CupertinoIcons.ellipsis, size: 18, color: Palette.of(context).secondary),
               onTap: () => _studentActions(s, batch),
             ),

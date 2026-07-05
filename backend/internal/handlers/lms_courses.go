@@ -430,7 +430,7 @@ func (h *Handlers) CourseBatches(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"label": "", "batches": []fiber.Map{}, "settings": settings})
 	}
 	rows, err := h.Pool.Query(c.Context(),
-		`SELECT id, full_name, email, batch FROM users
+		`SELECT id, full_name, email, batch, COALESCE(login_id,'') FROM users
 		  WHERE role='student' AND lower(course_label)=lower($1)
 		  ORDER BY batch NULLS FIRST, full_name`, *label)
 	if err != nil {
@@ -441,9 +441,9 @@ func (h *Handlers) CourseBatches(c *fiber.Ctx) error {
 	order := []string{}         // "" sentinel = unassigned/queue
 	buckets := map[string][]fiber.Map{}
 	for rows.Next() {
-		var id, name, email string
+		var id, name, email, loginID string
 		var batch *string
-		if err := rows.Scan(&id, &name, &email, &batch); err != nil {
+		if err := rows.Scan(&id, &name, &email, &batch, &loginID); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		key := ""
@@ -453,7 +453,7 @@ func (h *Handlers) CourseBatches(c *fiber.Ctx) error {
 		if _, seen := buckets[key]; !seen {
 			order = append(order, key)
 		}
-		buckets[key] = append(buckets[key], fiber.Map{"id": id, "name": name, "email": email})
+		buckets[key] = append(buckets[key], fiber.Map{"id": id, "name": name, "email": email, "login_id": loginID})
 	}
 	out := []fiber.Map{}
 	for _, key := range order {

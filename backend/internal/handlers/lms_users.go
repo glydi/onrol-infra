@@ -18,24 +18,24 @@ import (
 func (h *Handlers) ListUsers(c *fiber.Ctx) error {
 	// Route is manager+ only; admins/managers manage everyone, so list all.
 	rows, err := h.Pool.Query(c.Context(),
-		`SELECT id, email, full_name, role, is_active, created_at, batch, username, course_label FROM users ORDER BY created_at DESC LIMIT 1000`)
+		`SELECT id, email, full_name, role, is_active, created_at, batch, username, course_label, COALESCE(login_id,'') FROM users ORDER BY created_at DESC LIMIT 1000`)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
 	}
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var id, email, name, role string
+		var id, email, name, role, loginID string
 		var active bool
 		var created any
 		var batch *string
 		var username, courseLabel *string
-		if err := rows.Scan(&id, &email, &name, &role, &active, &created, &batch, &username, &courseLabel); err != nil {
+		if err := rows.Scan(&id, &email, &name, &role, &active, &created, &batch, &username, &courseLabel, &loginID); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		out = append(out, fiber.Map{"id": id, "email": email, "full_name": name,
 			"role": role, "is_active": active, "created_at": created, "batch": batch,
-			"username": username, "course_label": courseLabel})
+			"username": username, "course_label": courseLabel, "login_id": loginID})
 	}
 	return c.JSON(fiber.Map{"users": out})
 }
