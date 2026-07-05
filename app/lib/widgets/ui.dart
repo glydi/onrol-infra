@@ -620,7 +620,7 @@ Future<bool?> showFormSheet(
               ),
               child: Container(
                 margin: EdgeInsets.all(full ? 12 : (big ? 16 : 10)),
-                height: full ? screenH * 0.9 : (big ? (screenH * 0.82).clamp(0.0, 820.0) : null),
+                height: full ? screenH * 0.95 : (big ? (screenH * 0.82).clamp(0.0, 820.0) : null),
                 padding: EdgeInsets.all(full ? 22 : (big ? 26 : 20)),
                 decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.zero),
                 child: Column(mainAxisSize: wide ? MainAxisSize.max : MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [

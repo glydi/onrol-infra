@@ -1059,7 +1059,7 @@ Widget _label(BuildContext context, String t) =>
 // to a Write ⇄ Preview toggle. [refresh] rebuilds so the preview stays live.
 List<Widget> _mdEditor(BuildContext context, {required TextEditingController body, required bool preview, required void Function(bool) onPreview, required void Function() refresh, String? label}) {
   final size = MediaQuery.of(context).size;
-  final h = (size.height * 0.62).clamp(360.0, 1100.0);
+  final h = (size.height * 0.72).clamp(380.0, 1200.0);
   final split = size.width > 720;
   final p = Palette.of(context);
 
