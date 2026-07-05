@@ -723,7 +723,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     final email = TextEditingController();
     final username = TextEditingController();
     final name = TextEditingController();
-    final pass = TextEditingController(text: 'onrol@aiee'); // default password
+    final pass = TextEditingController(text: 'onrol@ai'); // default password
     final phone = TextEditingController();
     final courseLabel = TextEditingController();
     String batchCode = '';
@@ -742,7 +742,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       const SizedBox(height: 10),
       sheetField(username, 'Username (optional — for sign-in)', CupertinoIcons.at),
       const SizedBox(height: 10),
-      sheetField(pass, 'Password (default: onrol@aiee)', CupertinoIcons.lock),
+      sheetField(pass, 'Password (default: onrol@ai)', CupertinoIcons.lock),
       if (isStudent) ...[
         const SizedBox(height: 10),
         sheetField(courseLabel, 'Course label (e.g. aigeneralist)', CupertinoIcons.book),
@@ -2846,6 +2846,65 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     }
   }
 
+  // Preview a material as a student sees it: text renders as Markdown in a
+  // reader sheet; video / link / document open the resource.
+  Future<void> _previewLesson(Map<String, dynamic> ll) async {
+    final type = ll['type']?.toString() ?? 'text';
+    final body = ll['body']?.toString() ?? '';
+    final title = ll['title']?.toString() ?? 'Material';
+    if (type != 'text') {
+      final uri = Uri.tryParse(body);
+      if (uri == null || body.isEmpty) {
+        _toast('Nothing to preview — no URL set');
+        return;
+      }
+      try {
+        await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+      } catch (_) {
+        _toast('Could not open the link');
+      }
+      return;
+    }
+    if (!mounted) return;
+    final p = Palette.of(context);
+    final h = MediaQuery.of(context).size.height;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: Align(
+          alignment: Alignment.center,
+          child: Container(
+            margin: const EdgeInsets.all(12),
+            constraints: BoxConstraints(maxWidth: 900, maxHeight: h * 0.92),
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(color: p.card),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                Expanded(child: Text(title, style: AppleTheme.title2(context))),
+                GestureDetector(behavior: HitTestBehavior.opaque, onTap: () => Navigator.pop(context), child: Icon(CupertinoIcons.xmark, color: p.secondary)),
+              ]),
+              const SizedBox(height: 4),
+              Text('Preview — how students see this material', style: AppleTheme.footnote(context).copyWith(color: p.secondary)),
+              const SizedBox(height: 14),
+              Flexible(child: SingleChildScrollView(child: MarkdownView(
+                text: body,
+                textColor: p.label,
+                mutedColor: p.secondary,
+                accent: p.accent,
+                borderColor: p.separator,
+                dark: p.dark,
+                emptyLabel: 'This material is empty.',
+              ))),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _lessonRow(Map<String, dynamic> ll, List<Map<String, dynamic>> group, int index) {
     final p = Palette.of(context);
     final canUp = index > 0;
@@ -2856,6 +2915,12 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         Icon(_iconFor(ll['type']?.toString() ?? 'text'), size: 17, color: p.secondary),
         const SizedBox(width: 10),
         Expanded(child: Text(ll['title']?.toString() ?? '', style: AppleTheme.body(context).copyWith(fontSize: 15))),
+        // Preview the material exactly as a student sees it.
+        GestureDetector(
+          onTap: () => _previewLesson(ll),
+          child: Icon(CupertinoIcons.eye, size: 16, color: p.accent),
+        ),
+        const SizedBox(width: 14),
         // Reorder within the day (move the material up / down).
         GestureDetector(
           onTap: canUp ? () => _moveLesson(group, index, -1) : null,
@@ -3703,10 +3768,28 @@ class _CourseBatchesScreenState extends State<CourseBatchesScreen> {
       SquareMenuItem('Move to another batch', value: 'move', icon: CupertinoIcons.arrow_right_arrow_left),
       SquareMenuItem('Issue certificate', value: 'certificate', icon: CupertinoIcons.checkmark_seal),
       SquareMenuItem('Set / change password', value: 'password', icon: CupertinoIcons.lock),
+      SquareMenuItem('Delete student', value: 'delete', icon: CupertinoIcons.trash, destructive: true),
     ]);
     if (v == 'move') _reassign(userId, name, batch);
     if (v == 'certificate') _issueCertificate(userId, name);
     if (v == 'password') _setPassword(userId, name);
+    if (v == 'delete') _deleteStudent(userId, name);
+  }
+
+  // Permanently remove a student from the batch view.
+  Future<void> _deleteStudent(String userId, String name) async {
+    final yes = await showSquareConfirm(context,
+        title: 'Delete $name?',
+        message: 'This permanently removes the student and all their data (enrollments, progress, submissions). This cannot be undone.',
+        confirmLabel: 'Delete', destructive: true);
+    if (!yes) return;
+    try {
+      await widget.auth.apiDelete('/api/v1/manage/users/$userId/permanent');
+      _toast('Student deleted');
+    } catch (_) {
+      _toast("Couldn't delete");
+    }
+    _load();
   }
 
   // Issue this course's completion certificate to a single student.
