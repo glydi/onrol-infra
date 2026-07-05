@@ -218,6 +218,9 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           // A live host can only answer questions + watch live (no other access).
           Expanded(child: PrimaryButton(label: 'Add Live Host', icon: CupertinoIcons.dot_radiowaves_left_right, square: true, onPressed: () => _addPerson('live_host'))),
         ]),
+        const SizedBox(height: 12),
+        PrimaryButton(label: 'All Students (roster + export)', icon: CupertinoIcons.person_2_fill, square: true,
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => AllStudentsScreen(auth: widget.auth)))),
         const SizedBox(height: 16),
         // Search across ALL people (name/email/phone/username/role).
         Container(
@@ -3988,6 +3991,137 @@ class _LeadDetailSheet extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(child: Text(value, style: AppleTheme.body(context))),
       ]),
+    );
+  }
+}
+
+/// A full roster of every student — searchable, showing login ID / phone /
+/// batch, with one-tap CSV export. Opened from the People tab.
+class AllStudentsScreen extends StatefulWidget {
+  const AllStudentsScreen({super.key, required this.auth});
+  final AuthService auth;
+
+  @override
+  State<AllStudentsScreen> createState() => _AllStudentsScreenState();
+}
+
+class _AllStudentsScreenState extends State<AllStudentsScreen> {
+  List<Map<String, dynamic>> _students = [];
+  bool _loading = true;
+  String _q = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (mounted) setState(() => _loading = true);
+    try {
+      final u = ApiClient.decode(await widget.auth.apiGet('/api/v1/manage/users'));
+      _students = ((u['users'] as List?) ?? [])
+          .map((e) => (e as Map).cast<String, dynamic>())
+          .where((x) => x['role'] == 'student')
+          .toList();
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  List<Map<String, dynamic>> get _filtered {
+    final q = _q.trim().toLowerCase();
+    if (q.isEmpty) return _students;
+    return _students.where((s) {
+      final hay = [s['full_name'], s['email'], s['phone'], s['login_id'], s['batch'], s['course_label']]
+          .map((x) => (x ?? '').toString().toLowerCase())
+          .join(' ');
+      return hay.contains(q);
+    }).toList();
+  }
+
+  void _export() {
+    String esc(Object? x) => '"${(x ?? '').toString().replaceAll('"', '""')}"';
+    final rows = <String>['Name,Login ID,Email,Phone,Batch,Course,Active'];
+    for (final s in _filtered) {
+      rows.add([s['full_name'], s['login_id'], s['email'], s['phone'], s['batch'], s['course_label'], (s['is_active'] == false) ? 'no' : 'yes']
+          .map(esc)
+          .join(','));
+    }
+    saveFileBytes('students.csv', 'text/csv', utf8.encode(rows.join('\n')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final list = _filtered;
+    final hp = MediaQuery.of(context).size.width > 760 ? 28.0 : 14.0;
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: p.bg,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: IconButton(icon: const Icon(CupertinoIcons.chevron_left), onPressed: () => Navigator.pop(context)),
+        title: Text('All Students (${_students.length})', style: AppleTheme.headline(context)),
+        actions: [
+          IconButton(tooltip: 'Export CSV', icon: const Icon(CupertinoIcons.arrow_down_doc), onPressed: _students.isEmpty ? null : _export),
+          IconButton(tooltip: 'Refresh', icon: const Icon(CupertinoIcons.arrow_clockwise), onPressed: _load),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CupertinoActivityIndicator())
+          : Column(children: [
+              Padding(
+                padding: EdgeInsets.fromLTRB(hp, 12, hp, 8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  decoration: BoxDecoration(color: p.card, border: Border.all(color: p.separator)),
+                  child: Row(children: [
+                    Icon(CupertinoIcons.search, size: 18, color: p.secondary),
+                    const SizedBox(width: 10),
+                    Expanded(child: TextField(
+                      onChanged: (v) => setState(() => _q = v),
+                      style: AppleTheme.body(context),
+                      decoration: InputDecoration(isDense: true, border: InputBorder.none, hintText: 'Search name, login ID, phone, batch…', hintStyle: AppleTheme.body(context).copyWith(color: p.secondary)),
+                    )),
+                    if (_q.isNotEmpty) HoverTap(onTap: () => setState(() => _q = ''), child: Icon(CupertinoIcons.clear_circled_solid, size: 18, color: p.secondary)),
+                  ]),
+                ),
+              ),
+              if (list.isEmpty)
+                Expanded(child: Center(child: Text('No students found.', style: AppleTheme.footnote(context))))
+              else
+                Expanded(child: RefreshIndicator(
+                  color: p.accent,
+                  onRefresh: _load,
+                  child: ListView.separated(
+                    padding: EdgeInsets.fromLTRB(hp, 4, hp, 40),
+                    itemCount: list.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (_, i) {
+                      final s = list[i];
+                      final chips = <String>[];
+                      if ((s['login_id'] ?? '').toString().isNotEmpty) chips.add('ID ${s['login_id']}');
+                      if ((s['phone'] ?? '').toString().isNotEmpty) chips.add('${s['phone']}');
+                      if ((s['batch'] ?? '').toString().isNotEmpty) chips.add('Batch ${s['batch']}');
+                      return AppleCard(square: true, child: Row(children: [
+                        Avatar(name: s['full_name']?.toString() ?? '?', size: 38),
+                        const SizedBox(width: 12),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(s['full_name']?.toString() ?? '', style: AppleTheme.body(context).copyWith(fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 2),
+                          Text(s['email']?.toString() ?? '', style: AppleTheme.footnote(context).copyWith(color: p.secondary)),
+                          if (chips.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(chips.join('   ·   '), style: AppleTheme.footnote(context).copyWith(color: p.accent, fontWeight: FontWeight.w600)),
+                          ],
+                        ])),
+                        if (s['is_active'] == false) const Icon(CupertinoIcons.nosign, color: AppleColors.red, size: 18),
+                      ]));
+                    },
+                  ),
+                )),
+            ]),
     );
   }
 }
