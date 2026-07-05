@@ -602,14 +602,22 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     }
   }
 
-  // Broadcast an announcement to everyone, a batch, or a role.
+  // Broadcast an announcement to everyone, a batch, or one course's students.
   Future<void> _sendAnnouncement() async {
+    // Courses for the "Course" audience (send to that course's students only).
+    List<Map<String, dynamic>> courses = [];
+    try {
+      courses = (((ApiClient.decode(await widget.auth.apiGet('/api/v1/manage/courses'))['courses']) as List?) ?? [])
+          .map((e) => (e as Map).cast<String, dynamic>())
+          .toList();
+    } catch (_) {}
+    if (!mounted) return;
     final title = TextEditingController();
     final body = TextEditingController();
     final batch = TextEditingController();
-    int audience = 0; // 0=all, 1=batch, 2=role
-    int role = 0; // student, instructor, manager
-    const roles = ['student', 'instructor', 'manager'];
+    int audience = 0; // 0=Everyone, 1=Batch, 2=Course
+    String? courseId = courses.isNotEmpty ? courses.first['id'].toString() : null;
+    final p = Palette.of(context);
     final ok = await showFormSheet(context, square: true, title: 'Send Announcement', builder: (setS) => [
       sheetField(title, 'Title', CupertinoIcons.textformat),
       const SizedBox(height: 10),
@@ -617,28 +625,51 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       const SizedBox(height: 12),
       Text('Audience', style: AppleTheme.footnote(context)),
       const SizedBox(height: 6),
-      AppleSegmented(square: true, labels: const ['Everyone', 'Batch', 'Role'], selected: audience, onChanged: (i) => setS(() => audience = i)),
+      AppleSegmented(square: true, labels: const ['Everyone', 'Batch', 'Course'], selected: audience, onChanged: (i) => setS(() => audience = i)),
       if (audience == 1) ...[
         const SizedBox(height: 10),
         sheetField(batch, 'Batch number', CupertinoIcons.number, keyboard: TextInputType.number),
       ],
       if (audience == 2) ...[
         const SizedBox(height: 10),
-        AppleSegmented(square: true, labels: const ['Students', 'Instructors', 'Managers'], selected: role, onChanged: (i) => setS(() => role = i)),
+        _label(context, 'Course — only its enrolled students are notified'),
+        const SizedBox(height: 6),
+        if (courses.isEmpty)
+          Text('No courses available.', style: AppleTheme.footnote(context))
+        else
+          ...courses.map((c) {
+            final id = c['id'].toString();
+            final on = id == courseId;
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setS(() => courseId = id),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                decoration: BoxDecoration(color: on ? p.accent.withOpacity(0.10) : p.card2, border: Border.all(color: on ? p.accent : p.separator)),
+                child: Row(children: [
+                  Icon(on ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle, size: 18, color: on ? p.accent : p.secondary),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(c['title']?.toString() ?? 'Course', style: AppleTheme.body(context))),
+                ]),
+              ),
+            );
+          }),
       ],
     ], onSubmit: () async {
       if (title.text.trim().isEmpty) return 'Title required';
-      final payload = <String, dynamic>{
-        'title': title.text.trim(),
-        'body': body.text.trim(),
-        'audience': audience == 0 ? 'all' : (audience == 1 ? 'batch' : 'role'),
-      };
-      if (audience == 1) {
+      final payload = <String, dynamic>{'title': title.text.trim(), 'body': body.text.trim()};
+      if (audience == 0) {
+        payload['audience'] = 'all';
+      } else if (audience == 1) {
         final n = int.tryParse(batch.text.trim());
         if (n == null) return 'Enter a batch number';
+        payload['audience'] = 'batch';
         payload['batch_number'] = n;
+      } else {
+        if (courseId == null) return 'Pick a course';
+        payload['course_id'] = courseId; // course-scoped: its students only
       }
-      if (audience == 2) payload['role'] = roles[role];
       try {
         await widget.auth.apiPost('/api/v1/manage/announcements', payload);
         return null;
@@ -2905,51 +2936,73 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     if (ok == true) _load();
   }
 
-  // A tall, roomy Markdown editor with a Write ⇄ Preview toggle — shared by
-  // Add & Edit Course Material so text materials get a real writing surface
-  // (fills ~half the screen height) instead of a couple of lines.
-  List<Widget> _mdEditor({required TextEditingController body, required bool preview, required void Function(bool) onPreview}) {
-    // Fills most of the near-full-screen sheet — a real writing surface.
-    final h = (MediaQuery.of(context).size.height * 0.62).clamp(360.0, 1100.0);
+  // A tall, roomy Markdown editor shared by Add & Edit Course Material. On a
+  // wide sheet it's a LIVE split view — raw Markdown on the left, rendered
+  // output on the right, updating as you type. On narrow screens it falls back
+  // to a Write ⇄ Preview toggle. [refresh] rebuilds so the preview stays live.
+  List<Widget> _mdEditor({required TextEditingController body, required bool preview, required void Function(bool) onPreview, required void Function() refresh}) {
+    final size = MediaQuery.of(context).size;
+    final h = (size.height * 0.62).clamp(360.0, 1100.0);
+    final split = size.width > 720;
+    final p = Palette.of(context);
+
+    Widget editor() => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+          child: TextField(
+            controller: body,
+            expands: true,
+            maxLines: null,
+            minLines: null,
+            textAlignVertical: TextAlignVertical.top,
+            keyboardType: TextInputType.multiline,
+            onChanged: split ? (_) => refresh() : null, // keep the live preview in sync
+            style: TextStyle(color: p.label, fontSize: 15, height: 1.5),
+            decoration: InputDecoration(border: InputBorder.none, isDense: true, hintText: 'Paste or write Markdown…', hintStyle: TextStyle(color: p.secondary)),
+          ),
+        );
+
+    Widget rendered() => Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+          child: SingleChildScrollView(
+            child: MarkdownView(
+              text: body.text,
+              textColor: p.label,
+              mutedColor: p.secondary,
+              accent: p.accent,
+              borderColor: p.separator,
+              dark: p.dark,
+              emptyLabel: 'Nothing to preview yet — write some Markdown.',
+            ),
+          ),
+        );
+
+    Widget paneLabel(String s) => Padding(padding: const EdgeInsets.only(left: 2, bottom: 4), child: Text(s, style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700, color: p.secondary)));
+
     return [
       _label(context, 'Content — Markdown supported (# headings, **bold**, - lists, > quote, `code`). Paste Markdown here.'),
-      const SizedBox(height: 6),
-      AppleSegmented(square: true, labels: const ['Write', 'Preview'], selected: preview ? 1 : 0, onChanged: (i) => onPreview(i == 1)),
       const SizedBox(height: 8),
-      SizedBox(
-        height: h,
-        child: preview
-            ? Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(color: Palette.of(context).card2, border: Border.all(color: Palette.of(context).separator)),
-                child: SingleChildScrollView(
-                  child: MarkdownView(
-                    text: body.text,
-                    textColor: Palette.of(context).label,
-                    mutedColor: Palette.of(context).secondary,
-                    accent: Palette.of(context).accent,
-                    borderColor: Palette.of(context).separator,
-                    dark: Palette.of(context).dark,
-                    emptyLabel: 'Nothing to preview yet — write some Markdown.',
-                  ),
-                ),
-              )
-            : Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(color: Palette.of(context).card2, border: Border.all(color: Palette.of(context).separator)),
-                child: TextField(
-                  controller: body,
-                  expands: true,
-                  maxLines: null,
-                  minLines: null,
-                  textAlignVertical: TextAlignVertical.top,
-                  keyboardType: TextInputType.multiline,
-                  style: TextStyle(color: Palette.of(context).label, fontSize: 15, height: 1.5),
-                  decoration: InputDecoration(border: InputBorder.none, isDense: true, hintText: 'Paste or write Markdown…', hintStyle: TextStyle(color: Palette.of(context).secondary)),
-                ),
-              ),
-      ),
+      if (split) ...[
+        Row(children: [
+          Expanded(child: paneLabel('Write')),
+          const SizedBox(width: 12),
+          Expanded(child: paneLabel('Live preview')),
+        ]),
+        SizedBox(
+          height: h,
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Expanded(child: editor()),
+            const SizedBox(width: 12),
+            Expanded(child: rendered()),
+          ]),
+        ),
+      ] else ...[
+        AppleSegmented(square: true, labels: const ['Write', 'Preview'], selected: preview ? 1 : 0, onChanged: (i) => onPreview(i == 1)),
+        const SizedBox(height: 8),
+        SizedBox(height: h, child: preview ? rendered() : editor()),
+      ],
     ];
   }
 
@@ -2991,7 +3044,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       ],
       const SizedBox(height: 10),
       if (type == 0)
-        ..._mdEditor(body: body, preview: preview, onPreview: (v) => setS(() => preview = v))
+        ..._mdEditor(body: body, preview: preview, onPreview: (v) => setS(() => preview = v), refresh: () => setS(() {}))
       else
         sheetField(
           body,
@@ -3129,7 +3182,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       AppleSegmented(square: true, labels: const ['Text', 'Video', 'Link', 'Document'], selected: type, onChanged: (i) => setS(() => type = i)),
       const SizedBox(height: 10),
       if (type == 0)
-        ..._mdEditor(body: body, preview: preview, onPreview: (v) => setS(() => preview = v))
+        ..._mdEditor(body: body, preview: preview, onPreview: (v) => setS(() => preview = v), refresh: () => setS(() {}))
       else
         sheetField(
           body,
