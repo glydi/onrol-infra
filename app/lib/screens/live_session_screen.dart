@@ -215,7 +215,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
               Flexible(child: Text(_title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w700))),
               if (widget.isHost) ...[
                 const SizedBox(width: 8),
-                Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: _orange.withOpacity(0.2), borderRadius: BorderRadius.zero, border: Border.all(color: _orange.withOpacity(0.5))), child: Text('HOST', style: GoogleFonts.inter(color: _orange, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.5))),
+                Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: _orange.withOpacity(0.2), borderRadius: BorderRadius.zero, border: Border.all(color: _orange.withOpacity(0.5))), child: Text('MENTOR', style: GoogleFonts.inter(color: _orange, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.5))),
               ],
             ]),
             if (_course.isNotEmpty) Text(_course, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: Colors.white54, fontSize: 12)),
@@ -347,7 +347,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   Widget _studentQa() {
     final myId = widget.auth.user?.id ?? '';
     return Column(children: [
-      _panelHeader('Q&A', 'Ask the host — only the host sees your question.'),
+      _panelHeader('Ask Mentor', 'Ask your mentor — only your mentor sees your question.'),
       Expanded(
         child: _questions.isEmpty
             ? Center(child: Text('No questions yet — ask away 👋', style: GoogleFonts.inter(color: Colors.white38, fontSize: 13)))
@@ -369,7 +369,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                       const SizedBox(height: 8),
                       if (answered) ...[
                         Container(width: double.infinity, padding: const EdgeInsets.all(9), decoration: BoxDecoration(color: _orange.withOpacity(0.10), borderRadius: BorderRadius.zero), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('Host answered', style: GoogleFonts.inter(color: _orange, fontSize: 11, fontWeight: FontWeight.w700)),
+                          Text('Mentor answered', style: GoogleFonts.inter(color: _orange, fontSize: 11, fontWeight: FontWeight.w700)),
                           const SizedBox(height: 2),
                           Text(q['answer']?.toString() ?? '', style: GoogleFonts.inter(color: Colors.white.withOpacity(0.92), fontSize: 13, height: 1.25)),
                         ])),
@@ -380,7 +380,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                 },
               ),
       ),
-      _composer(_qaCtl, 'Ask a question…', _sendQuestion, _sendingQa),
+      _composer(_qaCtl, 'Ask your mentor a question…', _sendQuestion, _sendingQa),
     ]);
   }
 

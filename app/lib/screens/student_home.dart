@@ -4974,7 +4974,9 @@ class _AiNewsCardState extends State<_AiNewsCard> {
     if (_refreshing) return;
     if (mounted) setState(() => _refreshing = true);
     try {
-      final res = await widget.auth.apiGet('/api/v1/news?category=ai');
+      // 'all' — the full AI + tech mix across every domain (per-source capped
+      // server-side so no single feed dominates).
+      final res = await widget.auth.apiGet('/api/v1/news?category=all');
       final data = ApiClient.decode(res);
       final list = ((data['news'] as List?) ?? [])
           .map((e) => _News.fromJson(e as Map<String, dynamic>))

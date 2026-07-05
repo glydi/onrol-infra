@@ -33,25 +33,58 @@ import (
 type newsFeed struct {
 	Source   string
 	URL      string
-	Category string // ai | tech | (future: cybersecurity, cloud, startups, coding)
+	Category string // ai | tech | research | data | cybersecurity | cloud | coding | robotics | web | startups
 }
 
-// Curated, reliable public feeds (all verified to return real RSS/Atom). Vendor
-// blogs first, then AI press. Dead/empty feeds are skipped gracefully, so this
-// list can grow freely.
+// Curated public feeds across AI + the wider tech industry (all return real
+// RSS/Atom). Dead/empty feeds are skipped gracefully, so this list can grow
+// freely. Grouped by domain.
 var newsFeeds = []newsFeed{
+	// --- AI: labs & vendors -------------------------------------------------
 	{"OpenAI", "https://openai.com/news/rss.xml", "ai"},
 	{"Google DeepMind", "https://deepmind.google/blog/rss.xml", "ai"},
+	{"Google AI", "https://blog.google/technology/ai/rss/", "ai"},
+	{"Hugging Face", "https://huggingface.co/blog/feed.xml", "ai"},
 	{"Microsoft", "https://news.microsoft.com/source/feed/", "ai"},
 	{"Azure AI", "https://azure.microsoft.com/en-us/blog/feed/", "ai"},
 	{"NVIDIA AI", "https://blogs.nvidia.com/feed/", "ai"},
 	{"Meta AI", "https://engineering.fb.com/feed/", "ai"},
 	{"AWS Machine Learning", "https://aws.amazon.com/blogs/machine-learning/feed/", "ai"},
+	{"MarkTechPost", "https://www.marktechpost.com/feed/", "ai"},
+	// --- AI research & data science ----------------------------------------
+	{"arXiv cs.AI", "http://export.arxiv.org/rss/cs.AI", "research"},
+	{"arXiv cs.LG", "http://export.arxiv.org/rss/cs.LG", "research"},
+	{"BAIR (Berkeley AI)", "https://bair.berkeley.edu/blog/feed.xml", "research"},
+	{"KDnuggets", "https://www.kdnuggets.com/feed", "data"},
+	{"Databricks", "https://www.databricks.com/blog/feed", "data"},
+	// --- Tech press ---------------------------------------------------------
 	{"TechCrunch AI", "https://techcrunch.com/category/artificial-intelligence/feed/", "tech"},
+	{"TechCrunch", "https://techcrunch.com/feed/", "startups"},
 	{"The Verge AI", "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml", "tech"},
 	{"VentureBeat AI", "https://venturebeat.com/category/ai/feed/", "tech"},
 	{"Ars Technica AI", "https://arstechnica.com/ai/feed/", "tech"},
 	{"MIT Tech Review", "https://www.technologyreview.com/topic/artificial-intelligence/feed", "tech"},
+	{"Wired", "https://www.wired.com/feed/rss", "tech"},
+	{"Engadget", "https://www.engadget.com/rss.xml", "tech"},
+	// --- Cybersecurity ------------------------------------------------------
+	{"The Hacker News", "https://feeds.feedburner.com/TheHackersNews", "cybersecurity"},
+	{"Krebs on Security", "https://krebsonsecurity.com/feed/", "cybersecurity"},
+	{"BleepingComputer", "https://www.bleepingcomputer.com/feed/", "cybersecurity"},
+	{"Dark Reading", "https://www.darkreading.com/rss.xml", "cybersecurity"},
+	// --- Cloud & DevOps -----------------------------------------------------
+	{"Google Cloud", "https://cloudblog.withgoogle.com/rss/", "cloud"},
+	{"Kubernetes", "https://kubernetes.io/feed.xml", "cloud"},
+	{"The New Stack", "https://thenewstack.io/feed/", "cloud"},
+	{"HashiCorp", "https://www.hashicorp.com/blog/feed.xml", "cloud"},
+	// --- Coding & developer -------------------------------------------------
+	{"GitHub Blog", "https://github.blog/feed/", "coding"},
+	{"Stack Overflow Blog", "https://stackoverflow.blog/feed/", "coding"},
+	{"Dev.to", "https://dev.to/feed", "coding"},
+	{"InfoQ", "https://feed.infoq.com/", "coding"},
+	{"Smashing Magazine", "https://www.smashingmagazine.com/feed/", "web"},
+	// --- Robotics & startups ------------------------------------------------
+	{"IEEE Spectrum", "https://spectrum.ieee.org/rss/fulltext", "robotics"},
+	{"Hacker News", "https://hnrss.org/frontpage", "startups"},
 }
 
 // newsArticle is the shape returned to the client.
@@ -200,10 +233,35 @@ func fetchAllFeeds(ctx context.Context) []newsArticle {
 	wg.Wait()
 
 	sort.Slice(all, func(i, j int) bool { return all[i].PublishedAt.After(all[j].PublishedAt) })
-	if len(all) > newsLimit {
-		all = all[:newsLimit]
+
+	// Cap per source (newest-first) so one high-volume feed can't crowd out the
+	// rest — keeps the headline mix diverse across every domain. Backfill from
+	// the remainder if the cap leaves us short (e.g. few feeds live).
+	const maxPerSource = 4
+	perSource := map[string]int{}
+	seenURL := map[string]bool{}
+	out := make([]newsArticle, 0, newsLimit)
+	for _, a := range all {
+		if perSource[a.Source] >= maxPerSource {
+			continue
+		}
+		perSource[a.Source]++
+		seenURL[a.URL] = true
+		out = append(out, a)
+		if len(out) >= newsLimit {
+			return out
+		}
 	}
-	return all
+	for _, a := range all {
+		if seenURL[a.URL] {
+			continue
+		}
+		out = append(out, a)
+		if len(out) >= newsLimit {
+			break
+		}
+	}
+	return out
 }
 
 // rss / atom container — one struct parses both formats.
