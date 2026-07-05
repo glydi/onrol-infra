@@ -99,7 +99,11 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   Future<void> _setCourseStatus(String courseId, String status) async {
     try {
       await widget.auth.apiPatch('/api/v1/manage/courses/$courseId', {'status': status});
-      _toast(status == 'archived' ? 'Course archived' : 'Course restored to draft');
+      _toast(status == 'archived'
+          ? 'Course archived'
+          : status == 'published'
+              ? 'Course published to Explore'
+              : 'Course moved to draft (hidden from Explore)');
       _load();
     } catch (_) {
       _toast('Could not update');
@@ -125,9 +129,15 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   Future<void> _courseMenu(Map<String, dynamic> c) async {
     final id = c['id'].toString();
     final title = c['title']?.toString() ?? 'Course';
-    final archived = (c['status']?.toString() ?? '') == 'archived';
+    final status = c['status']?.toString() ?? 'draft';
+    final archived = status == 'archived';
+    final published = status == 'published';
     final v = await showSquareMenu(context, title: title, items: [
       const SquareMenuItem('View batches', value: 'batches', icon: CupertinoIcons.square_stack_3d_up),
+      if (published)
+        const SquareMenuItem('Unpublish (hide from Explore)', value: 'unpublish', icon: CupertinoIcons.eye_slash)
+      else
+        const SquareMenuItem('Publish to Explore', value: 'publish', icon: CupertinoIcons.compass_fill),
       SquareMenuItem(archived ? 'Restore to draft' : 'Archive course', value: 'archive', icon: CupertinoIcons.archivebox),
       const SquareMenuItem('Delete course', value: 'delete', icon: CupertinoIcons.trash, destructive: true),
     ]);
@@ -136,6 +146,10 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => CourseBatchesScreen(auth: widget.auth, courseId: id, title: title),
       ));
+    } else if (v == 'publish') {
+      _setCourseStatus(id, 'published');
+    } else if (v == 'unpublish') {
+      _setCourseStatus(id, 'draft');
     } else if (v == 'archive') {
       archived ? _setCourseStatus(id, 'draft') : _setCourseStatus(id, 'archived');
     } else if (v == 'delete') {
