@@ -1196,35 +1196,15 @@ class _StudentHomeState extends State<StudentHome> {
     final id = l['id'].toString();
     final url = l['url']?.toString() ?? '';
     final type = l['type']?.toString() ?? 'text';
-    final startAt = ((l['position'] ?? 0) as num).toInt();
-    if (type == 'video' && url.isNotEmpty) {
-      // Stream in-app (mp4 native, .m3u8 via hls.js) — not a download. Resumes
-      // from the saved position; saves progress + marks complete when finished.
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => VideoPlayerScreen(
-          url: url,
-          watermark: widget.auth.user?.email ?? 'student',
-          title: l['title']?.toString() ?? 'Video',
-          authToken: widget.auth.token,
-          startAt: Duration(seconds: startAt),
-          onProgress: (pos, dur) {
-            widget.auth.apiPost('/api/v1/me/lessons/$id/progress', {'position': pos.inSeconds}).ignore();
-          },
-          onCompleted: () {
-            widget.auth.apiPost('/api/v1/me/lessons/$id/complete', {}).ignore();
-          },
-        ),
-      ));
-      return; // videos complete when watched, not on open
-    } else if ((type == 'link' || type == 'file') && url.startsWith('http')) {
+    if ((type == 'link' || type == 'file') && url.startsWith('http')) {
       // Open the link / document (PDF, Word, …) — browser renders or downloads it.
       try {
         await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
       } catch (_) {}
     } else if (url.isNotEmpty) {
-      // Text material: open a full-page reader positioned here. Previous/Next
-      // page through ALL the materials in this module (text renders inline;
-      // video/link/document show an Open button).
+      // Text OR video material: open the full-page reader positioned here. The
+      // video plays INLINE in the material view (not a separate bare player).
+      // Previous/Next page through ALL the materials in this module.
       final items = (siblings != null && siblings.isNotEmpty) ? siblings : <Map<String, dynamic>>[l];
       var idx = items.indexWhere((x) => x['id'].toString() == id);
       if (idx < 0) idx = 0;
