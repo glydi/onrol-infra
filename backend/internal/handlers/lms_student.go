@@ -132,7 +132,7 @@ func (h *Handlers) Catalog(c *fiber.Ctx) error {
 	// Only courses the student is NOT already enrolled in (and hasn't a pending
 	// request for) — so the catalog only offers courses they can newly join.
 	rows, err := h.Pool.Query(c.Context(), `
-		SELECT c.id, c.title, c.description, c.enroll_type, COALESCE(cc.name,'')
+		SELECT c.id, c.title, c.description, c.enroll_type, COALESCE(cc.name,''), COALESCE(c.image_url,'')
 		FROM courses c LEFT JOIN course_categories cc ON cc.id=c.category_id
 		WHERE (c.status='published' OR c.in_explore) AND c.status<>'archived'
 		  AND NOT EXISTS (SELECT 1 FROM course_enrollments ce WHERE ce.course_id=c.id AND ce.user_id=$1)
@@ -144,11 +144,11 @@ func (h *Handlers) Catalog(c *fiber.Ctx) error {
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var id, title, desc, et, cat string
-		if err := rows.Scan(&id, &title, &desc, &et, &cat); err != nil {
+		var id, title, desc, et, cat, img string
+		if err := rows.Scan(&id, &title, &desc, &et, &cat, &img); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
-		out = append(out, fiber.Map{"id": id, "title": title, "description": desc, "enroll_type": et, "category": cat})
+		out = append(out, fiber.Map{"id": id, "title": title, "description": desc, "enroll_type": et, "category": cat, "image_url": img})
 	}
 	return c.JSON(fiber.Map{"catalog": out})
 }

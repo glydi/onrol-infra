@@ -2462,32 +2462,72 @@ class _ExploreListState extends State<_ExploreList> {
     );
   }
 
+  // A visual course tile: cover image, title, description and an enroll button.
   Widget _courseRow(Map<String, dynamic> m, int index) {
     final id = m['id'].toString();
     final self = m['enroll_type'] == 'self';
     final title = m['title']?.toString() ?? 'Course';
+    final desc = m['description']?.toString() ?? '';
+    final img = m['image_url']?.toString() ?? '';
     final enrolled = _enrolled.contains(id);
     final requested = _requested.contains(id);
     final busy = _busy.contains(id);
     final done = enrolled || requested;
-
-    final String badge = busy ? '…' : (enrolled ? 'Enrolled ✓' : (requested ? 'Requested' : (self ? 'Enroll' : 'Request')));
+    final badge = busy ? '…' : (enrolled ? 'Enrolled' : (requested ? 'Requested' : (self ? 'Enroll' : 'Request')));
 
     return _Entrance(
       index: index,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: done || busy ? null : () => _enroll(id, title, self),
-        child: _row(
-          done ? CupertinoIcons.checkmark_seal_fill : CupertinoIcons.book_fill,
-          title,
-          m['category']?.toString() ?? '',
-          badge,
-          badgeBg: done ? _greenBg : null,
-          badgeFg: done ? _green : null,
-        ),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _tileCover(img),
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800, color: _navy)),
+              if (desc.trim().isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(desc, maxLines: 3, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 13, color: _grey, height: 1.45)),
+              ],
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _Pressable(
+                  onTap: done || busy ? null : () => _enroll(id, title, self),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                    decoration: BoxDecoration(gradient: done ? null : _orangeGrad, color: done ? _greenBg : null),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(done ? CupertinoIcons.checkmark_alt : (self ? CupertinoIcons.arrow_right_circle_fill : CupertinoIcons.paperplane_fill), size: 15, color: done ? _green : Colors.white),
+                      const SizedBox(width: 6),
+                      Text(badge, style: GoogleFonts.inter(fontSize: 13.5, fontWeight: FontWeight.w700, color: done ? _green : Colors.white)),
+                    ]),
+                  ),
+                ),
+              ),
+            ]),
+          ),
+        ]),
       ),
     );
+  }
+
+  Widget _tileCover(String url) {
+    final fallback = Container(
+      height: 130,
+      decoration: const BoxDecoration(gradient: _orangeGrad),
+      child: Center(child: Icon(CupertinoIcons.book_fill, color: Colors.white.withOpacity(0.9), size: 38)),
+    );
+    if (url.trim().isEmpty) return fallback;
+    if (url.startsWith('data:')) {
+      try {
+        return Image.memory(base64Decode(url.substring(url.indexOf(',') + 1)), height: 130, width: double.infinity, fit: BoxFit.cover);
+      } catch (_) {
+        return fallback;
+      }
+    }
+    return Image.network(url, height: 130, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => fallback);
   }
 }
 

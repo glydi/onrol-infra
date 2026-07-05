@@ -4065,6 +4065,83 @@ class _ExploreCoursesScreenState extends State<ExploreCoursesScreen> {
     }
   }
 
+  Future<String?> _pickImage() async {
+    try {
+      final x = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 1280, maxHeight: 1280, imageQuality: 82);
+      if (x == null) return null;
+      final raw = await x.readAsBytes();
+      if (raw.isEmpty) return null;
+      Uint8List out;
+      String mime;
+      final decoded = img.decodeImage(raw);
+      if (decoded != null) {
+        out = img.encodeJpg(img.copyResize(decoded, width: decoded.width > 800 ? 800 : decoded.width), quality: 80);
+        mime = 'image/jpeg';
+      } else {
+        out = raw;
+        mime = x.mimeType ?? 'image/png';
+      }
+      if (out.lengthInBytes > 900000) return null;
+      return 'data:$mime;base64,${base64Encode(out)}';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Edit the tile shown in the student Explore catalog (title, description, cover).
+  Future<void> _editTile(Map<String, dynamic> c) async {
+    final title = TextEditingController(text: c['title']?.toString() ?? '');
+    final desc = TextEditingController(text: c['description']?.toString() ?? '');
+    final imageUrl = TextEditingController(text: c['image_url']?.toString() ?? '');
+    String? imageData;
+    final ok = await showFormSheet(context, square: true, full: true, title: 'Edit Explore Tile', builder: (setS) => [
+      sheetField(title, 'Title (shown on the tile)', CupertinoIcons.textformat),
+      const SizedBox(height: 10),
+      sheetField(desc, 'Description (shown on the tile)', CupertinoIcons.text_alignleft),
+      const SizedBox(height: 16),
+      _label(context, 'Cover image'),
+      const SizedBox(height: 6),
+      _CourseImagePicker(
+        dataUri: imageData,
+        urlController: imageUrl,
+        onUpload: () async {
+          final d = await _pickImage();
+          if (d != null) setS(() => imageData = d);
+        },
+        onClear: () => setS(() {
+          imageData = null;
+          imageUrl.clear();
+        }),
+        onUrlChanged: () => setS(() {}),
+      ),
+    ], onSubmit: () async {
+      if (title.text.trim().isEmpty) return 'Title required';
+      final body = <String, dynamic>{'title': title.text.trim(), 'description': desc.text.trim()};
+      final image = imageData ?? (imageUrl.text.trim().isNotEmpty ? imageUrl.text.trim() : null);
+      if (image != null) body['image_url'] = image;
+      try {
+        await widget.auth.apiPatch('/api/v1/manage/courses/${c['id']}', body);
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) _load();
+  }
+
+  Widget _thumb(String url) {
+    final fallback = Container(color: AppleColors.blue.withOpacity(0.12), child: const Icon(CupertinoIcons.book_fill, color: AppleColors.blue, size: 18));
+    if (url.trim().isEmpty) return fallback;
+    if (url.startsWith('data:')) {
+      try {
+        return Image.memory(base64Decode(url.substring(url.indexOf(',') + 1)), fit: BoxFit.cover);
+      } catch (_) {
+        return fallback;
+      }
+    }
+    return Image.network(url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => fallback);
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
@@ -4102,20 +4179,25 @@ class _ExploreCoursesScreenState extends State<ExploreCoursesScreen> {
                   ..._courses.map((c) {
                     final status = c['status']?.toString() ?? 'draft';
                     final on = c['in_explore'] == true;
+                    final img = c['image_url']?.toString() ?? '';
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 10),
-                      child: AppleCard(square: true, child: Row(children: [
-                        Container(
-                          width: 42, height: 42,
-                          decoration: BoxDecoration(color: AppleColors.blue.withOpacity(0.12), borderRadius: BorderRadius.zero),
-                          child: const Icon(CupertinoIcons.book_fill, color: AppleColors.blue, size: 20),
-                        ),
+                      child: AppleCard(square: true, onTap: () => _editTile(c), child: Row(children: [
+                        // Cover thumbnail (or a placeholder) — a preview of the tile.
+                        SizedBox(width: 64, height: 44, child: _thumb(img)),
                         const SizedBox(width: 12),
                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text(c['title']?.toString() ?? 'Course', style: AppleTheme.body(context).copyWith(fontWeight: FontWeight.w700)),
                           const SizedBox(height: 2),
                           Text('$status · ${c['enroll_type'] ?? ''} enrollment', style: AppleTheme.footnote(context).copyWith(color: p.secondary)),
+                          const SizedBox(height: 3),
+                          Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(CupertinoIcons.pencil, size: 12, color: p.accent),
+                            const SizedBox(width: 4),
+                            Text('Edit tile', style: AppleTheme.footnote(context).copyWith(color: p.accent, fontWeight: FontWeight.w600)),
+                          ]),
                         ])),
+                        const SizedBox(width: 8),
                         Column(mainAxisSize: MainAxisSize.min, children: [
                           CupertinoSwitch(value: on, activeTrackColor: AppleColors.green, onChanged: (v) => _toggle(c, v)),
                           Text(on ? 'In Explore' : 'Hidden', style: AppleTheme.footnote(context).copyWith(color: on ? AppleColors.green : p.secondary)),
