@@ -4050,6 +4050,129 @@ class _AllStudentsScreenState extends State<AllStudentsScreen> {
     saveFileBytes('students.csv', 'text/csv', utf8.encode(rows.join('\n')));
   }
 
+  void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
+
+  // Per-student operations + info, opened from a roster row.
+  Future<void> _ops(Map<String, dynamic> s) async {
+    final id = s['id'].toString();
+    final name = s['full_name']?.toString() ?? 'Student';
+    final v = await showSquareMenu(context, title: name, items: const [
+      SquareMenuItem('View info', value: 'info', icon: CupertinoIcons.info_circle),
+      SquareMenuItem('Set / change batch', value: 'batch', icon: CupertinoIcons.number),
+      SquareMenuItem('Set / change password', value: 'password', icon: CupertinoIcons.lock),
+      SquareMenuItem('Manage devices', value: 'devices', icon: CupertinoIcons.device_phone_portrait),
+      SquareMenuItem('Deactivate (block sign-in)', value: 'deactivate', icon: CupertinoIcons.nosign),
+      SquareMenuItem('Delete permanently', value: 'delete', icon: CupertinoIcons.trash, destructive: true),
+    ]);
+    if (v == 'info') _info(s);
+    if (v == 'batch') {
+      final cur = s['batch']?.toString().trim() ?? '';
+      _setBatch(id, name, cur.isEmpty ? null : cur);
+    }
+    if (v == 'password') _setPassword(id, name);
+    if (v == 'devices' && mounted) {
+      await showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
+          builder: (_) => _DeviceSheet(auth: widget.auth, userId: id, name: name, email: s['email']?.toString() ?? ''));
+      _load();
+    }
+    if (v == 'deactivate') _deactivate(id, name);
+    if (v == 'delete') _delete(id, name);
+  }
+
+  void _info(Map<String, dynamic> s) {
+    final p = Palette.of(context);
+    Widget row(String k, Object? val) {
+      final v = (val ?? '').toString();
+      return Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(width: 96, child: Text(k, style: AppleTheme.footnote(context).copyWith(color: p.secondary))),
+        Expanded(child: SelectableText(v.isEmpty ? '—' : v, style: AppleTheme.body(context))),
+      ]));
+    }
+
+    showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (_) => Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Align(alignment: Alignment.center, child: Container(
+        margin: const EdgeInsets.all(16),
+        constraints: const BoxConstraints(maxWidth: 560),
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(color: p.card),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Expanded(child: Text(s['full_name']?.toString() ?? 'Student', style: AppleTheme.title2(context))),
+            GestureDetector(behavior: HitTestBehavior.opaque, onTap: () => Navigator.pop(context), child: Icon(CupertinoIcons.xmark, color: p.secondary)),
+          ]),
+          const SizedBox(height: 12),
+          row('Login ID', s['login_id']),
+          row('Email', s['email']),
+          row('Phone', s['phone']),
+          row('Batch', s['batch']),
+          row('Course', s['course_label']),
+          row('Username', s['username']),
+          row('Status', s['is_active'] == false ? 'Inactive' : 'Active'),
+        ]),
+      )),
+    ));
+  }
+
+  Future<void> _setBatch(String id, String name, String? current) async {
+    String code = current ?? '';
+    final ok = await showFormSheet(context, square: true, title: 'Set Batch — $name',
+        builder: (_) => [
+          Text('Batch code — leave blank to clear', style: AppleTheme.footnote(context)),
+          const SizedBox(height: 8),
+          BatchCodeField(initial: current, onChanged: (v) => code = v),
+        ], onSubmit: () async {
+      try {
+        await widget.auth.apiPost('/api/v1/manage/users/$id/batch', {'batch': code.trim()});
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) {
+      _toast('Batch updated');
+      _load();
+    }
+  }
+
+  Future<void> _setPassword(String id, String name) async {
+    final pw = TextEditingController(text: 'onrol@ai');
+    final ok = await showFormSheet(context, square: true, title: 'Set Password — $name',
+        builder: (_) => [sheetField(pw, 'New password (min 8)', CupertinoIcons.lock)],
+        onSubmit: () async {
+      if (pw.text.trim().length < 8) return 'Password must be at least 8 characters';
+      try {
+        await widget.auth.apiPost('/api/v1/manage/users/$id/password', {'password': pw.text.trim()});
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) _toast('Password updated');
+  }
+
+  Future<void> _deactivate(String id, String name) async {
+    final yes = await showSquareConfirm(context, title: 'Deactivate $name?',
+        message: 'They will be blocked from signing in (reversible).', confirmLabel: 'Deactivate', destructive: true);
+    if (!yes) return;
+    try {
+      await widget.auth.apiDelete('/api/v1/manage/users/$id');
+      _toast('Student deactivated');
+    } catch (_) {}
+    _load();
+  }
+
+  Future<void> _delete(String id, String name) async {
+    final yes = await showSquareConfirm(context, title: 'Delete $name?',
+        message: 'Permanently removes the student and all their data. This cannot be undone.', confirmLabel: 'Delete', destructive: true);
+    if (!yes) return;
+    try {
+      await widget.auth.apiDelete('/api/v1/manage/users/$id/permanent');
+      _toast('Student deleted');
+    } catch (_) {}
+    _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
@@ -4104,7 +4227,7 @@ class _AllStudentsScreenState extends State<AllStudentsScreen> {
                       if ((s['login_id'] ?? '').toString().isNotEmpty) chips.add('ID ${s['login_id']}');
                       if ((s['phone'] ?? '').toString().isNotEmpty) chips.add('${s['phone']}');
                       if ((s['batch'] ?? '').toString().isNotEmpty) chips.add('Batch ${s['batch']}');
-                      return AppleCard(square: true, child: Row(children: [
+                      return AppleCard(square: true, onTap: () => _ops(s), child: Row(children: [
                         Avatar(name: s['full_name']?.toString() ?? '?', size: 38),
                         const SizedBox(width: 12),
                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -4116,7 +4239,8 @@ class _AllStudentsScreenState extends State<AllStudentsScreen> {
                             Text(chips.join('   ·   '), style: AppleTheme.footnote(context).copyWith(color: p.accent, fontWeight: FontWeight.w600)),
                           ],
                         ])),
-                        if (s['is_active'] == false) const Icon(CupertinoIcons.nosign, color: AppleColors.red, size: 18),
+                        if (s['is_active'] == false) const Padding(padding: EdgeInsets.only(right: 8), child: Icon(CupertinoIcons.nosign, color: AppleColors.red, size: 18)),
+                        Icon(CupertinoIcons.ellipsis, size: 18, color: p.secondary),
                       ]));
                     },
                   ),
