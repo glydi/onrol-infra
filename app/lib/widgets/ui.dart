@@ -655,7 +655,7 @@ Future<bool?> showFormSheet(
 // number + start month + start year, numeric parts zero-padded to 2 digits.
 // Returns '' if any part is blank (an incomplete code).
 String buildBatchCode(String course, String batch, String month, String year) {
-  final c = course.trim().toUpperCase();
+  final c = course.trim().toLowerCase();
   String pad(String s) {
     final n = s.trim();
     return n.isEmpty ? '' : n.padLeft(2, '0');
@@ -687,7 +687,7 @@ class BatchCodeFieldState extends State<BatchCodeField> {
     final parts = raw.isEmpty ? <String>[] : raw.split(RegExp(r'\s+'));
     final ok = parts.length == 4;
     String at(int i) => ok ? parts[i] : '';
-    _course = TextEditingController(text: at(0));
+    _course = TextEditingController(text: ok ? at(0) : 'aig'); // default course code
     _batch = TextEditingController(text: at(1));
     _month = TextEditingController(text: at(2));
     _year = TextEditingController(text: at(3));
@@ -701,9 +701,22 @@ class BatchCodeFieldState extends State<BatchCodeField> {
     super.dispose();
   }
 
-  void _emit() => widget.onChanged(buildBatchCode(_course.text, _batch.text, _month.text, _year.text));
+  void _emit() {
+    setState(() {}); // refresh the live preview
+    widget.onChanged(buildBatchCode(_course.text, _batch.text, _month.text, _year.text));
+  }
 
-  Widget _cell(TextEditingController c, String label, String hint, {int flex = 1, bool upper = false, bool digits = false}) {
+  // Live "aig ** ** **" preview — ** for any group not yet filled.
+  String _preview() {
+    String g(TextEditingController ctl) {
+      final n = ctl.text.trim();
+      return n.isEmpty ? '**' : n.padLeft(2, '0');
+    }
+    final c = _course.text.trim().toLowerCase();
+    return '${c.isEmpty ? 'aig' : c} ${g(_batch)} ${g(_month)} ${g(_year)}';
+  }
+
+  Widget _cell(TextEditingController c, String label, String hint, {int flex = 1, bool digits = false}) {
     final p = Palette.of(context);
     return Expanded(
       flex: flex,
@@ -715,7 +728,6 @@ class BatchCodeFieldState extends State<BatchCodeField> {
           decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
           child: TextField(
             controller: c,
-            textCapitalization: upper ? TextCapitalization.characters : TextCapitalization.none,
             keyboardType: digits ? TextInputType.number : TextInputType.text,
             textAlign: TextAlign.center,
             onChanged: (_) => _emit(),
@@ -729,14 +741,19 @@ class BatchCodeFieldState extends State<BatchCodeField> {
 
   @override
   Widget build(BuildContext context) {
-    return Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-      _cell(_course, 'Course', 'AIG', flex: 3, upper: true),
-      const SizedBox(width: 8),
-      _cell(_batch, 'Batch', '01', digits: true),
-      const SizedBox(width: 8),
-      _cell(_month, 'Month', '07', digits: true),
-      const SizedBox(width: 8),
-      _cell(_year, 'Year', '26', digits: true),
+    final p = Palette.of(context);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        _cell(_course, 'Course', 'aig', flex: 3),
+        const SizedBox(width: 8),
+        _cell(_batch, 'Batch', '**', digits: true),
+        const SizedBox(width: 8),
+        _cell(_month, 'Month', '**', digits: true),
+        const SizedBox(width: 8),
+        _cell(_year, 'Year', '**', digits: true),
+      ]),
+      const SizedBox(height: 8),
+      Text(_preview(), style: AppleTheme.body(context).copyWith(fontWeight: FontWeight.w700, letterSpacing: 1.5, color: p.accent)),
     ]);
   }
 }
