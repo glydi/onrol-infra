@@ -116,16 +116,22 @@ func (h *Handlers) canAccessModule(c *fiber.Ctx, moduleID string) (string, error
 }
 
 // ListModuleComments returns the comment/doubt thread for a module (oldest first).
+// Doubts & comments are a PRIVATE channel to the mentor: a student sees only
+// their own posts and staff (mentor) replies — never other students'. Course
+// staff see the whole thread (the queue) so they can answer everyone.
 func (h *Handlers) ListModuleComments(c *fiber.Ctx) error {
 	moduleID := c.Params("id")
-	if _, err := h.canAccessModule(c, moduleID); err != nil {
+	courseID, err := h.canAccessModule(c, moduleID)
+	if err != nil {
 		return err
 	}
+	staffViewer := h.canManageCourse(c, courseID) == nil
 	rows, err := h.Pool.Query(c.Context(), `
 		SELECT mc.id, mc.body, mc.is_doubt, mc.created_at,
 		       COALESCE(u.full_name,'Someone'), COALESCE(u.role,'student')
 		FROM module_comments mc LEFT JOIN users u ON u.id=mc.user_id
-		WHERE mc.module_id=$1 ORDER BY mc.created_at`, moduleID)
+		WHERE mc.module_id=$1 AND ($2 OR mc.thread_user_id=$3)
+		ORDER BY mc.created_at`, moduleID, staffViewer, callerID(c))
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
 	}
@@ -155,7 +161,8 @@ func (h *Handlers) ListCourseComments(c *fiber.Ctx) error {
 	}
 	rows, err := h.Pool.Query(c.Context(), `
 		SELECT mc.id, mc.module_id, COALESCE(m.title,''), mc.body, mc.is_doubt, mc.created_at,
-		       COALESCE(u.full_name,'Someone'), COALESCE(u.role,'student')
+		       COALESCE(u.full_name,'Someone'), COALESCE(u.role,'student'),
+		       mc.user_id::text, COALESCE(mc.thread_user_id::text,'')
 		FROM module_comments mc
 		JOIN modules m ON m.id=mc.module_id
 		LEFT JOIN users u ON u.id=mc.user_id
@@ -167,36 +174,45 @@ func (h *Handlers) ListCourseComments(c *fiber.Ctx) error {
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var id, moduleID, module, body, author, role string
+		var id, moduleID, module, body, author, role, authorID, threadUserID string
 		var isDoubt bool
 		var at any
-		if err := rows.Scan(&id, &moduleID, &module, &body, &isDoubt, &at, &author, &role); err != nil {
+		if err := rows.Scan(&id, &moduleID, &module, &body, &isDoubt, &at, &author, &role, &authorID, &threadUserID); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		staff := role == "instructor" || role == "manager" || role == "superadmin"
 		out = append(out, fiber.Map{"id": id, "module_id": moduleID, "module": module,
-			"body": body, "is_doubt": isDoubt, "at": at, "author": author, "staff": staff})
+			"body": body, "is_doubt": isDoubt, "at": at, "author": author, "staff": staff,
+			"author_id": authorID, "thread_user_id": threadUserID})
 	}
 	return c.JSON(fiber.Map{"comments": out})
 }
 
-// PostModuleComment adds a comment (or doubt) to a module thread.
+// PostModuleComment adds a comment (or doubt) to a module thread. Every comment
+// lives in a student's PRIVATE thread: students always post into their own, and
+// only course staff may target another student's thread (to answer their doubt).
 func (h *Handlers) PostModuleComment(c *fiber.Ctx) error {
 	moduleID := c.Params("id")
-	if _, err := h.canAccessModule(c, moduleID); err != nil {
+	courseID, err := h.canAccessModule(c, moduleID)
+	if err != nil {
 		return err
 	}
 	var req struct {
-		Body    string `json:"body"`
-		IsDoubt bool   `json:"is_doubt"`
+		Body         string `json:"body"`
+		IsDoubt      bool   `json:"is_doubt"`
+		ThreadUserID string `json:"thread_user_id"` // staff only: whose thread to reply into
 	}
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Body) == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "body required")
 	}
+	threadUser := callerID(c)
+	if tu := strings.TrimSpace(req.ThreadUserID); tu != "" && h.canManageCourse(c, courseID) == nil {
+		threadUser = tu
+	}
 	var id string
 	if err := h.Pool.QueryRow(c.Context(),
-		`INSERT INTO module_comments (module_id, user_id, body, is_doubt) VALUES ($1,$2,$3,$4) RETURNING id`,
-		moduleID, callerID(c), req.Body, req.IsDoubt).Scan(&id); err != nil {
+		`INSERT INTO module_comments (module_id, user_id, body, is_doubt, thread_user_id) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+		moduleID, callerID(c), req.Body, req.IsDoubt, threadUser).Scan(&id); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "post failed")
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id})

@@ -26,6 +26,7 @@ class _DiscussionScreenState extends State<DiscussionScreen> {
   String? _replyTo;
   String? _replyToName;
   String? _replyModuleId; // when set, the composer posts into a module thread
+  String? _replyThreadUser; // whose private module thread we're answering into
   final _input = TextEditingController();
 
   bool get _isStaff {
@@ -60,7 +61,11 @@ class _DiscussionScreenState extends State<DiscussionScreen> {
     setState(() => _sending = true);
     try {
       if (_replyModuleId != null) {
-        await widget.auth.apiPost('/api/v1/modules/$_replyModuleId/comments', {'body': body});
+        await widget.auth.apiPost('/api/v1/modules/$_replyModuleId/comments', {
+          'body': body,
+          // Reply into the student's PRIVATE thread so only they (and staff) see it.
+          if (_replyThreadUser != null) 'thread_user_id': _replyThreadUser,
+        });
       } else {
         await widget.auth.apiPost('/api/v1/courses/${widget.courseId}/discussion', {
           'body': body,
@@ -71,6 +76,7 @@ class _DiscussionScreenState extends State<DiscussionScreen> {
       _replyTo = null;
       _replyToName = null;
       _replyModuleId = null;
+      _replyThreadUser = null;
       await _load();
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not post')));
@@ -195,6 +201,10 @@ class _DiscussionScreenState extends State<DiscussionScreen> {
           GestureDetector(
             onTap: () => setState(() {
               _replyModuleId = m['module_id']?.toString();
+              // Answer lands in this student's private thread (fall back to author).
+              _replyThreadUser = (m['thread_user_id']?.toString().isNotEmpty == true)
+                  ? m['thread_user_id']?.toString()
+                  : m['author_id']?.toString();
               _replyTo = null;
               _replyToName = '$module · ${m['author'] ?? 'student'}';
             }),
@@ -251,7 +261,7 @@ class _DiscussionScreenState extends State<DiscussionScreen> {
                 const SizedBox(width: 4),
                 Text('Replying to $_replyToName', style: AppleTheme.footnote(context)),
                 const Spacer(),
-                GestureDetector(onTap: () => setState(() { _replyTo = null; _replyToName = null; _replyModuleId = null; }), child: Icon(CupertinoIcons.xmark, size: 14, color: p.secondary)),
+                GestureDetector(onTap: () => setState(() { _replyTo = null; _replyToName = null; _replyModuleId = null; _replyThreadUser = null; }), child: Icon(CupertinoIcons.xmark, size: 14, color: p.secondary)),
               ]),
             ),
           Row(children: [

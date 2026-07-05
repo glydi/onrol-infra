@@ -948,7 +948,7 @@ class _StudentHomeState extends State<StudentHome> {
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(CupertinoIcons.chat_bubble_2_fill, size: 15, color: _orange),
                     const SizedBox(width: 6),
-                    Text('Comments & Doubts', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: _orange)),
+                    Text('Ask your mentor', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: _orange)),
                   ]),
                 ),
               ),
@@ -999,11 +999,13 @@ class _StudentHomeState extends State<StudentHome> {
     return out;
   }
 
-  // Comments & doubts thread for a module: list + post (with a "doubt" toggle).
+  // Private mentor channel for a module: the student sees only their own
+  // messages + the mentor's replies (never other students'). Everything they
+  // post is queued for the mentor/admin to answer.
   void _openComments(String moduleId, String moduleTitle) {
     final text = TextEditingController();
     bool doubt = false;
-    _showPanel(CupertinoIcons.chat_bubble_2_fill, moduleTitle, 'Comments & Doubts', [
+    _showPanel(CupertinoIcons.chat_bubble_2_fill, moduleTitle, 'Ask your mentor — private', [
       StatefulBuilder(builder: (ctx, setS) {
         Future<void> post() async {
           if (text.text.trim().isEmpty) return;
@@ -1014,8 +1016,19 @@ class _StudentHomeState extends State<StudentHome> {
           } catch (_) {}
         }
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // Privacy note so students know this isn't a public thread.
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(color: _orange.withOpacity(0.08), border: Border.all(color: _orange.withOpacity(0.25))),
+            child: Row(children: [
+              Icon(CupertinoIcons.lock_fill, size: 13, color: _orange),
+              const SizedBox(width: 8),
+              Expanded(child: Text('Private — only your mentor sees this. Your questions are queued for them to answer.', style: GoogleFonts.inter(fontSize: 11.5, height: 1.35, color: _grey))),
+            ]),
+          ),
           _future(_apiList('/api/v1/modules/$moduleId/comments', 'comments'), (List items) {
-            if (items.isEmpty) return _emptyText('No comments yet. Start the discussion or ask a doubt.');
+            if (items.isEmpty) return _emptyText('No messages yet. Ask your mentor a question — only they can see it.');
             return Column(children: items.map((e) {
               final m = e as Map<String, dynamic>;
               final staff = m['staff'] == true;
@@ -1038,7 +1051,7 @@ class _StudentHomeState extends State<StudentHome> {
             }).toList());
           }),
           const SizedBox(height: 12),
-          CupertinoTextField(controller: text, placeholder: 'Write a comment…', minLines: 1, maxLines: 4, padding: const EdgeInsets.all(12),
+          CupertinoTextField(controller: text, placeholder: 'Ask your mentor a question…', minLines: 1, maxLines: 4, padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(gradient: _cardGradient, borderRadius: BorderRadius.zero, border: Border.all(color: _cardBorder))),
           const SizedBox(height: 8),
           Row(children: [
