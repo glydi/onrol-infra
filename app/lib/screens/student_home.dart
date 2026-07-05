@@ -240,7 +240,7 @@ class _StudentHomeState extends State<StudentHome> {
     _Tile(CupertinoIcons.videocam_fill, 'Live Classes', 'live'),
     _Tile(CupertinoIcons.doc_richtext, 'Study Hub', 'study'),
     _Tile(CupertinoIcons.list_number, 'Leaderboard', 'leaderboard'),
-    _Tile(CupertinoIcons.bubble_left_bubble_right_fill, 'Forum', 'forum'),
+    _Tile(CupertinoIcons.chat_bubble_2_fill, 'Ask Mentor', 'mentor'),
     _Tile(CupertinoIcons.square_pencil_fill, 'Notes', 'notes'),
     _Tile(CupertinoIcons.gear_alt_fill, 'Settings', 'settings'),
     _Tile(CupertinoIcons.square_arrow_right, 'Log Out', 'logout'),
@@ -939,20 +939,7 @@ class _StudentHomeState extends State<StudentHome> {
               _emptyText('No lessons.')
             else if (lessons.isNotEmpty || assessments.isNotEmpty)
               ..._lessonsByDay(lessons, rebuild, assessments: assessments),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: _Pressable(
-                onTap: () => _openComments(md['id'].toString(), title),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(CupertinoIcons.chat_bubble_2_fill, size: 15, color: _orange),
-                    const SizedBox(width: 6),
-                    Text('Ask your mentor', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: _orange)),
-                  ]),
-                ),
-              ),
-            ),
+            // "Ask your mentor" lives in its own home tile now (not per module).
             // Nested sub-modules.
             for (final s in subs) _moduleBox(s as Map<String, dynamic>, rebuild, isSub: true),
           ]),
@@ -1942,9 +1929,9 @@ class _StudentHomeState extends State<StudentHome> {
             return _CalendarView(items: items, onOpenSession: _openLive);
           }),
         ]);
-      case 'forum':
-        return (CupertinoIcons.bubble_left_bubble_right_fill, 'Discussion Forum', 'Ask, answer & discuss with your peers', [
-          _comingSoon(CupertinoIcons.bubble_left_bubble_right_fill, 'Discussion Forum', 'Ask questions, answer your peers and discuss lessons together. The forum is almost ready — it’ll open up here shortly.'),
+      case 'mentor':
+        return (CupertinoIcons.chat_bubble_2_fill, 'Ask your mentor', 'Private questions & doubts — only your mentor sees them', [
+          _MentorHelpView(auth: widget.auth, onAsk: (moduleId, title) => _openComments(moduleId, title)),
         ]);
       case 'messages':
         return (CupertinoIcons.chat_bubble_2_fill, 'Messages', 'Your inbox', [
@@ -3505,6 +3492,112 @@ class _DeferredBodyState extends State<_DeferredBody> {
                 child: Center(child: CircularProgressIndicator(color: _orange, strokeWidth: 2.5)),
               ),
       );
+}
+
+/// "Ask your mentor" hub — replaces the old peer Forum tile. Lists the student's
+/// enrolled courses and their modules; tapping one opens that module's PRIVATE
+/// mentor thread (the student sees only their own messages + the mentor's
+/// replies). This is the single place a student communicates with their mentor.
+class _MentorHelpView extends StatefulWidget {
+  const _MentorHelpView({required this.auth, required this.onAsk});
+  final AuthService auth;
+  final void Function(String moduleId, String title) onAsk;
+
+  @override
+  State<_MentorHelpView> createState() => _MentorHelpViewState();
+}
+
+class _MentorHelpViewState extends State<_MentorHelpView> {
+  bool _loading = true;
+  List<Map<String, dynamic>> _courses = [];
+  final Map<String, List<Map<String, dynamic>>> _modules = {}; // courseId -> flat modules
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final cr = ApiClient.decode(await widget.auth.apiGet('/api/v1/me/courses'));
+      final courses = ((cr['my_courses'] as List?) ?? []).cast<Map<String, dynamic>>();
+      // Fetch each course's modules in parallel so the picker loads in one go.
+      await Future.wait(courses.map((c) async {
+        final id = c['id'].toString();
+        try {
+          final mr = ApiClient.decode(await widget.auth.apiGet('/api/v1/me/courses/$id/content'));
+          _modules[id] = _flatten((mr['modules'] as List?) ?? []);
+        } catch (_) {
+          _modules[id] = [];
+        }
+      }));
+      _courses = courses;
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  // Flatten modules + nested sub-modules into a simple {id, title} list.
+  List<Map<String, dynamic>> _flatten(List modules) {
+    final out = <Map<String, dynamic>>[];
+    void walk(List mods) {
+      for (final m in mods) {
+        final mm = m as Map<String, dynamic>;
+        out.add({'id': mm['id'].toString(), 'title': mm['title']?.toString() ?? 'Module'});
+        walk((mm['submodules'] as List?) ?? const []);
+      }
+    }
+    walk(modules);
+    return out;
+  }
+
+  List<Map<String, dynamic>> _mods(Map<String, dynamic> c) => _modules[c['id'].toString()] ?? const [];
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Padding(padding: EdgeInsets.symmetric(vertical: 44), child: Center(child: CupertinoActivityIndicator()));
+    }
+    final withMods = _courses.where((c) => _mods(c).isNotEmpty).toList();
+    if (withMods.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 16),
+        child: Text('Enroll in a course to ask your mentor a question.', textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 13, color: _grey)),
+      );
+    }
+    final single = withMods.length == 1;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Container(
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(color: _orange.withOpacity(0.08), border: Border.all(color: _orange.withOpacity(0.25))),
+        child: Row(children: [
+          Icon(CupertinoIcons.lock_fill, size: 14, color: _orange),
+          const SizedBox(width: 8),
+          Expanded(child: Text('Pick a topic to ask about. Your questions are private — only your mentor sees them, and they answer you back here.', style: GoogleFonts.inter(fontSize: 12, height: 1.4, color: _grey))),
+        ]),
+      ),
+      for (final c in withMods) ...[
+        // With a single course the header would just echo the tile — skip it.
+        if (!single)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, bottom: 4, left: 2),
+            child: Text(c['title']?.toString() ?? 'Course', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w800, color: _navy)),
+          ),
+        for (final m in _mods(c))
+          _HoverRow(
+            onTap: () => widget.onAsk(m['id'] as String, m['title'] as String),
+            child: Row(children: [
+              Icon(CupertinoIcons.chat_bubble_2_fill, size: 18, color: _orange),
+              const SizedBox(width: 12),
+              Expanded(child: Text(m['title'] as String, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy))),
+              Icon(CupertinoIcons.chevron_forward, size: 15, color: _grey),
+            ]),
+          ),
+        const SizedBox(height: 12),
+      ],
+    ]);
+  }
 }
 
 /// Discussion forum: a list of threads (newest activity first) with a composer,
