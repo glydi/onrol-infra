@@ -257,7 +257,11 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           AppleSegmented(square: true, labels: const ['By course', 'All students'], selected: _allStudents ? 1 : 0, onChanged: (i) => setState(() => _allStudents = i == 1)),
           const SizedBox(height: 14),
           if (_allStudents)
-            _peopleGroup('All students (${students.length})', students, manage: true)
+            // Fixed-height, self-scrolling list so the whole page doesn't grow.
+            SizedBox(
+              height: (MediaQuery.of(context).size.height * 0.6).clamp(320.0, 1000.0),
+              child: SingleChildScrollView(child: _peopleGroup('All students (${students.length})', students, manage: true)),
+            )
           else
             ..._courseList(students),
         ],
