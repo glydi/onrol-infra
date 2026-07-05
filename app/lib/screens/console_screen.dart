@@ -616,13 +616,16 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     final body = TextEditingController();
     final batch = TextEditingController();
     int audience = 0; // 0=Everyone, 1=Batch, 2=Course
+    bool preview = false;
     String? courseId = courses.isNotEmpty ? courses.first['id'].toString() : null;
     final p = Palette.of(context);
-    final ok = await showFormSheet(context, square: true, title: 'Send Announcement', builder: (setS) => [
+    final ok = await showFormSheet(context, square: true, full: true, title: 'Send Announcement', builder: (setS) => [
       sheetField(title, 'Title', CupertinoIcons.textformat),
-      const SizedBox(height: 10),
-      sheetField(body, 'Message', CupertinoIcons.text_alignleft),
       const SizedBox(height: 12),
+      // Message supports Markdown, with a live editor + preview.
+      ..._mdEditor(context, body: body, preview: preview, onPreview: (v) => setS(() => preview = v), refresh: () => setS(() {}),
+          label: 'Message — Markdown supported (**bold**, - lists, # headings, > quote, `code`).'),
+      const SizedBox(height: 14),
       Text('Audience', style: AppleTheme.footnote(context)),
       const SizedBox(height: 6),
       AppleSegmented(square: true, labels: const ['Everyone', 'Batch', 'Course'], selected: audience, onChanged: (i) => setS(() => audience = i)),
@@ -1041,6 +1044,77 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
 
 Widget _label(BuildContext context, String t) =>
     Align(alignment: Alignment.centerLeft, child: Text(t, style: AppleTheme.footnote(context)));
+
+// A tall, roomy Markdown editor shared by Add & Edit Course Material. On a
+// wide sheet it's a LIVE split view — raw Markdown on the left, rendered
+// output on the right, updating as you type. On narrow screens it falls back
+// to a Write ⇄ Preview toggle. [refresh] rebuilds so the preview stays live.
+List<Widget> _mdEditor(BuildContext context, {required TextEditingController body, required bool preview, required void Function(bool) onPreview, required void Function() refresh, String? label}) {
+  final size = MediaQuery.of(context).size;
+  final h = (size.height * 0.62).clamp(360.0, 1100.0);
+  final split = size.width > 720;
+  final p = Palette.of(context);
+
+  Widget editor() => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+        child: TextField(
+          controller: body,
+          expands: true,
+          maxLines: null,
+          minLines: null,
+          textAlignVertical: TextAlignVertical.top,
+          keyboardType: TextInputType.multiline,
+          onChanged: split ? (_) => refresh() : null, // keep the live preview in sync
+          style: TextStyle(color: p.label, fontSize: 15, height: 1.5),
+          decoration: InputDecoration(border: InputBorder.none, isDense: true, hintText: 'Paste or write Markdown…', hintStyle: TextStyle(color: p.secondary)),
+        ),
+      );
+
+  Widget rendered() => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+        child: SingleChildScrollView(
+          child: MarkdownView(
+            text: body.text,
+            textColor: p.label,
+            mutedColor: p.secondary,
+            accent: p.accent,
+            borderColor: p.separator,
+            dark: p.dark,
+            emptyLabel: 'Nothing to preview yet — write some Markdown.',
+          ),
+        ),
+      );
+
+  Widget paneLabel(String s) => Padding(padding: const EdgeInsets.only(left: 2, bottom: 4), child: Text(s, style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700, color: p.secondary)));
+
+  return [
+    _label(context, label ?? 'Content — Markdown supported (# headings, **bold**, - lists, > quote, `code`). Paste Markdown here.'),
+    const SizedBox(height: 8),
+    if (split) ...[
+      Row(children: [
+        Expanded(child: paneLabel('Write')),
+        const SizedBox(width: 12),
+        Expanded(child: paneLabel('Live preview')),
+      ]),
+      SizedBox(
+        height: h,
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Expanded(child: editor()),
+          const SizedBox(width: 12),
+          Expanded(child: rendered()),
+        ]),
+      ),
+    ] else ...[
+      AppleSegmented(square: true, labels: const ['Write', 'Preview'], selected: preview ? 1 : 0, onChanged: (i) => onPreview(i == 1)),
+      const SizedBox(height: 8),
+      SizedBox(height: h, child: preview ? rendered() : editor()),
+    ],
+  ];
+}
+
 
 /// Issue certificates to learners — pick individuals, a whole batch, or everyone
 /// enrolled. Shows who already holds one. Re-issuing is a no-op (skipped).
@@ -2936,76 +3010,6 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     if (ok == true) _load();
   }
 
-  // A tall, roomy Markdown editor shared by Add & Edit Course Material. On a
-  // wide sheet it's a LIVE split view — raw Markdown on the left, rendered
-  // output on the right, updating as you type. On narrow screens it falls back
-  // to a Write ⇄ Preview toggle. [refresh] rebuilds so the preview stays live.
-  List<Widget> _mdEditor({required TextEditingController body, required bool preview, required void Function(bool) onPreview, required void Function() refresh}) {
-    final size = MediaQuery.of(context).size;
-    final h = (size.height * 0.62).clamp(360.0, 1100.0);
-    final split = size.width > 720;
-    final p = Palette.of(context);
-
-    Widget editor() => Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
-          child: TextField(
-            controller: body,
-            expands: true,
-            maxLines: null,
-            minLines: null,
-            textAlignVertical: TextAlignVertical.top,
-            keyboardType: TextInputType.multiline,
-            onChanged: split ? (_) => refresh() : null, // keep the live preview in sync
-            style: TextStyle(color: p.label, fontSize: 15, height: 1.5),
-            decoration: InputDecoration(border: InputBorder.none, isDense: true, hintText: 'Paste or write Markdown…', hintStyle: TextStyle(color: p.secondary)),
-          ),
-        );
-
-    Widget rendered() => Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
-          child: SingleChildScrollView(
-            child: MarkdownView(
-              text: body.text,
-              textColor: p.label,
-              mutedColor: p.secondary,
-              accent: p.accent,
-              borderColor: p.separator,
-              dark: p.dark,
-              emptyLabel: 'Nothing to preview yet — write some Markdown.',
-            ),
-          ),
-        );
-
-    Widget paneLabel(String s) => Padding(padding: const EdgeInsets.only(left: 2, bottom: 4), child: Text(s, style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700, color: p.secondary)));
-
-    return [
-      _label(context, 'Content — Markdown supported (# headings, **bold**, - lists, > quote, `code`). Paste Markdown here.'),
-      const SizedBox(height: 8),
-      if (split) ...[
-        Row(children: [
-          Expanded(child: paneLabel('Write')),
-          const SizedBox(width: 12),
-          Expanded(child: paneLabel('Live preview')),
-        ]),
-        SizedBox(
-          height: h,
-          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Expanded(child: editor()),
-            const SizedBox(width: 12),
-            Expanded(child: rendered()),
-          ]),
-        ),
-      ] else ...[
-        AppleSegmented(square: true, labels: const ['Write', 'Preview'], selected: preview ? 1 : 0, onChanged: (i) => onPreview(i == 1)),
-        const SizedBox(height: 8),
-        SizedBox(height: h, child: preview ? rendered() : editor()),
-      ],
-    ];
-  }
-
   Future<void> _addLesson(String moduleId) async {
     final title = TextEditingController();
     final body = TextEditingController();
@@ -3044,7 +3048,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       ],
       const SizedBox(height: 10),
       if (type == 0)
-        ..._mdEditor(body: body, preview: preview, onPreview: (v) => setS(() => preview = v), refresh: () => setS(() {}))
+        ..._mdEditor(context, body: body, preview: preview, onPreview: (v) => setS(() => preview = v), refresh: () => setS(() {}))
       else
         sheetField(
           body,
@@ -3182,7 +3186,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       AppleSegmented(square: true, labels: const ['Text', 'Video', 'Link', 'Document'], selected: type, onChanged: (i) => setS(() => type = i)),
       const SizedBox(height: 10),
       if (type == 0)
-        ..._mdEditor(body: body, preview: preview, onPreview: (v) => setS(() => preview = v), refresh: () => setS(() {}))
+        ..._mdEditor(context, body: body, preview: preview, onPreview: (v) => setS(() => preview = v), refresh: () => setS(() {}))
       else
         sheetField(
           body,

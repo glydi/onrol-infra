@@ -1788,18 +1788,17 @@ class _StudentHomeState extends State<StudentHome> {
               final entries = <Map<String, dynamic>>[];
               for (final n in (d[0] as List)) {
                 final m = n as Map<String, dynamic>;
-                final body = m['body']?.toString() ?? '';
-                entries.add({'text': [m['title'] ?? '', if (body.isNotEmpty) '— $body'].join(' '), 'at': m['at'], 'read': m['read'] == true});
+                entries.add({'title': (m['title'] ?? '').toString(), 'body': m['body']?.toString() ?? '', 'at': m['at'], 'read': m['read'] == true});
               }
               for (final a in (d[1] as List)) {
                 final m = a as Map<String, dynamic>;
-                final body = m['body']?.toString() ?? '';
                 final course = m['course']?.toString() ?? '';
-                entries.add({'text': [if (course.isNotEmpty) '[$course]', m['title'] ?? '', if (body.isNotEmpty) '— $body'].join(' '), 'at': m['at'], 'read': true});
+                final titleLine = [if (course.isNotEmpty) '[$course]', m['title'] ?? ''].join(' ');
+                entries.add({'title': titleLine, 'body': m['body']?.toString() ?? '', 'at': m['at'], 'read': true});
               }
               entries.sort((a, b) => (b['at']?.toString() ?? '').compareTo(a['at']?.toString() ?? ''));
               if (entries.isEmpty) return _emptyText('No notifications yet.');
-              return Column(children: entries.map((e) => _notif(e['text'] as String, _fmtAt(e['at']?.toString()), read: e['read'] == true)).toList());
+              return Column(children: entries.map((e) => _notif(e['title'] as String, _fmtAt(e['at']?.toString()), read: e['read'] == true, body: (e['body'] as String?)?.isNotEmpty == true ? e['body'] as String : null)).toList());
             },
           ),
         ]);
@@ -2221,7 +2220,7 @@ class _StudentHomeState extends State<StudentHome> {
 Widget _statCard(String value, String label, {IconData? icon, VoidCallback? onTap}) =>
     _StatCard(value: value, label: label, icon: icon, onTap: onTap);
 
-Widget _notif(String text, String time, {bool read = false}) => _StudentHomeNotif(text: text, time: time, read: read);
+Widget _notif(String text, String time, {bool read = false, String? body}) => _StudentHomeNotif(text: text, time: time, read: read, body: body);
 
 Widget _row(IconData icon, String name, String meta, String badge, {Color? badgeBg, Color? badgeFg}) =>
     _PanelRow(icon: icon, name: name, meta: meta, badge: badge, badgeBg: badgeBg, badgeFg: badgeFg);
@@ -6441,10 +6440,11 @@ class _StatCardState extends State<_StatCard> {
 /// A notification row that expands on tap to reveal the full text. Themed glass
 /// chip with a rotating chevron.
 class _StudentHomeNotif extends StatefulWidget {
-  const _StudentHomeNotif({required this.text, required this.time, this.read = false});
-  final String text;
+  const _StudentHomeNotif({required this.text, required this.time, this.read = false, this.body});
+  final String text; // heading / title line
   final String time;
   final bool read;
+  final String? body; // optional Markdown body (rendered when expanded)
 
   @override
   State<_StudentHomeNotif> createState() => _StudentHomeNotifState();
@@ -6486,12 +6486,36 @@ class _StudentHomeNotifState extends State<_StudentHomeNotif> {
                   duration: const Duration(milliseconds: 180),
                   curve: Curves.easeOutCubic,
                   alignment: Alignment.topLeft,
-                  child: Text(
-                    widget.text,
-                    maxLines: _open ? null : 2,
-                    overflow: _open ? TextOverflow.visible : TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(fontSize: 13, color: _navy, height: 1.5),
-                  ),
+                  child: Builder(builder: (context) {
+                    final hasBody = widget.body?.trim().isNotEmpty ?? false;
+                    if (!hasBody) {
+                      return Text(
+                        widget.text,
+                        maxLines: _open ? null : 2,
+                        overflow: _open ? TextOverflow.visible : TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(fontSize: 13, color: _navy, height: 1.5),
+                      );
+                    }
+                    return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                      Text(
+                        widget.text,
+                        maxLines: _open ? null : 2,
+                        overflow: _open ? TextOverflow.visible : TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: _navy, height: 1.4),
+                      ),
+                      const SizedBox(height: 4),
+                      // Expanded → rendered Markdown; collapsed → a plain snippet.
+                      if (_open)
+                        MarkdownView(text: widget.body!, textColor: _navy, mutedColor: _grey, accent: _orange, borderColor: _cardBorder, dark: _isDark)
+                      else
+                        Text(
+                          widget.body!.replaceAll(RegExp(r'\s+'), ' ').trim(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(fontSize: 12.5, color: _grey, height: 1.4),
+                        ),
+                    ]);
+                  }),
                 ),
                 const SizedBox(height: 4),
                 Text(widget.time, style: GoogleFonts.inter(fontSize: 11, color: _grey)),
