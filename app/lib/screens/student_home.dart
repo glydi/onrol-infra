@@ -986,18 +986,19 @@ class _StudentHomeState extends State<StudentHome> {
     return out;
   }
 
-  // Private mentor channel for a module: the student sees only their own
-  // messages + the mentor's replies (never other students'). Everything they
-  // post is queued for the mentor/admin to answer.
-  void _openComments(String moduleId, String moduleTitle) {
+  // Private mentor channel: the student sees only their own messages + the
+  // mentor's replies (never other students'). Everything they post is queued for
+  // the mentor/admin to answer. [basePath] scopes the thread — a module
+  // (/api/v1/modules/:id) or a course's General thread (/api/v1/courses/:id).
+  void _openComments(String basePath, String title) {
     final text = TextEditingController();
     bool doubt = false;
-    _showPanel(CupertinoIcons.chat_bubble_2_fill, moduleTitle, 'Ask your mentor — private', [
+    _showPanel(CupertinoIcons.chat_bubble_2_fill, title, 'Ask your mentor — private', [
       StatefulBuilder(builder: (ctx, setS) {
         Future<void> post() async {
           if (text.text.trim().isEmpty) return;
           try {
-            await widget.auth.apiPost('/api/v1/modules/$moduleId/comments', {'body': text.text.trim(), 'is_doubt': doubt});
+            await widget.auth.apiPost('$basePath/comments', {'body': text.text.trim(), 'is_doubt': doubt});
             text.clear();
             setS(() {});
           } catch (_) {}
@@ -1014,7 +1015,7 @@ class _StudentHomeState extends State<StudentHome> {
               Expanded(child: Text('Private — only your mentor sees this. Your questions are queued for them to answer.', style: GoogleFonts.inter(fontSize: 11.5, height: 1.35, color: _grey))),
             ]),
           ),
-          _future(_apiList('/api/v1/modules/$moduleId/comments', 'comments'), (List items) {
+          _future(_apiList('$basePath/comments', 'comments'), (List items) {
             if (items.isEmpty) return _emptyText('No messages yet. Ask your mentor a question — only they can see it.');
             return Column(children: items.map((e) {
               final m = e as Map<String, dynamic>;
@@ -1931,7 +1932,7 @@ class _StudentHomeState extends State<StudentHome> {
         ]);
       case 'mentor':
         return (CupertinoIcons.chat_bubble_2_fill, 'Ask your mentor', 'Private questions & doubts — only your mentor sees them', [
-          _MentorHelpView(auth: widget.auth, onAsk: (moduleId, title) => _openComments(moduleId, title)),
+          _MentorHelpView(auth: widget.auth, onAsk: (basePath, title) => _openComments(basePath, title)),
         ]);
       case 'messages':
         return (CupertinoIcons.chat_bubble_2_fill, 'Messages', 'Your inbox', [
@@ -3501,7 +3502,8 @@ class _DeferredBodyState extends State<_DeferredBody> {
 class _MentorHelpView extends StatefulWidget {
   const _MentorHelpView({required this.auth, required this.onAsk});
   final AuthService auth;
-  final void Function(String moduleId, String title) onAsk;
+  // (basePath, title) — basePath is /api/v1/modules/:id or /api/v1/courses/:id.
+  final void Function(String basePath, String title) onAsk;
 
   @override
   State<_MentorHelpView> createState() => _MentorHelpViewState();
@@ -3553,6 +3555,16 @@ class _MentorHelpViewState extends State<_MentorHelpView> {
 
   List<Map<String, dynamic>> _mods(Map<String, dynamic> c) => _modules[c['id'].toString()] ?? const [];
 
+  Widget _mentorRow(IconData icon, String title, VoidCallback onTap) => _HoverRow(
+        onTap: onTap,
+        child: Row(children: [
+          Icon(icon, size: 18, color: _orange),
+          const SizedBox(width: 12),
+          Expanded(child: Text(title, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy))),
+          Icon(CupertinoIcons.chevron_forward, size: 15, color: _grey),
+        ]),
+      );
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -3584,15 +3596,17 @@ class _MentorHelpViewState extends State<_MentorHelpView> {
             padding: const EdgeInsets.only(top: 6, bottom: 4, left: 2),
             child: Text(c['title']?.toString() ?? 'Course', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w800, color: _navy)),
           ),
+        // A general question not tied to any module.
+        _mentorRow(
+          CupertinoIcons.chat_bubble_text_fill,
+          'General question',
+          () => widget.onAsk('/api/v1/courses/${c['id']}', single ? 'General question' : '${c['title']} · General'),
+        ),
         for (final m in _mods(c))
-          _HoverRow(
-            onTap: () => widget.onAsk(m['id'] as String, m['title'] as String),
-            child: Row(children: [
-              Icon(CupertinoIcons.chat_bubble_2_fill, size: 18, color: _orange),
-              const SizedBox(width: 12),
-              Expanded(child: Text(m['title'] as String, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy))),
-              Icon(CupertinoIcons.chevron_forward, size: 15, color: _grey),
-            ]),
+          _mentorRow(
+            CupertinoIcons.chat_bubble_2_fill,
+            m['title'] as String,
+            () => widget.onAsk('/api/v1/modules/${m['id']}', m['title'] as String),
           ),
         const SizedBox(height: 12),
       ],

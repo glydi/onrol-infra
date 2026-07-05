@@ -4,7 +4,26 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/jackc/pgx/v5"
 )
+
+// scanThreadComments turns student-facing comment rows (id, body, is_doubt,
+// created_at, author name, author role) into the JSON shape the app expects.
+func scanThreadComments(rows pgx.Rows) ([]fiber.Map, error) {
+	defer rows.Close()
+	out := []fiber.Map{}
+	for rows.Next() {
+		var id, body, author, role string
+		var isDoubt bool
+		var at any
+		if err := rows.Scan(&id, &body, &isDoubt, &at, &author, &role); err != nil {
+			return nil, err
+		}
+		staff := role == "instructor" || role == "manager" || role == "superadmin"
+		out = append(out, fiber.Map{"id": id, "body": body, "is_doubt": isDoubt, "at": at, "author": author, "staff": staff})
+	}
+	return out, rows.Err()
+}
 
 // ResumeLearning returns the next incomplete lesson to continue for EACH of the
 // caller's enrolled courses (newest first) — so they can pick up any course in
@@ -135,20 +154,66 @@ func (h *Handlers) ListModuleComments(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
 	}
-	defer rows.Close()
-	out := []fiber.Map{}
-	for rows.Next() {
-		var id, body, author, role string
-		var isDoubt bool
-		var at any
-		if err := rows.Scan(&id, &body, &isDoubt, &at, &author, &role); err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
-		}
-		staff := role == "instructor" || role == "manager" || role == "superadmin"
-		out = append(out, fiber.Map{"id": id, "body": body, "is_doubt": isDoubt, "at": at,
-			"author": author, "staff": staff})
+	out, err := scanThreadComments(rows)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 	}
 	return c.JSON(fiber.Map{"comments": out})
+}
+
+// ListGeneralComments returns the caller's PRIVATE course-level ("General")
+// mentor thread — comments not tied to any module. Same privacy rules as a
+// module thread: a student sees only their own thread; staff see everyone's.
+func (h *Handlers) ListGeneralComments(c *fiber.Ctx) error {
+	courseID := c.Params("id")
+	if !h.canAccessCourse(c, courseID) {
+		return fiber.NewError(fiber.StatusForbidden, "not part of this course")
+	}
+	staffViewer := h.canManageCourse(c, courseID) == nil
+	rows, err := h.Pool.Query(c.Context(), `
+		SELECT mc.id, mc.body, mc.is_doubt, mc.created_at,
+		       COALESCE(u.full_name,'Someone'), COALESCE(u.role,'student')
+		FROM module_comments mc LEFT JOIN users u ON u.id=mc.user_id
+		WHERE mc.course_id=$1 AND mc.module_id IS NULL AND ($2 OR mc.thread_user_id=$3)
+		ORDER BY mc.created_at`, courseID, staffViewer, callerID(c))
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
+	}
+	out, err := scanThreadComments(rows)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+	}
+	return c.JSON(fiber.Map{"comments": out})
+}
+
+// PostGeneralComment adds a comment/doubt to a course's General thread (no
+// module). Students post into their own thread; staff may target a student's.
+func (h *Handlers) PostGeneralComment(c *fiber.Ctx) error {
+	courseID := c.Params("id")
+	if !h.canAccessCourse(c, courseID) {
+		return fiber.NewError(fiber.StatusForbidden, "not part of this course")
+	}
+	staff := h.canManageCourse(c, courseID) == nil
+	var req struct {
+		Body         string `json:"body"`
+		IsDoubt      bool   `json:"is_doubt"`
+		ThreadUserID string `json:"thread_user_id"`
+	}
+	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Body) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "body required")
+	}
+	threadUser := callerID(c)
+	if tu := strings.TrimSpace(req.ThreadUserID); tu != "" && staff {
+		threadUser = tu
+	}
+	var id string
+	if err := h.Pool.QueryRow(c.Context(),
+		`INSERT INTO module_comments (course_id, module_id, user_id, body, is_doubt, thread_user_id)
+		 VALUES ($1, NULL, $2, $3, $4, $5) RETURNING id`,
+		courseID, callerID(c), req.Body, req.IsDoubt, threadUser).Scan(&id); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "post failed")
+	}
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id})
 }
 
 // ListCourseComments returns every module comment/doubt across a course, for
@@ -160,13 +225,13 @@ func (h *Handlers) ListCourseComments(c *fiber.Ctx) error {
 		return err
 	}
 	rows, err := h.Pool.Query(c.Context(), `
-		SELECT mc.id, mc.module_id, COALESCE(m.title,''), mc.body, mc.is_doubt, mc.created_at,
+		SELECT mc.id, COALESCE(mc.module_id::text,''), COALESCE(m.title,'General'), mc.body, mc.is_doubt, mc.created_at,
 		       COALESCE(u.full_name,'Someone'), COALESCE(u.role,'student'),
 		       mc.user_id::text, COALESCE(mc.thread_user_id::text,'')
 		FROM module_comments mc
-		JOIN modules m ON m.id=mc.module_id
+		LEFT JOIN modules m ON m.id=mc.module_id
 		LEFT JOIN users u ON u.id=mc.user_id
-		WHERE m.course_id=$1
+		WHERE COALESCE(m.course_id, mc.course_id) = $1
 		ORDER BY mc.is_doubt DESC, mc.created_at DESC`, courseID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
