@@ -65,9 +65,9 @@ func (h *Handlers) CreateAssessment(c *fiber.Ctx) error {
 	if req.Type == "" {
 		req.Type = "quiz"
 	}
-	if req.MaxScore == 0 {
-		req.MaxScore = 100
-	}
+	// Everything is scored as a percentage: max_score is always 100 and each quiz
+	// question is worth 1 point, so a submission's score IS its percent.
+	req.MaxScore = 100
 	var due any
 	if req.DueAt != "" {
 		due = req.DueAt
@@ -178,9 +178,8 @@ func (h *Handlers) AddQuestion(c *fiber.Ctx) error {
 	if req.Type == "" {
 		req.Type = "mcq"
 	}
-	if req.Points == 0 {
-		req.Points = 1
-	}
+	// Every question is worth exactly 1 point (grading is a percentage).
+	req.Points = 1
 	// The console doesn't send a position — append after the last question so
 	// manually-added questions keep their insertion order (not all stacked at 0).
 	if req.Position == 0 {

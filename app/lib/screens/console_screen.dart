@@ -1417,14 +1417,19 @@ class _QuizBuilderState extends State<_QuizBuilder> {
 
   // Add a new question, or edit an existing one when [edit] is passed.
   Future<void> _questionForm([Map<String, dynamic>? edit]) async {
-    const types = ['mcq', 'multi', 'truefalse', 'short', 'fill', 'numeric', 'essay', 'upload'];
-    const typeLabels = ['Multiple choice', 'Multiple response', 'True / False', 'Short answer', 'Fill in the blank', 'Numerical', 'Essay', 'Upload file'];
+    // Quizzes are graded automatically, so they only offer objective
+    // (machine-gradable) question types — no essay/upload (those need a human).
+    final types = widget.isQuiz
+        ? const ['mcq', 'multi', 'truefalse', 'short', 'fill', 'numeric']
+        : const ['mcq', 'multi', 'truefalse', 'short', 'fill', 'numeric', 'essay', 'upload'];
+    final typeLabels = widget.isQuiz
+        ? const ['Multiple choice', 'Multiple response', 'True / False', 'Short answer', 'Fill in the blank', 'Numerical']
+        : const ['Multiple choice', 'Multiple response', 'True / False', 'Short answer', 'Fill in the blank', 'Numerical', 'Essay', 'Upload file'];
     final existing = ((edit?['options'] as List?) ?? const []).map((e) => e.toString()).toList();
     final correctStr = edit?['correct']?.toString() ?? '';
     int type = edit == null ? 0 : types.indexOf(edit['type']?.toString() ?? 'mcq');
     if (type < 0) type = 0;
     final prompt = TextEditingController(text: edit?['prompt']?.toString() ?? '');
-    final points = TextEditingController(text: edit == null ? '1' : '${edit['points'] ?? 1}');
     final opts = <TextEditingController>[];
     int correctIdx = 0; // mcq + truefalse
     final correctSet = <int>{}; // multi
@@ -1580,7 +1585,7 @@ class _QuizBuilderState extends State<_QuizBuilder> {
         rows.add(_label(context, 'Upload — students upload a file as their answer; you grade it manually.'));
       }
       rows.add(const SizedBox(height: 12));
-      rows.add(sheetField(points, 'Points', CupertinoIcons.number, keyboard: TextInputType.number));
+      rows.add(_label(context, 'Each question is worth 1 point. Quizzes grade automatically and the score is shown as a percentage.'));
       return rows;
     }, onSubmit: () async {
       if (prompt.text.trim().isEmpty) return 'Prompt required';
@@ -1621,7 +1626,6 @@ class _QuizBuilderState extends State<_QuizBuilder> {
         'type': tkey,
         'options': options,
         'correct': correct,
-        'points': double.tryParse(points.text.trim()) ?? 1,
       };
       try {
         if (edit == null) {
@@ -2310,7 +2314,6 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
 
   Future<void> _addAssignment({String? moduleId, String? moduleTitle}) async {
     final title = TextEditingController();
-    final maxScore = TextEditingController(text: '100');
     final day = TextEditingController();
     int type = 0; // assignment, quiz
     bool auto = false; // assignment: auto-award full points on submission
@@ -2322,14 +2325,16 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       if (type == 0) ...[
         const SizedBox(height: 12),
         Row(children: [
-          Expanded(child: _label(context, 'Auto-award full points on submission (no manual grading). Students can write a response, paste a link, or upload files.')),
+          Expanded(child: _label(context, 'Auto-award full marks (100%) on submission (no manual grading). Students can write a response, paste a link, or upload files.')),
           CupertinoSwitch(value: auto, onChanged: (v) => setS(() => auto = v)),
         ]),
       ],
+      if (type == 1) ...[
+        const SizedBox(height: 10),
+        _label(context, 'Quiz — each question is 1 point, graded automatically; the score is a percentage.'),
+      ],
       const SizedBox(height: 10),
       sheetField(day, 'Day number (e.g. 1, 2, 3 — optional)', CupertinoIcons.calendar, keyboard: TextInputType.number),
-      const SizedBox(height: 10),
-      sheetField(maxScore, 'Max score', CupertinoIcons.number),
       const SizedBox(height: 12),
       _DateTimeRow(value: due, onPick: (d) => setS(() => due = d)),
     ], onSubmit: () async {
@@ -2338,7 +2343,6 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/assessments', {
           'title': title.text.trim(),
           'type': type == 0 ? 'assignment' : 'quiz',
-          'max_score': double.tryParse(maxScore.text.trim()) ?? 100,
           'day_number': int.tryParse(day.text.trim()),
           if (moduleId != null) 'module_id': moduleId,
           'due_at': due.toUtc().toIso8601String(),
@@ -2440,7 +2444,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(title, style: AppleTheme.headline(context)),
-                Text('${isQuiz ? 'Quiz' : 'Assignment'} · ${a['max_score'] ?? 100} pts · $qCount question${qCount == 1 ? '' : 's'}', style: AppleTheme.footnote(context)),
+                Text('${isQuiz ? 'Quiz' : 'Assignment'} · $qCount question${qCount == 1 ? '' : 's'}${isQuiz ? ' · 1 pt each · scored %' : ''}', style: AppleTheme.footnote(context)),
               ]),
             ),
             _pubToggle(id, a['is_published'] != false),
@@ -2525,7 +2529,6 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   Future<void> _editAssessment(Map<String, dynamic> a) async {
     final id = a['id'].toString();
     final title = TextEditingController(text: a['title']?.toString() ?? '');
-    final maxScore = TextEditingController(text: '${a['max_score'] ?? 100}');
     final day = TextEditingController(text: a['day_number'] == null ? '' : '${a['day_number']}');
     int type = a['type'] == 'quiz' ? 1 : 0;
     bool published = a['is_published'] != false;
@@ -2567,8 +2570,10 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
           );
         }),
       ],
-      const SizedBox(height: 10),
-      sheetField(maxScore, 'Max score', CupertinoIcons.number, keyboard: TextInputType.number),
+      if (type == 1) ...[
+        const SizedBox(height: 10),
+        _label(context, 'Quiz — each question is 1 point, graded automatically; the score is a percentage.'),
+      ],
       const SizedBox(height: 12),
       _DateTimeRow(value: due, onPick: (d) => setS(() => due = d)),
       const SizedBox(height: 10),
@@ -2579,7 +2584,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       if (type == 0) ...[
         const SizedBox(height: 4),
         Row(children: [
-          Expanded(child: _label(context, 'Auto-award full points on submission')),
+          Expanded(child: _label(context, 'Auto-award full marks (100%) on submission')),
           CupertinoSwitch(value: auto, onChanged: (v) => setS(() => auto = v)),
         ]),
       ],
@@ -2588,7 +2593,6 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       final body = <String, dynamic>{
         'title': title.text.trim(),
         'type': type == 1 ? 'quiz' : 'assignment',
-        'max_score': double.tryParse(maxScore.text.trim()) ?? 100,
         'is_published': published,
         'auto_award': type == 0 && auto,
         'due_at': due.toUtc().toIso8601String(),
@@ -5544,7 +5548,7 @@ class _SubmissionsScreenState extends State<_SubmissionsScreen> {
         ),
         const SizedBox(height: 12),
       ],
-      sheetField(score, 'Score (out of ${widget.maxScore.round()})', CupertinoIcons.number, keyboard: const TextInputType.numberWithOptions(decimal: true)),
+      sheetField(score, 'Score (%) — 0 to 100', CupertinoIcons.number, keyboard: const TextInputType.numberWithOptions(decimal: true)),
       const SizedBox(height: 10),
       sheetField(feedback, 'Feedback (optional)', CupertinoIcons.text_bubble),
     ], onSubmit: () async {

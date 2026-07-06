@@ -489,8 +489,14 @@ func (h *Handlers) SubmitAssessment(c *fiber.Ctx) error {
 		}
 	}
 	answersJSON, _ := json.Marshal(req.Answers)
+	// Score is a PERCENTAGE (0-100): every question is worth 1 point, so this is
+	// just correct/total. Stored as the submission's score so it reads as "N%".
+	percent := 0
+	if totalPoints > 0 {
+		percent = int(math.Round(autoScore / totalPoints * 100))
+	}
 	status := "graded"
-	var score any = autoScore
+	var score any = percent
 	if needsManual {
 		status = "submitted"
 		score = nil // pending manual grading
@@ -508,15 +514,11 @@ func (h *Handlers) SubmitAssessment(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "submit failed")
 	}
-	percent := 0
-	if totalPoints > 0 {
-		percent = int(math.Round(autoScore / totalPoints * 100))
-	}
 	return c.JSON(fiber.Map{
 		"assessment_id": assessID, "status": status,
-		"auto_score": autoScore, "needs_manual_grading": needsManual,
-		"score": autoScore, "total_points": totalPoints,
-		"correct": correctCount, "total": total, "percent": percent,
+		"needs_manual_grading": needsManual,
+		"score": percent, "percent": percent,
+		"correct": correctCount, "total": total,
 	})
 }
 

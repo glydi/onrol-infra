@@ -178,6 +178,8 @@ func (h *Handlers) UpdateQuestion(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
 	}
+	one := 1.0
+	req.Points = &one // every question is worth exactly 1 point
 	var opts *string
 	if req.Options != nil {
 		b, _ := json.Marshal(*req.Options)

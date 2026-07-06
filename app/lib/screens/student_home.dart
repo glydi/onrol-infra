@@ -877,12 +877,11 @@ class _StudentHomeState extends State<StudentHome> {
     final submitted = m['submitted'] == true;
     final status = m['status']?.toString() ?? '';
     final score = m['score'];
-    final maxScore = (m['max_score'] as num?)?.round() ?? 100;
     String badge;
     Color? badgeBg, badgeFg;
     if (submitted) {
       if (status == 'graded' && score != null) {
-        badge = '${(score as num).round()}/$maxScore pts';
+        badge = '${(score as num).round()}%';
         badgeBg = _greenBg;
         badgeFg = _green;
       } else if (status == 'submitted') {
@@ -902,7 +901,7 @@ class _StudentHomeState extends State<StudentHome> {
       child: _row(
         isQuiz ? CupertinoIcons.question_square_fill : CupertinoIcons.doc_text_fill,
         m['title']?.toString() ?? 'Assessment',
-        '${isQuiz ? 'Quiz' : 'Assignment'} · $maxScore pts',
+        isQuiz ? 'Quiz · ${m['questions'] ?? 0} questions · 1 pt each' : 'Assignment',
         badge,
         badgeBg: badgeBg,
         badgeFg: badgeFg,
@@ -1251,7 +1250,6 @@ class _StudentHomeState extends State<StudentHome> {
         }
         final subScore = submission['score'];
         final subStatus = submission['status']?.toString() ?? '';
-        final maxScore = (m['max_score'] as num?)?.round() ?? 100;
         return StatefulBuilder(builder: (ctx, setS) {
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             if (locked) ...[
@@ -1264,7 +1262,7 @@ class _StudentHomeState extends State<StudentHome> {
                   const SizedBox(width: 6),
                   Expanded(child: Text(
                     subStatus == 'graded' && subScore != null
-                        ? 'Submitted · scored ${(subScore as num).round()} / $maxScore. Your answers are below.'
+                        ? 'Submitted · scored ${(subScore as num).round()}%. Your answers are below.'
                         : 'Submitted ✓ — your answers are locked and shown below.',
                     style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: _navy))),
                 ]),
@@ -1419,10 +1417,10 @@ class _StudentHomeState extends State<StudentHome> {
                     if (r['needs_manual_grading'] == true) {
                       msg = 'Submitted ✓ — written answers will be graded soon.';
                     } else {
-                      final score = (r['score'] as num?)?.round() ?? 0;
-                      final totalP = (r['total_points'] as num?)?.round() ?? 0;
                       final pct = (r['percent'] as num?)?.toInt() ?? 0;
-                      msg = 'Scored $score/$totalP ($pct%)  ·  +$score XP 🎉';
+                      final correct = (r['correct'] as num?)?.toInt() ?? 0;
+                      final total = (r['total'] as num?)?.toInt() ?? 0;
+                      msg = 'Scored $pct%  ·  $correct/$total correct  ·  +$pct XP 🎉';
                     }
                   } catch (_) {}
                   // Refresh the dashboard so the new quiz XP shows immediately.
@@ -1534,7 +1532,7 @@ class _StudentHomeState extends State<StudentHome> {
               Row(children: [
                 Icon(CupertinoIcons.checkmark_seal_fill, size: 17, color: _green),
                 const SizedBox(width: 6),
-                Text('Graded  ·  ${score?.round() ?? 0} / $maxScore', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
+                Text('Graded  ·  ${score?.round() ?? 0}%', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
               ]),
               if (feedback.isNotEmpty) ...[
                 const SizedBox(height: 6),
@@ -1992,15 +1990,14 @@ class _StudentHomeState extends State<StudentHome> {
                 final course = m['course']?.toString() ?? '';
                 final status = m['status']?.toString() ?? '';
                 final score = m['score'];
-                final maxScore = (m['max_score'] as num?)?.round() ?? 100;
-                // Badge: graded → "8/10 pts" (green), awaiting human grading →
+                // Badge: graded → "80%" (green), awaiting human grading →
                 // "Grading…" (amber), submitted-but-unknown → "Submitted",
                 // otherwise the call-to-action.
                 String badge;
                 Color? badgeBg, badgeFg;
                 if (submitted) {
                   if (status == 'graded' && score != null) {
-                    badge = '${(score as num).round()}/$maxScore pts';
+                    badge = '${(score as num).round()}%';
                     badgeBg = _greenBg;
                     badgeFg = _green;
                   } else if (status == 'submitted') {
@@ -2022,7 +2019,7 @@ class _StudentHomeState extends State<StudentHome> {
                   child: _row(
                     isQuiz ? CupertinoIcons.question_square_fill : CupertinoIcons.doc_text_fill,
                     m['title']?.toString() ?? 'Assessment',
-                    '$course · ${isQuiz ? 'Quiz' : 'Assignment'} · $maxScore pts',
+                    '$course · ${isQuiz ? 'Quiz · ${m['questions'] ?? 0} questions' : 'Assignment'}',
                     badge,
                     badgeBg: badgeBg,
                     badgeFg: badgeFg,
