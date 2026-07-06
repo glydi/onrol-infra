@@ -87,10 +87,17 @@
         var ms = navigator.mediaSession;
         try { ms.metadata = null; } catch (e) {}
         try { ms.playbackState = 'none'; } catch (e) {}
-        ['play', 'pause', 'stop', 'seekbackward', 'seekforward', 'seekto',
-         'previoustrack', 'nexttrack', 'skipad', 'togglemicrophone',
-         'togglecamera', 'hangup'].forEach(function (a) {
+        // Clear play/pause/skip so the notification can't drive the stream.
+        ['play', 'pause', 'stop', 'previoustrack', 'nexttrack', 'skipad',
+         'togglemicrophone', 'togglecamera', 'hangup'].forEach(function (a) {
           try { ms.setActionHandler(a, null); } catch (e) {}
+        });
+        // Seek actions get a NO-OP (not null): null lets some browsers keep a
+        // DEFAULT seek that moves the stream; a no-op makes any seek button in
+        // the OS/browser notification do absolutely nothing.
+        var noop = function () {};
+        ['seekbackward', 'seekforward', 'seekto'].forEach(function (a) {
+          try { ms.setActionHandler(a, noop); } catch (e) {}
         });
         try { if (ms.setPositionState) ms.setPositionState(); } catch (e) {}
       } catch (e) {}
