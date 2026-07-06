@@ -190,6 +190,7 @@ func (h *Handlers) CreateSession(c *fiber.Ctx) error {
 		ChatEnabled  *bool  `json:"chat_enabled"`
 		QAEnabled    *bool  `json:"qa_enabled"`
 		ViewerBase   int    `json:"viewer_base"`
+		BannerImage  string `json:"banner_image"` // 16:9 lobby/ended banner (data URI or URL)
 	}
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Title) == "" || req.StartsAt == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "title and starts_at required")
@@ -206,11 +207,15 @@ func (h *Handlers) CreateSession(c *fiber.Ctx) error {
 	}
 	chat := req.ChatEnabled == nil || *req.ChatEnabled
 	qa := req.QAEnabled == nil || *req.QAEnabled
+	var banner any
+	if strings.TrimSpace(req.BannerImage) != "" {
+		banner = req.BannerImage
+	}
 	var id string
 	if err := h.Pool.QueryRow(c.Context(),
-		`INSERT INTO class_sessions (course_id, title, starts_at, ends_at, location, instructor_id, capacity, webinar_id, join_url, host_url, media_asset_id, chat_enabled, qa_enabled, viewer_base)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
-		courseID, req.Title, req.StartsAt, ends, req.Location, callerID(c), req.Capacity, webinar, req.JoinURL, req.HostURL, media, chat, qa, req.ViewerBase).Scan(&id); err != nil {
+		`INSERT INTO class_sessions (course_id, title, starts_at, ends_at, location, instructor_id, capacity, webinar_id, join_url, host_url, media_asset_id, chat_enabled, qa_enabled, viewer_base, banner_image)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
+		courseID, req.Title, req.StartsAt, ends, req.Location, callerID(c), req.Capacity, webinar, req.JoinURL, req.HostURL, media, chat, qa, req.ViewerBase, banner).Scan(&id); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": req.Title})
@@ -236,6 +241,7 @@ func (h *Handlers) UpdateSession(c *fiber.Ctx) error {
 		ChatEnabled  *bool   `json:"chat_enabled"`
 		QAEnabled    *bool   `json:"qa_enabled"`
 		ViewerBase   *int    `json:"viewer_base"`
+		BannerImage  *string `json:"banner_image"` // "" clears it, omit keeps it
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
@@ -257,8 +263,9 @@ func (h *Handlers) UpdateSession(c *fiber.Ctx) error {
 		    media_asset_id = COALESCE($6::uuid, media_asset_id),
 		    chat_enabled   = COALESCE($7, chat_enabled),
 		    qa_enabled     = COALESCE($8, qa_enabled),
-		    viewer_base    = COALESCE($9, viewer_base)
-		WHERE id=$1`, sessionID, req.Title, req.JoinURL, req.HostURL, starts, media, req.ChatEnabled, req.QAEnabled, req.ViewerBase); err != nil {
+		    viewer_base    = COALESCE($9, viewer_base),
+		    banner_image   = COALESCE($10, banner_image)
+		WHERE id=$1`, sessionID, req.Title, req.JoinURL, req.HostURL, starts, media, req.ChatEnabled, req.QAEnabled, req.ViewerBase, req.BannerImage); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "update failed")
 	}
 	return c.JSON(fiber.Map{"id": sessionID, "updated": true})

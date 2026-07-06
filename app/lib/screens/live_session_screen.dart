@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -42,6 +43,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   int _viewers = 0;
   bool _qaOn = true;
   String? _playlistUrl; // absolute, set once live
+  String _banner = ''; // 16:9 lobby/ended banner (data URI or URL)
   DateTime? _startsAt;
   int _startEpochMs = 0; // scheduled start (UTC ms) — drives time-locked playback
   int _skewMs = 0; // server_now - device_now: normalizes a wrong device clock to the server
@@ -92,6 +94,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         _course = d['course']?.toString() ?? _course;
         _viewers = (d['viewers'] as num?)?.toInt() ?? _viewers;
         _qaOn = d['qa_enabled'] == true;
+        _banner = d['banner_image']?.toString() ?? '';
         final sa = DateTime.tryParse(d['starts_at']?.toString() ?? '');
         _startsAt = sa?.toLocal();
         if (sa != null) _startEpochMs = sa.toUtc().millisecondsSinceEpoch;
@@ -194,10 +197,10 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
             ? Center(child: Text(_fatal!, style: GoogleFonts.inter(color: Colors.white70)))
             : (sideBySide && showPanel)
                 ? Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    Expanded(child: Column(children: [_header(), Expanded(child: Center(child: _stage()))])),
+                    Expanded(child: Column(children: [_header(), Expanded(child: _showBanner ? SingleChildScrollView(child: _stageArea()) : Center(child: _stage()))])),
                     Container(width: panelW, decoration: const BoxDecoration(border: Border(left: BorderSide(color: Color(0xFF222228)))), child: _qaPanel()),
                   ])
-                : Column(children: [_header(), _stage(), if (showPanel) Expanded(child: _qaPanel())]),
+                : Column(children: [_header(), _showBanner ? Flexible(child: SingleChildScrollView(child: _stageArea())) : _stage(), if (showPanel) Expanded(child: _qaPanel())]),
       ),
     );
   }
@@ -244,6 +247,22 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
       );
 
   // ---- Stage ---------------------------------------------------------------
+  // The admin's 16:9 banner shows directly under the video area in the lobby
+  // (before the class starts) and after it ends — never during live.
+  bool get _showBanner => _banner.isNotEmpty && _status != 'live';
+
+  Widget _stageArea() => Column(mainAxisSize: MainAxisSize.min, children: [_stage(), _bannerView()]);
+
+  Widget _bannerView() => AspectRatio(
+        aspectRatio: 16 / 9,
+        child: Container(
+          color: Colors.black,
+          child: _banner.startsWith('data:')
+              ? Image.memory(base64Decode(_banner.substring(_banner.indexOf(',') + 1)), fit: BoxFit.cover, width: double.infinity, errorBuilder: (_, __, ___) => const SizedBox())
+              : Image.network(_banner, fit: BoxFit.cover, width: double.infinity, errorBuilder: (_, __, ___) => const SizedBox()),
+        ),
+      );
+
   Widget _stage() {
     // The host watches the live video too (when it's playing); otherwise they
     // see the host status panel (lobby / preparing / ended / queue summary).

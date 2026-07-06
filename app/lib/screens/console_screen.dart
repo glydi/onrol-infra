@@ -2264,6 +2264,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     String? videoId = (s['media_asset_id']?.toString() ?? '').isEmpty ? null : s['media_asset_id'].toString();
     String videoTitle = s['media_title']?.toString() ?? '';
     bool qaOn = s['qa_enabled'] != false;
+    String? banner = (s['banner_image']?.toString() ?? '').isEmpty ? null : s['banner_image'].toString();
     DateTime when = DateTime.tryParse(s['starts_at']?.toString() ?? '')?.toLocal() ?? DateTime.now().add(const Duration(hours: 1));
     final ok = await showFormSheet(context, square: true, title: 'Edit Live Class', builder: (setS) => [
       sheetField(title, 'Title', CupertinoIcons.textformat),
@@ -2282,7 +2283,13 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                   videoId = id;
                   videoTitle = t;
                 })),
-            (v) => setS(() => qaOn = v)),
+            (v) => setS(() => qaOn = v),
+            banner: banner,
+            onPickBanner: () async {
+              final d = await _pickBanner();
+              if (d != null) setS(() => banner = d);
+            },
+            onClearBanner: () => setS(() => banner = null)),
       const SizedBox(height: 12),
       _label(context, 'Date & time'),
       const SizedBox(height: 6),
@@ -2299,6 +2306,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
           body['media_asset_id'] = videoId;
           body['qa_enabled'] = qaOn;
           body['viewer_base'] = int.tryParse(viewers.text.trim()) ?? 0;
+          body['banner_image'] = banner ?? ''; // "" clears it
         }
         await widget.auth.apiPatch('/api/v1/manage/sessions/${s['id']}', body);
         return null;
@@ -2637,8 +2645,54 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
 
   // The recorded-as-live form fields: a "Choose from Video Store" button (opens
   // the full store) + the current pick + a Q&A toggle + the viewer floor.
+  // Pick a 16:9 banner and return it as a downscaled JPEG data URI (≤~900 KB).
+  Future<String?> _pickBanner() async {
+    try {
+      final x = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 1600, maxHeight: 1600, imageQuality: 82);
+      if (x == null) return null;
+      final raw = await x.readAsBytes();
+      if (raw.isEmpty) return null;
+      Uint8List out;
+      String mime;
+      final decoded = img.decodeImage(raw);
+      if (decoded != null) {
+        final resized = img.copyResize(decoded, width: decoded.width > 960 ? 960 : decoded.width);
+        out = img.encodeJpg(resized, quality: 80);
+        mime = 'image/jpeg';
+      } else {
+        out = raw;
+        mime = x.mimeType ?? 'image/png';
+      }
+      if (out.lengthInBytes > 900000) {
+        _toast('Image too large — try a smaller one.');
+        return null;
+      }
+      return 'data:$mime;base64,${base64Encode(out)}';
+    } catch (_) {
+      _toast('Could not read that image.');
+      return null;
+    }
+  }
+
+  // 16:9 preview of a session banner (data URI or image URL).
+  Widget _bannerThumb(String src) {
+    final p = Palette.of(context);
+    return AspectRatio(
+      aspectRatio: 16 / 9,
+      child: Container(
+        decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+        child: ClipRect(
+          child: src.startsWith('data:')
+              ? Image.memory(base64Decode(src.substring(src.indexOf(',') + 1)), fit: BoxFit.cover, width: double.infinity, errorBuilder: (_, __, ___) => const SizedBox())
+              : Image.network(src, fit: BoxFit.cover, width: double.infinity, errorBuilder: (_, __, ___) => const SizedBox()),
+        ),
+      ),
+    );
+  }
+
   List<Widget> _simLiveFields(String? videoId, String videoTitle, bool qaOn,
-      TextEditingController viewers, VoidCallback onOpenStore, void Function(bool) onQa) {
+      TextEditingController viewers, VoidCallback onOpenStore, void Function(bool) onQa,
+      {String? banner, required VoidCallback onPickBanner, required VoidCallback onClearBanner}) {
     final p = Palette.of(context);
     final picked = videoId != null && videoId.isNotEmpty;
     return [
@@ -2659,6 +2713,23 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       Row(children: [Expanded(child: _label(context, 'Allow questions (Q&A to host)')), CupertinoSwitch(value: qaOn, onChanged: onQa)]),
       const SizedBox(height: 8),
       sheetField(viewers, 'Starting viewers (displayed-count floor)', CupertinoIcons.eye, keyboard: TextInputType.number),
+      const SizedBox(height: 14),
+      _label(context, 'Lobby / ended banner (16:9) — shown under the countdown before the class starts and after it ends. Optional.'),
+      const SizedBox(height: 8),
+      if (banner != null && banner.isNotEmpty) ...[
+        _bannerThumb(banner),
+        const SizedBox(height: 8),
+      ],
+      Row(children: [
+        Expanded(child: PrimaryButton(label: (banner != null && banner.isNotEmpty) ? 'Change banner' : 'Upload 16:9 banner', icon: CupertinoIcons.photo, square: true, onPressed: onPickBanner)),
+        if (banner != null && banner.isNotEmpty) ...[
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: onClearBanner,
+            child: Container(padding: const EdgeInsets.all(13), decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.zero), child: const Icon(CupertinoIcons.trash, size: 18, color: AppleColors.red)),
+          ),
+        ],
+      ]),
     ];
   }
 
@@ -2672,6 +2743,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     String? videoId;
     String videoTitle = '';
     bool qaOn = true;
+    String? banner;
     final ok = await showFormSheet(context, square: true, title: 'Add Live Class', builder: (setS) => [
       sheetField(title, 'Title (e.g. Lecture 1)', CupertinoIcons.textformat),
       const SizedBox(height: 10),
@@ -2687,7 +2759,13 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                   videoId = id;
                   videoTitle = t;
                 })),
-            (v) => setS(() => qaOn = v)),
+            (v) => setS(() => qaOn = v),
+            banner: banner,
+            onPickBanner: () async {
+              final d = await _pickBanner();
+              if (d != null) setS(() => banner = d);
+            },
+            onClearBanner: () => setS(() => banner = null)),
       const SizedBox(height: 12),
       _DateTimeRow(value: when, onPick: (d) => setS(() => when = d)),
     ], onSubmit: () async {
@@ -2703,6 +2781,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
           body['media_asset_id'] = videoId;
           body['qa_enabled'] = qaOn;
           body['viewer_base'] = int.tryParse(viewers.text.trim()) ?? 0;
+          if (banner != null && banner!.isNotEmpty) body['banner_image'] = banner;
         }
         await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/sessions', body);
         return null;
