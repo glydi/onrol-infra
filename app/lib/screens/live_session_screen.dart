@@ -9,6 +9,7 @@ import 'package:google_fonts/google_fonts.dart' hide Config;
 import '../config.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
+import '../services/web_download_stub.dart' if (dart.library.html) '../services/web_download_web.dart';
 import '../widgets/live_player.dart';
 
 /// The "live room" for a simulated-live session (a recorded video streamed as if
@@ -49,6 +50,8 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   bool _hostMuted = false;
   String _banner = '';
   bool _sendingCtl = false;
+  int _elapsed = 0; // seconds played (host progress readout)
+  int _duration = 0; // total recording length (seconds)
   String? _playlistUrl; // absolute, set once live
   String _startImage = ''; // 16:9 shown in place of the video before the class
   String _endImage = ''; // 16:9 shown in place of the video after it ends
@@ -127,6 +130,8 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         _blank = d['blank'] == true;
         _hostMuted = d['muted'] == true;
         _banner = d['banner']?.toString() ?? '';
+        _elapsed = (d['elapsed'] as num?)?.toInt() ?? _elapsed;
+        _duration = (d['duration'] as num?)?.toInt() ?? _duration;
         _startImage = d['start_image']?.toString() ?? '';
         _endImage = d['end_image']?.toString() ?? '';
         final sa = DateTime.tryParse(d['starts_at']?.toString() ?? '');
@@ -341,17 +346,113 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
       decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFF222228)))),
-      child: Wrap(spacing: 7, runSpacing: 7, children: [
-        _ctlChip(_paused ? 'Resume' : 'Pause', _paused ? CupertinoIcons.play_fill : CupertinoIcons.pause_fill, _paused, () => _control({'paused': !_paused})),
-        _ctlChip('Black-out', CupertinoIcons.rectangle_fill, _blank, () => _control({'blank': !_blank})),
-        _ctlChip('Mute all', _hostMuted ? CupertinoIcons.volume_off : CupertinoIcons.volume_up, _hostMuted, () => _control({'muted': !_hostMuted})),
-        _ctlChip('Reactions', CupertinoIcons.hand_thumbsup, _reactionsOn, () => _control({'reactions_enabled': !_reactionsOn})),
-        _ctlChip('Q&A', CupertinoIcons.chat_bubble_2, _qaOn, () => _control({'qa_enabled': !_qaOn})),
-        _ctlChip('Banner', CupertinoIcons.textformat, _banner.isNotEmpty, _editBanner),
-        if (!liveNow) _ctlChip('Start now', CupertinoIcons.play_circle, false, () => _control({'start_now': true})),
-        if (liveNow) _ctlChip('End now', CupertinoIcons.stop_circle_fill, false, () => _control({'end_now': true})),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _hostProgress(),
+        Wrap(spacing: 7, runSpacing: 7, children: [
+          _ctlChip(_paused ? 'Resume' : 'Pause', _paused ? CupertinoIcons.play_fill : CupertinoIcons.pause_fill, _paused, () => _control({'paused': !_paused})),
+          _ctlChip('Black-out', CupertinoIcons.rectangle_fill, _blank, () => _control({'blank': !_blank})),
+          _ctlChip('Mute all', _hostMuted ? CupertinoIcons.volume_off : CupertinoIcons.volume_up, _hostMuted, () => _control({'muted': !_hostMuted})),
+          _ctlChip('Reactions', CupertinoIcons.hand_thumbsup, _reactionsOn, () => _control({'reactions_enabled': !_reactionsOn})),
+          _ctlChip('Q&A', CupertinoIcons.chat_bubble_2, _qaOn, () => _control({'qa_enabled': !_qaOn})),
+          _ctlChip('Banner', CupertinoIcons.textformat, _banner.isNotEmpty, _editBanner),
+          _ctlChip('Attendance', CupertinoIcons.person_2_fill, false, _showAttendance),
+          if (!liveNow) _ctlChip('Start now', CupertinoIcons.play_circle, false, () => _control({'start_now': true})),
+          if (liveNow) _ctlChip('End now', CupertinoIcons.stop_circle_fill, false, () => _control({'end_now': true})),
+        ]),
       ]),
     );
+  }
+
+  // Host readout: how much of the recording has played and how much is left,
+  // with a progress bar. Frozen at the pause point while paused.
+  Widget _hostProgress() {
+    if (_duration <= 0) return const SizedBox.shrink();
+    final played = _elapsed.clamp(0, _duration);
+    final remain = _duration - played;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text('${_fmtHMS(played)} / ${_fmtHMS(_duration)}', style: GoogleFonts.inter(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w600)),
+          const Spacer(),
+          Text('${_fmtHMS(remain)} left', style: GoogleFonts.inter(color: _paused ? const Color(0xFFFFB020) : Colors.white54, fontSize: 11.5, fontWeight: FontWeight.w600)),
+        ]),
+        const SizedBox(height: 5),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(2),
+          child: LinearProgressIndicator(value: (played / _duration).clamp(0.0, 1.0), minHeight: 4, backgroundColor: Colors.white12, valueColor: const AlwaysStoppedAnimation(_orange)),
+        ),
+      ]),
+    );
+  }
+
+  // Host: who watched and for how long, with a CSV download (web).
+  Future<void> _showAttendance() async {
+    List<Map<String, dynamic>> rows = [];
+    try {
+      final d = ApiClient.decode(await widget.auth.apiGet('$_base/attendance'));
+      rows = ((d['attendance'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
+    } catch (_) {}
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _panel,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(14))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Text('Attendance · ${rows.length}', style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+              const Spacer(),
+              GestureDetector(
+                onTap: rows.isEmpty ? null : () => downloadText('attendance-${widget.sessionId}.csv', _attendanceCsv(rows)),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(color: rows.isEmpty ? Colors.white12 : _orange, borderRadius: BorderRadius.zero),
+                  child: Text('Download CSV', style: GoogleFonts.inter(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 12),
+            if (rows.isEmpty)
+              const Padding(padding: EdgeInsets.symmetric(vertical: 24), child: Center(child: Text('No attendance recorded yet.', style: TextStyle(color: Colors.white38, fontSize: 13))))
+            else
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: rows.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFF222228)),
+                  itemBuilder: (_, i) {
+                    final r = rows[i];
+                    final w = (r['watched_seconds'] as num?)?.toInt() ?? 0;
+                    final name = r['name']?.toString() ?? '';
+                    final who = name.isNotEmpty ? name : (r['email']?.toString().isNotEmpty ?? false ? r['email'].toString() : (r['phone']?.toString() ?? 'Student'));
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      child: Row(children: [
+                        Expanded(child: Text(who, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: Colors.white, fontSize: 13))),
+                        Text(_fmtHMS(w), style: GoogleFonts.inter(color: Colors.white60, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                      ]),
+                    );
+                  },
+                ),
+              ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  String _attendanceCsv(List<Map<String, dynamic>> rows) {
+    String esc(Object? v) => '"${(v ?? '').toString().replaceAll('"', '""')}"';
+    final b = StringBuffer('Name,Email,Phone,Login ID,First seen,Last seen,Watched (min)\n');
+    for (final r in rows) {
+      final w = (r['watched_seconds'] as num?)?.toInt() ?? 0;
+      b.writeln([esc(r['name']), esc(r['email']), esc(r['phone']), esc(r['login_id']), esc(r['first_seen']), esc(r['last_seen']), (w / 60).toStringAsFixed(1)].join(','));
+    }
+    return b.toString();
   }
 
   Widget _ctlChip(String label, IconData icon, bool active, VoidCallback onTap) => GestureDetector(
@@ -398,38 +499,16 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     );
   }
 
-  // The video stage with the floating-reactions overlay, the host's black-out /
-  // paused covers, and any pinned banner layered on top. Covers only apply while
-  // the class is actually live (a recorded video is playing).
-  Widget _stageArea() {
-    final live = _status == 'live' && _playlistUrl != null;
-    return Stack(alignment: Alignment.center, children: [
-      _stage(),
-      Positioned.fill(child: IgnorePointer(child: Stack(clipBehavior: Clip.hardEdge, children: [
-        for (final f in _floats) _Floaty(key: ValueKey(f.id), emoji: f.emoji, startX: f.x, onDone: () => _removeFloat(f.id)),
-      ]))),
-      if (live && _banner.isNotEmpty)
-        Positioned(top: 0, left: 0, right: 0, child: IgnorePointer(child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          color: _orange.withOpacity(0.92),
-          child: Text(_banner, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.inter(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w700)),
-        ))),
-      if (live && (_blank || _paused)) Positioned.fill(child: _cover(_paused ? 'Paused' : 'Back shortly', _paused ? CupertinoIcons.pause_circle : CupertinoIcons.clock)),
-    ]);
-  }
-
-  // Opaque cover shown over the video during a host black-out or pause.
-  Widget _cover(String label, IconData icon) => Container(
-        color: Colors.black.withOpacity(0.97),
-        child: Center(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Icon(icon, size: 44, color: Colors.white70),
-            const SizedBox(height: 12),
-            Text(label, style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
-          ]),
-        ),
-      );
+  // The video stage with the floating-reactions overlay on top. The host's
+  // black-out / pause cover and pinned banner are drawn INSIDE the player
+  // (LivePlayer) — as HTML on web, Flutter on mobile — because a Flutter widget
+  // can't reliably paint over the web <video> element.
+  Widget _stageArea() => Stack(alignment: Alignment.center, children: [
+        _stage(),
+        Positioned.fill(child: IgnorePointer(child: Stack(clipBehavior: Clip.hardEdge, children: [
+          for (final f in _floats) _Floaty(key: ValueKey(f.id), emoji: f.emoji, startX: f.x, onDone: () => _removeFloat(f.id)),
+        ]))),
+      ]);
 
   // ---- Header --------------------------------------------------------------
   Widget _header() {
@@ -484,7 +563,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     // see the host status panel (lobby / preparing / ended / queue summary).
     if (widget.isHost && !(_status == 'live' && _playlistUrl != null)) return _hostPanel();
     if (_status == 'live' && _playlistUrl != null) {
-      return LivePlayer(key: ValueKey(_playlistUrl), playlistUrl: _playlistUrl!, watermark: widget.watermark, authToken: widget.auth.token, startEpochMs: _startEpochMs, skewMs: _skewMs, title: _title, course: _course, hostMuted: _hostMuted || _blank || _paused);
+      return LivePlayer(key: ValueKey(_playlistUrl), playlistUrl: _playlistUrl!, watermark: widget.watermark, authToken: widget.auth.token, startEpochMs: _startEpochMs, skewMs: _skewMs, title: _title, course: _course, hostMuted: _hostMuted || _blank || _paused, blank: _blank, paused: _paused, banner: _banner);
     }
     if (_status == 'ended') {
       return _endImage.isNotEmpty
@@ -794,6 +873,13 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   }
 
   static String _fmtCount(int n) => n >= 1000 ? '${(n / 1000).toStringAsFixed(1)}k' : '$n';
+
+  static String _fmtHMS(int s) {
+    if (s < 0) s = 0;
+    final h = s ~/ 3600, m = (s % 3600) ~/ 60, sec = s % 60;
+    String two(int n) => n.toString().padLeft(2, '0');
+    return h > 0 ? '$h:${two(m)}:${two(sec)}' : '${two(m)}:${two(sec)}';
+  }
 
   static String _fmtCountdown(Duration d) {
     final h = d.inHours, m = d.inMinutes.remainder(60), s = d.inSeconds.remainder(60);

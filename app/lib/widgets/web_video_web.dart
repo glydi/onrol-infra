@@ -553,13 +553,63 @@ void _ensureLivePulse() {
 /// video lines up with every real second, and all viewers see the same frame.
 /// skewMs corrects the device clock against the server. No scrubber/seek/speed
 /// controls; only mute + fullscreen. Starts muted (browsers block unmuted autoplay).
-// The most recently created live <video>, so the host's mute-all can silence it
-// without recreating the element. Set on factory build below.
+// The most recently created live <video> + its HTML overlays, so host controls
+// (mute-all, black-out/pause cover, banner) can drive them without recreating
+// the element. Flutter widgets don't reliably paint over an HTML <video>, so
+// these covers MUST be HTML inside the video container. Set on factory build.
 html.VideoElement? _lastLiveVideo;
+html.DivElement? _liveCover;
+html.Element? _liveCoverLabel;
+html.DivElement? _liveBanner;
+html.DivElement? _livePausePill;
+// When the HOST has paused, the playback guard must stop auto-resuming so the
+// video holds on its last frame (instead of snapping back to the live edge).
+bool _liveHostPaused = false;
 
 /// Force the live video muted/unmuted (host mute-all). No-op if not yet built.
 void liveSetMuted(bool muted) {
   _lastLiveVideo?.muted = muted;
+}
+
+/// Host pause: freeze the video on its current frame (no black-out). The guard
+/// respects _liveHostPaused so it won't auto-resume; on resume we play again.
+void liveSetPaused(bool paused) {
+  _liveHostPaused = paused;
+  _livePausePill?.style.display = paused ? 'flex' : 'none';
+  final v = _lastLiveVideo;
+  if (v == null) return;
+  try {
+    if (paused) {
+      v.pause();
+    } else {
+      v.play();
+    }
+  } catch (_) {}
+}
+
+/// Show an opaque cover over the video with `label` (host black-out / pause);
+/// pass '' to hide it.
+void liveSetCover(String label) {
+  final c = _liveCover;
+  if (c == null) return;
+  if (label.isEmpty) {
+    c.style.display = 'none';
+  } else {
+    _liveCoverLabel?.text = label;
+    c.style.display = 'flex';
+  }
+}
+
+/// Show a pinned banner strip over the top of the video; pass '' to hide it.
+void liveSetBanner(String text) {
+  final b = _liveBanner;
+  if (b == null) return;
+  if (text.isEmpty) {
+    b.style.display = 'none';
+  } else {
+    b.text = text;
+    b.style.display = 'block';
+  }
 }
 
 Widget liveHlsVideoElement(
@@ -686,6 +736,64 @@ Widget liveHlsVideoElement(
     controls.onClick.listen((e) => e.stopPropagation());
     container.append(controls);
 
+    // ---- Host pinned banner (top strip) -------------------------------------
+    final banner = html.DivElement()
+      ..style.position = 'absolute'
+      ..style.top = '0'
+      ..style.left = '0'
+      ..style.right = '0'
+      ..style.display = 'none'
+      ..style.padding = '9px 14px'
+      ..style.background = 'rgba(255,79,43,0.94)'
+      ..style.color = 'white'
+      ..style.textAlign = 'center'
+      ..style.zIndex = '8'
+      ..style.font = '700 13px -apple-system, Segoe UI, Roboto, sans-serif';
+    container.append(banner);
+    _liveBanner = banner;
+
+    // ---- Host black-out / pause cover (opaque, over everything) --------------
+    final coverLabel = html.DivElement()
+      ..style.color = 'white'
+      ..style.marginTop = '12px'
+      ..style.font = '700 16px -apple-system, Segoe UI, Roboto, sans-serif';
+    final cover = html.DivElement()
+      ..style.position = 'absolute'
+      ..style.top = '0'
+      ..style.left = '0'
+      ..style.right = '0'
+      ..style.bottom = '0'
+      ..style.display = 'none' // shown as flex by liveSetCover
+      ..style.flexDirection = 'column'
+      ..style.alignItems = 'center'
+      ..style.justifyContent = 'center'
+      ..style.textAlign = 'center'
+      ..style.background = 'rgba(0,0,0,0.985)'
+      ..style.zIndex = '9';
+    cover.append(coverLabel);
+    container.append(cover);
+    _liveCover = cover;
+    _liveCoverLabel = coverLabel;
+
+    // ---- Pause pill (frozen frame stays visible; small non-covering badge) ---
+    final pausePill = html.DivElement()
+      ..style.position = 'absolute'
+      ..style.top = '50%'
+      ..style.left = '50%'
+      ..style.transform = 'translate(-50%,-50%)'
+      ..style.display = 'none'
+      ..style.alignItems = 'center'
+      ..style.gap = '8px'
+      ..style.padding = '9px 16px'
+      ..style.borderRadius = '999px'
+      ..style.background = 'rgba(0,0,0,0.6)'
+      ..style.color = 'white'
+      ..style.zIndex = '8'
+      ..style.font = '700 14px -apple-system, Segoe UI, Roboto, sans-serif'
+      ..text = '⏸  Paused';
+    container.append(pausePill);
+    _livePausePill = pausePill;
+
     // Starts muted (browsers block unmuted autoplay); keep the mute-button icon
     // in sync if the volume changes by any other means.
     video.onVolumeChange.listen((_) => setIcon(muteBtn, video.muted ? _icVolOff : _icVolUp, size: 26));
@@ -711,7 +819,7 @@ Widget liveHlsVideoElement(
           } catch (_) {}
         }
       } catch (_) {}
-      if (video.paused && container.isConnected == true && html.document.fullscreenElement == null) {
+      if (!_liveHostPaused && video.paused && container.isConnected == true && html.document.fullscreenElement == null) {
         video.play();
       }
     }
@@ -748,6 +856,27 @@ Widget liveHlsVideoElement(
       video.src = url; // Safari plays the live HLS natively (follows the edge)
     }
 
+    // ---- Reload button: recover a stalled stream without leaving the room ----
+    void reloadStream() {
+      try {
+        final h = hlsRef;
+        if (h != null) {
+          h.callMethod('stopLoad');
+          h.callMethod('startLoad', [-1]); // reload the playlist, resume at the edge
+        } else {
+          video.src = url; // Safari: re-set the source
+        }
+        if (_liveHostPaused) {
+          video.pause();
+        } else {
+          video.play();
+          Timer(const Duration(milliseconds: 400), toEdge);
+        }
+      } catch (_) {}
+    }
+
+    controls.insertBefore(iconBtn(_icReplay, reloadStream, size: 26), muteBtn);
+
     // Show a descriptive title in the OS / browser media panel while making every
     // transport control inert (no pause/seek/skip can drive the stream).
     // Re-applied on play and every second, since the browser re-populates the
@@ -768,7 +897,7 @@ Widget liveHlsVideoElement(
     });
     video.onCanPlay.listen((_) {
       neuterMediaSession();
-      if (video.paused) video.play();
+      if (!_liveHostPaused && video.paused) video.play();
     });
     // Seeking is already impossible for a real user: no scrubber, the keyboard is
     // swallowed, the media-notification seek actions are no-ops, and the stream
@@ -779,7 +908,7 @@ Widget liveHlsVideoElement(
     // No user-facing pause exists; if anything (tab/OS) pauses us, resume and
     // realign to the live edge.
     video.onPause.listen((_) {
-      if (container.isConnected == true && html.document.fullscreenElement == null) toEdge();
+      if (!_liveHostPaused && container.isConnected == true && html.document.fullscreenElement == null) toEdge();
     });
     html.document.onVisibilityChange.listen((_) {
       if (html.document.hidden == false) toEdge();
@@ -791,7 +920,7 @@ Widget liveHlsVideoElement(
         return;
       }
       neuterMediaSession(); // keep the media notification wiped while live
-      if (video.paused && html.document.fullscreenElement == null && container.isConnected == true) {
+      if (!_liveHostPaused && video.paused && html.document.fullscreenElement == null && container.isConnected == true) {
         video.play();
       }
     });

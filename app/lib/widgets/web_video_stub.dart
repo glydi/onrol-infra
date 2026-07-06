@@ -23,5 +23,8 @@ Widget liveHlsVideoElement(
 }) =>
     const SizedBox.shrink();
 
-// Web-only: host mute-all hook (mobile uses VideoPlayerController.setVolume).
+// Web-only host-control hooks (mobile draws these overlays in Flutter instead).
 void liveSetMuted(bool muted) {}
+void liveSetCover(String label) {}
+void liveSetBanner(String text) {}
+void liveSetPaused(bool paused) {}

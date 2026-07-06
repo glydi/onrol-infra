@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"time"
@@ -42,7 +43,7 @@ const accessTTL = 45 * time.Second
 // for a session and returns the chat / Q&A / reactions toggles, whether they're
 // staff, and whether they're allowed at all. On a miss it runs one light query.
 func (h *Handlers) liveAccessCached(c *fiber.Ctx, sessionID string) (chatOK, qaOK, reactOK, isStaff, allowed bool) {
-	startLiveJanitor()
+	h.startLiveMaintenance()
 	key := sessionID + "|" + callerID(c)
 	now := time.Now()
 	accessMu.Lock()
@@ -143,7 +144,7 @@ var (
 )
 
 func (h *Handlers) playlistAllowed(c *fiber.Ctx, sessionID string) bool {
-	startLiveJanitor()
+	h.startLiveMaintenance()
 	key := sessionID + "|" + callerID(c)
 	now := time.Now()
 	pallowMu.Lock()
@@ -168,14 +169,26 @@ func (h *Handlers) playlistAllowed(c *fiber.Ctx, sessionID string) bool {
 	return allowed
 }
 
-// ---- in-memory presence (real headcount) -------------------------------------
-// Heartbeats update a map instead of writing a row per viewer per interval, and
-// the count is read straight from memory — removing all presence DB traffic from
-// the hottest write path. Stale users are pruned lazily on read.
+// ---- in-memory presence + attendance -----------------------------------------
+// Heartbeats update a map instead of writing a row per viewer per interval, so
+// the live headcount is read straight from memory (no presence DB traffic on the
+// hot path). Each viewer's watched time is also accumulated here and flushed to
+// live_attendance in batches (flushAttendance), giving durable attendance for
+// export without per-heartbeat writes. A gap between heartbeats longer than
+// maxBeatGap (tab closed, then reopened) is NOT counted as watched.
+
+const maxBeatGap = 40 // s — cap the credit per heartbeat so away-time isn't counted
+
+type viewerRec struct {
+	firstSeen int64 // unix sec, set once
+	lastSeen  int64 // unix sec, last heartbeat
+	watched   int64 // seconds accumulated since the last flush
+	dirty     bool  // has unflushed change
+}
 
 var (
 	presenceMu sync.Mutex
-	presence   = map[string]map[string]int64{} // session -> user -> unix sec last seen
+	presence   = map[string]map[string]*viewerRec{} // session -> user -> record
 )
 
 func touchPresence(session, user string) {
@@ -183,19 +196,24 @@ func touchPresence(session, user string) {
 	presenceMu.Lock()
 	m := presence[session]
 	if m == nil {
-		m = map[string]int64{}
+		m = map[string]*viewerRec{}
 		presence[session] = m
 	}
-	m[user] = now
+	if r := m[user]; r == nil {
+		m[user] = &viewerRec{firstSeen: now, lastSeen: now, dirty: true}
+	} else {
+		if d := now - r.lastSeen; d > 0 && d <= maxBeatGap {
+			r.watched += d
+		}
+		r.lastSeen = now
+		r.dirty = true
+	}
 	presenceMu.Unlock()
 }
 
-// presenceCount returns the number of users seen within `within`, pruning any
-// not seen for 2 minutes (and dropping the session entirely once it's empty).
+// presenceCount returns the number of users seen within `within`.
 func presenceCount(session string, within time.Duration) int {
-	now := time.Now().Unix()
-	cutoff := now - int64(within.Seconds())
-	stale := now - 120
+	cutoff := time.Now().Unix() - int64(within.Seconds())
 	presenceMu.Lock()
 	defer presenceMu.Unlock()
 	m := presence[session]
@@ -203,17 +221,55 @@ func presenceCount(session string, within time.Duration) int {
 		return 0
 	}
 	n := 0
-	for u, t := range m {
-		if t >= cutoff {
+	for _, r := range m {
+		if r.lastSeen >= cutoff {
 			n++
-		} else if t < stale {
-			delete(m, u)
 		}
 	}
-	if len(m) == 0 {
-		delete(presence, session)
-	}
 	return n
+}
+
+// flushAttendance writes accumulated watch-time deltas to live_attendance and
+// prunes viewers idle for >5min. Called periodically and before an export so the
+// numbers are current. If onlySession is non-empty only that session is flushed.
+func (h *Handlers) flushAttendance(onlySession string) {
+	type row struct {
+		session, user            string
+		first, last, watchedSecs int64
+	}
+	var rows []row
+	now := time.Now().Unix()
+	presenceMu.Lock()
+	for s, m := range presence {
+		if onlySession != "" && s != onlySession {
+			continue
+		}
+		for u, r := range m {
+			if r.dirty {
+				rows = append(rows, row{s, u, r.firstSeen, r.lastSeen, r.watched})
+				r.watched = 0
+				r.dirty = false
+			}
+			if now-r.lastSeen > 300 { // idle → prune (already flushed above)
+				delete(m, u)
+			}
+		}
+		if len(m) == 0 {
+			delete(presence, s)
+		}
+	}
+	presenceMu.Unlock()
+
+	for _, rw := range rows {
+		_, _ = h.Pool.Exec(context.Background(), `
+			INSERT INTO live_attendance (session_id, user_id, first_seen, last_seen, watched_seconds)
+			VALUES ($1, $2, to_timestamp($3), to_timestamp($4), $5)
+			ON CONFLICT (session_id, user_id) DO UPDATE SET
+				first_seen      = LEAST(live_attendance.first_seen, EXCLUDED.first_seen),
+				last_seen       = GREATEST(live_attendance.last_seen, EXCLUDED.last_seen),
+				watched_seconds = live_attendance.watched_seconds + EXCLUDED.watched_seconds`,
+			rw.session, rw.user, rw.first, rw.last, rw.watchedSecs)
+	}
 }
 
 // ---- live reactions ----------------------------------------------------------
@@ -283,18 +339,19 @@ func snapshotReactions(session string) (map[string]int, int) {
 	return out, b.seq
 }
 
-// ---- janitor -----------------------------------------------------------------
-// Prunes expired TTL entries so idle sessions don't leak memory. Presence and
-// reactions are pruned lazily on access; empty reaction buckets are swept here.
+// ---- maintenance -------------------------------------------------------------
+// A single background loop (started on first live request) that flushes
+// attendance and prunes expired TTL entries so idle sessions don't leak memory.
 
-var liveJanitorOnce sync.Once
+var liveMaintOnce sync.Once
 
-func startLiveJanitor() {
-	liveJanitorOnce.Do(func() {
+func (h *Handlers) startLiveMaintenance() {
+	liveMaintOnce.Do(func() {
 		go func() {
-			t := time.NewTicker(2 * time.Minute)
+			t := time.NewTicker(45 * time.Second)
 			defer t.Stop()
 			for range t.C {
+				h.flushAttendance("") // persist watch-time deltas, prune idle viewers
 				now := time.Now()
 				accessMu.Lock()
 				for k, e := range accessCache {

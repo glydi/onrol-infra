@@ -19,7 +19,7 @@ import 'web_video_stub.dart' if (dart.library.html) 'web_video_web.dart';
 /// platform view). Mobile: video_player following the live edge, with a minimal
 /// LIVE badge + mute/fullscreen overlay drawn in Flutter.
 class LivePlayer extends StatefulWidget {
-  const LivePlayer({super.key, required this.playlistUrl, required this.watermark, this.authToken = '', this.startEpochMs = 0, this.skewMs = 0, this.title = '', this.course = '', this.hostMuted = false});
+  const LivePlayer({super.key, required this.playlistUrl, required this.watermark, this.authToken = '', this.startEpochMs = 0, this.skewMs = 0, this.title = '', this.course = '', this.hostMuted = false, this.blank = false, this.paused = false, this.banner = ''});
 
   /// Absolute URL to the session's playlist.m3u8.
   final String playlistUrl;
@@ -44,6 +44,13 @@ class LivePlayer extends StatefulWidget {
   /// of their own mute button (used for pause / black-out / mute-all).
   final bool hostMuted;
 
+  /// Host room-controls, mirrored from /state. On web these drive HTML overlays
+  /// inside the video container (Flutter can't reliably paint over the <video>);
+  /// on mobile they're drawn as a Flutter cover here in the player.
+  final bool blank;
+  final bool paused;
+  final String banner;
+
   @override
   State<LivePlayer> createState() => _LivePlayerState();
 }
@@ -67,6 +74,7 @@ class _LivePlayerState extends State<LivePlayer> {
   // wall-clock second for everyone. (On iOS the live duration is reported as
   // indefinite and AVPlayer holds the edge itself — there we just keep playing.)
   void _followEdge({bool force = false}) {
+    if (widget.paused) return; // host paused → hold the frame, don't chase the edge
     final c = _c;
     if (c == null || !c.value.isInitialized) return;
     final durS = c.value.duration.inMilliseconds / 1000.0;
@@ -91,18 +99,19 @@ class _LivePlayerState extends State<LivePlayer> {
       _c!.initialize().then((_) {
         _c!.play();
         _followEdge(force: true);
-        _applyHostMute();
+        _applyHostState();
         if (mounted) setState(() => _ready = true);
       }).catchError((_) {
         if (mounted) setState(() => _error = 'Could not load the live stream.');
       });
       _syncTimer = Timer.periodic(const Duration(seconds: 1), (_) => _followEdge());
-    } else if (widget.hostMuted) {
-      // Web element is created asynchronously by the platform view; re-apply the
-      // host mute a few times so a viewer who JOINS while muted lands silenced.
+    } else {
+      // The web element is created asynchronously by the platform view; re-apply
+      // the host state a few times so a viewer who JOINS while muted / blacked
+      // out / paused / bannered lands in that state.
       for (final ms in [300, 900, 1800]) {
         Timer(Duration(milliseconds: ms), () {
-          if (mounted) liveSetMuted(widget.hostMuted);
+          if (mounted) _applyHostState();
         });
       }
     }
@@ -111,16 +120,33 @@ class _LivePlayerState extends State<LivePlayer> {
   @override
   void didUpdateWidget(covariant LivePlayer old) {
     super.didUpdateWidget(old);
-    if (old.hostMuted != widget.hostMuted) _applyHostMute();
+    if (old.hostMuted != widget.hostMuted || old.blank != widget.blank || old.paused != widget.paused || old.banner != widget.banner) {
+      _applyHostState();
+    }
   }
 
-  // Silence (or restore) audio for the host mute-all / pause / black-out. The
-  // viewer's own mute still applies on top on mobile; on web the host wins.
-  void _applyHostMute() {
+  // Apply the host controls. Pause FREEZES the current frame (no black-out);
+  // only black-out shows the opaque cover. On web these drive HTML overlays /
+  // the <video> element; on mobile we pause/mute the controller and rebuild so
+  // the Flutter cover reflects the state.
+  void _applyHostState() {
     if (kIsWeb) {
       liveSetMuted(widget.hostMuted);
+      liveSetPaused(widget.paused);
+      liveSetCover(widget.blank ? 'Back shortly' : '');
+      liveSetBanner(widget.banner);
     } else {
-      _c?.setVolume((widget.hostMuted || _muted) ? 0 : 1);
+      final c = _c;
+      if (c != null) {
+        c.setVolume((widget.hostMuted || _muted) ? 0 : 1);
+        if (widget.paused && c.value.isPlaying) {
+          c.pause();
+        } else if (!widget.paused && !c.value.isPlaying) {
+          c.play();
+          _followEdge(force: true);
+        }
+      }
+      if (mounted) setState(() {});
     }
   }
 
@@ -136,6 +162,27 @@ class _LivePlayerState extends State<LivePlayer> {
   void _toggleMute() {
     setState(() => _muted = !_muted);
     _c?.setVolume((_muted || widget.hostMuted) ? 0 : 1);
+  }
+
+  // Reload the stream (recover a stall) without leaving the room. Re-creates the
+  // controller so it re-fetches the playlist and snaps to the live edge.
+  Future<void> _reload() async {
+    final old = _c;
+    setState(() => _ready = false);
+    await old?.dispose();
+    _c = VideoPlayerController.networkUrl(
+      Uri.parse(widget.playlistUrl),
+      httpHeaders: widget.authToken.isNotEmpty ? {'Authorization': 'Bearer ${widget.authToken}'} : const {},
+    );
+    try {
+      await _c!.initialize();
+      _c!.play();
+      _followEdge(force: true);
+      _applyHostState();
+      if (mounted) setState(() => _ready = true);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Could not reload the live stream.');
+    }
   }
 
   Future<void> _toggleFullscreen() async {
@@ -184,11 +231,35 @@ class _LivePlayerState extends State<LivePlayer> {
         Positioned(
           bottom: 8, right: 8,
           child: Row(children: [
+            _ctlBtn(CupertinoIcons.arrow_clockwise, _reload),
+            const SizedBox(width: 6),
             _ctlBtn(_muted ? CupertinoIcons.volume_off : CupertinoIcons.volume_up, _toggleMute),
             const SizedBox(width: 6),
             _ctlBtn(_fullscreen ? CupertinoIcons.fullscreen_exit : CupertinoIcons.fullscreen, _toggleFullscreen),
           ]),
         ),
+        // Host pinned banner.
+        if (widget.banner.isNotEmpty)
+          Positioned(top: 0, left: 0, right: 0, child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            color: const Color(0xFFFF4F2B).withValues(alpha: 0.94),
+            child: Text(widget.banner, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+          )),
+        // Pause freezes the frame — just a small badge, no black-out.
+        if (widget.paused && !widget.blank)
+          Center(child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+            decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(999)),
+            child: const Text('⏸  Paused', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+          )),
+        // Black-out cover (opaque).
+        if (widget.blank)
+          Positioned.fill(child: Container(
+            color: Colors.black.withValues(alpha: 0.985),
+            alignment: Alignment.center,
+            child: const Text('Back shortly', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+          )),
       ],
     );
     return _fullscreen

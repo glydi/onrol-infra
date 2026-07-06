@@ -319,6 +319,46 @@ func (h *Handlers) LiveControl(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"ok": true})
 }
 
+// LiveAttendance returns who watched a session and for how long (staff-only).
+// It flushes the pending in-memory watch-time first so the numbers are current.
+func (h *Handlers) LiveAttendance(c *fiber.Ctx) error {
+	sessionID := c.Params("id")
+	var courseID string
+	if err := h.Pool.QueryRow(c.Context(), `SELECT course_id FROM class_sessions WHERE id=$1`, sessionID).Scan(&courseID); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "session not found")
+	}
+	if h.canManageCourse(c, courseID) != nil && callerRole(c) != "live_host" {
+		return fiber.NewError(fiber.StatusForbidden, "only the host can view attendance")
+	}
+	h.flushAttendance(sessionID) // persist the latest in-memory watch-time first
+
+	rows, err := h.Pool.Query(c.Context(), `
+		SELECT COALESCE(u.full_name,''), COALESCE(u.email,''), COALESCE(u.phone,''), COALESCE(u.login_id,''),
+		       a.first_seen, a.last_seen, a.watched_seconds
+		FROM live_attendance a JOIN users u ON u.id = a.user_id
+		WHERE a.session_id = $1
+		ORDER BY a.watched_seconds DESC, u.full_name ASC`, sessionID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "attendance load failed")
+	}
+	defer rows.Close()
+	out := []fiber.Map{}
+	for rows.Next() {
+		var name, email, phone, loginID string
+		var first, last time.Time
+		var watched int64
+		if err := rows.Scan(&name, &email, &phone, &loginID, &first, &last, &watched); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		out = append(out, fiber.Map{
+			"name": name, "email": email, "phone": phone, "login_id": loginID,
+			"first_seen": first.UTC().Format(time.RFC3339), "last_seen": last.UTC().Format(time.RFC3339),
+			"watched_seconds": watched,
+		})
+	}
+	return c.JSON(fiber.Map{"attendance": out, "count": len(out)})
+}
+
 // LiveChatList returns chat ascending. With ?after=<rfc3339> it returns only
 // newer messages (the client passes the last message's timestamp as the cursor).
 func (h *Handlers) LiveChatList(c *fiber.Ctx) error {
