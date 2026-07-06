@@ -25,7 +25,7 @@ echo "[3/5] provisioning DB + .env (idempotent; only writes .env if absent)"
 ssh "$HOST" "DOMAIN=$DOMAIN bash -s" <<'REMOTE'
 set -e
 command -v psql >/dev/null || { export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y -qq postgresql; }
-command -v aws >/dev/null || { export DEBIAN_FRONTEND=noninteractive; apt-get install -y -qq awscli; }  # for offsite backups
+command -v aws >/dev/null || { export DEBIAN_FRONTEND=noninteractive; apt-get install -y -qq awscli; }  # for R2 video-store tooling (scripts/r2*.sh)
 systemctl enable --now postgresql
 # Harden Postgres: listen only on localhost (the app connects via 127.0.0.1) so
 # 5432 is never exposed to the internet.
@@ -76,19 +76,12 @@ install -d -m 750 -o onrol -g onrol /opt/onrol/backups
 cat > /opt/onrol/backup.sh <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
+# Nightly Postgres backup — local only. Backups are deliberately kept OFF R2:
+# that bucket is the video store. Keep an offsite copy elsewhere if you want
+# these to survive total VPS/disk loss.
 OUT=/opt/onrol/backups/onrol-$(date +%Y%m%d-%H%M%S).sql.gz
 sudo -u postgres pg_dump onrol | gzip > "$OUT"
 find /opt/onrol/backups -name 'onrol-*.sql.gz' -mtime +14 -delete
-# Offsite copy to R2 so backups survive a VPS/disk loss (best-effort).
-if [ -f /opt/onrol/.env ]; then
-  set +u; . /opt/onrol/.env; set -u
-  if [ -n "${R2_ACCESS_KEY_ID:-}" ] && [ -n "${R2_ACCOUNT_ID:-}" ] && [ -n "${R2_BUCKET:-}" ]; then
-    AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" \
-      aws s3 cp "$OUT" "s3://$R2_BUCKET/db-backups/$(basename "$OUT")" \
-      --endpoint-url "https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com" \
-      --region auto --only-show-errors || echo "warn: R2 upload failed"
-  fi
-fi
 SH
 chmod +x /opt/onrol/backup.sh
 echo '30 2 * * * root /opt/onrol/backup.sh >> /var/log/onrol-backup.log 2>&1' > /etc/cron.d/onrol-backup
