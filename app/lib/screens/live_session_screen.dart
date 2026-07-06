@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart' hide Config;
 
@@ -63,6 +63,15 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   bool _sendingMsg = false;
   String _chatCursor = '';
 
+  // Floating reactions (👍👏❤️😂😮🎉🚀👌). Tapping floats it locally and posts
+  // it; the server batches the room's reactions onto the /state poll everyone
+  // already makes, so incoming reactions float too with no extra requests.
+  static const _reactEmojis = ['👍', '👏', '❤️', '😂', '😮', '🎉', '🚀', '👌'];
+  final List<_FloatSpec> _floats = [];
+  int _floatId = 0;
+  int _reactSeq = 0;
+  final _rand = math.Random();
+
   String get _base => '/api/v1/me/live/${widget.sessionId}';
 
   @override
@@ -119,9 +128,48 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         if (p != null && p.isNotEmpty) _playlistUrl = p.startsWith('http') ? p : '${Config.apiBase}$p';
         _loaded = true;
       });
+      _absorbReactions(d); // float the room's reactions from this poll
     } on ApiException catch (e) {
       if (mounted && !_loaded) setState(() => _fatal = e.status == 403 ? 'You are not enrolled in this class.' : 'Could not load this session.');
     } catch (_) {/* transient */}
+  }
+
+  // Send a reaction: float it immediately for snappy feedback, then post it so
+  // it reaches the rest of the room on their next state poll.
+  Future<void> _react(String emoji) async {
+    _spawnFloat(emoji);
+    try {
+      await widget.auth.apiPost('$_base/react', {'emoji': emoji});
+    } catch (_) {}
+  }
+
+  // Float the reaction batch the server folded onto /state. seq guards against
+  // floating the same batch twice across polls.
+  void _absorbReactions(Map<String, dynamic> d) {
+    final seq = (d['reactions_seq'] as num?)?.toInt() ?? 0;
+    if (seq == 0 || seq == _reactSeq) return;
+    _reactSeq = seq;
+    final r = (d['reactions'] as Map?) ?? const {};
+    r.forEach((k, v) {
+      final n = ((v as num?)?.toInt() ?? 0).clamp(0, 6); // cap the burst per emoji
+      for (var i = 0; i < n; i++) {
+        Future.delayed(Duration(milliseconds: i * 200), () => _spawnFloat(k.toString()));
+      }
+    });
+  }
+
+  void _spawnFloat(String emoji) {
+    if (!mounted) return;
+    final id = _floatId++;
+    setState(() {
+      _floats.add(_FloatSpec(id, emoji, 0.12 + _rand.nextDouble() * 0.76));
+      if (_floats.length > 28) _floats.removeAt(0); // bound the overlay
+    });
+  }
+
+  void _removeFloat(int id) {
+    if (!mounted) return;
+    setState(() => _floats.removeWhere((f) => f.id == id));
   }
 
   Future<void> _heartbeat() async {
@@ -231,9 +279,14 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final w = MediaQuery.of(context).size.width;
-    final sideBySide = widget.isHost || kIsWeb || w >= 600; // host: panel is the point
-    final panelW = w < 900 ? (w * 0.36).clamp(260.0, 340.0) : 380.0;
+    final size = MediaQuery.of(context).size;
+    // Desktop-style side panel when there's room OR the device is in landscape;
+    // a phone in PORTRAIT stacks the video on top with the panel below, and
+    // rotating it to landscape flips to the desktop side-by-side layout. Host is
+    // always side-by-side — the panel (the question queue) is the whole point.
+    final isLandscape = size.width >= size.height;
+    final sideBySide = widget.isHost || size.width >= 720 || isLandscape;
+    final panelW = size.width < 900 ? (size.width * 0.36).clamp(260.0, 340.0) : 380.0;
     final showPanel = _qaOn || widget.isHost;
     return Scaffold(
       backgroundColor: _bg,
@@ -242,13 +295,21 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
             ? Center(child: Text(_fatal!, style: GoogleFonts.inter(color: Colors.white70)))
             : (sideBySide && showPanel)
                 ? Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    Expanded(child: Column(children: [_header(), Expanded(child: Center(child: _stage()))])),
+                    Expanded(child: Column(children: [_header(), Expanded(child: Center(child: _stageArea()))])),
                     Container(width: panelW, decoration: const BoxDecoration(border: Border(left: BorderSide(color: Color(0xFF222228)))), child: _qaPanel()),
                   ])
-                : Column(children: [_header(), _stage(), if (showPanel) Expanded(child: _qaPanel())]),
+                : Column(children: [_header(), _stageArea(), if (showPanel) Expanded(child: _qaPanel())]),
       ),
     );
   }
+
+  // The video stage with the floating-reactions overlay on top of it.
+  Widget _stageArea() => Stack(alignment: Alignment.center, children: [
+        _stage(),
+        Positioned.fill(child: IgnorePointer(child: Stack(clipBehavior: Clip.hardEdge, children: [
+          for (final f in _floats) _Floaty(key: ValueKey(f.id), emoji: f.emoji, startX: f.x, onDone: () => _removeFloat(f.id)),
+        ]))),
+      ]);
 
   // ---- Header --------------------------------------------------------------
   Widget _header() {
@@ -477,6 +538,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                 },
               ),
       ),
+      _reactionBar(),
       _composer(_qaCtl, 'Ask your mentor a question…', _sendQuestion, _sendingQa),
     ]);
   }
@@ -536,9 +598,30 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                 },
               ),
       ),
+      _reactionBar(),
       _composer(_chatCtl, 'Message all viewers…', _sendBroadcast, _sendingMsg),
     ]);
   }
+
+  // Emoji reactions row at the bottom of the panel; a tap floats it over the
+  // video and broadcasts it to the room. FittedBox guarantees it never overflows
+  // a narrow side panel.
+  Widget _reactionBar() => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+        decoration: const BoxDecoration(border: Border(top: BorderSide(color: Color(0xFF222228)))),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.center,
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            for (final e in _reactEmojis)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _react(e),
+                child: Padding(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), child: Text(e, style: const TextStyle(fontSize: 23))),
+              ),
+          ]),
+        ),
+      );
 
   Widget _panelHeader(String title, String sub) => Container(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
@@ -595,5 +678,71 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     final h = d.inHours, m = d.inMinutes.remainder(60), s = d.inSeconds.remainder(60);
     String two(int n) => n.toString().padLeft(2, '0');
     return h > 0 ? '$h:${two(m)}:${two(s)}' : '${two(m)}:${two(s)}';
+  }
+}
+
+// One in-flight floating reaction: a stable id, the emoji, and its horizontal
+// start position (0..1 across the stage).
+class _FloatSpec {
+  const _FloatSpec(this.id, this.emoji, this.x);
+  final int id;
+  final String emoji;
+  final double x;
+}
+
+// A single emoji that rises up the video, drifting and fading, then removes
+// itself. Self-contained controller so many can run without parent rebuilds.
+class _Floaty extends StatefulWidget {
+  const _Floaty({super.key, required this.emoji, required this.startX, required this.onDone});
+  final String emoji;
+  final double startX;
+  final VoidCallback onDone;
+
+  @override
+  State<_Floaty> createState() => _FloatyState();
+}
+
+class _FloatyState extends State<_Floaty> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400));
+
+  @override
+  void initState() {
+    super.initState();
+    _c.addStatusListener((s) {
+      if (s == AnimationStatus.completed) widget.onDone();
+    });
+    _c.forward();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, __) {
+        final t = _c.value;
+        final rise = Curves.easeOut.transform(t); // 0 → 1
+        final y = 1.0 - 1.9 * rise; // bottom (1) → near top (−0.9)
+        final drift = math.sin(t * math.pi * 3) * 0.05;
+        final x = (widget.startX * 2 - 1 + drift).clamp(-1.0, 1.0);
+        final opacity = t < 0.12 ? t / 0.12 : (t > 0.75 ? (1 - (t - 0.75) / 0.25) : 1.0);
+        final scale = 0.6 + 0.55 * Curves.easeOutBack.transform((t * 2.2).clamp(0.0, 1.0));
+        return Align(
+          alignment: Alignment(x, y.clamp(-1.0, 1.0)),
+          child: Opacity(
+            opacity: opacity.clamp(0.0, 1.0),
+            child: Transform.scale(
+              scale: scale,
+              child: Text(widget.emoji, style: const TextStyle(fontSize: 30, shadows: [Shadow(color: Colors.black54, blurRadius: 8)])),
+            ),
+          ),
+        );
+      },
+    );
   }
 }

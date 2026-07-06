@@ -149,37 +149,64 @@ func rewriteKeyURI(keyLine, newURI string) string {
 
 // LivePlaylist serves the time-windowed HLS playlist for a simulated-live
 // session. Token-auth (hls.js can't attach the device header) + enrollment.
+// The window is identical for every viewer and advances only once per segment
+// (~6s), so the built body is cached per session for ~1.5s: hls.js's per-viewer
+// refresh (500+ req/s at scale) collapses to one build per session per window,
+// while the client still gets Cache-Control: no-store so it keeps re-fetching.
 func (h *Handlers) LivePlaylist(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
+	if !h.playlistAllowed(c, sessionID) {
+		return fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
+	}
+	now := time.Now()
+	playlistBodyMu.Lock()
+	if e, ok := playlistBody[sessionID]; ok && now.Before(e.exp) {
+		playlistBodyMu.Unlock()
+		return h.sendPlaylist(c, e.body)
+	}
+	playlistBodyMu.Unlock()
+
+	body, ferr := h.buildLivePlaylist(c, sessionID)
+	if ferr != nil {
+		return ferr // 425/409/etc — transient, don't cache
+	}
+	playlistBodyMu.Lock()
+	playlistBody[sessionID] = playlistEntry{body: body, exp: now.Add(playlistBodyTTL)}
+	playlistBodyMu.Unlock()
+	return h.sendPlaylist(c, body)
+}
+
+func (h *Handlers) sendPlaylist(c *fiber.Ctx, body string) error {
+	c.Set(fiber.HeaderContentType, "application/vnd.apple.mpegurl")
+	c.Set(fiber.HeaderCacheControl, "no-store")
+	return c.SendString(body)
+}
+
+// buildLivePlaylist loads the session, derives the current sliding window, and
+// renders the playlist text. Returns a *fiber.Error for the not-started (425) /
+// not-ready (409) states, which the caller returns uncached.
+func (h *Handlers) buildLivePlaylist(c *fiber.Ctx, sessionID string) (string, *fiber.Error) {
 	var assetID, hlsURL string
 	var startsAt time.Time
 	var durDB int
-	var allowed bool
-	// Enrolled students OR staff/live-host (who aren't enrolled) may watch. Role
-	// is looked up here since token-auth doesn't carry it.
 	err := h.Pool.QueryRow(c.Context(), `
-		SELECT cs.media_asset_id, cs.starts_at, COALESCE(ma.hls_url,''), ma.duration_seconds,
-		       (EXISTS(SELECT 1 FROM course_enrollments ce WHERE ce.course_id=cs.course_id AND ce.user_id=$2 AND ce.status='active')
-		        OR (SELECT role FROM users WHERE id=$2) IN ('manager','superadmin','instructor','live_host'))
+		SELECT cs.media_asset_id, cs.starts_at, COALESCE(ma.hls_url,''), ma.duration_seconds
 		FROM class_sessions cs
 		JOIN media_assets ma ON ma.id = cs.media_asset_id
-		WHERE cs.id = $1`, sessionID, callerID(c)).Scan(&assetID, &startsAt, &hlsURL, &durDB, &allowed)
+		WHERE cs.id = $1`, sessionID).Scan(&assetID, &startsAt, &hlsURL, &durDB)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
+		return "", fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
 	}
 	if err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, "session load failed")
-	}
-	if !allowed {
-		return fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
+		return "", fiber.NewError(fiber.StatusInternalServerError, "session load failed")
 	}
 	if hlsURL == "" {
-		return fiber.NewError(fiber.StatusConflict, "recording not ready")
+		return "", fiber.NewError(fiber.StatusConflict, "recording not ready")
 	}
 
 	pp, err := h.loadLivePlaylist(c.Context(), assetID, hlsURL)
 	if err != nil {
-		return fiber.NewError(fiber.StatusBadGateway, "playlist unavailable")
+		return "", fiber.NewError(fiber.StatusBadGateway, "playlist unavailable")
 	}
 	// Lazy backfill of duration for assets transcoded before we recorded it.
 	if durDB == 0 && pp.total > 0 {
@@ -190,7 +217,7 @@ func (h *Handlers) LivePlaylist(c *fiber.Ctx) error {
 	if elapsed <= 0 {
 		// Before the scheduled start there is nothing to play; the client shows
 		// the lobby/countdown and only requests this once /state reports "live".
-		return fiber.NewError(fiber.StatusTooEarly, "session has not started")
+		return "", fiber.NewError(fiber.StatusTooEarly, "session has not started")
 	}
 
 	// Live edge = last segment whose start time is at or before elapsed.
@@ -226,10 +253,7 @@ func (h *Handlers) LivePlaylist(c *fiber.Ctx) error {
 	if ended {
 		sb.WriteString("#EXT-X-ENDLIST\n")
 	}
-
-	c.Set(fiber.HeaderContentType, "application/vnd.apple.mpegurl")
-	c.Set(fiber.HeaderCacheControl, "no-store")
-	return c.SendString(sb.String())
+	return sb.String(), nil
 }
 
 // LiveHLSKey serves the AES-128 key for a simulated-live session's recording,

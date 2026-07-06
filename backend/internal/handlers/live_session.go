@@ -37,40 +37,76 @@ func (h *Handlers) liveAccess(c *fiber.Ctx, sessionID string) (chatOK, qaOK, isS
 }
 
 // LiveSessionState reports whether the session is upcoming/live/ended, the live
-// playlist URL once live, and the (real + simulated) viewer count. The client
-// polls this to flip the UI and refresh the headcount.
+// playlist URL once live, and the (real + simulated) viewer count. Every viewer
+// polls this; the shared block is cached per session (~2s) so 3000 pollers cost
+// one recompute, and the per-user auth + is_host come from the access cache — so
+// a cache-hit poll does no DB work at all.
 func (h *Handlers) LiveSessionState(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
+	_, _, isStaff, allowed := h.liveAccessCached(c, sessionID)
+	if !allowed {
+		return fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
+	}
+	shared, ferr := h.cachedLiveState(c, sessionID)
+	if ferr != nil {
+		return ferr
+	}
+	out := make(fiber.Map, len(shared)+1)
+	for k, v := range shared {
+		out[k] = v
+	}
+	out["is_host"] = isStaff
+	return c.JSON(out)
+}
+
+// cachedLiveState returns the per-session shared state block, recomputing at
+// most once per stateTTL. The returned map is read-only (the handler copies it
+// before adding per-user fields).
+func (h *Handlers) cachedLiveState(c *fiber.Ctx, sessionID string) (fiber.Map, *fiber.Error) {
+	now := time.Now()
+	stateMu.Lock()
+	if e, ok := stateCache[sessionID]; ok && now.Before(e.exp) {
+		stateMu.Unlock()
+		return e.data, nil
+	}
+	stateMu.Unlock()
+
+	data, ferr := h.buildLiveState(c, sessionID, now)
+	if ferr != nil {
+		return nil, ferr
+	}
+	stateMu.Lock()
+	stateCache[sessionID] = stateEntry{data: data, exp: now.Add(stateTTL)}
+	stateMu.Unlock()
+	return data, nil
+}
+
+// buildLiveState does the actual (session-shared) work: load the session row,
+// derive status, compute the headcount from in-memory presence + the simulated
+// floor, and fold in the pending reaction batch.
+func (h *Handlers) buildLiveState(c *fiber.Ctx, sessionID string, now time.Time) (fiber.Map, *fiber.Error) {
 	var startsAt time.Time
 	var assetID *string
-	var title, course string
-	var chatOK, qaOK, enrolled bool
-	var hlsURL, courseID, startImg, endImg string
+	var title, course, hlsURL, startImg, endImg string
+	var chatOK, qaOK bool
 	var viewerBase, durationSecs int
 	err := h.Pool.QueryRow(c.Context(), `
 		SELECT cs.starts_at, cs.media_asset_id, cs.title, c.title,
 		       cs.chat_enabled, cs.qa_enabled, cs.viewer_base, COALESCE(ma.duration_seconds, 0),
-		       COALESCE(ma.hls_url,''), COALESCE(cs.start_image,''), COALESCE(cs.end_image,''), cs.course_id,
-		       EXISTS(SELECT 1 FROM course_enrollments ce WHERE ce.course_id=cs.course_id AND ce.user_id=$2 AND ce.status='active')
+		       COALESCE(ma.hls_url,''), COALESCE(cs.start_image,''), COALESCE(cs.end_image,'')
 		FROM class_sessions cs
 		JOIN courses c ON c.id = cs.course_id
 		LEFT JOIN media_assets ma ON ma.id = cs.media_asset_id
-		WHERE cs.id = $1`, sessionID, callerID(c)).Scan(
-		&startsAt, &assetID, &title, &course, &chatOK, &qaOK, &viewerBase, &durationSecs, &hlsURL, &startImg, &endImg, &courseID, &enrolled)
+		WHERE cs.id = $1`, sessionID).Scan(
+		&startsAt, &assetID, &title, &course, &chatOK, &qaOK, &viewerBase, &durationSecs, &hlsURL, &startImg, &endImg)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
+		return nil, fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
 	}
 	if err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, "state load failed")
-	}
-	// Enrolled students OR course staff / a live host may view the state.
-	isStaff := h.canManageCourse(c, courseID) == nil || callerRole(c) == "live_host"
-	if !enrolled && !isStaff {
-		return fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
+		return nil, fiber.NewError(fiber.StatusInternalServerError, "state load failed")
 	}
 	ready := hlsURL != ""
 
-	now := time.Now()
 	elapsed := now.Sub(startsAt).Seconds()
 	status := "live"
 	switch {
@@ -84,11 +120,8 @@ func (h *Handlers) LiveSessionState(c *fiber.Ctx) error {
 		status = "ended"
 	}
 
-	// Real concurrent viewers = heartbeats in the last 30s.
-	var real int
-	_ = h.Pool.QueryRow(c.Context(),
-		`SELECT count(*) FROM live_presence WHERE session_id=$1 AND last_seen > now() - interval '30 seconds'`,
-		sessionID).Scan(&real)
+	// Real concurrent viewers = in-memory heartbeats in the last 30s.
+	real := presenceCount(sessionID, 30*time.Second)
 
 	// Simulated floor: ramp up over the first 90s ("people joining"), then drift
 	// naturally around viewer_base. The drift blends several long-period sines
@@ -122,7 +155,14 @@ func (h *Handlers) LiveSessionState(c *fiber.Ctx) error {
 		"chat_enabled":        chatOK,
 		"qa_enabled":          qaOK,
 		"viewers":             viewers,
-		"is_host":             isStaff,
+	}
+	// Reaction batch since the last rebuild — rides along on the state everyone
+	// already polls, so reactions reach the whole room with no extra requests.
+	if reMap, reSeq := snapshotReactions(sessionID); reSeq > 0 {
+		if len(reMap) > 0 {
+			out["reactions"] = reMap
+		}
+		out["reactions_seq"] = reSeq
 	}
 	// Serve the server's sliding-window LIVE playlist (h.LivePlaylist), NOT the
 	// static VOD. It only ever names segments up to "now" and carries no
@@ -137,24 +177,39 @@ func (h *Handlers) LiveSessionState(c *fiber.Ctx) error {
 	if status == "live" && hlsURL != "" {
 		out["playlist_url"] = h.Cfg.AppBaseURL + "/api/v1/me/live/" + sessionID + "/playlist.m3u8"
 	}
-	return c.JSON(out)
+	return out, nil
 }
 
-// LiveHeartbeat marks the caller present (drives the real viewer count).
+// LiveHeartbeat marks the caller present (drives the real viewer count). Auth is
+// cached and presence is in-memory, so this touches no database.
 func (h *Handlers) LiveHeartbeat(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
-	if _, _, _, err := h.liveAccess(c, sessionID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return fiber.NewError(fiber.StatusForbidden, "not entitled")
-		}
-		return fiber.NewError(fiber.StatusInternalServerError, "presence failed")
+	if _, _, _, allowed := h.liveAccessCached(c, sessionID); !allowed {
+		return fiber.NewError(fiber.StatusForbidden, "not entitled")
 	}
-	if _, err := h.Pool.Exec(c.Context(),
-		`INSERT INTO live_presence (session_id, user_id, last_seen) VALUES ($1,$2,now())
-		 ON CONFLICT (session_id, user_id) DO UPDATE SET last_seen=now()`,
-		sessionID, callerID(c)); err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, "presence failed")
+	touchPresence(sessionID, callerID(c))
+	return c.JSON(fiber.Map{"ok": true})
+}
+
+// LiveReact records a floating reaction (👍👏❤️😂😮🎉🚀👌). It's an in-memory
+// tally with no DB write; the batch is broadcast to the room on the next /state
+// poll everyone already makes, so reactions add no new polling load.
+func (h *Handlers) LiveReact(c *fiber.Ctx) error {
+	sessionID := c.Params("id")
+	if _, _, _, allowed := h.liveAccessCached(c, sessionID); !allowed {
+		return fiber.NewError(fiber.StatusForbidden, "not entitled")
 	}
+	var req struct {
+		Emoji string `json:"emoji"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+	emoji, ok := normalizeReaction(req.Emoji)
+	if !ok {
+		return fiber.NewError(fiber.StatusBadRequest, "unknown reaction")
+	}
+	addReaction(sessionID, emoji)
 	return c.JSON(fiber.Map{"ok": true})
 }
 

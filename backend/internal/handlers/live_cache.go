@@ -1,0 +1,317 @@
+package handlers
+
+import (
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/gofiber/fiber/v2"
+)
+
+// Hot-path in-memory caches for the live room. One API process serves every
+// viewer of a session, and the state / playlist / presence / reactions that
+// each viewer polls are IDENTICAL across all of them. So we compute the shared
+// work ONCE per short window and hand the same result to the thousands of
+// pollers, instead of hitting Postgres per request. This turns O(viewers) DB
+// load into O(1) per session per window — the whole reason a modest box can
+// carry a few thousand concurrent "recorded-as-live" viewers (the video bytes
+// never touch us; they stream from the R2 CDN).
+//
+// Everything here is process-local. We run a single instance, so a session's
+// viewers all land here; on restart the caches simply repopulate within one
+// poll cycle. All maps are guarded by their own mutex and pruned by a janitor.
+
+// ---- access (enrollment / staff) cache ---------------------------------------
+// Whether a given user may view a given session changes rarely, so we cache it
+// for ~45s. This is what lets a cache-hit state/heartbeat/react request do ZERO
+// database queries.
+
+type accessEntry struct {
+	chatOK, qaOK, isStaff, allowed bool
+	exp                            time.Time
+}
+
+var (
+	accessMu    sync.Mutex
+	accessCache = map[string]accessEntry{} // key: sessionID|userID
+)
+
+const accessTTL = 45 * time.Second
+
+// liveAccessCached is the cached form of liveAccess: it authorizes the caller
+// for a session and returns the chat/Q&A toggles, whether they're staff, and
+// whether they're allowed at all. On a miss it runs one light query.
+func (h *Handlers) liveAccessCached(c *fiber.Ctx, sessionID string) (chatOK, qaOK, isStaff, allowed bool) {
+	startLiveJanitor()
+	key := sessionID + "|" + callerID(c)
+	now := time.Now()
+	accessMu.Lock()
+	if e, ok := accessCache[key]; ok && now.Before(e.exp) {
+		accessMu.Unlock()
+		return e.chatOK, e.qaOK, e.isStaff, e.allowed
+	}
+	accessMu.Unlock()
+
+	var courseID string
+	var enrolled bool
+	err := h.Pool.QueryRow(c.Context(), `
+		SELECT cs.chat_enabled, cs.qa_enabled, cs.course_id,
+		       EXISTS(SELECT 1 FROM course_enrollments ce WHERE ce.course_id=cs.course_id AND ce.user_id=$2 AND ce.status='active')
+		FROM class_sessions cs WHERE cs.id=$1`, sessionID, callerID(c)).Scan(&chatOK, &qaOK, &courseID, &enrolled)
+	if err != nil {
+		return false, false, false, false // unknown session / error → not allowed (uncached)
+	}
+	isStaff = h.canManageCourse(c, courseID) == nil || callerRole(c) == "live_host"
+	allowed = enrolled || isStaff
+	accessMu.Lock()
+	accessCache[key] = accessEntry{chatOK, qaOK, isStaff, allowed, now.Add(accessTTL)}
+	accessMu.Unlock()
+	return
+}
+
+// ---- session state cache -----------------------------------------------------
+// The shared state block (status, viewer count, playlist URL, reaction batch)
+// is the same for every viewer, so we cache it per session for a couple of
+// seconds. The per-user is_host flag is added by the handler after the fact.
+
+type stateEntry struct {
+	data fiber.Map
+	exp  time.Time
+}
+
+var (
+	stateMu    sync.Mutex
+	stateCache = map[string]stateEntry{}
+)
+
+const stateTTL = 2 * time.Second
+
+// ---- live playlist body cache ------------------------------------------------
+// The sliding-window playlist depends only on (session, wall-clock), not on the
+// viewer. It advances one segment every ~6s, so a ~1.5s cache is always safe and
+// collapses hls.js's per-viewer refresh into one build per session per window.
+
+type playlistEntry struct {
+	body string
+	exp  time.Time
+}
+
+var (
+	playlistBodyMu sync.Mutex
+	playlistBody   = map[string]playlistEntry{}
+)
+
+const playlistBodyTTL = 1500 * time.Millisecond
+
+// playlistAllowed is the cached enrollment/role gate for the token-auth playlist
+// and key routes (which don't carry a role in locals, so it's checked in SQL).
+type pallowEntry struct {
+	allowed bool
+	exp     time.Time
+}
+
+var (
+	pallowMu sync.Mutex
+	pallow   = map[string]pallowEntry{}
+)
+
+func (h *Handlers) playlistAllowed(c *fiber.Ctx, sessionID string) bool {
+	startLiveJanitor()
+	key := sessionID + "|" + callerID(c)
+	now := time.Now()
+	pallowMu.Lock()
+	if e, ok := pallow[key]; ok && now.Before(e.exp) {
+		pallowMu.Unlock()
+		return e.allowed
+	}
+	pallowMu.Unlock()
+
+	var allowed bool
+	err := h.Pool.QueryRow(c.Context(), `
+		SELECT (EXISTS(SELECT 1 FROM course_enrollments ce JOIN class_sessions cs ON cs.course_id=ce.course_id
+		               WHERE cs.id=$1 AND ce.user_id=$2 AND ce.status='active')
+		        OR (SELECT role FROM users WHERE id=$2) IN ('manager','superadmin','instructor','live_host'))`,
+		sessionID, callerID(c)).Scan(&allowed)
+	if err != nil {
+		return false
+	}
+	pallowMu.Lock()
+	pallow[key] = pallowEntry{allowed, now.Add(accessTTL)}
+	pallowMu.Unlock()
+	return allowed
+}
+
+// ---- in-memory presence (real headcount) -------------------------------------
+// Heartbeats update a map instead of writing a row per viewer per interval, and
+// the count is read straight from memory — removing all presence DB traffic from
+// the hottest write path. Stale users are pruned lazily on read.
+
+var (
+	presenceMu sync.Mutex
+	presence   = map[string]map[string]int64{} // session -> user -> unix sec last seen
+)
+
+func touchPresence(session, user string) {
+	now := time.Now().Unix()
+	presenceMu.Lock()
+	m := presence[session]
+	if m == nil {
+		m = map[string]int64{}
+		presence[session] = m
+	}
+	m[user] = now
+	presenceMu.Unlock()
+}
+
+// presenceCount returns the number of users seen within `within`, pruning any
+// not seen for 2 minutes (and dropping the session entirely once it's empty).
+func presenceCount(session string, within time.Duration) int {
+	now := time.Now().Unix()
+	cutoff := now - int64(within.Seconds())
+	stale := now - 120
+	presenceMu.Lock()
+	defer presenceMu.Unlock()
+	m := presence[session]
+	if m == nil {
+		return 0
+	}
+	n := 0
+	for u, t := range m {
+		if t >= cutoff {
+			n++
+		} else if t < stale {
+			delete(m, u)
+		}
+	}
+	if len(m) == 0 {
+		delete(presence, session)
+	}
+	return n
+}
+
+// ---- live reactions ----------------------------------------------------------
+// Tapping a reaction increments an in-memory tally (no DB). The tallies since
+// the last state rebuild ride along on the /state response everyone already
+// polls — so reactions broadcast to the whole room with ZERO extra requests and
+// ZERO new polling. seq lets a client float each batch at most once.
+
+var liveReactionSet = map[string]struct{}{
+	"👍": {}, "👏": {}, "❤️": {}, "😂": {}, "😮": {}, "🎉": {}, "🚀": {}, "👌": {},
+}
+
+type reactionBucket struct {
+	counts map[string]int
+	seq    int
+}
+
+var (
+	reactMu    sync.Mutex
+	reactAccum = map[string]*reactionBucket{}
+)
+
+// addReaction records one reaction; returns false for an unknown emoji.
+func addReaction(session, emoji string) bool {
+	if _, ok := liveReactionSet[emoji]; !ok {
+		return false
+	}
+	reactMu.Lock()
+	b := reactAccum[session]
+	if b == nil {
+		b = &reactionBucket{counts: map[string]int{}}
+		reactAccum[session] = b
+	}
+	if b.counts[emoji] < 1000 { // soft cap so a spammer can't blow the number up
+		b.counts[emoji]++
+	}
+	reactMu.Unlock()
+	return true
+}
+
+// snapshotReactions returns and RESETS the pending reaction tallies. Called once
+// per state-cache rebuild (~every 2s); seq increments only when there was
+// something, so an idle session keeps the same seq and clients don't re-float.
+// Per-emoji count is capped so the client's burst is bounded.
+func snapshotReactions(session string) (map[string]int, int) {
+	reactMu.Lock()
+	defer reactMu.Unlock()
+	b := reactAccum[session]
+	if b == nil {
+		return nil, 0
+	}
+	if len(b.counts) == 0 {
+		return nil, b.seq
+	}
+	out := make(map[string]int, len(b.counts))
+	for k, v := range b.counts {
+		if v > 50 {
+			v = 50
+		}
+		out[k] = v
+	}
+	b.counts = map[string]int{}
+	b.seq++
+	if b.seq > 1<<30 {
+		b.seq = 1
+	}
+	return out, b.seq
+}
+
+// ---- janitor -----------------------------------------------------------------
+// Prunes expired TTL entries so idle sessions don't leak memory. Presence and
+// reactions are pruned lazily on access; empty reaction buckets are swept here.
+
+var liveJanitorOnce sync.Once
+
+func startLiveJanitor() {
+	liveJanitorOnce.Do(func() {
+		go func() {
+			t := time.NewTicker(2 * time.Minute)
+			defer t.Stop()
+			for range t.C {
+				now := time.Now()
+				accessMu.Lock()
+				for k, e := range accessCache {
+					if now.After(e.exp) {
+						delete(accessCache, k)
+					}
+				}
+				accessMu.Unlock()
+				pallowMu.Lock()
+				for k, e := range pallow {
+					if now.After(e.exp) {
+						delete(pallow, k)
+					}
+				}
+				pallowMu.Unlock()
+				stateMu.Lock()
+				for k, e := range stateCache {
+					if now.After(e.exp) {
+						delete(stateCache, k)
+					}
+				}
+				stateMu.Unlock()
+				playlistBodyMu.Lock()
+				for k, e := range playlistBody {
+					if now.After(e.exp) {
+						delete(playlistBody, k)
+					}
+				}
+				playlistBodyMu.Unlock()
+				reactMu.Lock()
+				for k, b := range reactAccum {
+					if len(b.counts) == 0 {
+						delete(reactAccum, k)
+					}
+				}
+				reactMu.Unlock()
+			}
+		}()
+	})
+}
+
+// normalizeReaction trims and validates an incoming reaction emoji.
+func normalizeReaction(s string) (string, bool) {
+	s = strings.TrimSpace(s)
+	_, ok := liveReactionSet[s]
+	return s, ok
+}

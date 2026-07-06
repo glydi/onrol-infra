@@ -329,6 +329,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	// Simulated-live sessions (a recorded video served as a live stream).
 	api.Get("/me/live/:id/state", auth, h.LiveSessionState)
 	api.Post("/me/live/:id/heartbeat", auth, h.LiveHeartbeat)
+	api.Post("/me/live/:id/react", auth, h.LiveReact)
 	api.Get("/me/live/:id/chat", auth, h.LiveChatList)
 	api.Post("/me/live/:id/chat", auth, h.LiveChatPost)
 	api.Delete("/me/live/:id/chat/:msgId", auth, h.LiveChatDelete)
