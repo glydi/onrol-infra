@@ -3953,6 +3953,7 @@ class _CourseBatchesScreenState extends State<CourseBatchesScreen> {
         padding: EdgeInsets.zero,
         child: Column(children: List.generate(students.length, (i) {
           final s = students[i] as Map<String, dynamic>;
+          final dl = (s['days_left'] as num?)?.toInt(); // null = no time limit
           return Column(children: [
             if (i > 0) Divider(height: 1, indent: 56, color: Palette.of(context).separator),
             ListTile(
@@ -3962,6 +3963,11 @@ class _CourseBatchesScreenState extends State<CourseBatchesScreen> {
                 Text(s['email']?.toString() ?? '', style: AppleTheme.footnote(context)),
                 if ((s['login_id']?.toString() ?? '').isNotEmpty)
                   Text('Login ID: ${s['login_id']}', style: AppleTheme.footnote(context).copyWith(color: Palette.of(context).accent, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                if (dl != null)
+                  Text(dl <= 0 ? 'Access ended' : 'Access: $dl day${dl == 1 ? '' : 's'} left',
+                      style: AppleTheme.footnote(context).copyWith(
+                          color: dl <= 0 ? const Color(0xFFD11A2A) : (dl <= 3 ? const Color(0xFFCC6A00) : Palette.of(context).secondary),
+                          fontWeight: FontWeight.w700)),
               ]),
               trailing: Icon(CupertinoIcons.ellipsis, size: 18, color: Palette.of(context).secondary),
               onTap: () => _studentActions(s, batch),

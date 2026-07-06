@@ -435,7 +435,10 @@ func (h *Handlers) CourseBatches(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"label": "", "batches": []fiber.Map{}, "settings": settings})
 	}
 	rows, err := h.Pool.Query(c.Context(),
-		`SELECT id, full_name, COALESCE(email,''), batch, COALESCE(login_id,'') FROM users
+		`SELECT id, full_name, COALESCE(email,''), batch, COALESCE(login_id,''),
+		        CASE WHEN access_expires_at IS NULL THEN NULL
+		             ELSE CEIL(EXTRACT(EPOCH FROM (access_expires_at-now()))/86400)::int END AS days_left
+		   FROM users
 		  WHERE role='student' AND lower(course_label)=lower($1)
 		  ORDER BY batch NULLS FIRST, full_name`, *label)
 	if err != nil {
@@ -448,7 +451,8 @@ func (h *Handlers) CourseBatches(c *fiber.Ctx) error {
 	for rows.Next() {
 		var id, name, email, loginID string
 		var batch *string
-		if err := rows.Scan(&id, &name, &email, &batch, &loginID); err != nil {
+		var daysLeft *int // NULL = no time limit; <=0 = access ended
+		if err := rows.Scan(&id, &name, &email, &batch, &loginID, &daysLeft); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		key := ""
@@ -458,7 +462,7 @@ func (h *Handlers) CourseBatches(c *fiber.Ctx) error {
 		if _, seen := buckets[key]; !seen {
 			order = append(order, key)
 		}
-		buckets[key] = append(buckets[key], fiber.Map{"id": id, "name": name, "email": email, "login_id": loginID})
+		buckets[key] = append(buckets[key], fiber.Map{"id": id, "name": name, "email": email, "login_id": loginID, "days_left": daysLeft})
 	}
 	out := []fiber.Map{}
 	for _, key := range order {

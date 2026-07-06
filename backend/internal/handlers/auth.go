@@ -59,8 +59,9 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 	//    and only when the identifier has at least 6 digits so an email never
 	//    collides with a blank phone.
 	var user models.User
+	var accessExpires *time.Time // NULL = no time limit on the account
 	err := h.Pool.QueryRow(c.Context(),
-		`SELECT id, COALESCE(email,''), full_name, role, password_hash, max_devices, is_active
+		`SELECT id, COALESCE(email,''), full_name, role, password_hash, max_devices, is_active, access_expires_at
 		 FROM users
 		 WHERE email=$1 OR lower(username)=$1 OR lower(login_id)=$1
 		    OR (length(regexp_replace($2,'\D','','g')) >= 6
@@ -74,7 +75,7 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 		              AND regexp_replace($2,'\D','','g') LIKE ('%' || regexp_replace(COALESCE(phone,''),'\D','','g')))
 		        ))`,
 		req.Email, idRaw,
-	).Scan(&user.ID, &user.Email, &user.FullName, &user.Role, &user.PasswordHash, &user.MaxDevices, &user.IsActive)
+	).Scan(&user.ID, &user.Email, &user.FullName, &user.Role, &user.PasswordHash, &user.MaxDevices, &user.IsActive, &accessExpires)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fiber.NewError(fiber.StatusUnauthorized, "invalid credentials")
 	}
@@ -83,6 +84,11 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 	}
 	if !user.IsActive {
 		return fiber.NewError(fiber.StatusForbidden, "account disabled")
+	}
+	// Time-boxed access (converted-lead students): once the access period ends,
+	// the account can no longer sign in.
+	if accessExpires != nil && !accessExpires.After(time.Now()) {
+		return fiber.NewError(fiber.StatusForbidden, "your access period has ended")
 	}
 	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)) != nil {
 		return fiber.NewError(fiber.StatusUnauthorized, "invalid credentials")

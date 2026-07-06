@@ -114,4 +114,18 @@ var steps = []string{
 	   ORDER BY lower(trim(course_id))
 	 ) sub
 	 WHERE lower(c.label)=sub.cid AND c.title IS DISTINCT FROM sub.t`,
+
+	// 6. Time-box access: a converted student's account is valid for numberofdays
+	//    from conversion. Keep users.access_expires_at in sync (login and the auth
+	//    middleware deny access once it passes). Anchored to a stable date
+	//    (converted_at, else the account's created_at) so the value never drifts.
+	`UPDATE users u
+	 SET access_expires_at = COALESCE(b.converted_at, u.created_at) + (b.numberofdays || ' days')::interval,
+	     updated_at = now()
+	 FROM converted_leads_backup b
+	 WHERE u.role='student' AND NULLIF(trim(b.course_id),'') IS NOT NULL
+	   AND b.numberofdays IS NOT NULL AND b.numberofdays > 0
+	   AND ( (u.email<>'' AND lower(u.email)=lower(trim(b.email)))
+	      OR (u.username = regexp_replace(COALESCE(b.phone,''),'\D','','g')) )
+	   AND u.access_expires_at IS DISTINCT FROM (COALESCE(b.converted_at, u.created_at) + (b.numberofdays || ' days')::interval)`,
 }

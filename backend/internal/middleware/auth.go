@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -41,14 +42,19 @@ func RequireAuth(jwtm *auth.Manager, pool *pgxpool.Pool) fiber.Handler {
 		// the same round-trip so role changes take effect without re-login.
 		var active bool
 		var role string
+		var accessExpires *time.Time
 		err = pool.QueryRow(context.Background(),
-			`SELECT d.is_active, u.role
+			`SELECT d.is_active, u.role, u.access_expires_at
 			   FROM devices d JOIN users u ON u.id = d.user_id
 			  WHERE d.user_id=$1 AND d.device_id=$2`,
 			claims.UserID, claims.DeviceID,
-		).Scan(&active, &role)
+		).Scan(&active, &role, &accessExpires)
 		if err != nil || !active {
 			return fiber.NewError(fiber.StatusUnauthorized, "device not active")
+		}
+		// Time-boxed access (converted-lead students): block once it has ended.
+		if accessExpires != nil && !accessExpires.After(time.Now()) {
+			return fiber.NewError(fiber.StatusForbidden, "access period ended")
 		}
 
 		c.Locals(LocalUserID, claims.UserID)
