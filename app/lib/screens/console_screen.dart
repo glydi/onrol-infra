@@ -761,9 +761,9 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     final ok = await showFormSheet(context, square: true, title: 'Add $roleLabel', builder: (_) => [
       sheetField(name, 'Full name', CupertinoIcons.person),
       const SizedBox(height: 10),
-      sheetField(email, 'Email', CupertinoIcons.mail),
+      sheetField(email, 'Email (optional if a phone is set)', CupertinoIcons.mail),
       const SizedBox(height: 10),
-      sheetField(phone, 'Phone', CupertinoIcons.phone, keyboard: TextInputType.phone),
+      sheetField(phone, 'Phone (sign in with email, phone, or login ID)', CupertinoIcons.phone, keyboard: TextInputType.phone),
       const SizedBox(height: 10),
       sheetField(username, 'Username (optional — for sign-in)', CupertinoIcons.at),
       const SizedBox(height: 10),
@@ -785,12 +785,12 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       const SizedBox(height: 10),
       sheetField(github, 'GitHub (optional)', CupertinoIcons.link),
     ], onSubmit: () async {
-      if (name.text.trim().isEmpty || email.text.trim().isEmpty) return 'Name and email required';
+      if (name.text.trim().isEmpty || (email.text.trim().isEmpty && phone.text.trim().isEmpty)) return 'Enter a name and an email or phone number';
       if (pass.text.trim().isNotEmpty && pass.text.trim().length < 8) return 'Password must be at least 8 characters';
       try {
         await widget.auth.apiPost('/api/v1/manage/users', {
           'full_name': name.text.trim(),
-          'email': email.text.trim(),
+          if (email.text.trim().isNotEmpty) 'email': email.text.trim(),
           if (phone.text.trim().isNotEmpty) 'phone': phone.text.trim(),
           if (username.text.trim().isNotEmpty) 'username': username.text.trim(),
           'password': pass.text.trim(),

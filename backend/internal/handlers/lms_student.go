@@ -31,7 +31,7 @@ func (h *Handlers) GetMyProfile(c *fiber.Ctx) error {
 	var email, name, phone, role, avatar, username, occupation, location, linkedin, github, courseLabel, courseName, loginID string
 	var batch *string
 	if err := h.Pool.QueryRow(c.Context(),
-		`SELECT u.email, u.full_name, COALESCE(u.phone,''), u.role, COALESCE(u.avatar,''),
+		`SELECT COALESCE(u.email,''), u.full_name, COALESCE(u.phone,''), u.role, COALESCE(u.avatar,''),
 		        COALESCE(u.username,''), COALESCE(u.occupation,''), COALESCE(u.location,''),
 		        COALESCE(u.linkedin,''), COALESCE(u.github,''),
 		        u.batch, COALESCE(u.course_label,''), COALESCE(c.title,''), COALESCE(u.login_id,'')

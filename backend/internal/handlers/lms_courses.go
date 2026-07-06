@@ -435,7 +435,7 @@ func (h *Handlers) CourseBatches(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"label": "", "batches": []fiber.Map{}, "settings": settings})
 	}
 	rows, err := h.Pool.Query(c.Context(),
-		`SELECT id, full_name, email, batch, COALESCE(login_id,'') FROM users
+		`SELECT id, full_name, COALESCE(email,''), batch, COALESCE(login_id,'') FROM users
 		  WHERE role='student' AND lower(course_label)=lower($1)
 		  ORDER BY batch NULLS FIRST, full_name`, *label)
 	if err != nil {

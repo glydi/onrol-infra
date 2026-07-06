@@ -18,7 +18,7 @@ import (
 func (h *Handlers) ListUsers(c *fiber.Ctx) error {
 	// Route is manager+ only; admins/managers manage everyone, so list all.
 	rows, err := h.Pool.Query(c.Context(),
-		`SELECT id, email, full_name, role, is_active, created_at, batch, username, course_label, COALESCE(login_id,'') FROM users ORDER BY created_at DESC LIMIT 1000`)
+		`SELECT id, COALESCE(email,''), full_name, role, is_active, created_at, batch, username, course_label, COALESCE(login_id,'') FROM users ORDER BY created_at DESC LIMIT 1000`)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
 	}
@@ -44,7 +44,7 @@ func (h *Handlers) ListUsers(c *fiber.Ctx) error {
 // dropdown when an admin creates a course.
 func (h *Handlers) ListInstructors(c *fiber.Ctx) error {
 	rows, err := h.Pool.Query(c.Context(),
-		`SELECT id, full_name, email FROM users WHERE role='instructor' AND is_active ORDER BY full_name`)
+		`SELECT id, full_name, COALESCE(email,'') FROM users WHERE role='instructor' AND is_active ORDER BY full_name`)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
 	}
@@ -83,8 +83,12 @@ func (h *Handlers) CreateManagedUser(c *fiber.Ctx) error {
 	}
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 	req.Username = strings.ToLower(strings.TrimSpace(req.Username))
-	if req.Email == "" || req.FullName == "" {
-		return fiber.NewError(fiber.StatusBadRequest, "email and full_name required")
+	req.Phone = strings.TrimSpace(req.Phone)
+	req.FullName = strings.TrimSpace(req.FullName)
+	// A student is identified by email OR phone number — at least one is required
+	// (plus a name). Phone-only accounts sign in with their number or login ID.
+	if req.FullName == "" || (req.Email == "" && req.Phone == "") {
+		return fiber.NewError(fiber.StatusBadRequest, "a full name and an email or phone number are required")
 	}
 	// New users get a known default password unless one is supplied; the admin
 	// can change it later (or the user can in Settings).
@@ -133,7 +137,7 @@ func (h *Handlers) CreateManagedUser(c *fiber.Ctx) error {
 		`INSERT INTO users (email, username, phone, full_name, password_hash, role, max_devices,
 		                    batch, course_label, occupation, location, linkedin, github)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
-		req.Email, uname, req.Phone, req.FullName, string(hash), req.Role, h.Cfg.MaxDevices,
+		nilIfBlank(req.Email), uname, nilIfBlank(req.Phone), req.FullName, string(hash), req.Role, h.Cfg.MaxDevices,
 		batch, nilIfBlank(req.CourseLabel), nilIfBlank(req.Occupation),
 		nilIfBlank(req.Location), nilIfBlank(req.Linkedin), nilIfBlank(req.Github),
 	).Scan(&id)
@@ -479,7 +483,7 @@ func (h *Handlers) UserConvertedLead(c *fiber.Ctx) error {
 	var email string
 	var username *string
 	if err := h.Pool.QueryRow(c.Context(),
-		`SELECT email, username FROM users WHERE id=$1`, target,
+		`SELECT COALESCE(email,''), username FROM users WHERE id=$1`, target,
 	).Scan(&email, &username); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fiber.NewError(fiber.StatusNotFound, "user not found")

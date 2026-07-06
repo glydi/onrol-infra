@@ -53,7 +53,7 @@ func (h *Handlers) LiveJoin(c *fiber.Ctx) error {
 	// Student identity from the account (not user-supplied).
 	var email, fullName string
 	if err := h.Pool.QueryRow(c.Context(),
-		`SELECT email, full_name FROM users WHERE id=$1`, userID,
+		`SELECT COALESCE(email,''), full_name FROM users WHERE id=$1`, userID,
 	).Scan(&email, &fullName); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "user lookup failed")
 	}

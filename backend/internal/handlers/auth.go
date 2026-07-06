@@ -60,7 +60,7 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 	//    collides with a blank phone.
 	var user models.User
 	err := h.Pool.QueryRow(c.Context(),
-		`SELECT id, email, full_name, role, password_hash, max_devices, is_active
+		`SELECT id, COALESCE(email,''), full_name, role, password_hash, max_devices, is_active
 		 FROM users
 		 WHERE email=$1 OR lower(username)=$1 OR lower(login_id)=$1
 		    OR (length(regexp_replace($2,'\D','','g')) >= 6
