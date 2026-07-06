@@ -90,9 +90,11 @@ func (h *Handlers) LiveSessionState(c *fiber.Ctx) error {
 		`SELECT count(*) FROM live_presence WHERE session_id=$1 AND last_seen > now() - interval '30 seconds'`,
 		sessionID).Scan(&real)
 
-	// Simulated floor: ramp up over the first 90s ("people joining") then hold
-	// near viewer_base with a gentle wobble. Deterministic in elapsed, so it's
-	// identical across users/requests. The displayed count is max(real, sim).
+	// Simulated floor: ramp up over the first 90s ("people joining"), then drift
+	// naturally around viewer_base. The drift blends several long-period sines
+	// (each many minutes) so the count wanders slowly and organically by ~±20% —
+	// not a fast, regular wobble. Deterministic in elapsed, so every viewer sees
+	// the same number. The displayed count is max(real, sim).
 	viewers := real
 	if viewerBase > 0 && status == "live" {
 		e := math.Max(0, elapsed)
@@ -100,8 +102,8 @@ func (h *Handlers) LiveSessionState(c *fiber.Ctx) error {
 		if e < 90 {
 			ramp = 0.4 + 0.6*(e/90)
 		}
-		wobble := 1 + 0.04*math.Sin(e/30)
-		if sim := int(float64(viewerBase) * ramp * wobble); sim > viewers {
+		drift := 0.12*math.Sin(e/71) + 0.06*math.Sin(e/167+1.3) + 0.04*math.Sin(e/97+2.7)
+		if sim := int(math.Round(float64(viewerBase) * ramp * (1 + drift))); sim > viewers {
 			viewers = sim
 		}
 	}
