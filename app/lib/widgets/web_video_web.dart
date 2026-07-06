@@ -561,7 +561,6 @@ html.VideoElement? _lastLiveVideo;
 html.DivElement? _liveCover;
 html.Element? _liveCoverLabel;
 html.DivElement? _liveBanner;
-html.DivElement? _livePausePill;
 // When the HOST has paused, the playback guard must stop auto-resuming so the
 // video holds on its last frame (instead of snapping back to the live edge).
 bool _liveHostPaused = false;
@@ -571,11 +570,11 @@ void liveSetMuted(bool muted) {
   _lastLiveVideo?.muted = muted;
 }
 
-/// Host pause: freeze the video on its current frame (no black-out). The guard
-/// respects _liveHostPaused so it won't auto-resume; on resume we play again.
+/// Host pause: freeze the video on its current frame — nothing else, no overlay
+/// or text; the viewer just sees the last frame. The guard respects
+/// _liveHostPaused so it won't auto-resume; on resume we play again.
 void liveSetPaused(bool paused) {
   _liveHostPaused = paused;
-  _livePausePill?.style.display = paused ? 'flex' : 'none';
   final v = _lastLiveVideo;
   if (v == null) return;
   try {
@@ -774,25 +773,6 @@ Widget liveHlsVideoElement(
     container.append(cover);
     _liveCover = cover;
     _liveCoverLabel = coverLabel;
-
-    // ---- Pause pill (frozen frame stays visible; small non-covering badge) ---
-    final pausePill = html.DivElement()
-      ..style.position = 'absolute'
-      ..style.top = '50%'
-      ..style.left = '50%'
-      ..style.transform = 'translate(-50%,-50%)'
-      ..style.display = 'none'
-      ..style.alignItems = 'center'
-      ..style.gap = '8px'
-      ..style.padding = '9px 16px'
-      ..style.borderRadius = '999px'
-      ..style.background = 'rgba(0,0,0,0.6)'
-      ..style.color = 'white'
-      ..style.zIndex = '8'
-      ..style.font = '700 14px -apple-system, Segoe UI, Roboto, sans-serif'
-      ..text = '⏸  Paused';
-    container.append(pausePill);
-    _livePausePill = pausePill;
 
     // Starts muted (browsers block unmuted autoplay); keep the mute-button icon
     // in sync if the volume changes by any other means.

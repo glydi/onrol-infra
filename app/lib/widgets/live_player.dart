@@ -246,13 +246,8 @@ class _LivePlayerState extends State<LivePlayer> {
             child: Text(widget.banner, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis,
                 style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
           )),
-        // Pause freezes the frame — just a small badge, no black-out.
-        if (widget.paused && !widget.blank)
-          Center(child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-            decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(999)),
-            child: const Text('⏸  Paused', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
-          )),
+        // Pause freezes the frame with no overlay — the viewer just sees the
+        // last frame (video is paused in _applyHostState).
         // Black-out cover (opaque).
         if (widget.blank)
           Positioned.fill(child: Container(
