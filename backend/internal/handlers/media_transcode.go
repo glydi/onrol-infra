@@ -310,12 +310,17 @@ func ffprobeSource(src string) (srcProbe, bool) {
 // bitrate takes the capped re-encode instead.
 func (p srcProbe) canStreamCopy() bool {
 	if p.vCodec != "h264" {
-		return false
+		return false // HEVC/AV1/etc. must be re-encoded to H.264 for the web
 	}
 	if p.width > 1920 || p.height > 1920 {
 		return false
 	}
-	if p.bitRate <= 0 || p.bitRate > 8_000_000 {
+	// Re-encode only when we KNOW the bitrate is too high to stream smoothly. An
+	// UNKNOWN bitrate (very common — plenty of MP4 containers don't report a
+	// format bit_rate) no longer forces a slow single-core re-encode: an H.264
+	// file within 1080p is stream-copied near-instantly instead. The cap is also
+	// raised (8→12 Mbps) so typical 1080p recordings copy rather than re-encode.
+	if p.bitRate > 12_000_000 {
 		return false
 	}
 	return true
