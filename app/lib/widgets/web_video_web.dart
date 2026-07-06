@@ -760,29 +760,12 @@ Widget liveHlsVideoElement(
       neuterMediaSession();
       if (video.paused) video.play();
     });
-    // Hard anti-seek WITHOUT stalling. A live class cannot be rewound. We track
-    // the last real playback position (which is always buffered) and, on any
-    // seek that jumps BACKWARD off it, snap straight back there. Because that
-    // spot is already buffered, there is no re-buffer and the video never stops.
-    // Forward catch-up to the live edge — including hls.js's own — is left alone,
-    // so we never fight the player. Guard only kicks in once playback is going,
-    // so hls.js's initial jump to the live edge isn't blocked.
-    var lastGood = 0.0;
-    var seekSynced = false;
-    video.onTimeUpdate.listen((_) {
-      if (video.seeking != true) {
-        lastGood = video.currentTime.toDouble();
-        if (lastGood > 0.1) seekSynced = true;
-      }
-    });
-    video.onSeeking.listen((_) {
-      if (!seekSynced) return; // let hls.js reach the live edge first
-      if (video.currentTime.toDouble() < lastGood - 1.5) {
-        try {
-          video.currentTime = lastGood;
-        } catch (_) {}
-      }
-    });
+    // Seeking is already impossible for a real user: no scrubber, the keyboard is
+    // swallowed, the media-notification seek actions are no-ops, and the stream
+    // reports Infinity duration so nothing draws a seek bar. We deliberately do
+    // NOT install an onSeeking handler that forces currentTime — on a live stream
+    // that fights hls.js's own edge/gap seeks and can STALL playback (the class
+    // "not playing"). Correctness of the live position is hls.js's job.
     // No user-facing pause exists; if anything (tab/OS) pauses us, resume and
     // realign to the live edge.
     video.onPause.listen((_) {
