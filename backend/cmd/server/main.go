@@ -80,8 +80,8 @@ func main() {
 		DisableStartupMessage: cfg.IsProduction(),
 		ReadTimeout:           15 * time.Minute, // large video uploads stream in
 		WriteTimeout:          15 * time.Minute,
-		BodyLimit:             3 * 1024 * 1024 * 1024, // 3 GB — video store uploads
-		StreamRequestBody:     true,                   // stream big bodies, don't buffer in RAM
+		BodyLimit:             20 * 1024 * 1024 * 1024, // 20 GB — big video-store uploads (streamed, not buffered)
+		StreamRequestBody:     true,                    // stream big bodies, don't buffer in RAM
 	})
 	app.Use(recover.New())
 	app.Use(logger.New())
