@@ -858,6 +858,20 @@ class _StudentHomeState extends State<StudentHome> {
         if (modules.isEmpty && assessments.isEmpty) return _emptyText('No content in this course yet.');
         return StatefulBuilder(builder: (ctx, setS) {
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            // Course-wide quiz grade (percentage) once the student has taken a quiz.
+            if (m['course_grade'] != null)
+              Container(
+                margin: const EdgeInsets.only(bottom: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                decoration: BoxDecoration(color: _green.withOpacity(0.08), border: Border.all(color: _green.withOpacity(0.35))),
+                child: Row(children: [
+                  Icon(CupertinoIcons.chart_bar_alt_fill, size: 16, color: _green),
+                  const SizedBox(width: 8),
+                  Text('Course grade', style: GoogleFonts.inter(fontSize: 13.5, fontWeight: FontWeight.w700, color: _navy)),
+                  const Spacer(),
+                  Text('${(m['course_grade'] as num).round()}%', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800, color: _green)),
+                ]),
+              ),
             // The course's day-wise assignments & quizzes sit inside the first
             // module's day boxes, alongside that day's lessons.
             for (var i = 0; i < modules.length; i++)
@@ -909,6 +923,13 @@ class _StudentHomeState extends State<StudentHome> {
     );
   }
 
+  // Small green "N%" grade pill — a student's quiz score for a module or course.
+  Widget _gradePill(int pct) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(color: _green.withOpacity(0.12), border: Border.all(color: _green.withOpacity(0.4))),
+        child: Text('$pct%', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, color: _green)),
+      );
+
   // One module as a bordered box: a tinted title bar, its day folders, a
   // comments link, and any nested sub-modules (indented boxes below).
   Widget _moduleBox(Map<String, dynamic> md, VoidCallback rebuild, {bool isSub = false, List assessments = const []}) {
@@ -929,6 +950,7 @@ class _StudentHomeState extends State<StudentHome> {
           child: Row(children: [
             if (isSub) Padding(padding: const EdgeInsets.only(right: 6), child: Icon(Icons.subdirectory_arrow_right, size: 15, color: _orange)),
             Expanded(child: Text(title, style: GoogleFonts.inter(fontSize: isSub ? 13.5 : 15, fontWeight: FontWeight.w700, color: _orange))),
+            if (md['grade'] != null) _gradePill((md['grade'] as num).round()),
           ]),
         ),
         Padding(
@@ -1816,6 +1838,7 @@ class _StudentHomeState extends State<StudentHome> {
                       done: done,
                       total: total,
                       percent: ((m['percent'] ?? 0) as num).toInt(),
+                      grade: (m['grade'] as num?)?.toInt(),
                       imageUrl: m['image_url']?.toString(),
                       onOpen: () => _openContent(m['id'].toString(), m['title']?.toString() ?? 'Course', imageUrl: m['image_url']?.toString()),
                     ),
@@ -5801,12 +5824,13 @@ class _ResumeCardState extends State<_ResumeCard> {
 
 /// A rich course card: gradient cover, animated progress bar, hover lift.
 class _CourseCard extends StatefulWidget {
-  const _CourseCard({required this.index, required this.title, required this.done, required this.total, required this.percent, required this.onOpen, this.imageUrl});
+  const _CourseCard({required this.index, required this.title, required this.done, required this.total, required this.percent, required this.onOpen, this.grade, this.imageUrl});
   final int index;
   final String title;
   final int done;
   final int total;
   final int percent;
+  final int? grade; // quiz grade % (null until the student has taken a quiz)
   final VoidCallback onOpen;
   final String? imageUrl; // admin-set cover (data URI or URL)
 
@@ -5891,8 +5915,14 @@ class _CourseCardState extends State<_CourseCard> {
                   Icon(CupertinoIcons.book, size: 13, color: _grey),
                   const SizedBox(width: 4),
                   Text('${widget.done}/${widget.total} lessons', style: GoogleFonts.inter(fontSize: 12, color: _grey)),
+                  if (widget.grade != null) ...[
+                    const SizedBox(width: 10),
+                    Icon(CupertinoIcons.chart_bar_alt_fill, size: 12, color: _green),
+                    const SizedBox(width: 3),
+                    Text('${widget.grade}%', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: _green)),
+                  ],
                   const Spacer(),
-                  Text('${widget.percent}%', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700, color: _orange)),
+                  Text('${widget.percent}% done', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700, color: _orange)),
                 ]),
                 const SizedBox(height: 9),
                 _GlowProgress(value: pct, height: 7),

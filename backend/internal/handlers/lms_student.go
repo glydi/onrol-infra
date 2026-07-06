@@ -204,7 +204,9 @@ func (h *Handlers) MyCourses(c *fiber.Ctx) error {
 		SELECT c.id, c.title, ce.status, COALESCE(c.image_url,''),
 		  (SELECT count(*) FROM lessons l JOIN modules m ON m.id=l.module_id WHERE m.course_id=c.id) AS total,
 		  (SELECT count(*) FROM lesson_progress lp JOIN lessons l ON l.id=lp.lesson_id
-		     JOIN modules m ON m.id=l.module_id WHERE m.course_id=c.id AND lp.user_id=$1) AS done
+		     JOIN modules m ON m.id=l.module_id WHERE m.course_id=c.id AND lp.user_id=$1) AS done,
+		  (SELECT ROUND(AVG(s.score)) FROM submissions s JOIN assessments a ON a.id=s.assessment_id
+		     WHERE a.course_id=c.id AND a.type='quiz' AND s.user_id=$1 AND s.score IS NOT NULL) AS grade
 		FROM course_enrollments ce JOIN courses c ON c.id=ce.course_id
 		WHERE ce.user_id=$1 ORDER BY ce.enrolled_at DESC`, callerID(c))
 	if err != nil {
@@ -215,15 +217,20 @@ func (h *Handlers) MyCourses(c *fiber.Ctx) error {
 	for rows.Next() {
 		var id, title, status, img string
 		var total, done int
-		if err := rows.Scan(&id, &title, &status, &img, &total, &done); err != nil {
+		var grade *float64 // NULL when the student has no graded quiz in the course
+		if err := rows.Scan(&id, &title, &status, &img, &total, &done, &grade); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		pct := 0
 		if total > 0 {
 			pct = done * 100 / total
 		}
+		var gradeVal any
+		if grade != nil {
+			gradeVal = int(*grade + 0.5)
+		}
 		out = append(out, fiber.Map{"id": id, "title": title, "status": status, "percent": pct,
-			"image_url": img, "lessons_done": done, "lessons_total": total})
+			"image_url": img, "lessons_done": done, "lessons_total": total, "grade": gradeVal})
 	}
 	return c.JSON(fiber.Map{"my_courses": out})
 }
@@ -269,8 +276,31 @@ func (h *Handlers) CourseContent(c *fiber.Ctx) error {
 				"url": derefStr(lbody), "downloadable": downloadable, "completed": done != nil && *done})
 		}
 	}
+	// Attach each module's quiz grade (average of the student's quiz % on quizzes
+	// scoped to that module) and the course-wide grade — both percentages, NULL
+	// until the student has a graded quiz.
+	if gr, gerr := h.Pool.Query(c.Context(),
+		`SELECT a.module_id::text, ROUND(AVG(s.score))::int
+		   FROM assessments a JOIN submissions s ON s.assessment_id=a.id AND s.user_id=$2 AND s.score IS NOT NULL
+		  WHERE a.course_id=$1 AND a.type='quiz' AND a.module_id IS NOT NULL
+		  GROUP BY a.module_id`, courseID, callerID(c)); gerr == nil {
+		for gr.Next() {
+			var mid string
+			var g int
+			if gr.Scan(&mid, &g) == nil {
+				if m, ok := modules[mid]; ok {
+					m["grade"] = g
+				}
+			}
+		}
+		gr.Close()
+	}
+	var courseGrade *int
+	_ = h.Pool.QueryRow(c.Context(),
+		`SELECT ROUND(AVG(s.score))::int FROM assessments a JOIN submissions s ON s.assessment_id=a.id AND s.user_id=$2 AND s.score IS NOT NULL
+		  WHERE a.course_id=$1 AND a.type='quiz'`, courseID, callerID(c)).Scan(&courseGrade)
 	ordered := nestModules(modules, parent, order)
-	return c.JSON(fiber.Map{"course_id": courseID, "modules": ordered})
+	return c.JSON(fiber.Map{"course_id": courseID, "modules": ordered, "course_grade": courseGrade})
 }
 
 // CompleteLesson marks a lesson done and, if it completes the course, issues a
