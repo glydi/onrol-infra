@@ -45,18 +45,18 @@ func (h *Handlers) LiveSessionState(c *fiber.Ctx) error {
 	var assetID *string
 	var title, course string
 	var chatOK, qaOK, enrolled bool
-	var hlsURL, courseID, banner string
+	var hlsURL, courseID, startImg, endImg string
 	var viewerBase, durationSecs int
 	err := h.Pool.QueryRow(c.Context(), `
 		SELECT cs.starts_at, cs.media_asset_id, cs.title, c.title,
 		       cs.chat_enabled, cs.qa_enabled, cs.viewer_base, COALESCE(ma.duration_seconds, 0),
-		       COALESCE(ma.hls_url,''), COALESCE(cs.banner_image,''), cs.course_id,
+		       COALESCE(ma.hls_url,''), COALESCE(cs.start_image,''), COALESCE(cs.end_image,''), cs.course_id,
 		       EXISTS(SELECT 1 FROM course_enrollments ce WHERE ce.course_id=cs.course_id AND ce.user_id=$2 AND ce.status='active')
 		FROM class_sessions cs
 		JOIN courses c ON c.id = cs.course_id
 		LEFT JOIN media_assets ma ON ma.id = cs.media_asset_id
 		WHERE cs.id = $1`, sessionID, callerID(c)).Scan(
-		&startsAt, &assetID, &title, &course, &chatOK, &qaOK, &viewerBase, &durationSecs, &hlsURL, &banner, &courseID, &enrolled)
+		&startsAt, &assetID, &title, &course, &chatOK, &qaOK, &viewerBase, &durationSecs, &hlsURL, &startImg, &endImg, &courseID, &enrolled)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
 	}
@@ -115,7 +115,8 @@ func (h *Handlers) LiveSessionState(c *fiber.Ctx) error {
 		"duration":            durationSecs,
 		"title":               title,
 		"course":              course,
-		"banner_image":        banner,
+		"start_image":         startImg,
+		"end_image":           endImg,
 		"chat_enabled":        chatOK,
 		"qa_enabled":          qaOK,
 		"viewers":             viewers,

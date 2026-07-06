@@ -2264,7 +2264,8 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     String? videoId = (s['media_asset_id']?.toString() ?? '').isEmpty ? null : s['media_asset_id'].toString();
     String videoTitle = s['media_title']?.toString() ?? '';
     bool qaOn = s['qa_enabled'] != false;
-    String? banner = (s['banner_image']?.toString() ?? '').isEmpty ? null : s['banner_image'].toString();
+    String? startBanner = (s['start_image']?.toString() ?? '').isEmpty ? null : s['start_image'].toString();
+    String? endBanner = (s['end_image']?.toString() ?? '').isEmpty ? null : s['end_image'].toString();
     DateTime when = DateTime.tryParse(s['starts_at']?.toString() ?? '')?.toLocal() ?? DateTime.now().add(const Duration(hours: 1));
     final ok = await showFormSheet(context, square: true, title: 'Edit Live Class', builder: (setS) => [
       sheetField(title, 'Title', CupertinoIcons.textformat),
@@ -2284,12 +2285,13 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                   videoTitle = t;
                 })),
             (v) => setS(() => qaOn = v),
-            banner: banner,
-            onPickBanner: () async {
+            startBanner: startBanner,
+            endBanner: endBanner,
+            onPickBanner: (isEnd) async {
               final d = await _pickBanner();
-              if (d != null) setS(() => banner = d);
+              if (d != null) setS(() { if (isEnd) endBanner = d; else startBanner = d; });
             },
-            onClearBanner: () => setS(() => banner = null)),
+            onClearBanner: (isEnd) => setS(() { if (isEnd) endBanner = null; else startBanner = null; })),
       const SizedBox(height: 12),
       _label(context, 'Date & time'),
       const SizedBox(height: 6),
@@ -2306,7 +2308,8 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
           body['media_asset_id'] = videoId;
           body['qa_enabled'] = qaOn;
           body['viewer_base'] = int.tryParse(viewers.text.trim()) ?? 0;
-          body['banner_image'] = banner ?? ''; // "" clears it
+          body['start_image'] = startBanner ?? ''; // "" clears it
+          body['end_image'] = endBanner ?? '';
         }
         await widget.auth.apiPatch('/api/v1/manage/sessions/${s['id']}', body);
         return null;
@@ -2692,7 +2695,8 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
 
   List<Widget> _simLiveFields(String? videoId, String videoTitle, bool qaOn,
       TextEditingController viewers, VoidCallback onOpenStore, void Function(bool) onQa,
-      {String? banner, required VoidCallback onPickBanner, required VoidCallback onClearBanner}) {
+      {String? startBanner, String? endBanner,
+      required void Function(bool isEnd) onPickBanner, required void Function(bool isEnd) onClearBanner}) {
     final p = Palette.of(context);
     final picked = videoId != null && videoId.isNotEmpty;
     return [
@@ -2714,18 +2718,31 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       const SizedBox(height: 8),
       sheetField(viewers, 'Starting viewers (displayed-count floor)', CupertinoIcons.eye, keyboard: TextInputType.number),
       const SizedBox(height: 14),
-      _label(context, 'Lobby / ended banner (16:9) — shown under the countdown before the class starts and after it ends. Optional.'),
+      ..._bannerPicker('Start image (16:9) — shown in place of the video before the class, with the countdown on top. Optional.',
+          startBanner, () => onPickBanner(false), () => onClearBanner(false)),
+      const SizedBox(height: 14),
+      ..._bannerPicker('End image (16:9) — shown in place of the video after the class ends. Optional.',
+          endBanner, () => onPickBanner(true), () => onClearBanner(true)),
+    ];
+  }
+
+  // One 16:9 banner picker row (label + preview + upload/clear).
+  List<Widget> _bannerPicker(String label, String? banner, VoidCallback onPick, VoidCallback onClear) {
+    final p = Palette.of(context);
+    final has = banner != null && banner.isNotEmpty;
+    return [
+      _label(context, label),
       const SizedBox(height: 8),
       if (banner != null && banner.isNotEmpty) ...[
         _bannerThumb(banner),
         const SizedBox(height: 8),
       ],
       Row(children: [
-        Expanded(child: PrimaryButton(label: (banner != null && banner.isNotEmpty) ? 'Change banner' : 'Upload 16:9 banner', icon: CupertinoIcons.photo, square: true, onPressed: onPickBanner)),
-        if (banner != null && banner.isNotEmpty) ...[
+        Expanded(child: PrimaryButton(label: has ? 'Change image' : 'Upload 16:9 image', icon: CupertinoIcons.photo, square: true, onPressed: onPick)),
+        if (has) ...[
           const SizedBox(width: 8),
           GestureDetector(
-            onTap: onClearBanner,
+            onTap: onClear,
             child: Container(padding: const EdgeInsets.all(13), decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.zero), child: const Icon(CupertinoIcons.trash, size: 18, color: AppleColors.red)),
           ),
         ],
@@ -2743,7 +2760,8 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     String? videoId;
     String videoTitle = '';
     bool qaOn = true;
-    String? banner;
+    String? startBanner;
+    String? endBanner;
     final ok = await showFormSheet(context, square: true, title: 'Add Live Class', builder: (setS) => [
       sheetField(title, 'Title (e.g. Lecture 1)', CupertinoIcons.textformat),
       const SizedBox(height: 10),
@@ -2760,12 +2778,13 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                   videoTitle = t;
                 })),
             (v) => setS(() => qaOn = v),
-            banner: banner,
-            onPickBanner: () async {
+            startBanner: startBanner,
+            endBanner: endBanner,
+            onPickBanner: (isEnd) async {
               final d = await _pickBanner();
-              if (d != null) setS(() => banner = d);
+              if (d != null) setS(() { if (isEnd) endBanner = d; else startBanner = d; });
             },
-            onClearBanner: () => setS(() => banner = null)),
+            onClearBanner: (isEnd) => setS(() { if (isEnd) endBanner = null; else startBanner = null; })),
       const SizedBox(height: 12),
       _DateTimeRow(value: when, onPick: (d) => setS(() => when = d)),
     ], onSubmit: () async {
@@ -2781,7 +2800,8 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
           body['media_asset_id'] = videoId;
           body['qa_enabled'] = qaOn;
           body['viewer_base'] = int.tryParse(viewers.text.trim()) ?? 0;
-          if (banner != null && banner!.isNotEmpty) body['banner_image'] = banner;
+          if (startBanner != null && startBanner!.isNotEmpty) body['start_image'] = startBanner;
+          if (endBanner != null && endBanner!.isNotEmpty) body['end_image'] = endBanner;
         }
         await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/sessions', body);
         return null;

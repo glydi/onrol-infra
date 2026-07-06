@@ -43,7 +43,8 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   int _viewers = 0;
   bool _qaOn = true;
   String? _playlistUrl; // absolute, set once live
-  String _banner = ''; // 16:9 lobby/ended banner (data URI or URL)
+  String _startImage = ''; // 16:9 shown in place of the video before the class
+  String _endImage = ''; // 16:9 shown in place of the video after it ends
   DateTime? _startsAt;
   int _startEpochMs = 0; // scheduled start (UTC ms) — drives time-locked playback
   int _skewMs = 0; // server_now - device_now: normalizes a wrong device clock to the server
@@ -94,7 +95,8 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         _course = d['course']?.toString() ?? _course;
         _viewers = (d['viewers'] as num?)?.toInt() ?? _viewers;
         _qaOn = d['qa_enabled'] == true;
-        _banner = d['banner_image']?.toString() ?? '';
+        _startImage = d['start_image']?.toString() ?? '';
+        _endImage = d['end_image']?.toString() ?? '';
         final sa = DateTime.tryParse(d['starts_at']?.toString() ?? '');
         _startsAt = sa?.toLocal();
         if (sa != null) _startEpochMs = sa.toUtc().millisecondsSinceEpoch;
@@ -197,10 +199,10 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
             ? Center(child: Text(_fatal!, style: GoogleFonts.inter(color: Colors.white70)))
             : (sideBySide && showPanel)
                 ? Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    Expanded(child: Column(children: [_header(), Expanded(child: _showBanner ? SingleChildScrollView(child: _stageArea()) : Center(child: _stage()))])),
+                    Expanded(child: Column(children: [_header(), Expanded(child: Center(child: _stage()))])),
                     Container(width: panelW, decoration: const BoxDecoration(border: Border(left: BorderSide(color: Color(0xFF222228)))), child: _qaPanel()),
                   ])
-                : Column(children: [_header(), _showBanner ? Flexible(child: SingleChildScrollView(child: _stageArea())) : _stage(), if (showPanel) Expanded(child: _qaPanel())]),
+                : Column(children: [_header(), _stage(), if (showPanel) Expanded(child: _qaPanel())]),
       ),
     );
   }
@@ -247,21 +249,11 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
       );
 
   // ---- Stage ---------------------------------------------------------------
-  // The admin's 16:9 banner shows directly under the video area in the lobby
-  // (before the class starts) and after it ends — never during live.
-  bool get _showBanner => _banner.isNotEmpty && _status != 'live';
-
-  Widget _stageArea() => Column(mainAxisSize: MainAxisSize.min, children: [_stage(), _bannerView()]);
-
-  Widget _bannerView() => AspectRatio(
-        aspectRatio: 16 / 9,
-        child: Container(
-          color: Colors.black,
-          child: _banner.startsWith('data:')
-              ? Image.memory(base64Decode(_banner.substring(_banner.indexOf(',') + 1)), fit: BoxFit.cover, width: double.infinity, errorBuilder: (_, __, ___) => const SizedBox())
-              : Image.network(_banner, fit: BoxFit.cover, width: double.infinity, errorBuilder: (_, __, ___) => const SizedBox()),
-        ),
-      );
+  // A 16:9 image (data URI or URL) that fills the stage — the admin's start/end
+  // banners shown in place of the video before and after the class.
+  Widget _imageCover(String src) => src.startsWith('data:')
+      ? Image.memory(base64Decode(src.substring(src.indexOf(',') + 1)), fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: Colors.black))
+      : Image.network(src, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: Colors.black));
 
   Widget _stage() {
     // The host watches the live video too (when it's playing); otherwise they
@@ -270,7 +262,11 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     if (_status == 'live' && _playlistUrl != null) {
       return LivePlayer(key: ValueKey(_playlistUrl), playlistUrl: _playlistUrl!, watermark: widget.watermark, authToken: widget.auth.token, startEpochMs: _startEpochMs, skewMs: _skewMs);
     }
-    if (_status == 'ended') return _placeholder(CupertinoIcons.checkmark_seal_fill, 'Session ended', 'This live session has finished.');
+    if (_status == 'ended') {
+      return _endImage.isNotEmpty
+          ? AspectRatio(aspectRatio: 16 / 9, child: _imageCover(_endImage))
+          : _placeholder(CupertinoIcons.checkmark_seal_fill, 'Session ended', 'This live session has finished.');
+    }
     if (_status == 'preparing') return _preparing();
     return _lobby();
   }
@@ -306,22 +302,28 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   Widget _lobby() {
     final remain = _startsAt == null ? null : _startsAt!.difference(DateTime.now());
     final countdown = remain == null || remain.isNegative ? 'Starting…' : _fmtCountdown(remain);
+    final hasImg = _startImage.isNotEmpty;
     return AspectRatio(
       aspectRatio: 16 / 9,
-      child: Container(
-        color: Colors.black,
-        child: Center(
+      child: Stack(fit: StackFit.expand, children: [
+        Container(color: Colors.black),
+        // Start image in place of the video; the countdown stays on top.
+        if (hasImg) _imageCover(_startImage),
+        if (hasImg) Container(color: Colors.black.withOpacity(0.45)), // scrim for legibility
+        Center(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(CupertinoIcons.videocam_circle_fill, size: 56, color: _orange),
-            const SizedBox(height: 14),
+            if (!hasImg) ...[
+              const Icon(CupertinoIcons.videocam_circle_fill, size: 56, color: _orange),
+              const SizedBox(height: 14),
+            ],
             Text(_title, textAlign: TextAlign.center, style: GoogleFonts.inter(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
-            Text('The class is about to begin', style: GoogleFonts.inter(color: Colors.white54, fontSize: 13)),
+            Text('The class is about to begin', style: GoogleFonts.inter(color: Colors.white70, fontSize: 13)),
             const SizedBox(height: 18),
             Text(countdown, style: GoogleFonts.inter(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: 1)),
           ]),
         ),
-      ),
+      ]),
     );
   }
 
