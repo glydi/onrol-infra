@@ -102,25 +102,23 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
 
   void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
 
-  // Bulk-clear the calendar's past: admin-added events + finished live classes.
-  // Upcoming items are kept. The admin triggers this; it's never automatic.
+  // Bulk-clear the calendar's PAST admin-added events only. Live classes and
+  // upcoming events are kept. The admin triggers this; it's never automatic.
   Future<void> _clearHistory() async {
     final yes = await showSquareConfirm(context,
-        title: 'Clear calendar history',
-        message: 'Permanently delete all PAST calendar events and finished live classes (including their chat, Q&A and attendance)? Upcoming items are kept. This cannot be undone.',
-        confirmLabel: 'Clear history', destructive: true);
+        title: 'Clear past events',
+        message: 'Permanently delete all PAST calendar events? Upcoming events and live classes are kept. This cannot be undone.',
+        confirmLabel: 'Clear', destructive: true);
     if (!yes) return;
     try {
       final r = await widget.auth.apiDelete('/api/v1/manage/calendar/history');
-      int ev = 0, se = 0;
+      int ev = 0;
       try {
-        final d = ApiClient.decode(r);
-        ev = (d['events_deleted'] as num?)?.toInt() ?? 0;
-        se = (d['sessions_deleted'] as num?)?.toInt() ?? 0;
+        ev = (ApiClient.decode(r)['events_deleted'] as num?)?.toInt() ?? 0;
       } catch (_) {}
-      _toast('Cleared $ev past event${ev == 1 ? '' : 's'} and $se live class${se == 1 ? '' : 'es'}');
+      _toast('Cleared $ev past event${ev == 1 ? '' : 's'}');
     } catch (_) {
-      _toast("Couldn't clear history");
+      _toast("Couldn't clear past events");
     }
     _load();
   }
