@@ -754,6 +754,35 @@ Widget liveHlsVideoElement(
       neuterMediaSession();
       if (video.paused) video.play();
     });
+    // Hard anti-seek: a live class cannot be scrubbed. ANY seek — a UI, the
+    // keyboard, OS media keys, or even a script setting currentTime — snaps
+    // straight back to the live position, so seeking is not merely hidden but
+    // rejected. hls.js's own edge corrections sit within the tolerance, so
+    // playback stays smooth.
+    double livePos() {
+      try {
+        final h = hlsRef;
+        final lsp = h != null ? h['liveSyncPosition'] : null;
+        if (lsp is num && lsp.isFinite) return lsp.toDouble();
+      } catch (_) {}
+      try {
+        final sk = video.seekable;
+        if (sk.length > 0) {
+          final end = sk.end(sk.length - 1).toDouble();
+          if (end.isFinite) return end;
+        }
+      } catch (_) {}
+      return video.currentTime.toDouble();
+    }
+
+    video.onSeeking.listen((_) {
+      final edge = livePos();
+      if ((video.currentTime.toDouble() - edge).abs() > 2.0) {
+        try {
+          video.currentTime = edge;
+        } catch (_) {}
+      }
+    });
     // No user-facing pause exists; if anything (tab/OS) pauses us, resume and
     // realign to the live edge.
     video.onPause.listen((_) {
