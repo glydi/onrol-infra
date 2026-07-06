@@ -202,6 +202,10 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
           Text([if (course.isNotEmpty) course, '${_months[dt.month - 1]} ${dt.day}, ${dt.year}'].join(' · '), style: AppleTheme.footnote(context).copyWith(color: p.secondary)),
         ])),
         Text('Ended', style: AppleTheme.footnote(context).copyWith(color: p.secondary, fontWeight: FontWeight.w700)),
+        if ((m['id']?.toString() ?? '').isNotEmpty) ...[
+          const SizedBox(width: 12),
+          HoverTap(onTap: () => _deleteFeedItem(m), child: Icon(CupertinoIcons.trash, size: 18, color: p.secondary)),
+        ],
       ])),
     );
   }

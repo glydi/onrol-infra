@@ -157,6 +157,7 @@ func (h *Handlers) UpdateCourse(c *fiber.Ctx) error {
 		InstructorID *string `json:"instructor_id"` // assign/reassign the course instructor (owner)
 		InExplore    *bool   `json:"in_explore"`    // show in the student Explore catalog
 		ExploreLink  *string `json:"explore_link"`  // "Know more" link on the Explore tile
+		BatchTarget  *string `json:"batch_target"`  // auto-push new students into this batch code ("" = queue)
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
@@ -190,6 +191,10 @@ func (h *Handlers) UpdateCourse(c *fiber.Ctx) error {
 	if req.BatchSize != nil && *req.BatchSize < 0 {
 		return fiber.NewError(fiber.StatusBadRequest, "batch_size must be >= 0")
 	}
+	var batchTarget any
+	if req.BatchTarget != nil {
+		batchTarget = strings.ToUpper(strings.TrimSpace(*req.BatchTarget)) // "" = keep new students in the queue
+	}
 	_, err := h.Pool.Exec(c.Context(), `
 		UPDATE courses SET
 			title=COALESCE($2,title),
@@ -202,9 +207,10 @@ func (h *Handlers) UpdateCourse(c *fiber.Ctx) error {
 			label=COALESCE($9,label),
 			owner_id=COALESCE($10,owner_id),
 			in_explore=COALESCE($11,in_explore),
-			explore_link=COALESCE($12,explore_link)
+			explore_link=COALESCE($12,explore_link),
+			batch_target=COALESCE($13,batch_target)
 		WHERE id=$1`, id, req.Title, req.Description, req.Status, req.EnrollType, req.ImageURL,
-		req.BatchSize, req.BatchAuto, label, owner, req.InExplore, req.ExploreLink)
+		req.BatchSize, req.BatchAuto, label, owner, req.InExplore, req.ExploreLink, batchTarget)
 	if err != nil {
 		if strings.Contains(err.Error(), "idx_courses_label") {
 			return fiber.NewError(fiber.StatusConflict, "a course with this Course ID already exists")
@@ -425,12 +431,13 @@ func (h *Handlers) CourseBatches(c *fiber.Ctx) error {
 	var label *string
 	var batchSize *int
 	var batchAuto bool
+	var batchTarget string
 	if err := h.Pool.QueryRow(c.Context(),
-		`SELECT label, batch_size, batch_auto FROM courses WHERE id=$1`, courseID,
-	).Scan(&label, &batchSize, &batchAuto); err != nil {
+		`SELECT label, batch_size, batch_auto, COALESCE(batch_target,'') FROM courses WHERE id=$1`, courseID,
+	).Scan(&label, &batchSize, &batchAuto, &batchTarget); err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "course not found")
 	}
-	settings := fiber.Map{"batch_size": batchSize, "batch_auto": batchAuto}
+	settings := fiber.Map{"batch_size": batchSize, "batch_auto": batchAuto, "batch_target": batchTarget}
 	if label == nil || strings.TrimSpace(*label) == "" {
 		return c.JSON(fiber.Map{"label": "", "batches": []fiber.Map{}, "settings": settings})
 	}

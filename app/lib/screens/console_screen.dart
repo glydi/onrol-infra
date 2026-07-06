@@ -3790,6 +3790,7 @@ class _CourseBatchesScreenState extends State<CourseBatchesScreen> {
   List<dynamic> _batches = [];
   int? _batchSize;
   bool _batchAuto = false;
+  String _batchTarget = ''; // new students auto-push into this batch code ('' = queue)
   String? _err;
 
   // The unassigned (batch == null) students for this course are its live queue.
@@ -3816,6 +3817,7 @@ class _CourseBatchesScreenState extends State<CourseBatchesScreen> {
       final st = data['settings'] as Map?;
       _batchSize = (st?['batch_size'] is int) ? st!['batch_size'] as int : int.tryParse('${st?['batch_size'] ?? ''}');
       _batchAuto = st?['batch_auto'] == true;
+      _batchTarget = st?['batch_target']?.toString() ?? '';
     } catch (_) {
       _err = 'Could not load batches';
     }
@@ -3851,6 +3853,48 @@ class _CourseBatchesScreenState extends State<CourseBatchesScreen> {
       }
     });
     if (ok == true) { _toast('Settings saved'); _load(); }
+  }
+
+  // Auto-push: pick an existing batch or a new code that NEW students in this
+  // course are automatically dropped into as they arrive (via the 2-min loop).
+  Future<void> _autoPushSettings() async {
+    final existing = <String>[];
+    for (final b in _batches) {
+      final code = (b as Map)['batch']?.toString().trim() ?? '';
+      if (code.isNotEmpty && !existing.contains(code)) existing.add(code);
+    }
+    final items = <SquareMenuItem>[
+      for (final code in existing)
+        SquareMenuItem(code == _batchTarget ? '✓  $code  (current)' : 'Push new into  $code', value: 'b:$code', icon: CupertinoIcons.arrow_right_circle_fill),
+      const SquareMenuItem('New batch code…', value: 'new', icon: CupertinoIcons.add_circled),
+      if (_batchTarget.isNotEmpty) const SquareMenuItem('Turn off — keep new students in the queue', value: 'off', icon: CupertinoIcons.tray),
+    ];
+    final v = await showSquareMenu(context, title: 'Auto-push new students', items: items);
+    if (v == null) return;
+    String target;
+    if (v == 'off') {
+      target = '';
+    } else if (v == 'new') {
+      String code = '';
+      final ok = await showFormSheet(context, square: true, title: 'New batch for auto-push',
+          builder: (_) => [
+            Text('New students in this course get pushed into this batch as they arrive.', style: AppleTheme.footnote(context)),
+            const SizedBox(height: 8),
+            BatchCodeField(onChanged: (x) => code = x),
+          ],
+          onSubmit: () async => code.trim().isEmpty ? 'Enter the full batch code' : null);
+      if (ok != true || code.trim().isEmpty) return;
+      target = code.trim();
+    } else {
+      target = v.toString().substring(2); // strip "b:"
+    }
+    try {
+      await widget.auth.apiPatch('/api/v1/manage/courses/${widget.courseId}', {'batch_target': target});
+      _toast(target.isEmpty ? 'Auto-push turned off' : 'New students → $target');
+      _load();
+    } on ApiException catch (e) {
+      _toast(e.message);
+    }
   }
 
   // Stamp all queued (unassigned) students with one batch code.
@@ -4024,6 +4068,22 @@ class _CourseBatchesScreenState extends State<CourseBatchesScreen> {
                           onTap: _editSettings,
                           behavior: HitTestBehavior.opaque,
                           child: Text('Settings', style: TextStyle(color: Palette.of(context).accent, fontWeight: FontWeight.w600)),
+                        ),
+                      ]),
+                    ),
+                    const SizedBox(height: 10),
+                    AppleCard(square: true,
+                      child: Row(children: [
+                        Icon(CupertinoIcons.arrow_right_circle, size: 20, color: _batchTarget.isEmpty ? Palette.of(context).secondary : AppleColors.green),
+                        const SizedBox(width: 10),
+                        Expanded(child: Text(
+                          _batchTarget.isEmpty ? 'Auto-push new students: Off (queue)' : 'New students auto-push → $_batchTarget',
+                          style: AppleTheme.body(context),
+                        )),
+                        GestureDetector(
+                          onTap: _autoPushSettings,
+                          behavior: HitTestBehavior.opaque,
+                          child: Text(_batchTarget.isEmpty ? 'Set up' : 'Change', style: TextStyle(color: Palette.of(context).accent, fontWeight: FontWeight.w600)),
                         ),
                       ]),
                     ),

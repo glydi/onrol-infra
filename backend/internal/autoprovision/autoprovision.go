@@ -128,4 +128,14 @@ var steps = []string{
 	   AND ( (u.email<>'' AND lower(u.email)=lower(trim(b.email)))
 	      OR (u.username = regexp_replace(COALESCE(b.phone,''),'\D','','g')) )
 	   AND u.access_expires_at IS DISTINCT FROM (COALESCE(b.converted_at, u.created_at) + (b.numberofdays || ' days')::interval)`,
+
+	// 7. Auto-push: a course can nominate a batch (courses.batch_target) that new
+	//    students are dropped into as they arrive. Push any unbatched student in
+	//    such a course into that batch, so new entries land there automatically.
+	`UPDATE users u
+	 SET batch = NULLIF(trim(c.batch_target),''), updated_at = now()
+	 FROM courses c
+	 WHERE u.role='student' AND u.batch IS NULL
+	   AND lower(u.course_label) = lower(c.label)
+	   AND NULLIF(trim(c.batch_target),'') IS NOT NULL`,
 }

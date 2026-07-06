@@ -45,6 +45,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   String? _playlistUrl; // absolute, set once live
   String _startImage = ''; // 16:9 shown in place of the video before the class
   String _endImage = ''; // 16:9 shown in place of the video after it ends
+  final Map<String, Widget> _coverCache = {}; // built cover widgets, cached by src
   DateTime? _startsAt;
   int _startEpochMs = 0; // scheduled start (UTC ms) — drives time-locked playback
   int _skewMs = 0; // server_now - device_now: normalizes a wrong device clock to the server
@@ -250,10 +251,12 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
 
   // ---- Stage ---------------------------------------------------------------
   // A 16:9 image (data URI or URL) that fills the stage — the admin's start/end
-  // banners shown in place of the video before and after the class.
-  Widget _imageCover(String src) => src.startsWith('data:')
-      ? Image.memory(base64Decode(src.substring(src.indexOf(',') + 1)), fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: Colors.black))
-      : Image.network(src, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: Colors.black));
+  // banners shown in place of the video before and after the class. Cached by
+  // src (and gapless) so the lobby's 1-second countdown rebuild never re-decodes
+  // the image — that was the flicker behind the countdown.
+  Widget _imageCover(String src) => _coverCache.putIfAbsent(src, () => src.startsWith('data:')
+      ? Image.memory(base64Decode(src.substring(src.indexOf(',') + 1)), fit: BoxFit.cover, gaplessPlayback: true, errorBuilder: (_, __, ___) => Container(color: Colors.black))
+      : Image.network(src, fit: BoxFit.cover, gaplessPlayback: true, errorBuilder: (_, __, ___) => Container(color: Colors.black)));
 
   Widget _stage() {
     // The host watches the live video too (when it's playing); otherwise they
