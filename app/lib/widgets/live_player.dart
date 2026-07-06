@@ -19,7 +19,7 @@ import 'web_video_stub.dart' if (dart.library.html) 'web_video_web.dart';
 /// platform view). Mobile: video_player following the live edge, with a minimal
 /// LIVE badge + mute/fullscreen overlay drawn in Flutter.
 class LivePlayer extends StatefulWidget {
-  const LivePlayer({super.key, required this.playlistUrl, required this.watermark, this.authToken = '', this.startEpochMs = 0, this.skewMs = 0, this.title = '', this.course = ''});
+  const LivePlayer({super.key, required this.playlistUrl, required this.watermark, this.authToken = '', this.startEpochMs = 0, this.skewMs = 0, this.title = '', this.course = '', this.hostMuted = false});
 
   /// Absolute URL to the session's playlist.m3u8.
   final String playlistUrl;
@@ -39,6 +39,10 @@ class LivePlayer extends StatefulWidget {
   /// Shown as the title in the OS/browser media panel (course as the subtitle).
   final String title;
   final String course;
+
+  /// Host mute-all: when true the audio is silenced for this viewer regardless
+  /// of their own mute button (used for pause / black-out / mute-all).
+  final bool hostMuted;
 
   @override
   State<LivePlayer> createState() => _LivePlayerState();
@@ -87,11 +91,36 @@ class _LivePlayerState extends State<LivePlayer> {
       _c!.initialize().then((_) {
         _c!.play();
         _followEdge(force: true);
+        _applyHostMute();
         if (mounted) setState(() => _ready = true);
       }).catchError((_) {
         if (mounted) setState(() => _error = 'Could not load the live stream.');
       });
       _syncTimer = Timer.periodic(const Duration(seconds: 1), (_) => _followEdge());
+    } else if (widget.hostMuted) {
+      // Web element is created asynchronously by the platform view; re-apply the
+      // host mute a few times so a viewer who JOINS while muted lands silenced.
+      for (final ms in [300, 900, 1800]) {
+        Timer(Duration(milliseconds: ms), () {
+          if (mounted) liveSetMuted(widget.hostMuted);
+        });
+      }
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant LivePlayer old) {
+    super.didUpdateWidget(old);
+    if (old.hostMuted != widget.hostMuted) _applyHostMute();
+  }
+
+  // Silence (or restore) audio for the host mute-all / pause / black-out. The
+  // viewer's own mute still applies on top on mobile; on web the host wins.
+  void _applyHostMute() {
+    if (kIsWeb) {
+      liveSetMuted(widget.hostMuted);
+    } else {
+      _c?.setVolume((widget.hostMuted || _muted) ? 0 : 1);
     }
   }
 
@@ -106,7 +135,7 @@ class _LivePlayerState extends State<LivePlayer> {
 
   void _toggleMute() {
     setState(() => _muted = !_muted);
-    _c?.setVolume(_muted ? 0 : 1);
+    _c?.setVolume((_muted || widget.hostMuted) ? 0 : 1);
   }
 
   Future<void> _toggleFullscreen() async {

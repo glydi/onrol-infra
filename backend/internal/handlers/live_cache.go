@@ -27,8 +27,8 @@ import (
 // database queries.
 
 type accessEntry struct {
-	chatOK, qaOK, isStaff, allowed bool
-	exp                            time.Time
+	chatOK, qaOK, reactOK, isStaff, allowed bool
+	exp                                     time.Time
 }
 
 var (
@@ -39,34 +39,61 @@ var (
 const accessTTL = 45 * time.Second
 
 // liveAccessCached is the cached form of liveAccess: it authorizes the caller
-// for a session and returns the chat/Q&A toggles, whether they're staff, and
-// whether they're allowed at all. On a miss it runs one light query.
-func (h *Handlers) liveAccessCached(c *fiber.Ctx, sessionID string) (chatOK, qaOK, isStaff, allowed bool) {
+// for a session and returns the chat / Q&A / reactions toggles, whether they're
+// staff, and whether they're allowed at all. On a miss it runs one light query.
+func (h *Handlers) liveAccessCached(c *fiber.Ctx, sessionID string) (chatOK, qaOK, reactOK, isStaff, allowed bool) {
 	startLiveJanitor()
 	key := sessionID + "|" + callerID(c)
 	now := time.Now()
 	accessMu.Lock()
 	if e, ok := accessCache[key]; ok && now.Before(e.exp) {
 		accessMu.Unlock()
-		return e.chatOK, e.qaOK, e.isStaff, e.allowed
+		return e.chatOK, e.qaOK, e.reactOK, e.isStaff, e.allowed
 	}
 	accessMu.Unlock()
 
 	var courseID string
 	var enrolled bool
 	err := h.Pool.QueryRow(c.Context(), `
-		SELECT cs.chat_enabled, cs.qa_enabled, cs.course_id,
+		SELECT cs.chat_enabled, cs.qa_enabled, cs.reactions_enabled, cs.course_id,
 		       EXISTS(SELECT 1 FROM course_enrollments ce WHERE ce.course_id=cs.course_id AND ce.user_id=$2 AND ce.status='active')
-		FROM class_sessions cs WHERE cs.id=$1`, sessionID, callerID(c)).Scan(&chatOK, &qaOK, &courseID, &enrolled)
+		FROM class_sessions cs WHERE cs.id=$1`, sessionID, callerID(c)).Scan(&chatOK, &qaOK, &reactOK, &courseID, &enrolled)
 	if err != nil {
-		return false, false, false, false // unknown session / error → not allowed (uncached)
+		return false, false, false, false, false // unknown session / error → not allowed (uncached)
 	}
 	isStaff = h.canManageCourse(c, courseID) == nil || callerRole(c) == "live_host"
 	allowed = enrolled || isStaff
 	accessMu.Lock()
-	accessCache[key] = accessEntry{chatOK, qaOK, isStaff, allowed, now.Add(accessTTL)}
+	accessCache[key] = accessEntry{chatOK, qaOK, reactOK, isStaff, allowed, now.Add(accessTTL)}
 	accessMu.Unlock()
 	return
+}
+
+// invalidateLiveCaches drops the cached state, playlist body, and per-user
+// access/allow entries for a session so a host control change (toggle, pause,
+// black-out, end) takes effect on viewers within one poll instead of a TTL.
+func invalidateLiveCaches(sessionID string) {
+	stateMu.Lock()
+	delete(stateCache, sessionID)
+	stateMu.Unlock()
+	playlistBodyMu.Lock()
+	delete(playlistBody, sessionID)
+	playlistBodyMu.Unlock()
+	prefix := sessionID + "|"
+	accessMu.Lock()
+	for k := range accessCache {
+		if strings.HasPrefix(k, prefix) {
+			delete(accessCache, k)
+		}
+	}
+	accessMu.Unlock()
+	pallowMu.Lock()
+	for k := range pallow {
+		if strings.HasPrefix(k, prefix) {
+			delete(pallow, k)
+		}
+	}
+	pallowMu.Unlock()
 }
 
 // ---- session state cache -----------------------------------------------------

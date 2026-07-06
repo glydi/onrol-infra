@@ -553,6 +553,15 @@ void _ensureLivePulse() {
 /// video lines up with every real second, and all viewers see the same frame.
 /// skewMs corrects the device clock against the server. No scrubber/seek/speed
 /// controls; only mute + fullscreen. Starts muted (browsers block unmuted autoplay).
+// The most recently created live <video>, so the host's mute-all can silence it
+// without recreating the element. Set on factory build below.
+html.VideoElement? _lastLiveVideo;
+
+/// Force the live video muted/unmuted (host mute-all). No-op if not yet built.
+void liveSetMuted(bool muted) {
+  _lastLiveVideo?.muted = muted;
+}
+
 Widget liveHlsVideoElement(
   String url, {
   String authToken = '',
@@ -577,6 +586,7 @@ Widget liveHlsVideoElement(
       ..setAttribute('playsinline', 'true')
       ..setAttribute('disablePictureInPicture', 'true')
       ..setAttribute('disableRemotePlayback', 'true'); // no cast/AirPlay handoff
+    _lastLiveVideo = video; // let the host's mute-all reach this element
 
     final container = html.DivElement()
       ..style.position = 'relative'

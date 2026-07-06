@@ -22,3 +22,6 @@ Widget liveHlsVideoElement(
   String course = '',
 }) =>
     const SizedBox.shrink();
+
+// Web-only: host mute-all hook (mobile uses VideoPlayerController.setVolume).
+void liveSetMuted(bool muted) {}

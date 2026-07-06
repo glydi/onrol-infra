@@ -42,6 +42,13 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   String _course = '';
   int _viewers = 0;
   bool _qaOn = true;
+  // Host room-controls, mirrored from /state so every viewer reacts together.
+  bool _reactionsOn = true;
+  bool _paused = false;
+  bool _blank = false;
+  bool _hostMuted = false;
+  String _banner = '';
+  bool _sendingCtl = false;
   String? _playlistUrl; // absolute, set once live
   String _startImage = ''; // 16:9 shown in place of the video before the class
   String _endImage = ''; // 16:9 shown in place of the video after it ends
@@ -115,6 +122,11 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         _course = d['course']?.toString() ?? _course;
         _viewers = (d['viewers'] as num?)?.toInt() ?? _viewers;
         _qaOn = d['qa_enabled'] == true;
+        _reactionsOn = d['reactions_enabled'] != false;
+        _paused = d['paused'] == true;
+        _blank = d['blank'] == true;
+        _hostMuted = d['muted'] == true;
+        _banner = d['banner']?.toString() ?? '';
         _startImage = d['start_image']?.toString() ?? '';
         _endImage = d['end_image']?.toString() ?? '';
         final sa = DateTime.tryParse(d['starts_at']?.toString() ?? '');
@@ -277,6 +289,89 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     }
   }
 
+  // Host: push a room control (pause/blank/mute/toggle/start/end/banner) then
+  // refresh state so the panel reflects it immediately.
+  Future<void> _control(Map<String, dynamic> body) async {
+    if (_sendingCtl) return;
+    setState(() => _sendingCtl = true);
+    try {
+      await widget.auth.apiPost('$_base/control', body);
+      await _pollState();
+    } catch (_) {} finally {
+      if (mounted) setState(() => _sendingCtl = false);
+    }
+  }
+
+  Future<void> _editBanner() async {
+    final ctl = TextEditingController(text: _banner);
+    final res = await showDialog<String?>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _panel,
+        title: Text('Banner over the video', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
+        content: TextField(
+          controller: ctl,
+          autofocus: true,
+          maxLength: 200,
+          minLines: 1,
+          maxLines: 3,
+          style: GoogleFonts.inter(color: Colors.white, fontSize: 14),
+          decoration: InputDecoration(
+            hintText: 'Shown to everyone over the video…',
+            hintStyle: GoogleFonts.inter(color: Colors.white38, fontSize: 14),
+            filled: true,
+            fillColor: Colors.white.withOpacity(0.06),
+            border: OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide.none),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, ' '), child: Text('Clear', style: GoogleFonts.inter(color: Colors.white54))),
+          TextButton(onPressed: () => Navigator.pop(ctx, ctl.text.trim()), child: Text('Show', style: GoogleFonts.inter(color: _orange, fontWeight: FontWeight.w700))),
+        ],
+      ),
+    );
+    if (res == null) return;
+    await _control({'banner': res == ' ' ? '' : res});
+  }
+
+  // The host's live-control bar: pause, black-out, mute-all, toggles, banner,
+  // and start/end-now. Broadcast to every viewer via the session state.
+  Widget _hostControls() {
+    final liveNow = _status == 'live';
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFF222228)))),
+      child: Wrap(spacing: 7, runSpacing: 7, children: [
+        _ctlChip(_paused ? 'Resume' : 'Pause', _paused ? CupertinoIcons.play_fill : CupertinoIcons.pause_fill, _paused, () => _control({'paused': !_paused})),
+        _ctlChip('Black-out', CupertinoIcons.rectangle_fill, _blank, () => _control({'blank': !_blank})),
+        _ctlChip('Mute all', _hostMuted ? CupertinoIcons.volume_off : CupertinoIcons.volume_up, _hostMuted, () => _control({'muted': !_hostMuted})),
+        _ctlChip('Reactions', CupertinoIcons.hand_thumbsup, _reactionsOn, () => _control({'reactions_enabled': !_reactionsOn})),
+        _ctlChip('Q&A', CupertinoIcons.chat_bubble_2, _qaOn, () => _control({'qa_enabled': !_qaOn})),
+        _ctlChip('Banner', CupertinoIcons.textformat, _banner.isNotEmpty, _editBanner),
+        if (!liveNow) _ctlChip('Start now', CupertinoIcons.play_circle, false, () => _control({'start_now': true})),
+        if (liveNow) _ctlChip('End now', CupertinoIcons.stop_circle_fill, false, () => _control({'end_now': true})),
+      ]),
+    );
+  }
+
+  Widget _ctlChip(String label, IconData icon, bool active, VoidCallback onTap) => GestureDetector(
+        onTap: _sendingCtl ? null : onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: active ? _orange.withOpacity(0.9) : Colors.white.withOpacity(0.06),
+            borderRadius: BorderRadius.zero,
+            border: Border.all(color: active ? _orange : Colors.white24),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 14, color: active ? Colors.white : Colors.white70),
+            const SizedBox(width: 5),
+            Text(label, style: GoogleFonts.inter(color: active ? Colors.white : Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w700)),
+          ]),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -303,13 +398,38 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     );
   }
 
-  // The video stage with the floating-reactions overlay on top of it.
-  Widget _stageArea() => Stack(alignment: Alignment.center, children: [
-        _stage(),
-        Positioned.fill(child: IgnorePointer(child: Stack(clipBehavior: Clip.hardEdge, children: [
-          for (final f in _floats) _Floaty(key: ValueKey(f.id), emoji: f.emoji, startX: f.x, onDone: () => _removeFloat(f.id)),
-        ]))),
-      ]);
+  // The video stage with the floating-reactions overlay, the host's black-out /
+  // paused covers, and any pinned banner layered on top. Covers only apply while
+  // the class is actually live (a recorded video is playing).
+  Widget _stageArea() {
+    final live = _status == 'live' && _playlistUrl != null;
+    return Stack(alignment: Alignment.center, children: [
+      _stage(),
+      Positioned.fill(child: IgnorePointer(child: Stack(clipBehavior: Clip.hardEdge, children: [
+        for (final f in _floats) _Floaty(key: ValueKey(f.id), emoji: f.emoji, startX: f.x, onDone: () => _removeFloat(f.id)),
+      ]))),
+      if (live && _banner.isNotEmpty)
+        Positioned(top: 0, left: 0, right: 0, child: IgnorePointer(child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          color: _orange.withOpacity(0.92),
+          child: Text(_banner, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.inter(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w700)),
+        ))),
+      if (live && (_blank || _paused)) Positioned.fill(child: _cover(_paused ? 'Paused' : 'Back shortly', _paused ? CupertinoIcons.pause_circle : CupertinoIcons.clock)),
+    ]);
+  }
+
+  // Opaque cover shown over the video during a host black-out or pause.
+  Widget _cover(String label, IconData icon) => Container(
+        color: Colors.black.withOpacity(0.97),
+        child: Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 44, color: Colors.white70),
+            const SizedBox(height: 12),
+            Text(label, style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+          ]),
+        ),
+      );
 
   // ---- Header --------------------------------------------------------------
   Widget _header() {
@@ -331,8 +451,6 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
           ]),
         ),
         if (_status == 'live') ...[
-          _statusPill('● LIVE', _orange),
-          const SizedBox(width: 8),
           Row(children: [
             const Icon(CupertinoIcons.eye_fill, size: 14, color: Colors.white60),
             const SizedBox(width: 4),
@@ -366,7 +484,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     // see the host status panel (lobby / preparing / ended / queue summary).
     if (widget.isHost && !(_status == 'live' && _playlistUrl != null)) return _hostPanel();
     if (_status == 'live' && _playlistUrl != null) {
-      return LivePlayer(key: ValueKey(_playlistUrl), playlistUrl: _playlistUrl!, watermark: widget.watermark, authToken: widget.auth.token, startEpochMs: _startEpochMs, skewMs: _skewMs, title: _title, course: _course);
+      return LivePlayer(key: ValueKey(_playlistUrl), playlistUrl: _playlistUrl!, watermark: widget.watermark, authToken: widget.auth.token, startEpochMs: _startEpochMs, skewMs: _skewMs, title: _title, course: _course, hostMuted: _hostMuted || _blank || _paused);
     }
     if (_status == 'ended') {
       return _endImage.isNotEmpty
@@ -548,6 +666,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     final waiting = _questions.where((q) => q['answered'] != true).length;
     return Column(children: [
       _panelHeader('Questions', waiting > 0 ? '$waiting waiting to be answered' : 'All caught up'),
+      _hostControls(),
       _mentorMessages(),
       Expanded(
         child: _questions.isEmpty
@@ -605,8 +724,10 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
 
   // Emoji reactions row at the bottom of the panel; a tap floats it over the
   // video and broadcasts it to the room. FittedBox guarantees it never overflows
-  // a narrow side panel.
-  Widget _reactionBar() => Container(
+  // a narrow side panel. Hidden when the host has turned reactions off.
+  Widget _reactionBar() => !_reactionsOn
+      ? const SizedBox.shrink()
+      : Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
         decoration: const BoxDecoration(border: Border(top: BorderSide(color: Color(0xFF222228)))),
         child: FittedBox(

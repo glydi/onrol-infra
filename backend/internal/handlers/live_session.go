@@ -43,7 +43,7 @@ func (h *Handlers) liveAccess(c *fiber.Ctx, sessionID string) (chatOK, qaOK, isS
 // a cache-hit poll does no DB work at all.
 func (h *Handlers) LiveSessionState(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
-	_, _, isStaff, allowed := h.liveAccessCached(c, sessionID)
+	_, _, _, isStaff, allowed := h.liveAccessCached(c, sessionID)
 	if !allowed {
 		return fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
 	}
@@ -87,18 +87,21 @@ func (h *Handlers) cachedLiveState(c *fiber.Ctx, sessionID string) (fiber.Map, *
 func (h *Handlers) buildLiveState(c *fiber.Ctx, sessionID string, now time.Time) (fiber.Map, *fiber.Error) {
 	var startsAt time.Time
 	var assetID *string
-	var title, course, hlsURL, startImg, endImg string
-	var chatOK, qaOK bool
+	var pausedAt, manualEnd *time.Time
+	var title, course, hlsURL, startImg, endImg, banner string
+	var chatOK, qaOK, reactOK, blank, muted bool
 	var viewerBase, durationSecs int
 	err := h.Pool.QueryRow(c.Context(), `
 		SELECT cs.starts_at, cs.media_asset_id, cs.title, c.title,
-		       cs.chat_enabled, cs.qa_enabled, cs.viewer_base, COALESCE(ma.duration_seconds, 0),
-		       COALESCE(ma.hls_url,''), COALESCE(cs.start_image,''), COALESCE(cs.end_image,'')
+		       cs.chat_enabled, cs.qa_enabled, cs.reactions_enabled, cs.viewer_base, COALESCE(ma.duration_seconds, 0),
+		       COALESCE(ma.hls_url,''), COALESCE(cs.start_image,''), COALESCE(cs.end_image,''),
+		       cs.paused_at, cs.blank, cs.muted, cs.banner, cs.manual_ended_at
 		FROM class_sessions cs
 		JOIN courses c ON c.id = cs.course_id
 		LEFT JOIN media_assets ma ON ma.id = cs.media_asset_id
 		WHERE cs.id = $1`, sessionID).Scan(
-		&startsAt, &assetID, &title, &course, &chatOK, &qaOK, &viewerBase, &durationSecs, &hlsURL, &startImg, &endImg)
+		&startsAt, &assetID, &title, &course, &chatOK, &qaOK, &reactOK, &viewerBase, &durationSecs,
+		&hlsURL, &startImg, &endImg, &pausedAt, &blank, &muted, &banner, &manualEnd)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
 	}
@@ -107,11 +110,19 @@ func (h *Handlers) buildLiveState(c *fiber.Ctx, sessionID string, now time.Time)
 	}
 	ready := hlsURL != ""
 
+	// When paused, effective elapsed freezes at the pause moment (on resume the
+	// control handler shifts starts_at forward so this keeps flowing correctly).
+	paused := pausedAt != nil
 	elapsed := now.Sub(startsAt).Seconds()
+	if paused {
+		elapsed = pausedAt.Sub(startsAt).Seconds()
+	}
 	status := "live"
 	switch {
 	case elapsed < 0:
 		status = "upcoming"
+	case manualEnd != nil && !manualEnd.After(now):
+		status = "ended" // host ended it early
 	case assetID != nil && !ready:
 		// Scheduled time reached but the recording is still transcoding — the
 		// room waits on this instead of loading a playlist that 409s.
@@ -154,7 +165,12 @@ func (h *Handlers) buildLiveState(c *fiber.Ctx, sessionID string, now time.Time)
 		"end_image":           endImg,
 		"chat_enabled":        chatOK,
 		"qa_enabled":          qaOK,
+		"reactions_enabled":   reactOK,
 		"viewers":             viewers,
+		"paused":              paused,
+		"blank":               blank,
+		"muted":               muted,
+		"banner":              banner,
 	}
 	// Reaction batch since the last rebuild — rides along on the state everyone
 	// already polls, so reactions reach the whole room with no extra requests.
@@ -184,7 +200,7 @@ func (h *Handlers) buildLiveState(c *fiber.Ctx, sessionID string, now time.Time)
 // cached and presence is in-memory, so this touches no database.
 func (h *Handlers) LiveHeartbeat(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
-	if _, _, _, allowed := h.liveAccessCached(c, sessionID); !allowed {
+	if _, _, _, _, allowed := h.liveAccessCached(c, sessionID); !allowed {
 		return fiber.NewError(fiber.StatusForbidden, "not entitled")
 	}
 	touchPresence(sessionID, callerID(c))
@@ -196,8 +212,12 @@ func (h *Handlers) LiveHeartbeat(c *fiber.Ctx) error {
 // poll everyone already makes, so reactions add no new polling load.
 func (h *Handlers) LiveReact(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
-	if _, _, _, allowed := h.liveAccessCached(c, sessionID); !allowed {
+	_, _, reactOK, isStaff, allowed := h.liveAccessCached(c, sessionID)
+	if !allowed {
 		return fiber.NewError(fiber.StatusForbidden, "not entitled")
+	}
+	if !reactOK && !isStaff {
+		return fiber.NewError(fiber.StatusForbidden, "reactions are off")
 	}
 	var req struct {
 		Emoji string `json:"emoji"`
@@ -210,6 +230,92 @@ func (h *Handlers) LiveReact(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "unknown reaction")
 	}
 	addReaction(sessionID, emoji)
+	return c.JSON(fiber.Map{"ok": true})
+}
+
+// LiveControl lets the host (course staff) drive the room: pause/resume,
+// black-out, mute-all, banner, reactions/chat/Q&A toggles, and start/end-now.
+// Only the fields present in the body are applied. Pause is time-locked-safe —
+// resuming shifts starts_at forward by the paused duration so the wall-clock
+// position is preserved. Caches are invalidated so viewers see it next poll.
+func (h *Handlers) LiveControl(c *fiber.Ctx) error {
+	sessionID := c.Params("id")
+	var courseID string
+	if err := h.Pool.QueryRow(c.Context(), `SELECT course_id FROM class_sessions WHERE id=$1`, sessionID).Scan(&courseID); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "session not found")
+	}
+	if h.canManageCourse(c, courseID) != nil && callerRole(c) != "live_host" {
+		return fiber.NewError(fiber.StatusForbidden, "only the host can control the room")
+	}
+
+	// All fields optional; nil = leave unchanged.
+	var req struct {
+		Paused    *bool   `json:"paused"`
+		Blank     *bool   `json:"blank"`
+		Muted     *bool   `json:"muted"`
+		Banner    *string `json:"banner"`
+		Chat      *bool   `json:"chat_enabled"`
+		QA        *bool   `json:"qa_enabled"`
+		Reactions *bool   `json:"reactions_enabled"`
+		StartNow  bool    `json:"start_now"`
+		EndNow    bool    `json:"end_now"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+
+	sets := []string{}
+	args := []any{sessionID}
+	add := func(expr string, val any) {
+		args = append(args, val)
+		sets = append(sets, fmt.Sprintf("%s=$%d", expr, len(args)))
+	}
+	if req.StartNow {
+		// Go live right now: start the clock, clear pause/end.
+		sets = append(sets, "starts_at=now()", "paused_at=NULL", "manual_ended_at=NULL")
+	}
+	if req.EndNow {
+		sets = append(sets, "manual_ended_at=now()", "paused_at=NULL")
+	}
+	if req.Paused != nil && !req.StartNow {
+		if *req.Paused {
+			sets = append(sets, "paused_at=COALESCE(paused_at, now())") // idempotent pause
+		} else {
+			// Resume: advance the schedule by however long we were paused, then clear.
+			sets = append(sets, "starts_at=starts_at + (now() - COALESCE(paused_at, now()))", "paused_at=NULL")
+		}
+	}
+	if req.Blank != nil {
+		add("blank", *req.Blank)
+	}
+	if req.Muted != nil {
+		add("muted", *req.Muted)
+	}
+	if req.Banner != nil {
+		b := *req.Banner
+		if len(b) > 300 {
+			b = b[:300]
+		}
+		add("banner", b)
+	}
+	if req.Chat != nil {
+		add("chat_enabled", *req.Chat)
+	}
+	if req.QA != nil {
+		add("qa_enabled", *req.QA)
+	}
+	if req.Reactions != nil {
+		add("reactions_enabled", *req.Reactions)
+	}
+	if len(sets) == 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "no control fields")
+	}
+
+	if _, err := h.Pool.Exec(c.Context(),
+		fmt.Sprintf("UPDATE class_sessions SET %s WHERE id=$1", strings.Join(sets, ", ")), args...); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "control update failed")
+	}
+	invalidateLiveCaches(sessionID)
 	return c.JSON(fiber.Map{"ok": true})
 }
 

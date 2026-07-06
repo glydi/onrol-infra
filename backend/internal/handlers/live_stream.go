@@ -188,12 +188,13 @@ func (h *Handlers) sendPlaylist(c *fiber.Ctx, body string) error {
 func (h *Handlers) buildLivePlaylist(c *fiber.Ctx, sessionID string) (string, *fiber.Error) {
 	var assetID, hlsURL string
 	var startsAt time.Time
+	var pausedAt, manualEnd *time.Time
 	var durDB int
 	err := h.Pool.QueryRow(c.Context(), `
-		SELECT cs.media_asset_id, cs.starts_at, COALESCE(ma.hls_url,''), ma.duration_seconds
+		SELECT cs.media_asset_id, cs.starts_at, COALESCE(ma.hls_url,''), ma.duration_seconds, cs.paused_at, cs.manual_ended_at
 		FROM class_sessions cs
 		JOIN media_assets ma ON ma.id = cs.media_asset_id
-		WHERE cs.id = $1`, sessionID).Scan(&assetID, &startsAt, &hlsURL, &durDB)
+		WHERE cs.id = $1`, sessionID).Scan(&assetID, &startsAt, &hlsURL, &durDB, &pausedAt, &manualEnd)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
 	}
@@ -213,7 +214,13 @@ func (h *Handlers) buildLivePlaylist(c *fiber.Ctx, sessionID string) (string, *f
 		_, _ = h.Pool.Exec(c.Context(), `UPDATE media_assets SET duration_seconds=$2 WHERE id=$1`, assetID, int(pp.total+0.5))
 	}
 
+	// When the host has paused, freeze the window at the pause moment so the
+	// stream stalls at the edge for everyone (on resume the schedule is shifted
+	// so it continues from the same point).
 	elapsed := time.Since(startsAt).Seconds()
+	if pausedAt != nil {
+		elapsed = pausedAt.Sub(startsAt).Seconds()
+	}
 	if elapsed <= 0 {
 		// Before the scheduled start there is nothing to play; the client shows
 		// the lobby/countdown and only requests this once /state reports "live".
@@ -231,7 +238,7 @@ func (h *Handlers) buildLivePlaylist(c *fiber.Ctx, sessionID string) (string, *f
 		}
 		start += pp.segs[i].dur
 	}
-	ended := elapsed >= pp.total
+	ended := elapsed >= pp.total || (manualEnd != nil && !manualEnd.After(time.Now()))
 
 	windowStart := liveEdge - (liveWindowSegments - 1)
 	if windowStart < 0 {
