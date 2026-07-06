@@ -102,6 +102,29 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
 
   void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
 
+  // Bulk-clear the calendar's past: admin-added events + finished live classes.
+  // Upcoming items are kept. The admin triggers this; it's never automatic.
+  Future<void> _clearHistory() async {
+    final yes = await showSquareConfirm(context,
+        title: 'Clear calendar history',
+        message: 'Permanently delete all PAST calendar events and finished live classes (including their chat, Q&A and attendance)? Upcoming items are kept. This cannot be undone.',
+        confirmLabel: 'Clear history', destructive: true);
+    if (!yes) return;
+    try {
+      final r = await widget.auth.apiDelete('/api/v1/manage/calendar/history');
+      int ev = 0, se = 0;
+      try {
+        final d = ApiClient.decode(r);
+        ev = (d['events_deleted'] as num?)?.toInt() ?? 0;
+        se = (d['sessions_deleted'] as num?)?.toInt() ?? 0;
+      } catch (_) {}
+      _toast('Cleared $ev past event${ev == 1 ? '' : 's'} and $se live class${se == 1 ? '' : 'es'}');
+    } catch (_) {
+      _toast("Couldn't clear history");
+    }
+    _load();
+  }
+
   void _shift(int d) => setState(() => _month = DateTime(_month.year, _month.month + d));
 
   @override
@@ -121,6 +144,8 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
         children: [
           Row(children: [
             Expanded(child: Text('Calendar', style: AppleTheme.largeTitle(context))),
+            HoverTap(onTap: _clearHistory, child: Icon(CupertinoIcons.trash, color: p.secondary, size: 22)),
+            const SizedBox(width: 16),
             HoverTap(onTap: _load, child: Icon(CupertinoIcons.arrow_clockwise, color: p.accent, size: 24)),
           ]),
           Text('Schedule events for students, batches or roles', style: AppleTheme.subhead(context)),

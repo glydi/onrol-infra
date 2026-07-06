@@ -173,3 +173,30 @@ func (h *Handlers) DeleteCalendarEvent(c *fiber.Ctx) error {
 	}
 	return c.JSON(fiber.Map{"id": id, "deleted": true})
 }
+
+// ClearCalendarHistory bulk-deletes everything in the past: admin-created
+// calendar events whose (end, else start) time has passed, and finished
+// live-class sessions (same "ended" rule as the calendar feed). Upcoming items
+// are kept. Manager/admin only (route-gated). Deleting a session cascades its
+// chat / Q&A / attendance via the schema's ON DELETE CASCADE.
+func (h *Handlers) ClearCalendarHistory(c *fiber.Ctx) error {
+	evTag, err := h.Pool.Exec(c.Context(),
+		`DELETE FROM calendar_events WHERE COALESCE(ends_at, starts_at) < now()`)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "clear failed")
+	}
+	sesTag, err := h.Pool.Exec(c.Context(), `
+		DELETE FROM class_sessions cs
+		 WHERE now() > COALESCE(cs.ends_at,
+		     CASE WHEN cs.media_asset_id IS NOT NULL
+		           AND COALESCE((SELECT ma.duration_seconds FROM media_assets ma WHERE ma.id=cs.media_asset_id),0) > 0
+		          THEN cs.starts_at + make_interval(secs => (SELECT ma.duration_seconds FROM media_assets ma WHERE ma.id=cs.media_asset_id))
+		          ELSE cs.starts_at + interval '2 hours' END)`)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "clear sessions failed")
+	}
+	return c.JSON(fiber.Map{
+		"events_deleted":   evTag.RowsAffected(),
+		"sessions_deleted": sesTag.RowsAffected(),
+	})
+}

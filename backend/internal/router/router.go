@@ -134,6 +134,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Get("/manage/calendar", auth, mgr, h.ListCalendarEvents)
 	api.Get("/manage/calendar/feed", auth, mgr, h.ManageCalendarFeed)
 	api.Post("/manage/calendar", auth, mgr, h.CreateCalendarEvent)
+	api.Delete("/manage/calendar/history", auth, mgr, h.ClearCalendarHistory) // before :id so it isn't swallowed
 	api.Patch("/manage/calendar/:id", auth, mgr, h.UpdateCalendarEvent)
 	api.Delete("/manage/calendar/:id", auth, mgr, h.DeleteCalendarEvent)
 	api.Get("/manage/courses/:id/students", auth, inst, h.ListCourseStudents)
