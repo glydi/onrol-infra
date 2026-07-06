@@ -344,9 +344,10 @@ func (h *Handlers) MyLive(c *fiber.Ctx) error {
 		JOIN courses c ON c.id = cs.course_id
 		JOIN course_enrollments ce ON ce.course_id = c.id AND ce.user_id = $1
 		LEFT JOIN media_assets ma ON ma.id = cs.media_asset_id
-		WHERE cs.starts_at >= now() - interval '3 hours'
-		   OR (cs.media_asset_id IS NOT NULL AND ma.duration_seconds > 0
-		       AND now() < cs.starts_at + make_interval(secs => ma.duration_seconds))
+		WHERE cs.converted_at IS NULL AND (
+		         cs.starts_at >= now() - interval '3 hours'
+		      OR (cs.media_asset_id IS NOT NULL AND ma.duration_seconds > 0
+		          AND now() < cs.starts_at + make_interval(secs => ma.duration_seconds)))
 		ORDER BY cs.starts_at`, callerID(c))
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "live load failed")

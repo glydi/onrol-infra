@@ -717,6 +717,10 @@ Widget liveHlsVideoElement(
         'liveSyncDurationCount': 3,
         'liveMaxLatencyDurationCount': 10,
         'lowLatencyMode': false,
+        // Report the live stream as Infinity-duration. A finite (DVR-window)
+        // duration is precisely what makes the OS / browser media notification
+        // draw a seek bar; with Infinity there is NO scrubber and NO seek there.
+        'liveDurationInfinity': true,
       });
       if (authToken.isNotEmpty && js.context.hasProperty('onrolLiveXhrSetup')) {
         config['xhrSetup'] = js.context.callMethod('onrolLiveXhrSetup', [authToken]);

@@ -17,6 +17,7 @@ import (
 
 	"github.com/onrol/lms-backend/internal/auth"
 	"github.com/onrol/lms-backend/internal/autoprovision"
+	"github.com/onrol/lms-backend/internal/liverec"
 	"github.com/onrol/lms-backend/internal/config"
 	"github.com/onrol/lms-backend/internal/database"
 	"github.com/onrol/lms-backend/internal/handlers"
@@ -90,6 +91,10 @@ func main() {
 	// Auto-provision: converted leads (with a course_id) become enrolled students
 	// on a schedule. Idempotent; logins are recorded in provisioning_log.
 	autoprovision.Start(pool, 2*time.Minute)
+
+	// Live recordings: 5 min after a simulated-live class ends, publish its
+	// recording as a video lesson under the course's "Live Class Recordings".
+	liverec.Start(pool, 1*time.Minute)
 
 	// Graceful shutdown.
 	go func() {
