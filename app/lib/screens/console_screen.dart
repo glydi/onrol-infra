@@ -3688,10 +3688,20 @@ class _DeviceSheetState extends State<_DeviceSheet> {
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(
-                          (m['model']?.toString().isNotEmpty ?? false) ? m['model'].toString() : (m['platform']?.toString() ?? 'Device'),
+                          (m['name']?.toString().isNotEmpty ?? false)
+                              ? m['name'].toString()
+                              : (m['model']?.toString().isNotEmpty ?? false)
+                                  ? m['model'].toString()
+                                  : (m['platform']?.toString() ?? 'Device'),
                           style: AppleTheme.body(context).copyWith(fontSize: 15, fontWeight: FontWeight.w600),
                         ),
-                        Text('Last seen ${_fmtTime(m['last_seen']?.toString())}', style: AppleTheme.footnote(context)),
+                        Text(
+                          [
+                            if ((m['name']?.toString().isNotEmpty ?? false) && (m['model']?.toString().isNotEmpty ?? false)) m['model'].toString(),
+                            'Last seen ${_fmtTime(m['last_seen']?.toString())}'
+                          ].join(' · '),
+                          style: AppleTheme.footnote(context),
+                        ),
                       ]),
                     ),
                     GestureDetector(

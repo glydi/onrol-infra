@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"strings"
+
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/onrol/lms-backend/internal/middleware"
@@ -48,6 +50,32 @@ func (h *Handlers) RevokeDevice(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, "device not found")
 	}
 	return c.JSON(fiber.Map{"revoked": deviceRowID})
+}
+
+// RenameDevice sets a friendly name on one of the caller's own devices — asked
+// once on new-device login and editable from the student's profile.
+func (h *Handlers) RenameDevice(c *fiber.Ctx) error {
+	userID := c.Locals(middleware.LocalUserID).(string)
+	deviceRowID := c.Params("id")
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+	name := strings.TrimSpace(req.Name)
+	if len(name) > 60 {
+		name = name[:60]
+	}
+	tag, err := h.Pool.Exec(c.Context(),
+		`UPDATE devices SET name=$3 WHERE id=$1 AND user_id=$2`, deviceRowID, userID, name)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "rename failed")
+	}
+	if tag.RowsAffected() == 0 {
+		return fiber.NewError(fiber.StatusNotFound, "device not found")
+	}
+	return c.JSON(fiber.Map{"id": deviceRowID, "name": name})
 }
 
 // ---- Admin device control (manager+) ---------------------------------------

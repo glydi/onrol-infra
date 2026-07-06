@@ -82,6 +82,11 @@ class AuthService {
     }
   }
 
+  /// Set right after a login that bound a NEW device, so the app can prompt the
+  /// user to name it (index-of-cap for the "Device X of Y" hint). Cleared once
+  /// the prompt is handled.
+  ({String id, int index, int cap})? newDevice;
+
   Future<void> login(String email, String password, {String portal = ''}) async {
     await _device.loadDeviceInfo();
     final r = await _api.postJson('/api/v1/auth/login', {
@@ -98,6 +103,10 @@ class AuthService {
     if (data['user'] is Map) {
       user = AuthUser.fromJson(data['user'] as Map<String, dynamic>);
     }
+    final dev = data['device'];
+    newDevice = (dev is Map && dev['is_new'] == true && (dev['id']?.toString() ?? '').isNotEmpty)
+        ? (id: dev['id'].toString(), index: (dev['index'] as num?)?.toInt() ?? 0, cap: (dev['cap'] as num?)?.toInt() ?? 2)
+        : null;
   }
 
   /// Re-fetch the profile (after an edit) so `user` reflects the latest name etc.

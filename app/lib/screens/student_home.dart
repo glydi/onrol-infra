@@ -268,6 +268,87 @@ class _StudentHomeState extends State<StudentHome> {
     _loadAvatarFromServer();
     _loadStreak();
     _homeScroll.addListener(_syncScrollState);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybePromptDeviceName());
+  }
+
+  // On a login that bound a NEW device, ask the student to name it (one-shot).
+  Future<void> _maybePromptDeviceName() async {
+    final nd = widget.auth.newDevice;
+    if (nd == null || !mounted) return;
+    widget.auth.newDevice = null;
+    final ctrl = TextEditingController();
+    final hint = nd.cap > 0 ? 'Device ${nd.index} of ${nd.cap}' : 'New device';
+    final name = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dctx) => AlertDialog(
+        title: const Text('Name this device'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('$hint — give it a name so you (and your mentor) can recognise it later.', style: const TextStyle(fontSize: 13)),
+          const SizedBox(height: 12),
+          TextField(controller: ctrl, autofocus: true, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(hintText: 'e.g. My phone', border: OutlineInputBorder())),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dctx).pop(null), child: const Text('Skip')),
+          FilledButton(onPressed: () => Navigator.of(dctx).pop(ctrl.text.trim()), child: const Text('Save')),
+        ],
+      ),
+    );
+    if (name != null && name.isNotEmpty) {
+      try {
+        await widget.auth.apiPatch('/api/v1/devices/${nd.id}', {'name': name});
+      } catch (_) {}
+    }
+  }
+
+  // "My devices" — the student sees and renames the devices bound to their account.
+  Widget _myDevicesSection() => _future(_apiList('/api/v1/devices', 'devices'), (List devices) {
+        if (devices.isEmpty) return const SizedBox.shrink();
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Align(alignment: Alignment.centerLeft, child: Text('My devices', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w800, color: _navy))),
+          const SizedBox(height: 8),
+          for (final d in devices) _deviceRow(d as Map<String, dynamic>),
+        ]);
+      });
+
+  Widget _deviceRow(Map<String, dynamic> d) {
+    final name = (d['name']?.toString().isNotEmpty ?? false)
+        ? d['name'].toString()
+        : (d['model']?.toString().isNotEmpty ?? false)
+            ? d['model'].toString()
+            : (d['platform']?.toString() ?? 'Device');
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
+      child: Row(children: [
+        Icon(CupertinoIcons.device_phone_portrait, size: 18, color: _grey),
+        const SizedBox(width: 10),
+        Expanded(child: Text(name, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy), maxLines: 1, overflow: TextOverflow.ellipsis)),
+        _Pressable(onTap: () => _renameDevice(d), child: Padding(padding: const EdgeInsets.all(4), child: Icon(CupertinoIcons.pencil, size: 16, color: _orange))),
+      ]),
+    );
+  }
+
+  Future<void> _renameDevice(Map<String, dynamic> d) async {
+    final ctrl = TextEditingController(text: d['name']?.toString() ?? '');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        title: const Text('Rename device'),
+        content: TextField(controller: ctrl, autofocus: true, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(hintText: 'e.g. My phone', border: OutlineInputBorder())),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dctx).pop(null), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.of(dctx).pop(ctrl.text.trim()), child: const Text('Save')),
+        ],
+      ),
+    );
+    if (name != null) {
+      try {
+        await widget.auth.apiPatch('/api/v1/devices/${d['id']}', {'name': name});
+        if (mounted) setState(() {});
+      } catch (_) {}
+    }
   }
 
   @override
@@ -1897,6 +1978,8 @@ class _StudentHomeState extends State<StudentHome> {
                 ),
               ]),
               const SizedBox(height: 18),
+              _myDevicesSection(),
+              const SizedBox(height: 4),
               // Settings + change-photo surfaced up front (not buried).
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 _Pressable(

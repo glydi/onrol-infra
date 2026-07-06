@@ -110,7 +110,8 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 	}
 
 	// 3. Bind the device within the per-account limit (server-enforced).
-	if err := h.bindDevice(c.Context(), user, deviceID, req.Platform, req.Model, markVerified); err != nil {
+	deviceRowID, deviceNew, err := h.bindDevice(c.Context(), user, deviceID, req.Platform, req.Model, markVerified)
+	if err != nil {
 		var le deviceLimitError
 		if errors.As(err, &le) {
 			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
@@ -128,9 +129,27 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "token issue failed")
 	}
+	// Device slot for the "Device X of Y" hint when the client prompts to name a
+	// newly-added device.
+	deviceCap := 2
+	if user.MaxDevices >= 99 {
+		deviceCap = user.MaxDevices
+	}
+	var deviceIndex int
+	_ = h.Pool.QueryRow(c.Context(), `
+		SELECT rn FROM (
+		  SELECT id, row_number() OVER (ORDER BY first_seen) AS rn
+		  FROM devices WHERE user_id=$1 AND is_active
+		) t WHERE id=$2`, user.ID, deviceRowID).Scan(&deviceIndex)
 	return c.JSON(fiber.Map{
 		"access_token": tok,
 		"user":         user,
+		"device": fiber.Map{
+			"id":     deviceRowID,
+			"is_new": deviceNew,
+			"index":  deviceIndex,
+			"cap":    deviceCap,
+		},
 	})
 }
 
@@ -140,17 +159,17 @@ func (deviceLimitError) Error() string { return "device limit reached" }
 
 // bindDevice runs the bind decision in a single transaction so concurrent
 // logins can't race past the limit.
-func (h *Handlers) bindDevice(ctx context.Context, user models.User, deviceID, platform, model string, markVerified bool) error {
+func (h *Handlers) bindDevice(ctx context.Context, user models.User, deviceID, platform, model string, markVerified bool) (string, bool, error) {
 	tx, err := h.Pool.Begin(ctx)
 	if err != nil {
-		return err
+		return "", false, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op after commit
 
 	// Serialize concurrent logins for THIS user by locking the user row, so two
 	// simultaneous new-device logins can't both pass the capacity check.
 	if _, err := tx.Exec(ctx, `SELECT 1 FROM users WHERE id=$1 FOR UPDATE`, user.ID); err != nil {
-		return err
+		return "", false, err
 	}
 
 	// Already bound AND still active? Just refresh it — it's already counted.
@@ -168,9 +187,9 @@ func (h *Handlers) bindDevice(ctx context.Context, user models.User, deviceID, p
 			 WHERE id=$1 AND user_id=$2`,
 			existingID, user.ID, platform, model, markVerified)
 		if err != nil {
-			return err
+			return "", false, err
 		}
-		return tx.Commit(ctx)
+		return existingID, false, tx.Commit(ctx)
 	case err == nil:
 		// Existing but REVOKED: reactivating it must pass the cap check below,
 		// exactly like a new device — otherwise a previously-removed device could
@@ -178,7 +197,7 @@ func (h *Handlers) bindDevice(ctx context.Context, user models.User, deviceID, p
 	case errors.Is(err, pgx.ErrNoRows):
 		// New device: cap check below.
 	default:
-		return err
+		return "", false, err
 	}
 
 	// STRICT cap: 2 active devices for everyone, EXCEPT accounts explicitly
@@ -192,14 +211,15 @@ func (h *Handlers) bindDevice(ctx context.Context, user models.User, deviceID, p
 			`SELECT count(*) FROM devices WHERE user_id=$1 AND is_active`,
 			user.ID,
 		).Scan(&activeCount); err != nil {
-			return err
+			return "", false, err
 		}
 		if activeCount >= hardCap {
 			devices, _ := listActiveDevices(ctx, tx, user.ID)
-			return deviceLimitError{devices: devices}
+			return "", false, deviceLimitError{devices: devices}
 		}
 	}
 
+	rowID := existingID
 	if existingID != "" {
 		// Reactivate the previously-revoked device row (now within the cap).
 		_, err = tx.Exec(ctx,
@@ -208,20 +228,22 @@ func (h *Handlers) bindDevice(ctx context.Context, user models.User, deviceID, p
 			 WHERE id=$1 AND user_id=$2`,
 			existingID, user.ID, platform, model, markVerified)
 	} else {
-		_, err = tx.Exec(ctx,
+		err = tx.QueryRow(ctx,
 			`INSERT INTO devices (user_id, device_id, platform, model, attestation_verified)
-			 VALUES ($1, $2, $3, $4, $5)`,
-			user.ID, deviceID, platform, model, markVerified)
+			 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+			user.ID, deviceID, platform, model, markVerified).Scan(&rowID)
 	}
 	if err != nil {
-		return err
+		return "", false, err
 	}
-	return tx.Commit(ctx)
+	// isNew=true: freshly added this login (new insert or reactivated) — the
+	// client prompts the user to name it.
+	return rowID, true, tx.Commit(ctx)
 }
 
 func listActiveDevices(ctx context.Context, q querier, userID string) ([]models.Device, error) {
 	rows, err := q.Query(ctx,
-		`SELECT id, device_id, platform, model, attestation_verified, first_seen, last_seen
+		`SELECT id, device_id, platform, model, COALESCE(name,''), attestation_verified, first_seen, last_seen
 		 FROM devices WHERE user_id=$1 AND is_active ORDER BY first_seen`, userID)
 	if err != nil {
 		return nil, err
@@ -232,7 +254,7 @@ func listActiveDevices(ctx context.Context, q querier, userID string) ([]models.
 		var d models.Device
 		d.UserID = userID
 		d.IsActive = true
-		if err := rows.Scan(&d.ID, &d.DeviceID, &d.Platform, &d.Model,
+		if err := rows.Scan(&d.ID, &d.DeviceID, &d.Platform, &d.Model, &d.Name,
 			&d.AttestationVerified, &d.FirstSeen, &d.LastSeen); err != nil {
 			return nil, err
 		}

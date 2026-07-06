@@ -32,6 +32,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	// HLS keys itself via hls.js, which can't attach our device header.
 	tokenAuth := middleware.RequireToken(jwtm)
 	api.Get("/devices", auth, h.ListDevices) // view-only: users can't revoke their own devices (admins do)
+	api.Patch("/devices/:id", auth, h.RenameDevice) // name your own device
 	api.Get("/hls/key/:video_id", tokenAuth, h.HLSKey)
 	api.Post("/live/:webinar_id/join", auth, h.LiveJoin)
 

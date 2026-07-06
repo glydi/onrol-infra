@@ -21,6 +21,7 @@ type Device struct {
 	DeviceID            string    `json:"device_id"`
 	Platform            string    `json:"platform,omitempty"`
 	Model               string    `json:"model,omitempty"`
+	Name                string    `json:"name"` // user-given label, set on new-device login
 	AttestationVerified bool      `json:"attestation_verified"`
 	IsActive            bool      `json:"is_active"`
 	FirstSeen           time.Time `json:"first_seen"`
