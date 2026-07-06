@@ -84,7 +84,7 @@ func (h *Handlers) ListCalendarEvents(c *fiber.Ctx) error {
 // ListCalendarEvents.)
 func (h *Handlers) ManageCalendarFeed(c *fiber.Ctx) error {
 	rows, err := h.Pool.Query(c.Context(), `
-		SELECT 'session' AS kind, cs.title, cs.starts_at AS at, c.title AS course,
+		SELECT 'session' AS kind, cs.id::text AS id, cs.title, cs.starts_at AS at, c.title AS course,
 		       (now() > COALESCE(cs.ends_at,
 		           CASE WHEN cs.media_asset_id IS NOT NULL AND ma.duration_seconds > 0
 		                THEN cs.starts_at + make_interval(secs => ma.duration_seconds)
@@ -93,11 +93,11 @@ func (h *Handlers) ManageCalendarFeed(c *fiber.Ctx) error {
 		LEFT JOIN media_assets ma ON ma.id=cs.media_asset_id
 		WHERE cs.starts_at >= now() - interval '180 days'
 		UNION ALL
-		SELECT 'assessment_due', a.title, a.due_at, c.title, false
+		SELECT 'assessment_due', a.id::text, a.title, a.due_at, c.title, false
 		FROM assessments a JOIN courses c ON c.id=a.course_id
 		WHERE a.due_at IS NOT NULL AND a.due_at >= now() - interval '45 days' AND a.is_published
 		UNION ALL
-		SELECT 'announcement', an.title, an.created_at, COALESCE(c.title,''), false
+		SELECT 'announcement', an.id::text, an.title, an.created_at, COALESCE(c.title,''), false
 		FROM announcements an LEFT JOIN courses c ON c.id=an.course_id
 		WHERE an.created_at >= now() - interval '45 days'
 		ORDER BY at`)
@@ -107,13 +107,13 @@ func (h *Handlers) ManageCalendarFeed(c *fiber.Ctx) error {
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var kind, title, course string
+		var kind, id, title, course string
 		var at any
 		var ended bool
-		if err := rows.Scan(&kind, &title, &at, &course, &ended); err != nil {
+		if err := rows.Scan(&kind, &id, &title, &at, &course, &ended); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
-		out = append(out, fiber.Map{"kind": kind, "title": title, "at": at, "course": course, "ended": ended})
+		out = append(out, fiber.Map{"kind": kind, "id": id, "title": title, "at": at, "course": course, "ended": ended})
 	}
 	return c.JSON(fiber.Map{"items": out})
 }

@@ -283,7 +283,10 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
             Text(sub, style: AppleTheme.footnote(context), maxLines: 1, overflow: TextOverflow.ellipsis),
             if (isEvent && desc.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text(desc, maxLines: 2, overflow: TextOverflow.ellipsis, style: AppleTheme.footnote(context))),
           ])),
-          if (isEvent) HoverTap(onTap: () => _delete(e), child: Icon(CupertinoIcons.trash, size: 18, color: Palette.of(context).secondary)),
+          if (isEvent)
+            HoverTap(onTap: () => _delete(e), child: Icon(CupertinoIcons.trash, size: 18, color: Palette.of(context).secondary))
+          else if ((e['id']?.toString() ?? '').isNotEmpty)
+            HoverTap(onTap: () => _deleteFeedItem(e), child: Icon(CupertinoIcons.trash, size: 18, color: Palette.of(context).secondary)),
         ]),
       ),
     );
@@ -311,6 +314,30 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
     } catch (_) {
       _toast('Could not delete');
     }
+  }
+
+  // Delete a read-only feed item (live class / deadline / announcement) by
+  // removing its source record. Each is confirmed individually.
+  Future<void> _deleteFeedItem(Map<String, dynamic> e) async {
+    final kind = e['kind']?.toString() ?? '';
+    final id = e['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final (String path, String msg) = switch (kind) {
+      'session' => ('/api/v1/manage/sessions/$id', 'Delete the live class “${e['title']}”? This removes the session and its chat, Q&A and attendance.'),
+      'assessment_due' => ('/api/v1/manage/assessments/$id', 'Delete “${e['title']}”? This permanently deletes the quiz/assignment and all its submissions.'),
+      'announcement' => ('/api/v1/manage/announcements/$id', 'Delete the announcement “${e['title']}”?'),
+      _ => ('', ''),
+    };
+    if (path.isEmpty) return;
+    final yes = await showSquareConfirm(context, title: 'Delete', message: msg, confirmLabel: 'Delete', destructive: true);
+    if (!yes) return;
+    try {
+      await widget.auth.apiDelete(path);
+      _toast('Deleted');
+    } catch (_) {
+      _toast('Could not delete');
+    }
+    _load();
   }
 
   Future<void> _addOrEdit({Map<String, dynamic>? ev, DateTime? day}) async {
