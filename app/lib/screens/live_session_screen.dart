@@ -263,7 +263,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     // see the host status panel (lobby / preparing / ended / queue summary).
     if (widget.isHost && !(_status == 'live' && _playlistUrl != null)) return _hostPanel();
     if (_status == 'live' && _playlistUrl != null) {
-      return LivePlayer(key: ValueKey(_playlistUrl), playlistUrl: _playlistUrl!, watermark: widget.watermark, authToken: widget.auth.token, startEpochMs: _startEpochMs, skewMs: _skewMs);
+      return LivePlayer(key: ValueKey(_playlistUrl), playlistUrl: _playlistUrl!, watermark: widget.watermark, authToken: widget.auth.token, startEpochMs: _startEpochMs, skewMs: _skewMs, title: _title, course: _course);
     }
     if (_status == 'ended') {
       return _endImage.isNotEmpty

@@ -558,6 +558,8 @@ Widget liveHlsVideoElement(
   String authToken = '',
   int startEpochMs = 0,
   int skewMs = 0,
+  String title = '',
+  String course = '',
 }) {
   final viewType = 'onrol-live-${_seq++}';
   ui_web.platformViewRegistry.registerViewFactory(viewType, (int id) {
@@ -736,12 +738,16 @@ Widget liveHlsVideoElement(
       video.src = url; // Safari plays the live HLS natively (follows the edge)
     }
 
-    // Fully suppress the OS / browser media notification for live (no metadata,
-    // and no controls that could drive the stream). Re-applied on play and every
-    // second below, since the browser re-populates the session on state changes.
+    // Show a descriptive title in the OS / browser media panel while making every
+    // transport control inert (no pause/seek/skip can drive the stream).
+    // Re-applied on play and every second, since the browser re-populates the
+    // session on state changes.
     void neuterMediaSession() {
       try {
-        if (js.context.hasProperty('onrolNeuterMediaSession')) js.context.callMethod('onrolNeuterMediaSession');
+        if (js.context.hasProperty('onrolLiveMediaSession')) {
+          js.context.callMethod('onrolLiveMediaSession',
+              [title.isNotEmpty ? title : 'Live class', course.isNotEmpty ? course : 'ONROL']);
+        }
       } catch (_) {}
     }
 

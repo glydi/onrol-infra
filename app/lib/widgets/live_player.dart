@@ -19,7 +19,7 @@ import 'web_video_stub.dart' if (dart.library.html) 'web_video_web.dart';
 /// platform view). Mobile: video_player following the live edge, with a minimal
 /// LIVE badge + mute/fullscreen overlay drawn in Flutter.
 class LivePlayer extends StatefulWidget {
-  const LivePlayer({super.key, required this.playlistUrl, required this.watermark, this.authToken = '', this.startEpochMs = 0, this.skewMs = 0});
+  const LivePlayer({super.key, required this.playlistUrl, required this.watermark, this.authToken = '', this.startEpochMs = 0, this.skewMs = 0, this.title = '', this.course = ''});
 
   /// Absolute URL to the session's playlist.m3u8.
   final String playlistUrl;
@@ -35,6 +35,10 @@ class LivePlayer extends StatefulWidget {
   /// live edge, so every viewer stays on the same server-defined second.
   final int startEpochMs;
   final int skewMs;
+
+  /// Shown as the title in the OS/browser media panel (course as the subtitle).
+  final String title;
+  final String course;
 
   @override
   State<LivePlayer> createState() => _LivePlayerState();
@@ -128,7 +132,7 @@ class _LivePlayerState extends State<LivePlayer> {
   // Cached so it's created exactly once for this player.
   Widget _webPlayer() => _webView ??= AspectRatio(
         aspectRatio: 16 / 9,
-        child: liveHlsVideoElement(widget.playlistUrl, authToken: widget.authToken, startEpochMs: widget.startEpochMs, skewMs: widget.skewMs),
+        child: liveHlsVideoElement(widget.playlistUrl, authToken: widget.authToken, startEpochMs: widget.startEpochMs, skewMs: widget.skewMs, title: widget.title, course: widget.course),
       );
 
   Widget _mobilePlayer() {

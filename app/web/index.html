@@ -81,22 +81,28 @@
     // can't play / pause / seek / skip the stream, and (4) clear any position
     // state (no scrubber). Re-applied every second by the live guard because the
     // browser re-populates the session whenever playback state changes.
-    window.onrolNeuterMediaSession = function () {
+    // Live class media session: show a descriptive TITLE in the OS / browser
+    // media panel, but make EVERY transport control inert — no pause, no seek,
+    // no skip can move or stop a live stream. Re-applied on play and every
+    // second, since the browser repopulates the session on state changes.
+    window.onrolLiveMediaSession = function (title, artist) {
       try {
         if (!('mediaSession' in navigator)) return;
         var ms = navigator.mediaSession;
-        try { ms.metadata = null; } catch (e) {}
-        try { ms.playbackState = 'none'; } catch (e) {}
-        // Clear play/pause/skip so the notification can't drive the stream.
-        ['play', 'pause', 'stop', 'previoustrack', 'nexttrack', 'skipad',
-         'togglemicrophone', 'togglecamera', 'hangup'].forEach(function (a) {
-          try { ms.setActionHandler(a, null); } catch (e) {}
-        });
-        // Seek actions get a NO-OP (not null): null lets some browsers keep a
-        // DEFAULT seek that moves the stream; a no-op makes any seek button in
-        // the OS/browser notification do absolutely nothing.
+        try {
+          ms.metadata = new MediaMetadata({
+            title: title || 'Live class',
+            artist: artist || 'ONROL',
+            album: 'Live class'
+          });
+        } catch (e) {}
+        try { ms.playbackState = 'playing'; } catch (e) {}
+        // Every action is a NO-OP: play/pause/seek/skip from the notification all
+        // do nothing (null would let some browsers keep a working default).
         var noop = function () {};
-        ['seekbackward', 'seekforward', 'seekto'].forEach(function (a) {
+        ['play', 'pause', 'stop', 'seekbackward', 'seekforward', 'seekto',
+         'previoustrack', 'nexttrack', 'skipad', 'togglemicrophone',
+         'togglecamera', 'hangup'].forEach(function (a) {
           try { ms.setActionHandler(a, noop); } catch (e) {}
         });
         try { if (ms.setPositionState) ms.setPositionState(); } catch (e) {}
