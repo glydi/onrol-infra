@@ -34,7 +34,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   static const _bg = Color(0xFF0B0B0D);
   static const _panel = Color(0xFF15151A);
 
-  Timer? _stateTimer, _qaTimer, _hbTimer, _tick;
+  Timer? _stateTimer, _qaTimer, _hbTimer, _tick, _chatTimer;
 
   // Server state.
   String _status = 'upcoming'; // upcoming | preparing | live | ended
@@ -57,6 +57,12 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   final _qaCtl = TextEditingController();
   bool _sendingQa = false;
 
+  // Mentor broadcasts (host → all viewers), shown to everyone in the room.
+  final List<Map<String, dynamic>> _messages = [];
+  final _chatCtl = TextEditingController();
+  bool _sendingMsg = false;
+  String _chatCursor = '';
+
   String get _base => '/api/v1/me/live/${widget.sessionId}';
 
   @override
@@ -74,6 +80,8 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
       if (mounted && _status == 'upcoming') setState(() {}); // refresh countdown
     });
     _pollQuestions();
+    _chatTimer = Timer.periodic(const Duration(seconds: 4), (_) => _pollChat());
+    _pollChat();
   }
 
   @override
@@ -82,7 +90,9 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     _qaTimer?.cancel();
     _hbTimer?.cancel();
     _tick?.cancel();
+    _chatTimer?.cancel();
     _qaCtl.dispose();
+    _chatCtl.dispose();
     super.dispose();
   }
 
@@ -139,6 +149,38 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
       await _pollQuestions();
     } catch (_) {} finally {
       if (mounted) setState(() => _sendingQa = false);
+    }
+  }
+
+  // Poll the host's broadcast messages (from_staff) shown to every viewer.
+  Future<void> _pollChat() async {
+    try {
+      final url = _chatCursor.isEmpty ? '$_base/chat' : '$_base/chat?after=${Uri.encodeQueryComponent(_chatCursor)}';
+      final d = ApiClient.decode(await widget.auth.apiGet(url));
+      final all = ((d['messages'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
+      if (all.isEmpty) return;
+      if (!mounted) return;
+      setState(() {
+        for (final m in all) {
+          if (m['from_staff'] == true && !_messages.any((x) => x['id'] == m['id'])) _messages.add(m);
+        }
+        final lastAt = all.last['at']?.toString() ?? ''; // advance past all we've seen
+        if (lastAt.isNotEmpty) _chatCursor = lastAt;
+      });
+    } catch (_) {}
+  }
+
+  // Host: broadcast a message to all viewers.
+  Future<void> _sendBroadcast() async {
+    final text = _chatCtl.text.trim();
+    if (text.isEmpty || _sendingMsg) return;
+    setState(() => _sendingMsg = true);
+    try {
+      await widget.auth.apiPost('$_base/chat', {'body': text});
+      _chatCtl.clear();
+      await _pollChat();
+    } catch (_) {} finally {
+      if (mounted) setState(() => _sendingMsg = false);
     }
   }
 
@@ -367,11 +409,42 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     return Container(color: _panel, child: widget.isHost ? _hostQueue() : _studentQa());
   }
 
+  // Mentor broadcasts shown to everyone in the room (newest at the bottom).
+  Widget _mentorMessages() {
+    if (_messages.isEmpty) return const SizedBox.shrink();
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 150),
+      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFF222228)))),
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        reverse: true,
+        itemCount: _messages.length,
+        itemBuilder: (_, i) {
+          final m = _messages[_messages.length - 1 - i];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 7),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Icon(CupertinoIcons.dot_radiowaves_left_right, size: 13, color: _orange),
+              const SizedBox(width: 6),
+              Expanded(
+                child: RichText(text: TextSpan(children: [
+                  TextSpan(text: '${(m['name']?.toString().isNotEmpty ?? false) ? m['name'] : 'Mentor'}  ', style: GoogleFonts.inter(color: _orange, fontSize: 11.5, fontWeight: FontWeight.w800)),
+                  TextSpan(text: m['body']?.toString() ?? '', style: GoogleFonts.inter(color: Colors.white.withOpacity(0.92), fontSize: 12.5, height: 1.3)),
+                ])),
+              ),
+            ]),
+          );
+        },
+      ),
+    );
+  }
+
   // Student: ask the host; see your questions + the host's answers.
   Widget _studentQa() {
     final myId = widget.auth.user?.id ?? '';
     return Column(children: [
       _panelHeader('Ask Mentor', 'Ask your mentor — only your mentor sees your question.'),
+      _mentorMessages(),
       Expanded(
         child: _questions.isEmpty
             ? Center(child: Text('No questions yet — ask away 👋', style: GoogleFonts.inter(color: Colors.white38, fontSize: 13)))
@@ -413,6 +486,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     final waiting = _questions.where((q) => q['answered'] != true).length;
     return Column(children: [
       _panelHeader('Questions', waiting > 0 ? '$waiting waiting to be answered' : 'All caught up'),
+      _mentorMessages(),
       Expanded(
         child: _questions.isEmpty
             ? Center(child: Text('No questions yet.', style: GoogleFonts.inter(color: Colors.white38, fontSize: 13)))
@@ -462,6 +536,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                 },
               ),
       ),
+      _composer(_chatCtl, 'Message all viewers…', _sendBroadcast, _sendingMsg),
     ]);
   }
 

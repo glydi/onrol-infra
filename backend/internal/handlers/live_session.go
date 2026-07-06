@@ -221,7 +221,9 @@ func (h *Handlers) LiveChatPost(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "chat failed")
 	}
-	if !chatOK {
+	// The host can always broadcast to viewers; chat_enabled only gates student
+	// chat (which is otherwise mentor-only by design).
+	if !chatOK && !isStaff {
 		return fiber.NewError(fiber.StatusForbidden, "chat is disabled")
 	}
 	body, perr := parseLiveBody(c)
