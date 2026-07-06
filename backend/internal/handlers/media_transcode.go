@@ -128,12 +128,14 @@ func (h *Handlers) transcodeToHLS(assetID, sourceKey string) {
 
 	var args []string
 	if copyMode {
-		// Stream-copy the H.264 untouched, but re-insert the SPS/PPS parameter sets
-		// before EVERY keyframe (dump_extra=freq=k). Without it only the first
-		// segment carries them, so a mid-stream segment can't be decoded on its own:
-		// VOD (starts at segment 0) plays, but the LIVE sliding window — which starts
-		// mid-stream — can't decode and won't play. Cheap; keeps copy near-instant.
-		args = []string{"-y", "-i", input, "-map", "0:v:0", "-c:v", "copy", "-bsf:v", "dump_extra=freq=k"}
+		// Stream-copy the H.264 untouched, but run it through h264_mp4toannexb so the
+		// SPS/PPS parameter sets are written in-band before every keyframe. Without it
+		// only the first segment carries them, so a mid-stream segment can't be decoded
+		// on its own: VOD (starts at segment 0) plays, but the LIVE sliding window —
+		// which starts mid-stream — can't decode and won't play. (dump_extra=freq=k
+		// looks equivalent but errors out on our encrypted HLS muxer; mp4toannexb is
+		// the reliable form.) Cheap; keeps copy near-instant.
+		args = []string{"-y", "-i", input, "-map", "0:v:0", "-c:v", "copy", "-bsf:v", "h264_mp4toannexb"}
 		if pr.hasAudio {
 			args = append(args, "-map", "0:a:0?")
 			if pr.aCodec == "aac" {
