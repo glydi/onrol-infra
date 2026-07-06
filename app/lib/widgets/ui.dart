@@ -655,7 +655,7 @@ Future<bool?> showFormSheet(
 // number + start month + start year, numeric parts zero-padded to 2 digits.
 // Returns '' if any part is blank (an incomplete code).
 String buildBatchCode(String course, String batch, String month, String year) {
-  final c = course.trim().toLowerCase();
+  final c = course.trim().toUpperCase();
   String pad(String s) {
     final n = s.trim();
     return n.isEmpty ? '' : n.padLeft(2, '0');
@@ -687,7 +687,7 @@ class BatchCodeFieldState extends State<BatchCodeField> {
     final parts = raw.isEmpty ? <String>[] : raw.split(RegExp(r'\s+'));
     final ok = parts.length == 4;
     String at(int i) => ok ? parts[i] : '';
-    _course = TextEditingController(text: ok ? at(0) : 'aig'); // default course code
+    _course = TextEditingController(text: (ok ? at(0) : 'aig').toUpperCase()); // default course code
     _batch = TextEditingController(text: at(1));
     _month = TextEditingController(text: at(2));
     _year = TextEditingController(text: at(3));
@@ -702,6 +702,14 @@ class BatchCodeFieldState extends State<BatchCodeField> {
   }
 
   void _emit() {
+    // Course code is always uppercase (e.g. AIG); force it as the user types.
+    final up = _course.text.toUpperCase();
+    if (up != _course.text) {
+      _course.value = _course.value.copyWith(
+        text: up,
+        selection: TextSelection.collapsed(offset: up.length),
+      );
+    }
     setState(() {}); // refresh the live preview
     widget.onChanged(buildBatchCode(_course.text, _batch.text, _month.text, _year.text));
   }
@@ -712,8 +720,8 @@ class BatchCodeFieldState extends State<BatchCodeField> {
       final n = ctl.text.trim();
       return n.isEmpty ? '**' : n.padLeft(2, '0');
     }
-    final c = _course.text.trim().toLowerCase();
-    return '${c.isEmpty ? 'aig' : c} ${g(_batch)} ${g(_month)} ${g(_year)}';
+    final c = _course.text.trim().toUpperCase();
+    return '${c.isEmpty ? 'AIG' : c} ${g(_batch)} ${g(_month)} ${g(_year)}';
   }
 
   Widget _cell(TextEditingController c, String label, String hint, {int flex = 1, bool digits = false}) {
@@ -744,7 +752,7 @@ class BatchCodeFieldState extends State<BatchCodeField> {
     final p = Palette.of(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        _cell(_course, 'Course', 'aig', flex: 3),
+        _cell(_course, 'Course', 'AIG', flex: 3),
         const SizedBox(width: 8),
         _cell(_batch, 'Batch', '**', digits: true),
         const SizedBox(width: 8),

@@ -3778,22 +3778,51 @@ class _CourseBatchesScreenState extends State<CourseBatchesScreen> {
   }
 
   // Move a student to a different batch code (leave blank to return to the queue).
+  // POST the batch move; returns an error message, or null on success.
+  Future<String?> _doMove(String userId, String code) async {
+    try {
+      await widget.auth.apiPost('/api/v1/manage/users/$userId/batch', {'batch': code.trim()});
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    }
+  }
+
+  // Move a student: show this course's EXISTING batches to push them straight
+  // into one, plus options to build a new batch code or return to the queue.
   Future<void> _reassign(String userId, String name, dynamic current) async {
+    final cur = current?.toString().trim() ?? '';
+    final existing = <String>[]; // other batch codes already in this course
+    for (final b in _batches) {
+      final code = (b as Map)['batch']?.toString().trim() ?? '';
+      if (code.isNotEmpty && code != cur && !existing.contains(code)) existing.add(code);
+    }
+    final items = <SquareMenuItem>[
+      for (final code in existing)
+        SquareMenuItem('Push into  $code', value: 'b:$code', icon: CupertinoIcons.arrow_right_circle_fill),
+      const SquareMenuItem('Create a new batch…', value: 'new', icon: CupertinoIcons.add_circled),
+      if (cur.isNotEmpty) const SquareMenuItem('Return to queue (unassign)', value: 'queue', icon: CupertinoIcons.tray),
+    ];
+    final v = await showSquareMenu(context, title: 'Move $name', items: items);
+    if (v == null) return;
+    if (v == 'new') { await _reassignNew(userId, name, current); return; }
+    final code = v == 'queue' ? '' : v.toString().substring(2); // strip "b:"
+    final err = await _doMove(userId, code);
+    if (err != null) { _toast(err); return; }
+    _toast(code.isEmpty ? 'Returned to queue' : 'Moved to $code');
+    _load();
+  }
+
+  // Build a brand-new batch code for the student (the 4-field code builder).
+  Future<void> _reassignNew(String userId, String name, dynamic current) async {
     String code = current?.toString() ?? '';
-    final ok = await showFormSheet(context, square: true, title: 'Move — $name',
+    final ok = await showFormSheet(context, square: true, title: 'New batch — $name',
         builder: (_) => [
-          Text('Batch code — leave blank to return to the queue', style: AppleTheme.footnote(context)),
+          Text('Build a new batch code — leave blank to return to the queue', style: AppleTheme.footnote(context)),
           const SizedBox(height: 8),
           BatchCodeField(initial: current?.toString(), onChanged: (v) => code = v),
         ],
-        onSubmit: () async {
-      try {
-        await widget.auth.apiPost('/api/v1/manage/users/$userId/batch', {'batch': code.trim()});
-        return null;
-      } on ApiException catch (e) {
-        return e.message;
-      }
-    });
+        onSubmit: () => _doMove(userId, code));
     if (ok == true) { _toast('Student moved'); _load(); }
   }
 

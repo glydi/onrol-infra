@@ -275,7 +275,7 @@ func (h *Handlers) SetUserBatch(c *fiber.Ctx) error {
 	}
 	var batch any
 	if req.Batch != nil && strings.TrimSpace(*req.Batch) != "" {
-		batch = strings.TrimSpace(*req.Batch)
+		batch = strings.ToUpper(strings.TrimSpace(*req.Batch)) // batch codes are uppercase
 	}
 	tag, err := h.Pool.Exec(c.Context(), `UPDATE users SET batch=$2, updated_at=now() WHERE id=$1`, target, batch)
 	if err != nil {
@@ -310,7 +310,7 @@ func (h *Handlers) AssignBatch(c *fiber.Ctx) error {
 	}
 	var batch any
 	if req.Batch != nil && strings.TrimSpace(*req.Batch) != "" {
-		batch = strings.TrimSpace(*req.Batch)
+		batch = strings.ToUpper(strings.TrimSpace(*req.Batch)) // batch codes are uppercase
 	}
 	tag, err := h.Pool.Exec(c.Context(),
 		`UPDATE users SET batch=$2, updated_at=now() WHERE id = ANY($1::uuid[])`, req.UserIDs, batch)
