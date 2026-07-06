@@ -252,12 +252,30 @@ func (h *Handlers) PurgeUser(c *fiber.Ctx) error {
 	if target == callerID(c) {
 		return fiber.NewError(fiber.StatusBadRequest, "you cannot delete your own account")
 	}
+	// Capture identity BEFORE deleting so we can also drop the converted-lead
+	// source row(s) — otherwise the auto-provisioner (every 2 min) recreates this
+	// student and the delete appears to "not work".
+	var email, phone string
+	_ = h.Pool.QueryRow(c.Context(), `SELECT COALESCE(email,''), COALESCE(phone,'') FROM users WHERE id=$1`, target).Scan(&email, &phone)
+
 	tag, err := h.Pool.Exec(c.Context(), `DELETE FROM users WHERE id=$1`, target)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "delete failed")
 	}
 	if tag.RowsAffected() == 0 {
 		return fiber.NewError(fiber.StatusNotFound, "user not found")
+	}
+	// Remove the converted-lead row(s) this student was provisioned from (matched
+	// by email or phone, as provisioning matched). This only clears the
+	// provisioning SOURCE — the CRM's own leads table is untouched — and is a
+	// no-op for manually-created students.
+	if email != "" || phone != "" {
+		_, _ = h.Pool.Exec(c.Context(), `
+			DELETE FROM converted_leads_backup b
+			 WHERE ($1 <> '' AND lower(trim(coalesce(b.email,''))) = lower($1))
+			    OR ($2 <> '' AND length(regexp_replace($2,'\D','','g')) >= 6
+			        AND regexp_replace(coalesce(b.phone,''),'\D','','g') = regexp_replace($2,'\D','','g'))`,
+			email, phone)
 	}
 	return c.JSON(fiber.Map{"id": target, "deleted": true})
 }

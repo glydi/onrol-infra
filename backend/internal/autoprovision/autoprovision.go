@@ -1,8 +1,9 @@
 // Package autoprovision turns converted leads into LMS student accounts
 // automatically. A converted lead with a course_id (the key) becomes a student,
 // keyed to that course (course_label), and enrolled into it — on a schedule,
-// idempotently. Generated temp passwords are written to provisioning_log so an
-// admin can retrieve the login.
+// idempotently. Each account gets the standard default password (onrol@ai),
+// recorded in provisioning_log; students sign in with their email, phone, or the
+// auto-assigned 6-char login_id.
 package autoprovision
 
 import (
@@ -67,7 +68,7 @@ var steps = []string{
 	         WHEN regexp_replace(COALESCE(b.phone,''),'\D','','g')<>'' THEN regexp_replace(COALESCE(b.phone,''),'\D','','g')||'@students.onrol.local'
 	         ELSE 'lead-'||b.lead_id||'@students.onrol.local'
 	       END AS email,
-	       substr(translate(encode(gen_random_bytes(12),'base64'),'+/=lIO01','xyzabc23'),1,10) AS temp_password
+	       'onrol@ai' AS temp_password
 	     FROM converted_leads_backup b
 	     WHERE NULLIF(trim(b.course_id),'') IS NOT NULL
 	   ) r

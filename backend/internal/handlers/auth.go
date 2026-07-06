@@ -64,7 +64,15 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 		 FROM users
 		 WHERE email=$1 OR lower(username)=$1 OR lower(login_id)=$1
 		    OR (length(regexp_replace($2,'\D','','g')) >= 6
-		        AND regexp_replace(COALESCE(phone,''),'\D','','g') = regexp_replace($2,'\D','','g'))`,
+		        AND regexp_replace(COALESCE(phone,''),'\D','','g') = regexp_replace($2,'\D','','g'))
+		    OR (length(regexp_replace($2,'\D','','g')) >= 8
+		        AND (
+		          -- stored number ends with what was typed (user dropped the country code)
+		          regexp_replace(COALESCE(phone,''),'\D','','g') LIKE ('%' || regexp_replace($2,'\D','','g'))
+		          -- or the typed number ends with the stored one (user added a country code)
+		          OR (length(regexp_replace(COALESCE(phone,''),'\D','','g')) >= 8
+		              AND regexp_replace($2,'\D','','g') LIKE ('%' || regexp_replace(COALESCE(phone,''),'\D','','g')))
+		        ))`,
 		req.Email, idRaw,
 	).Scan(&user.ID, &user.Email, &user.FullName, &user.Role, &user.PasswordHash, &user.MaxDevices, &user.IsActive)
 	if errors.Is(err, pgx.ErrNoRows) {
