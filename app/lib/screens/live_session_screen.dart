@@ -357,6 +357,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
           _ctlChip('Reactions', CupertinoIcons.hand_thumbsup, _reactionsOn, () => _control({'reactions_enabled': !_reactionsOn})),
           _ctlChip('Q&A', CupertinoIcons.chat_bubble_2, _qaOn, () => _control({'qa_enabled': !_qaOn})),
           _ctlChip('Banner', CupertinoIcons.textformat, _banner.isNotEmpty, _editBanner),
+          _ctlChip('Switch video', CupertinoIcons.arrow_2_squarepath, false, _switchVideo),
           _ctlChip('Attendance', CupertinoIcons.person_2_fill, false, _showAttendance),
           if (!liveNow) _ctlChip('Start now', CupertinoIcons.play_circle, false, () => _control({'start_now': true})),
           if (liveNow) _ctlChip('End now', CupertinoIcons.stop_circle_fill, false, () => _control({'end_now': true})),
@@ -422,6 +423,64 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
           child: Text(label, style: GoogleFonts.inter(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w700)),
         ),
       );
+
+  // Host: switch the class to a different recording. Everyone re-inits their
+  // player (reload_seq) at the start of the chosen video.
+  Future<void> _switchVideo() async {
+    List<Map<String, dynamic>> vids = [];
+    try {
+      final d = ApiClient.decode(await widget.auth.apiGet('$_base/videos'));
+      vids = ((d['videos'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
+    } catch (_) {}
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _panel,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(14))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Switch video', style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 3),
+            Text('Everyone jumps to the start of the chosen recording.', style: GoogleFonts.inter(color: Colors.white38, fontSize: 12)),
+            const SizedBox(height: 12),
+            if (vids.isEmpty)
+              const Padding(padding: EdgeInsets.symmetric(vertical: 24), child: Center(child: Text('No ready videos to switch to.', style: TextStyle(color: Colors.white38, fontSize: 13))))
+            else
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: vids.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFF222228)),
+                  itemBuilder: (_, i) {
+                    final v = vids[i];
+                    final dur = (v['duration_seconds'] as num?)?.toInt() ?? 0;
+                    final title = v['title']?.toString() ?? '';
+                    return InkWell(
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _control({'switch_to': v['id']});
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                        child: Row(children: [
+                          const Icon(CupertinoIcons.play_rectangle_fill, size: 17, color: Colors.white54),
+                          const SizedBox(width: 10),
+                          Expanded(child: Text(title.isNotEmpty ? title : 'Untitled', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: Colors.white, fontSize: 13.5))),
+                          Text(_fmtHMS(dur), style: GoogleFonts.inter(color: Colors.white38, fontSize: 12)),
+                        ]),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ]),
+        ),
+      ),
+    );
+  }
 
   // Host: who watched and for how long, with a CSV download (web).
   Future<void> _showAttendance() async {

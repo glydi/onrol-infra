@@ -260,10 +260,21 @@ func (h *Handlers) LiveControl(c *fiber.Ctx) error {
 		Reactions *bool   `json:"reactions_enabled"`
 		StartNow  bool    `json:"start_now"`
 		EndNow    bool    `json:"end_now"`
-		SeekTo    *int    `json:"seek_to"` // seconds into the recording to jump to
+		SeekTo    *int    `json:"seek_to"`   // seconds into the recording to jump to
+		SwitchTo  *string `json:"switch_to"` // media_asset_id to switch the class to
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+
+	// Switching the video is validated up front: the target must be a ready,
+	// transcoded asset or the live stream would 409 for everyone.
+	if req.SwitchTo != nil && *req.SwitchTo != "" {
+		var ready bool
+		if err := h.Pool.QueryRow(c.Context(),
+			`SELECT status='ready' AND hls_url<>'' FROM media_assets WHERE id=$1`, *req.SwitchTo).Scan(&ready); err != nil || !ready {
+			return fiber.NewError(fiber.StatusBadRequest, "that video isn't ready to stream")
+		}
 	}
 
 	sets := []string{}
@@ -292,6 +303,13 @@ func (h *Handlers) LiveControl(c *fiber.Ctx) error {
 	}
 	if req.EndNow {
 		sets = append(sets, "manual_ended_at=now()", "paused_at=NULL")
+	}
+	if req.SwitchTo != nil && *req.SwitchTo != "" {
+		// Play a different recording from its start; clear pause / end / black-out.
+		args = append(args, *req.SwitchTo)
+		sets = append(sets, fmt.Sprintf("media_asset_id=$%d", len(args)))
+		sets = append(sets, "starts_at=now()", "paused_at=NULL", "manual_ended_at=NULL", "blank=false")
+		bumpReload = true
 	}
 	if req.Paused != nil && !req.StartNow {
 		if *req.Paused {
@@ -336,6 +354,37 @@ func (h *Handlers) LiveControl(c *fiber.Ctx) error {
 	}
 	invalidateLiveCaches(sessionID)
 	return c.JSON(fiber.Map{"ok": true})
+}
+
+// LiveSwitchableVideos lists the ready recordings the host can switch the class
+// to (staff-only), newest first. Used by the in-room "Switch video" picker.
+func (h *Handlers) LiveSwitchableVideos(c *fiber.Ctx) error {
+	sessionID := c.Params("id")
+	var courseID string
+	if err := h.Pool.QueryRow(c.Context(), `SELECT course_id FROM class_sessions WHERE id=$1`, sessionID).Scan(&courseID); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "session not found")
+	}
+	if h.canManageCourse(c, courseID) != nil && callerRole(c) != "live_host" {
+		return fiber.NewError(fiber.StatusForbidden, "only the host can switch the video")
+	}
+	rows, err := h.Pool.Query(c.Context(), `
+		SELECT id, title, COALESCE(duration_seconds, 0)
+		FROM media_assets WHERE status='ready' AND hls_url<>''
+		ORDER BY created_at DESC LIMIT 500`)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
+	}
+	defer rows.Close()
+	out := []fiber.Map{}
+	for rows.Next() {
+		var id, title string
+		var dur int
+		if err := rows.Scan(&id, &title, &dur); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		out = append(out, fiber.Map{"id": id, "title": title, "duration_seconds": dur})
+	}
+	return c.JSON(fiber.Map{"videos": out})
 }
 
 // LiveAttendance returns who watched a session and for how long (staff-only).

@@ -331,7 +331,8 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Post("/me/live/:id/heartbeat", auth, h.LiveHeartbeat)
 	api.Post("/me/live/:id/react", auth, h.LiveReact)
 	api.Post("/me/live/:id/control", auth, h.LiveControl)      // host-only room controls
-	api.Get("/me/live/:id/attendance", auth, h.LiveAttendance) // host-only: who watched, how long
+	api.Get("/me/live/:id/attendance", auth, h.LiveAttendance)   // host-only: who watched, how long
+	api.Get("/me/live/:id/videos", auth, h.LiveSwitchableVideos) // host-only: recordings to switch to
 	api.Get("/me/live/:id/chat", auth, h.LiveChatList)
 	api.Post("/me/live/:id/chat", auth, h.LiveChatPost)
 	api.Delete("/me/live/:id/chat/:msgId", auth, h.LiveChatDelete)
