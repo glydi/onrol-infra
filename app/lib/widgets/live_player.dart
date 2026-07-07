@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -256,9 +255,7 @@ class _LivePlayerState extends State<LivePlayer> {
             child: Text(widget.banner, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis,
                 style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
           )),
-        // Presented slide over the video (host slideshow).
-        if (widget.slide.isNotEmpty && !widget.blank)
-          Positioned.fill(child: Container(color: Colors.black, child: _dataUriImage(widget.slide, BoxFit.contain))),
+        // (The presented slide is drawn by the live room over the whole stage.)
         // Pause freezes the frame with no overlay — the viewer just sees the
         // last frame (video is paused in _applyHostState).
         // Black-out cover (opaque).
@@ -273,17 +270,6 @@ class _LivePlayerState extends State<LivePlayer> {
     return _fullscreen
         ? SizedBox.expand(child: FittedBox(fit: BoxFit.contain, child: SizedBox(width: ar * 1000, height: 1000, child: stack)))
         : AspectRatio(aspectRatio: ar, child: stack);
-  }
-
-  // Decode a base64 data-URI image (used for the presented slide on mobile).
-  Widget _dataUriImage(String uri, BoxFit fit) {
-    try {
-      final i = uri.indexOf(',');
-      if (i < 0) return const SizedBox.shrink();
-      return Image.memory(base64Decode(uri.substring(i + 1)), fit: fit, gaplessPlayback: true, errorBuilder: (_, __, ___) => const SizedBox.shrink());
-    } catch (_) {
-      return const SizedBox.shrink();
-    }
   }
 
   Widget _ctlBtn(IconData icon, VoidCallback onTap) => GestureDetector(

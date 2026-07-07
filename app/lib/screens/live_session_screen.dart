@@ -840,12 +840,19 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   // black-out / pause cover and pinned banner are drawn INSIDE the player
   // (LivePlayer) — as HTML on web, Flutter on mobile — because a Flutter widget
   // can't reliably paint over the web <video> element.
-  Widget _stageArea() => Stack(alignment: Alignment.center, children: [
-        _stage(),
-        Positioned.fill(child: IgnorePointer(child: Stack(clipBehavior: Clip.hardEdge, children: [
-          for (final f in _floats) _Floaty(key: ValueKey(f.id), emoji: f.emoji, startX: f.x, onDone: () => _removeFloat(f.id)),
-        ]))),
-      ]);
+  Widget _stageArea() {
+    final slide = _currentSlideImage;
+    return Stack(alignment: Alignment.center, children: [
+      _stage(),
+      Positioned.fill(child: IgnorePointer(child: Stack(clipBehavior: Clip.hardEdge, children: [
+        for (final f in _floats) _Floaty(key: ValueKey(f.id), emoji: f.emoji, startX: f.x, onDone: () => _removeFloat(f.id)),
+      ]))),
+      // The host-presented slide fills the video area — in place of the video —
+      // for everyone, whatever is on the stage (live video, host panel, lobby).
+      if (slide.isNotEmpty)
+        Positioned.fill(child: IgnorePointer(child: Container(color: Colors.black, alignment: Alignment.center, child: _slideImage(slide, BoxFit.contain)))),
+    ]);
+  }
 
   // ---- Header --------------------------------------------------------------
   Widget _header() {
