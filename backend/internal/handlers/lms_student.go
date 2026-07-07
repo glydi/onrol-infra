@@ -265,7 +265,7 @@ func (h *Handlers) CourseContent(c *fiber.Ctx) error {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		if _, ok := modules[mid]; !ok {
-			modules[mid] = fiber.Map{"id": mid, "title": mtitle, "parent_module_id": derefStr(mparent), "lessons": []fiber.Map{}, "submodules": []fiber.Map{}}
+			modules[mid] = fiber.Map{"id": mid, "title": mtitle, "parent_module_id": derefStr(mparent), "lessons": []fiber.Map{}, "submodules": []fiber.Map{}, "day_labels": map[string]string{}}
 			parent[mid] = mparent
 			order = append(order, mid)
 		}
@@ -299,6 +299,23 @@ func (h *Handlers) CourseContent(c *fiber.Ctx) error {
 	_ = h.Pool.QueryRow(c.Context(),
 		`SELECT ROUND(AVG(s.score))::int FROM assessments a JOIN submissions s ON s.assessment_id=a.id AND s.user_id=$2 AND s.score IS NOT NULL
 		  WHERE a.course_id=$1 AND a.type='quiz'`, courseID, callerID(c)).Scan(&courseGrade)
+	// Custom day names (so students see "Kickoff" etc., not just "Day N").
+	if lrows, lerr := h.Pool.Query(c.Context(),
+		`SELECT dl.module_id::text, dl.day_number, dl.label
+		 FROM module_day_labels dl JOIN modules m ON m.id=dl.module_id WHERE m.course_id=$1`, courseID); lerr == nil {
+		for lrows.Next() {
+			var mid, label string
+			var day int
+			if lrows.Scan(&mid, &day, &label) == nil {
+				if mm, ok := modules[mid]; ok {
+					if dl, ok := mm["day_labels"].(map[string]string); ok {
+						dl[strconv.Itoa(day)] = label
+					}
+				}
+			}
+		}
+		lrows.Close()
+	}
 	ordered := nestModules(modules, parent, order)
 	return c.JSON(fiber.Map{"course_id": courseID, "modules": ordered, "course_grade": courseGrade})
 }

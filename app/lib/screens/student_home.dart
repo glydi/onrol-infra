@@ -1040,7 +1040,7 @@ class _StudentHomeState extends State<StudentHome> {
             if (lessons.isEmpty && subs.isEmpty && assessments.isEmpty)
               _emptyText('No lessons.')
             else if (lessons.isNotEmpty || assessments.isNotEmpty)
-              ..._lessonsByDay(lessons, rebuild, assessments: assessments),
+              ..._lessonsByDay(lessons, rebuild, assessments: assessments, dayLabels: (md['day_labels'] as Map?)?.cast<String, dynamic>() ?? const {}),
             // "Ask your mentor" lives in its own home tile now (not per module).
             // Nested sub-modules.
             for (final s in subs) _moduleBox(s as Map<String, dynamic>, rebuild, isSub: true),
@@ -1052,7 +1052,7 @@ class _StudentHomeState extends State<StudentHome> {
 
   // Group a module's lessons by day (Day 1, Day 2, … then "Unscheduled"). Any
   // [assessments] are grouped by the same day and shown inside that day's box.
-  List<Widget> _lessonsByDay(List lessons, VoidCallback rebuild, {List assessments = const []}) {
+  List<Widget> _lessonsByDay(List lessons, VoidCallback rebuild, {List assessments = const [], Map<String, dynamic> dayLabels = const {}}) {
     final groups = <int?, List<Map<String, dynamic>>>{};
     for (final l in lessons) {
       final ll = l as Map<String, dynamic>;
@@ -1079,8 +1079,9 @@ class _StudentHomeState extends State<StudentHome> {
         ...ls.map((ll) => _lessonRow(ll, rebuild, siblings: ordered)),
         ...asmts.map((m) => _assessmentTile(m)),
       ];
+      final custom = k == null ? '' : (dayLabels[k.toString()]?.toString() ?? '');
       out.add(_DayFolder(
-        label: k == null ? 'Unscheduled' : 'Day $k',
+        label: k == null ? 'Unscheduled' : (custom.isNotEmpty ? custom : 'Day $k'),
         count: children.length,
         children: children,
       ));
