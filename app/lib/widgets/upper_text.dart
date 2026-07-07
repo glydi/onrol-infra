@@ -58,7 +58,11 @@ class Text extends StatelessWidget {
         overflow: overflow,
         textScaler: textScaler,
         maxLines: maxLines,
-        semanticsLabel: semanticsLabel ?? data,
+        // Only forward an explicit label. Do NOT synthesize one from `data`:
+        // a non-null semanticsLabel makes Text wrap every string in
+        // Semantics+ExcludeSemantics widgets, ~tripling the widget count and
+        // making content-heavy screens lag badly.
+        semanticsLabel: semanticsLabel,
         textWidthBasis: textWidthBasis,
         textHeightBehavior: textHeightBehavior,
         selectionColor: selectionColor,
