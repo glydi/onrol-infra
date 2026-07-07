@@ -56,6 +56,12 @@ func (h *Handlers) LiveSessionState(c *fiber.Ctx) error {
 		out[k] = v
 	}
 	out["is_host"] = isStaff
+	// It's a "recorded-as-live" stream: a student must not be able to tell how
+	// long it runs or when it ends. Only the host gets the length / elapsed.
+	if !isStaff {
+		delete(out, "duration")
+		delete(out, "elapsed")
+	}
 	return c.JSON(out)
 }
 

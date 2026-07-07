@@ -3551,7 +3551,10 @@ class _LiveCardState extends State<_LiveCard> {
     final hardEnd = end ?? start?.add(const Duration(hours: 2));
     final live = start != null && now.isAfter(start.subtract(const Duration(minutes: 5))) && (hardEnd == null || now.isBefore(hardEnd));
     final ended = hardEnd != null && now.isAfter(hardEnd);
-    final timeLabel = start == null ? 'TBD' : (end == null ? _clock(start) : '${_clock(start)} – ${_clock(end)}');
+    // For a simulated ("recorded-as-live") class the student must NOT see when it
+    // ends — that would give away the length. Show only the start time; the range
+    // is kept only for real external (Zoho) sessions.
+    final timeLabel = start == null ? 'TBD' : (end == null || simulated ? _clock(start) : '${_clock(start)} – ${_clock(end)}');
     // Simulated-live sessions open in-app (no external link needed).
     final hasLink = simulated || url.isNotEmpty;
 
