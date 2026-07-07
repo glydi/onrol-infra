@@ -90,18 +90,18 @@ func (h *Handlers) buildLiveState(c *fiber.Ctx, sessionID string, now time.Time)
 	var pausedAt, manualEnd *time.Time
 	var title, course, hlsURL, startImg, endImg, banner string
 	var chatOK, qaOK, reactOK, blank, muted bool
-	var viewerBase, durationSecs int
+	var viewerBase, durationSecs, reloadSeq int
 	err := h.Pool.QueryRow(c.Context(), `
 		SELECT cs.starts_at, cs.media_asset_id, cs.title, c.title,
 		       cs.chat_enabled, cs.qa_enabled, cs.reactions_enabled, cs.viewer_base, COALESCE(ma.duration_seconds, 0),
 		       COALESCE(ma.hls_url,''), COALESCE(cs.start_image,''), COALESCE(cs.end_image,''),
-		       cs.paused_at, cs.blank, cs.muted, cs.banner, cs.manual_ended_at
+		       cs.paused_at, cs.blank, cs.muted, cs.banner, cs.manual_ended_at, cs.reload_seq
 		FROM class_sessions cs
 		JOIN courses c ON c.id = cs.course_id
 		LEFT JOIN media_assets ma ON ma.id = cs.media_asset_id
 		WHERE cs.id = $1`, sessionID).Scan(
 		&startsAt, &assetID, &title, &course, &chatOK, &qaOK, &reactOK, &viewerBase, &durationSecs,
-		&hlsURL, &startImg, &endImg, &pausedAt, &blank, &muted, &banner, &manualEnd)
+		&hlsURL, &startImg, &endImg, &pausedAt, &blank, &muted, &banner, &manualEnd, &reloadSeq)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
 	}
@@ -171,6 +171,7 @@ func (h *Handlers) buildLiveState(c *fiber.Ctx, sessionID string, now time.Time)
 		"blank":               blank,
 		"muted":               muted,
 		"banner":              banner,
+		"reload_seq":          reloadSeq,
 	}
 	// Reaction batch since the last rebuild — rides along on the state everyone
 	// already polls, so reactions reach the whole room with no extra requests.
@@ -259,6 +260,7 @@ func (h *Handlers) LiveControl(c *fiber.Ctx) error {
 		Reactions *bool   `json:"reactions_enabled"`
 		StartNow  bool    `json:"start_now"`
 		EndNow    bool    `json:"end_now"`
+		SeekTo    *int    `json:"seek_to"` // seconds into the recording to jump to
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
@@ -266,6 +268,7 @@ func (h *Handlers) LiveControl(c *fiber.Ctx) error {
 
 	sets := []string{}
 	args := []any{sessionID}
+	bumpReload := false // set when the position jumps → clients re-init their player
 	add := func(expr string, val any) {
 		args = append(args, val)
 		sets = append(sets, fmt.Sprintf("%s=$%d", expr, len(args)))
@@ -273,6 +276,19 @@ func (h *Handlers) LiveControl(c *fiber.Ctx) error {
 	if req.StartNow {
 		// Go live right now: start the clock, clear pause/end.
 		sets = append(sets, "starts_at=now()", "paused_at=NULL", "manual_ended_at=NULL")
+		bumpReload = true
+	}
+	if req.SeekTo != nil {
+		// Jump the live position to `seek_to` seconds in. When paused, anchor off
+		// paused_at so it stays frozen at the new spot; otherwise off now().
+		t := *req.SeekTo
+		if t < 0 {
+			t = 0
+		}
+		args = append(args, t)
+		sets = append(sets, fmt.Sprintf("starts_at = COALESCE(paused_at, now()) - make_interval(secs => $%d)", len(args)))
+		sets = append(sets, "manual_ended_at=NULL") // seeking to a mid-point means it's live again
+		bumpReload = true
 	}
 	if req.EndNow {
 		sets = append(sets, "manual_ended_at=now()", "paused_at=NULL")
@@ -306,6 +322,9 @@ func (h *Handlers) LiveControl(c *fiber.Ctx) error {
 	}
 	if req.Reactions != nil {
 		add("reactions_enabled", *req.Reactions)
+	}
+	if bumpReload {
+		sets = append(sets, "reload_seq = reload_seq + 1")
 	}
 	if len(sets) == 0 {
 		return fiber.NewError(fiber.StatusBadRequest, "no control fields")

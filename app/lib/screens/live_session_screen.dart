@@ -52,6 +52,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   bool _sendingCtl = false;
   int _elapsed = 0; // seconds played (host progress readout)
   int _duration = 0; // total recording length (seconds)
+  int _reloadSeq = 0; // bumped when the host seeks → re-init the player
   String? _playlistUrl; // absolute, set once live
   String _startImage = ''; // 16:9 shown in place of the video before the class
   String _endImage = ''; // 16:9 shown in place of the video after it ends
@@ -132,6 +133,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         _banner = d['banner']?.toString() ?? '';
         _elapsed = (d['elapsed'] as num?)?.toInt() ?? _elapsed;
         _duration = (d['duration'] as num?)?.toInt() ?? _duration;
+        _reloadSeq = (d['reload_seq'] as num?)?.toInt() ?? _reloadSeq;
         _startImage = d['start_image']?.toString() ?? '';
         _endImage = d['end_image']?.toString() ?? '';
         final sa = DateTime.tryParse(d['starts_at']?.toString() ?? '');
@@ -363,8 +365,16 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     );
   }
 
-  // Host readout: how much of the recording has played and how much is left,
-  // with a progress bar. Frozen at the pause point while paused.
+  // Host: jump the whole class to a position in the recording (seek for
+  // everyone). Clamped to just short of the end so it doesn't trip "ended".
+  void _seekTo(int seconds) {
+    if (_duration <= 0) return;
+    final t = seconds.clamp(0, _duration - 2 > 0 ? _duration - 2 : 0);
+    _control({'seek_to': t});
+  }
+
+  // Host readout + SEEK: played / total / remaining, a tap-to-seek progress bar,
+  // and ±10s / ±1m skips. Frozen at the pause point while paused.
   Widget _hostProgress() {
     if (_duration <= 0) return const SizedBox.shrink();
     final played = _elapsed.clamp(0, _duration);
@@ -377,14 +387,41 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
           const Spacer(),
           Text('${_fmtHMS(remain)} left', style: GoogleFonts.inter(color: _paused ? const Color(0xFFFFB020) : Colors.white54, fontSize: 11.5, fontWeight: FontWeight.w600)),
         ]),
-        const SizedBox(height: 5),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(2),
-          child: LinearProgressIndicator(value: (played / _duration).clamp(0.0, 1.0), minHeight: 4, backgroundColor: Colors.white12, valueColor: const AlwaysStoppedAnimation(_orange)),
-        ),
+        const SizedBox(height: 6),
+        LayoutBuilder(builder: (ctx, cons) => GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: (d) => _seekTo(((d.localPosition.dx / cons.maxWidth).clamp(0.0, 1.0) * _duration).round()),
+              child: SizedBox(
+                height: 16,
+                child: Center(child: ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(value: (played / _duration).clamp(0.0, 1.0), minHeight: 5, backgroundColor: Colors.white12, valueColor: const AlwaysStoppedAnimation(_orange)),
+                )),
+              ),
+            )),
+        const SizedBox(height: 8),
+        Row(children: [
+          _skipChip('-1m', () => _seekTo(played - 60)),
+          const SizedBox(width: 6),
+          _skipChip('-10s', () => _seekTo(played - 10)),
+          const SizedBox(width: 6),
+          _skipChip('+10s', () => _seekTo(played + 10)),
+          const SizedBox(width: 6),
+          _skipChip('+1m', () => _seekTo(played + 60)),
+        ]),
       ]),
     );
   }
+
+  Widget _skipChip(String label, VoidCallback onTap) => GestureDetector(
+        onTap: _sendingCtl ? null : onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+          decoration: BoxDecoration(color: Colors.white.withOpacity(0.06), border: Border.all(color: Colors.white24)),
+          child: Text(label, style: GoogleFonts.inter(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w700)),
+        ),
+      );
 
   // Host: who watched and for how long, with a CSV download (web).
   Future<void> _showAttendance() async {
@@ -563,7 +600,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     // see the host status panel (lobby / preparing / ended / queue summary).
     if (widget.isHost && !(_status == 'live' && _playlistUrl != null)) return _hostPanel();
     if (_status == 'live' && _playlistUrl != null) {
-      return LivePlayer(key: ValueKey(_playlistUrl), playlistUrl: _playlistUrl!, watermark: widget.watermark, authToken: widget.auth.token, startEpochMs: _startEpochMs, skewMs: _skewMs, title: _title, course: _course, hostMuted: _hostMuted || _blank || _paused, blank: _blank, paused: _paused, banner: _banner);
+      return LivePlayer(key: ValueKey('$_playlistUrl|$_reloadSeq'), playlistUrl: _playlistUrl!, watermark: widget.watermark, authToken: widget.auth.token, startEpochMs: _startEpochMs, skewMs: _skewMs, title: _title, course: _course, hostMuted: _hostMuted || _blank || _paused, blank: _blank, paused: _paused, banner: _banner);
     }
     if (_status == 'ended') {
       return _endImage.isNotEmpty
