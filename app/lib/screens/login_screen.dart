@@ -301,10 +301,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         onTap: () => _toggleForgot(false),
                         child: Text('← Back to sign in', textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: _orange)),
                       ),
-                    const SizedBox(height: 16),
-                    if (!_forgot)
-                      Text('Students, mentors and admins use the same sign-in.\nYour account decides what you see.',
-                          textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 12, color: grey, height: 1.5)),
                     const SizedBox(height: 22),
                     const ThemeToggle(),
                   ],

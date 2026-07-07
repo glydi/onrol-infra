@@ -909,7 +909,16 @@ class _StudentHomeState extends State<StudentHome> {
     // Every tile — including the forum — opens through the same shared-element
     // route, so it expands out of its tile (iOS-style) exactly like the others.
     final d = _panel(key);
-    _showPanel(d.$1, d.$2, d.$3, d.$4, heroTag: 'panel-$key', compact: key == 'logout');
+    final closed = _showPanel(d.$1, d.$2, d.$3, d.$4, heroTag: 'panel-$key', compact: key == 'logout');
+    if (key == 'notifications') {
+      // Reading marks them read server-side; refresh the home badge once the
+      // panel closes so the unread count actually clears (don't leave it stale).
+      closed.whenComplete(() async {
+        try { await widget.auth.apiPost('/api/v1/me/notifications/read', {}); } catch (_) {}
+        setUnreadBadge(0);
+        if (mounted) setState(() {});
+      });
+    }
   }
 
   // Course content viewer — modules & lessons from /me/courses/:id/content.
@@ -1745,11 +1754,12 @@ class _StudentHomeState extends State<StudentHome> {
     );
   }
 
-  void _showPanel(IconData icon, String title, String sub, List<Widget> body, {String? heroTag, bool compact = false}) {
+  Future<void> _showPanel(IconData icon, String title, String sub, List<Widget> body, {String? heroTag, bool compact = false}) {
     // iOS-style shared-element expansion: push a transparent route so the
     // dashboard stays visible (blurred) behind, and let a Hero morph the tapped
-    // tile into the card. See [_PanelRoute] / [_HeroPanelModal].
-    Navigator.of(context).push(_PanelRoute(
+    // tile into the card. See [_PanelRoute] / [_HeroPanelModal]. Returns the
+    // route's future so callers can act once the panel is dismissed.
+    return Navigator.of(context).push(_PanelRoute(
       child: _HeroPanelModal(icon: icon, title: title, sub: sub, body: body, heroTag: heroTag, compact: compact),
     ));
   }
