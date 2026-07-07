@@ -345,25 +345,61 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   // and start/end-now. Broadcast to every viewer via the session state.
   Widget _hostControls() {
     final liveNow = _status == 'live';
+    // Each entry is one control tile; laid out as an even grid below.
+    final tiles = <Widget>[
+      _ctlChip(_paused ? 'Resume' : 'Pause', _paused ? CupertinoIcons.play_fill : CupertinoIcons.pause_fill, _paused,
+          () => _confirmAct(_paused ? 'Resume the class for everyone?' : 'Pause the class for everyone?', () => _control({'paused': !_paused}))),
+      _ctlChip('Black-out', CupertinoIcons.rectangle_fill, _blank,
+          () => _confirmAct(_blank ? 'Remove the black-out?' : 'Black out the video for everyone?', () => _control({'blank': !_blank}))),
+      _ctlChip('Mute all', _hostMuted ? CupertinoIcons.volume_off : CupertinoIcons.volume_up, _hostMuted,
+          () => _confirmAct(_hostMuted ? 'Unmute for everyone?' : 'Mute audio for everyone?', () => _control({'muted': !_hostMuted}))),
+      _ctlChip('Reactions', CupertinoIcons.hand_thumbsup, _reactionsOn,
+          () => _confirmAct(_reactionsOn ? 'Turn reactions off?' : 'Turn reactions on?', () => _control({'reactions_enabled': !_reactionsOn}))),
+      _ctlChip('Q&A', CupertinoIcons.chat_bubble_2, _qaOn,
+          () => _confirmAct(_qaOn ? 'Turn Q&A off?' : 'Turn Q&A on?', () => _control({'qa_enabled': !_qaOn}))),
+      _ctlChip('Banner', CupertinoIcons.textformat, _banner.isNotEmpty, _editBanner),
+      _ctlChip('Switch video', CupertinoIcons.arrow_2_squarepath, false, _switchVideo),
+      _ctlChip('Attendance', CupertinoIcons.person_2_fill, false, _showAttendance),
+      if (!liveNow)
+        _ctlChip('Start now', CupertinoIcons.play_circle, false,
+            () => _confirmAct('Start the class now for everyone?', () => _control({'start_now': true})))
+      else
+        _ctlChip('End now', CupertinoIcons.stop_circle_fill, false,
+            () => _confirmAct('End the class now for everyone?', () => _control({'end_now': true}))),
+    ];
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
       decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFF222228)))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _hostProgress(),
-        Wrap(spacing: 7, runSpacing: 7, children: [
-          _ctlChip(_paused ? 'Resume' : 'Pause', _paused ? CupertinoIcons.play_fill : CupertinoIcons.pause_fill, _paused, () => _control({'paused': !_paused})),
-          _ctlChip('Black-out', CupertinoIcons.rectangle_fill, _blank, () => _control({'blank': !_blank})),
-          _ctlChip('Mute all', _hostMuted ? CupertinoIcons.volume_off : CupertinoIcons.volume_up, _hostMuted, () => _control({'muted': !_hostMuted})),
-          _ctlChip('Reactions', CupertinoIcons.hand_thumbsup, _reactionsOn, () => _control({'reactions_enabled': !_reactionsOn})),
-          _ctlChip('Q&A', CupertinoIcons.chat_bubble_2, _qaOn, () => _control({'qa_enabled': !_qaOn})),
-          _ctlChip('Banner', CupertinoIcons.textformat, _banner.isNotEmpty, _editBanner),
-          _ctlChip('Switch video', CupertinoIcons.arrow_2_squarepath, false, _switchVideo),
-          _ctlChip('Attendance', CupertinoIcons.person_2_fill, false, _showAttendance),
-          if (!liveNow) _ctlChip('Start now', CupertinoIcons.play_circle, false, () => _control({'start_now': true})),
-          if (liveNow) _ctlChip('End now', CupertinoIcons.stop_circle_fill, false, () => _control({'end_now': true})),
-        ]),
+        LayoutBuilder(builder: (ctx, cons) {
+          const gap = 7.0;
+          final cols = (cons.maxWidth / 118).floor().clamp(2, 4);
+          final itemW = (cons.maxWidth - gap * (cols - 1)) / cols;
+          return Wrap(
+            spacing: gap,
+            runSpacing: gap,
+            children: [for (final t in tiles) SizedBox(width: itemW, child: t)],
+          );
+        }),
       ]),
     );
+  }
+
+  // Confirm a broadcast action before it hits every viewer.
+  Future<void> _confirmAct(String message, Future<void> Function() act) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _panel,
+        content: Text(message, style: GoogleFonts.inter(color: Colors.white, fontSize: 14.5, height: 1.3)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: GoogleFonts.inter(color: Colors.white54))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Confirm', style: GoogleFonts.inter(color: _orange, fontWeight: FontWeight.w700))),
+        ],
+      ),
+    );
+    if (ok == true) await act();
   }
 
   // Host: jump the whole class to a position in the recording (seek for
@@ -555,16 +591,16 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         onTap: _sendingCtl ? null : onTap,
         behavior: HitTestBehavior.opaque,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
           decoration: BoxDecoration(
             color: active ? _orange.withOpacity(0.9) : Colors.white.withOpacity(0.06),
             borderRadius: BorderRadius.zero,
             border: Border.all(color: active ? _orange : Colors.white24),
           ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
+          child: Row(mainAxisSize: MainAxisSize.max, mainAxisAlignment: MainAxisAlignment.center, children: [
             Icon(icon, size: 14, color: active ? Colors.white : Colors.white70),
             const SizedBox(width: 5),
-            Text(label, style: GoogleFonts.inter(color: active ? Colors.white : Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w700)),
+            Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: active ? Colors.white : Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w700))),
           ]),
         ),
       );
