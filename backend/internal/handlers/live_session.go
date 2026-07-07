@@ -90,21 +90,22 @@ func (h *Handlers) buildLiveState(c *fiber.Ctx, sessionID string, now time.Time)
 	var pausedAt, manualEnd *time.Time
 	var title, course, hlsURL, startImg, endImg, banner string
 	var chatOK, qaOK, reactOK, blank, muted bool
-	var viewerBase, durationSecs, reloadSeq, slidesRev int
+	var viewerBase, durationSecs, reloadSeq, slidesRev, slideshowSecs int
 	var currentSlide *string
+	var slideshowAt *time.Time
 	err := h.Pool.QueryRow(c.Context(), `
 		SELECT cs.starts_at, cs.media_asset_id, cs.title, c.title,
 		       cs.chat_enabled, cs.qa_enabled, cs.reactions_enabled, cs.viewer_base, COALESCE(ma.duration_seconds, 0),
 		       COALESCE(ma.hls_url,''), COALESCE(cs.start_image,''), COALESCE(cs.end_image,''),
 		       cs.paused_at, cs.blank, cs.muted, cs.banner, cs.manual_ended_at, cs.reload_seq,
-		       cs.current_slide_id, cs.slides_rev
+		       cs.current_slide_id, cs.slides_rev, cs.slideshow_at, cs.slideshow_secs
 		FROM class_sessions cs
 		JOIN courses c ON c.id = cs.course_id
 		LEFT JOIN media_assets ma ON ma.id = cs.media_asset_id
 		WHERE cs.id = $1`, sessionID).Scan(
 		&startsAt, &assetID, &title, &course, &chatOK, &qaOK, &reactOK, &viewerBase, &durationSecs,
 		&hlsURL, &startImg, &endImg, &pausedAt, &blank, &muted, &banner, &manualEnd, &reloadSeq,
-		&currentSlide, &slidesRev)
+		&currentSlide, &slidesRev, &slideshowAt, &slideshowSecs)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
 	}
@@ -134,9 +135,34 @@ func (h *Handlers) buildLiveState(c *fiber.Ctx, sessionID string, now time.Time)
 		status = "ended"
 	}
 
+	// The presented slide: an auto slideshow (deterministic by elapsed time so all
+	// viewers are in sync) when running, else whatever slide was manually pinned.
 	curSlide := ""
 	if currentSlide != nil {
 		curSlide = *currentSlide
+	}
+	if slideshowAt != nil {
+		var ids []string
+		if rows, qerr := h.Pool.Query(c.Context(), `SELECT id FROM live_slides WHERE session_id=$1 ORDER BY position, created_at`, sessionID); qerr == nil {
+			for rows.Next() {
+				var id string
+				if rows.Scan(&id) == nil {
+					ids = append(ids, id)
+				}
+			}
+			rows.Close()
+		}
+		if len(ids) > 0 {
+			secs := slideshowSecs
+			if secs < 2 {
+				secs = 2
+			}
+			e := int(now.Sub(*slideshowAt).Seconds())
+			if e < 0 {
+				e = 0
+			}
+			curSlide = ids[(e/secs)%len(ids)]
+		}
 	}
 
 	// Real concurrent viewers = in-memory heartbeats in the last 30s.
@@ -182,6 +208,7 @@ func (h *Handlers) buildLiveState(c *fiber.Ctx, sessionID string, now time.Time)
 		"reload_seq":          reloadSeq,
 		"current_slide_id":    curSlide,
 		"slides_rev":          slidesRev,
+		"slideshow":           slideshowAt != nil,
 	}
 	// Reaction batch since the last rebuild — rides along on the state everyone
 	// already polls, so reactions reach the whole room with no extra requests.
@@ -273,6 +300,7 @@ func (h *Handlers) LiveControl(c *fiber.Ctx) error {
 		SeekTo    *int    `json:"seek_to"`       // seconds into the recording to jump to
 		SwitchTo  *string `json:"switch_to"`     // media_asset_id to switch the class to
 		Present   *string `json:"present_slide"` // slide id to show over the video ("" = stop)
+		Slideshow *bool   `json:"slideshow"`     // start/stop the auto slideshow
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
@@ -357,6 +385,13 @@ func (h *Handlers) LiveControl(c *fiber.Ctx) error {
 			sets = append(sets, "current_slide_id=NULL") // stop presenting
 		} else {
 			add("current_slide_id", *req.Present)
+		}
+	}
+	if req.Slideshow != nil {
+		if *req.Slideshow {
+			sets = append(sets, "slideshow_at=now()", "current_slide_id=NULL") // start auto slideshow
+		} else {
+			sets = append(sets, "slideshow_at=NULL")
 		}
 	}
 	if bumpReload {
