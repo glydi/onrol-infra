@@ -410,21 +410,25 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     );
   }
 
-  // Confirm a broadcast action before it hits every viewer.
+  // Confirm a broadcast action TWICE before it hits every viewer — these change
+  // the live class for everyone, so a single misclick shouldn't fire them.
   Future<void> _confirmAct(String message, Future<void> Function() act) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: _panel,
-        content: Text(message, style: GoogleFonts.inter(color: Colors.white, fontSize: 14.5, height: 1.3)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: GoogleFonts.inter(color: Colors.white54))),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Confirm', style: GoogleFonts.inter(color: _orange, fontWeight: FontWeight.w700))),
-        ],
-      ),
-    );
-    if (ok == true) await act();
+    if (await _confirmOnce(message, 'Continue') != true) return;
+    if (await _confirmOnce('Confirm once more — this applies to everyone in the live class right now.', 'Yes, do it') != true) return;
+    await act();
   }
+
+  Future<bool?> _confirmOnce(String message, String confirmLabel) => showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: _panel,
+          content: Text(message, style: GoogleFonts.inter(color: Colors.white, fontSize: 14.5, height: 1.3)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: GoogleFonts.inter(color: Colors.white54))),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(confirmLabel, style: GoogleFonts.inter(color: _orange, fontWeight: FontWeight.w700))),
+          ],
+        ),
+      );
 
   // Host: jump the whole class to a position in the recording (seek for
   // everyone). Clamped to just short of the end so it doesn't trip "ended".
