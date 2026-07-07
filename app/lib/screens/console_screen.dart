@@ -2851,7 +2851,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
           if (lessons.isNotEmpty) ...[
             const SizedBox(height: 8),
             // Content grouped by day within the module (Day 1, Day 2, …).
-            ..._lessonsByDay(lessons),
+            ..._lessonsByDay(mid, (m['day_labels'] as Map?)?.cast<String, dynamic>() ?? const {}, lessons),
           ],
           // Quizzes & assignments scoped to this module.
           ..._moduleAssessments(mid),
@@ -2873,8 +2873,9 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     );
   }
 
-  // Group a module's lessons by day (null day → trailing "Unscheduled").
-  List<Widget> _lessonsByDay(List lessons) {
+  // Group a module's lessons by day (null day → trailing "Unscheduled"). Each day
+  // shows its custom name (dayLabels[day]) if set, else "Day N", and is editable.
+  List<Widget> _lessonsByDay(String moduleId, Map<String, dynamic> dayLabels, List lessons) {
     final groups = <int?, List<Map<String, dynamic>>>{};
     for (final l in lessons) {
       final ll = l as Map<String, dynamic>;
@@ -2889,10 +2890,18 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     final out = <Widget>[];
     for (final k in keys) {
       final ls = groups[k]!;
+      final custom = k == null ? '' : (dayLabels[k.toString()]?.toString() ?? '');
       out.add(_DayFolder(
-        label: k == null ? 'Unscheduled' : 'Day $k',
+        label: k == null ? 'Unscheduled' : (custom.isNotEmpty ? custom : 'Day $k'),
         count: ls.length,
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (k != null) ...[
+            GestureDetector(
+              onTap: () => _editDayName(moduleId, k, custom),
+              child: Icon(CupertinoIcons.pencil, size: 15, color: Palette.of(context).secondary),
+            ),
+            const SizedBox(width: 10),
+          ],
           _dayScheduleControl(ls),
           const SizedBox(width: 8),
           _dayVisibleToggle(ls),
@@ -2901,6 +2910,25 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       ));
     }
     return out;
+  }
+
+  // Rename a "Day N" group (blank clears the custom name).
+  Future<void> _editDayName(String moduleId, int day, String current) async {
+    final ctl = TextEditingController(text: current);
+    final ok = await showFormSheet(context, square: true, title: 'Name Day $day',
+        builder: (_) => [sheetField(ctl, 'Day name (blank = “Day $day”)', CupertinoIcons.textformat, square: true)],
+        onSubmit: () async {
+      try {
+        await widget.auth.apiPost('/api/v1/manage/modules/$moduleId/day-label', {'day_number': day, 'label': ctl.text.trim()});
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) {
+      _toast('Day name saved');
+      _load();
+    }
   }
 
   Widget _dayVisibleToggle(List<Map<String, dynamic>> ls) {

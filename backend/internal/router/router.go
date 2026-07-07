@@ -98,6 +98,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Patch("/manage/modules/:id", auth, inst, h.UpdateModule)
 	api.Delete("/manage/modules/:id", auth, inst, h.DeleteModule)
 	api.Post("/manage/modules/:id/lessons", auth, inst, h.AddLesson)
+	api.Post("/manage/modules/:id/day-label", auth, inst, h.SetModuleDayLabel)
 	api.Patch("/manage/lessons/:id", auth, inst, h.UpdateLesson)
 	api.Delete("/manage/lessons/:id", auth, inst, h.DeleteLesson)
 	api.Post("/manage/courses/:id/prerequisites", auth, inst, h.AddPrerequisite)

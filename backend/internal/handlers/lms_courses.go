@@ -1,11 +1,44 @@
 package handlers
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
+
+// SetModuleDayLabel names (or clears) a "Day N" group within a module. Blank
+// label removes the custom name → the day falls back to "Day N".
+func (h *Handlers) SetModuleDayLabel(c *fiber.Ctx) error {
+	moduleID := c.Params("id")
+	var courseID string
+	if err := h.Pool.QueryRow(c.Context(), `SELECT course_id FROM modules WHERE id=$1`, moduleID).Scan(&courseID); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "module not found")
+	}
+	if err := h.canManageCourse(c, courseID); err != nil {
+		return err
+	}
+	var req struct {
+		DayNumber int    `json:"day_number"`
+		Label     string `json:"label"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+	label := strings.TrimSpace(req.Label)
+	if len(label) > 120 {
+		label = label[:120]
+	}
+	if label == "" {
+		_, _ = h.Pool.Exec(c.Context(), `DELETE FROM module_day_labels WHERE module_id=$1 AND day_number=$2`, moduleID, req.DayNumber)
+	} else if _, err := h.Pool.Exec(c.Context(),
+		`INSERT INTO module_day_labels (module_id, day_number, label) VALUES ($1,$2,$3)
+		 ON CONFLICT (module_id, day_number) DO UPDATE SET label=EXCLUDED.label`, moduleID, req.DayNumber, label); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "save failed")
+	}
+	return c.JSON(fiber.Map{"ok": true, "day_number": req.DayNumber, "label": label})
+}
 
 // ---- Categories ------------------------------------------------------------
 
@@ -688,7 +721,7 @@ func (h *Handlers) GetManagedCourse(c *fiber.Ctx) error {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		if _, ok := mods[mid]; !ok {
-			mods[mid] = fiber.Map{"id": mid, "title": mtitle, "parent_module_id": derefStr(mparent), "lessons": []fiber.Map{}, "submodules": []fiber.Map{}}
+			mods[mid] = fiber.Map{"id": mid, "title": mtitle, "parent_module_id": derefStr(mparent), "lessons": []fiber.Map{}, "submodules": []fiber.Map{}, "day_labels": map[string]string{}}
 			parent[mid] = mparent
 			order = append(order, mid)
 		}
@@ -696,6 +729,23 @@ func (h *Handlers) GetManagedCourse(c *fiber.Ctx) error {
 			m := mods[mid]
 			m["lessons"] = append(m["lessons"].([]fiber.Map), fiber.Map{"id": *lid, "title": *ltitle, "type": *ltype, "day_number": day, "is_published": lpub == nil || *lpub, "publish_at": lpubAt, "body": lbody, "downloadable": ldl})
 		}
+	}
+	// Attach any custom day names (module_id, day_number → label).
+	if lrows, lerr := h.Pool.Query(c.Context(),
+		`SELECT dl.module_id::text, dl.day_number, dl.label
+		 FROM module_day_labels dl JOIN modules m ON m.id=dl.module_id WHERE m.course_id=$1`, id); lerr == nil {
+		for lrows.Next() {
+			var mid, label string
+			var day int
+			if lrows.Scan(&mid, &day, &label) == nil {
+				if mm, ok := mods[mid]; ok {
+					if dl, ok := mm["day_labels"].(map[string]string); ok {
+						dl[strconv.Itoa(day)] = label
+					}
+				}
+			}
+		}
+		lrows.Close()
 	}
 	ordered := nestModules(mods, parent, order)
 	return c.JSON(fiber.Map{"id": id, "title": title, "status": status,
