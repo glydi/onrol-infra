@@ -11,6 +11,11 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// liveEndGraceSecs delays the "ended" status past the recording's real end. The
+// player trails the live edge by ~15–20s, so flipping to "ended" exactly at the
+// duration would swap in the ended screen before the last seconds have played.
+const liveEndGraceSecs = 25
+
 // Live-room API for simulated-live sessions: state polling, presence heartbeats
 // (real headcount), live chat and Q&A. All gated by enrollment in the session's
 // course. Chat/Q&A are polled by the client — no WebSocket infra.
@@ -137,7 +142,10 @@ func (h *Handlers) buildLiveState(c *fiber.Ctx, sessionID string, now time.Time)
 		// Scheduled time reached but the recording is still transcoding — the
 		// room waits on this instead of loading a playlist that 409s.
 		status = "preparing"
-	case durationSecs > 0 && elapsed >= float64(durationSecs):
+	case durationSecs > 0 && elapsed >= float64(durationSecs)+liveEndGraceSecs:
+		// Only flip to "ended" AFTER a grace period past the real end: the player
+		// runs ~15–20s behind the live edge, so ending exactly at the duration
+		// swaps in the ended screen before it has played the last few seconds.
 		status = "ended"
 	}
 
