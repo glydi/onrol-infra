@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ONROL · Staff Console</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- ============ LOGIN ============ -->
+  <div id="login" class="login" hidden>
+    <form class="login-card" id="loginForm">
+      <div class="brand">ONROL</div>
+      <div class="brand-sub">Staff Console</div>
+      <label>Email, phone or login&nbsp;ID
+        <input id="loginId" autocomplete="username" required />
+      </label>
+      <label>Password
+        <input id="loginPw" type="password" autocomplete="current-password" required />
+      </label>
+      <button class="btn btn-primary" type="submit" id="loginBtn">Sign in</button>
+      <p class="login-err" id="loginErr"></p>
+      <p class="login-note">For staff (admin &amp; instructor) only.</p>
+    </form>
+  </div>
+
+  <!-- ============ APP SHELL ============ -->
+  <div id="app" class="app" hidden>
+    <aside class="sidebar" id="sidebar"><!-- nav injected by app.js --></aside>
+    <div class="main">
+      <header class="topbar">
+        <button class="icon-btn only-mobile" id="menuBtn" title="Menu">&#9776;</button>
+        <div class="crumbs" id="crumbs"></div>
+        <div class="spacer"></div>
+        <input class="search" id="globalSearch" placeholder="Search students, courses…" />
+        <div class="user" id="userChip"></div>
+      </header>
+      <main class="content" id="content"><!-- view injected by app.js --></main>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
