@@ -202,6 +202,13 @@ function svg(name) {
 const VIEWS = {};
 function registerView(id, fn) { VIEWS[id] = fn; }
 function go(hash) { location.hash = hash; }
+/* Back = up one path segment (detail → list → dashboard). */
+function goBack() {
+  const parts = location.hash.replace(/^#\/?/, '').split('?')[0].split('/').filter(Boolean);
+  if (parts.length <= 1) return go('#/');
+  parts.pop();
+  go('#/' + parts.join('/'));
+}
 function setCrumbs(...parts) {
   document.getElementById('crumbs').innerHTML = parts.map((p, i) => {
     const last = i === parts.length - 1, o = typeof p === 'string' ? { label: p } : p;
@@ -216,6 +223,7 @@ async function route() {
   const raw = location.hash.replace(/^#\/?/, '').split('?')[0];
   const parts = raw.split('/').filter(Boolean);
   const id = parts[0] || '';
+  const back = document.getElementById('backBtn'); if (back) back.hidden = parts.length === 0;
   renderSidebar();
   document.querySelectorAll('.sidebar').forEach(s => s.classList.remove('open'));
   const content = document.getElementById('content');
@@ -279,6 +287,7 @@ function showApp() {
   menu.querySelector('[data-action=signout]').onclick = e => { e.preventDefault(); logout(); };
   menu.querySelectorAll('[data-close]').forEach(a => a.addEventListener('click', () => menu.hidden = true));
   document.getElementById('menuBtn').onclick = () => document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('backBtn').onclick = goBack;
   document.getElementById('globalSearch').onkeydown = e => { if (e.key === 'Enter' && e.target.value.trim()) go('#/search?q=' + encodeURIComponent(e.target.value.trim())); };
   if (!location.hash) location.hash = '#/';
   route();

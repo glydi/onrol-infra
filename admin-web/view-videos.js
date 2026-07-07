@@ -39,6 +39,7 @@ async function videosView(content, ctx) {
         { label: 'Added', render: v => esc(fmtDate(v.created_at)) },
         {
           label: '', cls: 'right', render: v =>
+            btn('ⓘ Info', { act: 'info', id: v.id, cls: 'btn-sm btn-ghost', title: 'Video details' }) + ' ' +
             btn('Re-transcode', { act: 'retr', id: v.id, cls: 'btn-sm btn-ghost' }) + ' ' +
             btn('Delete', { act: 'del', id: v.id, cls: 'btn-sm btn-danger' }),
         },
@@ -49,6 +50,7 @@ async function videosView(content, ctx) {
   wire(content, {
     acts: {
       refresh: () => reloadVideos(),
+      info: id => videoInfo(vids.find(v => String(v.id) === String(id))),
       upload: () => uploadModal(() => reloadVideos()),
       retr: async id => {
         if (await confirmModal('Re-transcode this video? It will show as “processing” until the fresh HLS stream is ready.', { confirmLabel: 'Re-transcode' })) {
@@ -67,6 +69,28 @@ async function videosView(content, ctx) {
 }
 registerView('videos', videosView);
 const reloadVideos = () => videosView(document.getElementById('content'), { setCrumbs });
+
+/* ⓘ details for one video */
+function videoInfo(v) {
+  if (!v) { toast('Video not found'); return; }
+  openModal({
+    title: v.title || 'Untitled', sub: 'Video details', wide: true,
+    bodyHtml: dl([
+      ['Title', esc(v.title || 'Untitled')],
+      ['Video ID', `<code class="keepcase">${esc(v.id)}</code>`],
+      ['Status', pill(v.status || 'processing')],
+      ['Duration', v.duration_seconds ? esc(fmtDur(v.duration_seconds)) : '—'],
+      ['Size', esc(fmtBytes(v.size_bytes))],
+      ['Encrypted', v.encrypted ? 'Yes' : 'No'],
+      ['Added', esc(fmtDateTime(v.created_at))],
+      ...(v.hls_url ? [['HLS URL', `<code class="keepcase">${esc(v.hls_url)}</code>`]] : []),
+      ...(v.source_key || v.key ? [['Storage key', `<code class="keepcase">${esc(v.source_key || v.key)}</code>`]] : []),
+      ...(v.error ? [['Last error', `<span style="color:var(--bad)">${esc(v.error)}</span>`]] : []),
+    ]),
+    footHtml: `<button class="btn btn-ghost" data-x="c">Close</button>`,
+    onMount(root, close) { root.querySelector('[data-x=c]').onclick = close; },
+  });
+}
 
 /* ---- Chunked upload: init → sign → PUT each part to R2 → complete ----
  * Parts go DIRECTLY to R2 via short-lived presigned PUT URLs (full bandwidth).

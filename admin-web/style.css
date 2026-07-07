@@ -248,3 +248,7 @@ td .sub,.muted{color:var(--ink-3);font-size:12px}
   .dl{grid-template-columns:1fr;gap:3px 0}
   .dl dt{margin-top:8px}
 }
+
+/* ===== Squared admin portal — no rounded corners (per request) ===== */
+:root{--r:0;--r-sm:0}
+*,*::before,*::after{border-radius:0 !important}

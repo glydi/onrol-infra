@@ -74,16 +74,22 @@ function tabCurriculum(tb, co) {
   wire(tb, { acts: {
     addmod: () => formModal({ title: 'Add module', fields: [{ name: 'title', label: 'Module title', required: true }], async onSubmit(v) { await api('/manage/courses/' + co.id + '/modules', { method: 'POST', body: v }); toast('Module added', 'good'); reloadTab(co.id, 'curriculum'); } }),
     delmod: async mid => { if (await confirmModal('Delete this module and its lessons?', { danger: true, confirmLabel: 'Delete' })) { await api('/manage/modules/' + mid, { method: 'DELETE' }); toast('Module deleted'); reloadTab(co.id, 'curriculum'); } },
-    addlesson: mid => formModal({ title: 'Add lesson', fields: [
-      { name: 'title', label: 'Title', required: true },
-      { name: 'type', label: 'Type', type: 'select', value: 'text', options: [{ value: 'text', label: 'Text / notes' }, { value: 'video', label: 'Video (video id)' }, { value: 'link', label: 'External link' }, { value: 'pdf', label: 'PDF link' }] },
-      { name: 'content', label: 'Content', type: 'textarea', hint: 'markdown, a URL, or a video id' },
-      { name: 'day_number', label: 'Day number', type: 'number', hint: 'blank = unscheduled' },
-    ], async onSubmit(v) {
-      const body = { title: v.title, type: v.type, day_number: v.day_number, downloadable: true };
-      if (v.type === 'video') body.video_id = v.content; else body.body = v.content;
-      await api('/manage/modules/' + mid + '/lessons', { method: 'POST', body }); toast('Lesson added', 'good'); reloadTab(co.id, 'curriculum');
-    } }),
+    addlesson: async mid => {
+      const vids = await api('/manage/videos').then(d => arr(d, 'videos')).catch(() => []);
+      const ready = vids.filter(v => v.status === 'ready' || v.status === 'processing');
+      formModal({ title: 'Add lesson', fields: [
+        { name: 'title', label: 'Title', required: true },
+        { name: 'type', label: 'Type', type: 'select', value: 'text', options: [{ value: 'text', label: 'Text / notes' }, { value: 'video', label: 'Video (from Video Store)' }, { value: 'pdf', label: 'PDF' }] },
+        { name: 'video_id', label: 'Video', type: 'select', hint: 'used when type = Video — pick from the Video Store', options: [{ value: '', label: ready.length ? '— pick a video —' : 'No videos in the store yet' }, ...ready.map(v => ({ value: v.id, label: (v.title || v.id) + (v.status !== 'ready' ? ' (processing)' : '') }))] },
+        { name: 'content', label: 'Content', type: 'textarea', hint: 'used for Text / PDF — markdown or a PDF url' },
+        { name: 'day_number', label: 'Day number', type: 'number', hint: 'blank = unscheduled' },
+      ], async onSubmit(v) {
+        const body = { title: v.title, type: v.type, day_number: v.day_number, downloadable: true };
+        if (v.type === 'video') { if (!v.video_id) return 'Pick a video from the Video Store'; body.video_id = v.video_id; }
+        else body.body = v.content;
+        await api('/manage/modules/' + mid + '/lessons', { method: 'POST', body }); toast('Lesson added', 'good'); reloadTab(co.id, 'curriculum');
+      } });
+    },
     dellesson: async lid => { if (await confirmModal('Delete this lesson?', { danger: true, confirmLabel: 'Delete' })) { await api('/manage/lessons/' + lid, { method: 'DELETE' }); toast('Lesson deleted'); reloadTab(co.id, 'curriculum'); } },
     day: mk => { const [mid, day] = mk.split('|'); formModal({ title: 'Name Day ' + day, fields: [{ name: 'label', label: 'Day name', hint: 'blank restores “Day ' + day + '”' }], async onSubmit(v) { await api('/manage/modules/' + mid + '/day-label', { method: 'POST', body: { day_number: +day, label: v.label } }); toast('Day named', 'good'); reloadTab(co.id, 'curriculum'); } }); },
   } });
