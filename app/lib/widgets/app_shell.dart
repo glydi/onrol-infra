@@ -62,7 +62,15 @@ class _AppShellState extends State<AppShell> {
                     padding: const EdgeInsets.fromLTRB(0, 14, 18, 0),
                     child: Align(alignment: Alignment.centerRight, child: widget.trailing!),
                   ),
-                Expanded(child: body),
+                // Cap the content to a comfortable width, centered — otherwise on
+                // a wide screen everything (buttons especially) stretches the whole
+                // width and reads as one long bar.
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 920), child: body),
+                  ),
+                ),
               ]),
             ),
           ]),
