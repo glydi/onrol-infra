@@ -143,6 +143,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Get("/manage/courses/:id/certificates", auth, inst, h.ListCourseCertificates)
 	api.Post("/manage/courses/:id/certificates", auth, inst, h.IssueCertificates)
 	api.Delete("/manage/courses/:id/certificates/:userId", auth, inst, h.RevokeCertificate)
+	api.Get("/manage/mentor-questions", auth, inst, h.ListMentorQuestions) // Ask-Mentor queue
 	api.Get("/manage/enrollment-requests", auth, inst, h.ListEnrollmentRequests)
 	api.Post("/manage/enrollment-requests/:id/:action", auth, inst, h.DecideEnrollmentRequest)
 	api.Get("/manage/courses/:id/sessions", auth, inst, h.ListCourseSessions)

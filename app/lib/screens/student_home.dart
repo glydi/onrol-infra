@@ -3551,10 +3551,10 @@ class _LiveCardState extends State<_LiveCard> {
     final hardEnd = end ?? start?.add(const Duration(hours: 2));
     final live = start != null && now.isAfter(start.subtract(const Duration(minutes: 5))) && (hardEnd == null || now.isBefore(hardEnd));
     final ended = hardEnd != null && now.isAfter(hardEnd);
-    // For a simulated ("recorded-as-live") class the student must NOT see when it
-    // ends — that would give away the length. Show only the start time; the range
-    // is kept only for real external (Zoho) sessions.
-    final timeLabel = start == null ? 'TBD' : (end == null || simulated ? _clock(start) : '${_clock(start)} – ${_clock(end)}');
+    // A simulated ("recorded-as-live") class shows NO clock time at all — neither
+    // end (gives away the length) nor start — to keep the live illusion. Real
+    // external (Zoho) sessions keep the start–end range.
+    final timeLabel = simulated ? '' : (start == null ? 'TBD' : (end == null ? _clock(start) : '${_clock(start)} – ${_clock(end)}'));
     // Simulated-live sessions open in-app (no external link needed).
     final hasLink = simulated || url.isNotEmpty;
 
@@ -3596,7 +3596,7 @@ class _LiveCardState extends State<_LiveCard> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: _navy, height: 1.2)),
                   const SizedBox(height: 3),
-                  Text([if (course.isNotEmpty) course, timeLabel].join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 11.5, color: _grey)),
+                  Text([if (course.isNotEmpty) course, if (timeLabel.isNotEmpty) timeLabel].join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 11.5, color: _grey)),
                 ]),
               ),
               const SizedBox(width: 10),

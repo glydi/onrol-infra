@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -486,6 +487,47 @@ func (h *Handlers) CourseBatches(c *fiber.Ctx) error {
 		out = append(out, fiber.Map{"batch": b, "count": len(buckets[key]), "students": buckets[key]})
 	}
 	return c.JSON(fiber.Map{"label": *label, "batches": out, "settings": settings})
+}
+
+// ListMentorQuestions returns the "Ask Mentor" queue: every student question
+// from live sessions in courses the caller manages, unanswered first. Powers the
+// standing Ask-Mentor section (answer any time, not just during the live class).
+func (h *Handlers) ListMentorQuestions(c *fiber.Ctx) error {
+	q := `SELECT q.id, q.session_id, co.title, cs.title, q.display_name, q.body,
+	             COALESCE(q.answer,''), q.answered, q.created_at
+	      FROM live_questions q
+	      JOIN class_sessions cs ON cs.id = q.session_id
+	      JOIN courses co ON co.id = cs.course_id`
+	args := []any{}
+	if !(callerRole(c) == "manager" || callerRole(c) == "superadmin") {
+		q += ` WHERE co.owner_id = $1`
+		args = append(args, callerID(c))
+	}
+	q += ` ORDER BY q.answered ASC, q.created_at ASC LIMIT 500`
+	rows, err := h.Pool.Query(c.Context(), q, args...)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "questions load failed")
+	}
+	defer rows.Close()
+	out := []fiber.Map{}
+	waiting := 0
+	for rows.Next() {
+		var id, sid, course, sessionTitle, name, body, answer string
+		var answered bool
+		var at time.Time
+		if err := rows.Scan(&id, &sid, &course, &sessionTitle, &name, &body, &answer, &answered, &at); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		if !answered {
+			waiting++
+		}
+		out = append(out, fiber.Map{
+			"id": id, "session_id": sid, "course": course, "session_title": sessionTitle,
+			"name": name, "body": body, "answer": answer, "answered": answered,
+			"at": at.UTC().Format(time.RFC3339),
+		})
+	}
+	return c.JSON(fiber.Map{"questions": out, "waiting": waiting})
 }
 
 // ListEnrollmentRequests returns pending self-enroll requests for courses the

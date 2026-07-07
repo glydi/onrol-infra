@@ -18,6 +18,7 @@ import '../widgets/markdown_view.dart';
 import '../widgets/profile_view.dart';
 import '../widgets/ui.dart';
 import 'admin_calendar_screen.dart';
+import 'ask_mentor_queue.dart';
 import 'discussion_screen.dart';
 import 'live_session_screen.dart';
 import 'login_screen.dart';
@@ -173,12 +174,14 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       const NavDest(CupertinoIcons.square_list_fill, 'Courses'),
       if (_isAdmin) const NavDest(CupertinoIcons.person_2_fill, 'People'),
       if (_isAdmin) const NavDest(CupertinoIcons.calendar, 'Calendar'),
+      if (_isAdmin) const NavDest(CupertinoIcons.chat_bubble_2_fill, 'Ask Mentor'),
       const NavDest(CupertinoIcons.person_fill, 'Profile'),
     ];
     final pages = <Widget>[
       _consolePage(),
       if (_isAdmin) _peoplePage(),
       if (_isAdmin) AdminCalendarScreen(auth: widget.auth),
+      if (_isAdmin) AskMentorQueueScreen(auth: widget.auth),
       _profilePage(),
     ];
     // The whole admin console renders with squared corners.
