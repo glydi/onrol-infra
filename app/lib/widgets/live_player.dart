@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -19,7 +20,7 @@ import 'web_video_stub.dart' if (dart.library.html) 'web_video_web.dart';
 /// platform view). Mobile: video_player following the live edge, with a minimal
 /// LIVE badge + mute/fullscreen overlay drawn in Flutter.
 class LivePlayer extends StatefulWidget {
-  const LivePlayer({super.key, required this.playlistUrl, required this.watermark, this.authToken = '', this.startEpochMs = 0, this.skewMs = 0, this.title = '', this.course = '', this.hostMuted = false, this.blank = false, this.paused = false, this.banner = ''});
+  const LivePlayer({super.key, required this.playlistUrl, required this.watermark, this.authToken = '', this.startEpochMs = 0, this.skewMs = 0, this.title = '', this.course = '', this.hostMuted = false, this.blank = false, this.paused = false, this.banner = '', this.slide = ''});
 
   /// Absolute URL to the session's playlist.m3u8.
   final String playlistUrl;
@@ -50,6 +51,9 @@ class LivePlayer extends StatefulWidget {
   final bool blank;
   final bool paused;
   final String banner;
+
+  /// The presented slide image (data URI) shown over the video, or '' for none.
+  final String slide;
 
   @override
   State<LivePlayer> createState() => _LivePlayerState();
@@ -124,7 +128,7 @@ class _LivePlayerState extends State<LivePlayer> {
   @override
   void didUpdateWidget(covariant LivePlayer old) {
     super.didUpdateWidget(old);
-    if (old.hostMuted != widget.hostMuted || old.blank != widget.blank || old.paused != widget.paused || old.banner != widget.banner) {
+    if (old.hostMuted != widget.hostMuted || old.blank != widget.blank || old.paused != widget.paused || old.banner != widget.banner || old.slide != widget.slide) {
       _applyHostState();
     }
   }
@@ -139,6 +143,7 @@ class _LivePlayerState extends State<LivePlayer> {
       liveSetPaused(widget.paused);
       liveSetCover(widget.blank ? 'Back shortly' : '');
       liveSetBanner(widget.banner);
+      liveSetSlide(widget.slide);
     } else {
       final c = _c;
       if (c != null) {
@@ -251,6 +256,9 @@ class _LivePlayerState extends State<LivePlayer> {
             child: Text(widget.banner, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis,
                 style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
           )),
+        // Presented slide over the video (host slideshow).
+        if (widget.slide.isNotEmpty && !widget.blank)
+          Positioned.fill(child: Container(color: Colors.black, child: _dataUriImage(widget.slide, BoxFit.contain))),
         // Pause freezes the frame with no overlay — the viewer just sees the
         // last frame (video is paused in _applyHostState).
         // Black-out cover (opaque).
@@ -265,6 +273,17 @@ class _LivePlayerState extends State<LivePlayer> {
     return _fullscreen
         ? SizedBox.expand(child: FittedBox(fit: BoxFit.contain, child: SizedBox(width: ar * 1000, height: 1000, child: stack)))
         : AspectRatio(aspectRatio: ar, child: stack);
+  }
+
+  // Decode a base64 data-URI image (used for the presented slide on mobile).
+  Widget _dataUriImage(String uri, BoxFit fit) {
+    try {
+      final i = uri.indexOf(',');
+      if (i < 0) return const SizedBox.shrink();
+      return Image.memory(base64Decode(uri.substring(i + 1)), fit: fit, gaplessPlayback: true, errorBuilder: (_, __, ___) => const SizedBox.shrink());
+    } catch (_) {
+      return const SizedBox.shrink();
+    }
   }
 
   Widget _ctlBtn(IconData icon, VoidCallback onTap) => GestureDetector(

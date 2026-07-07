@@ -90,18 +90,21 @@ func (h *Handlers) buildLiveState(c *fiber.Ctx, sessionID string, now time.Time)
 	var pausedAt, manualEnd *time.Time
 	var title, course, hlsURL, startImg, endImg, banner string
 	var chatOK, qaOK, reactOK, blank, muted bool
-	var viewerBase, durationSecs, reloadSeq int
+	var viewerBase, durationSecs, reloadSeq, slidesRev int
+	var currentSlide *string
 	err := h.Pool.QueryRow(c.Context(), `
 		SELECT cs.starts_at, cs.media_asset_id, cs.title, c.title,
 		       cs.chat_enabled, cs.qa_enabled, cs.reactions_enabled, cs.viewer_base, COALESCE(ma.duration_seconds, 0),
 		       COALESCE(ma.hls_url,''), COALESCE(cs.start_image,''), COALESCE(cs.end_image,''),
-		       cs.paused_at, cs.blank, cs.muted, cs.banner, cs.manual_ended_at, cs.reload_seq
+		       cs.paused_at, cs.blank, cs.muted, cs.banner, cs.manual_ended_at, cs.reload_seq,
+		       cs.current_slide_id, cs.slides_rev
 		FROM class_sessions cs
 		JOIN courses c ON c.id = cs.course_id
 		LEFT JOIN media_assets ma ON ma.id = cs.media_asset_id
 		WHERE cs.id = $1`, sessionID).Scan(
 		&startsAt, &assetID, &title, &course, &chatOK, &qaOK, &reactOK, &viewerBase, &durationSecs,
-		&hlsURL, &startImg, &endImg, &pausedAt, &blank, &muted, &banner, &manualEnd, &reloadSeq)
+		&hlsURL, &startImg, &endImg, &pausedAt, &blank, &muted, &banner, &manualEnd, &reloadSeq,
+		&currentSlide, &slidesRev)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
 	}
@@ -129,6 +132,11 @@ func (h *Handlers) buildLiveState(c *fiber.Ctx, sessionID string, now time.Time)
 		status = "preparing"
 	case durationSecs > 0 && elapsed >= float64(durationSecs):
 		status = "ended"
+	}
+
+	curSlide := ""
+	if currentSlide != nil {
+		curSlide = *currentSlide
 	}
 
 	// Real concurrent viewers = in-memory heartbeats in the last 30s.
@@ -172,6 +180,8 @@ func (h *Handlers) buildLiveState(c *fiber.Ctx, sessionID string, now time.Time)
 		"muted":               muted,
 		"banner":              banner,
 		"reload_seq":          reloadSeq,
+		"current_slide_id":    curSlide,
+		"slides_rev":          slidesRev,
 	}
 	// Reaction batch since the last rebuild — rides along on the state everyone
 	// already polls, so reactions reach the whole room with no extra requests.
@@ -260,8 +270,9 @@ func (h *Handlers) LiveControl(c *fiber.Ctx) error {
 		Reactions *bool   `json:"reactions_enabled"`
 		StartNow  bool    `json:"start_now"`
 		EndNow    bool    `json:"end_now"`
-		SeekTo    *int    `json:"seek_to"`   // seconds into the recording to jump to
-		SwitchTo  *string `json:"switch_to"` // media_asset_id to switch the class to
+		SeekTo    *int    `json:"seek_to"`       // seconds into the recording to jump to
+		SwitchTo  *string `json:"switch_to"`     // media_asset_id to switch the class to
+		Present   *string `json:"present_slide"` // slide id to show over the video ("" = stop)
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
@@ -341,6 +352,13 @@ func (h *Handlers) LiveControl(c *fiber.Ctx) error {
 	if req.Reactions != nil {
 		add("reactions_enabled", *req.Reactions)
 	}
+	if req.Present != nil {
+		if *req.Present == "" {
+			sets = append(sets, "current_slide_id=NULL") // stop presenting
+		} else {
+			add("current_slide_id", *req.Present)
+		}
+	}
 	if bumpReload {
 		sets = append(sets, "reload_seq = reload_seq + 1")
 	}
@@ -354,6 +372,90 @@ func (h *Handlers) LiveControl(c *fiber.Ctx) error {
 	}
 	invalidateLiveCaches(sessionID)
 	return c.JSON(fiber.Map{"ok": true})
+}
+
+// LiveSlidesList returns the session's image album (data URIs) — fetched by
+// every viewer when slides_rev changes, so it stays off the polled /state.
+func (h *Handlers) LiveSlidesList(c *fiber.Ctx) error {
+	sessionID := c.Params("id")
+	if _, _, _, _, allowed := h.liveAccessCached(c, sessionID); !allowed {
+		return fiber.NewError(fiber.StatusForbidden, "not entitled")
+	}
+	rows, err := h.Pool.Query(c.Context(),
+		`SELECT id, image FROM live_slides WHERE session_id=$1 ORDER BY position, created_at`, sessionID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "slides load failed")
+	}
+	defer rows.Close()
+	out := []fiber.Map{}
+	for rows.Next() {
+		var id, image string
+		if err := rows.Scan(&id, &image); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		out = append(out, fiber.Map{"id": id, "image": image})
+	}
+	return c.JSON(fiber.Map{"slides": out})
+}
+
+// LiveSlideAdd appends an image to the album (host-only); bumps slides_rev.
+func (h *Handlers) LiveSlideAdd(c *fiber.Ctx) error {
+	sessionID := c.Params("id")
+	if ferr := h.requireLiveHost(c, sessionID); ferr != nil {
+		return ferr
+	}
+	var req struct {
+		Image string `json:"image"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+	img := strings.TrimSpace(req.Image)
+	if !strings.HasPrefix(img, "data:image/") {
+		return fiber.NewError(fiber.StatusBadRequest, "expected an image data URI")
+	}
+	if len(img) > 8_000_000 { // ~6 MB decoded — plenty for a slide
+		return fiber.NewError(fiber.StatusRequestEntityTooLarge, "image too large")
+	}
+	var id string
+	if err := h.Pool.QueryRow(c.Context(),
+		`INSERT INTO live_slides (session_id, image, position)
+		 VALUES ($1, $2, COALESCE((SELECT MAX(position)+1 FROM live_slides WHERE session_id=$1), 0))
+		 RETURNING id`, sessionID, img).Scan(&id); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "add failed")
+	}
+	_, _ = h.Pool.Exec(c.Context(), `UPDATE class_sessions SET slides_rev = slides_rev + 1 WHERE id=$1`, sessionID)
+	invalidateLiveCaches(sessionID)
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id})
+}
+
+// LiveSlideDelete removes a slide (host-only); clears it if it was being shown.
+func (h *Handlers) LiveSlideDelete(c *fiber.Ctx) error {
+	sessionID := c.Params("id")
+	if ferr := h.requireLiveHost(c, sessionID); ferr != nil {
+		return ferr
+	}
+	slideID := c.Params("slideId")
+	_, _ = h.Pool.Exec(c.Context(), `DELETE FROM live_slides WHERE id=$1 AND session_id=$2`, slideID, sessionID)
+	_, _ = h.Pool.Exec(c.Context(),
+		`UPDATE class_sessions
+		 SET slides_rev = slides_rev + 1,
+		     current_slide_id = CASE WHEN current_slide_id=$2 THEN NULL ELSE current_slide_id END
+		 WHERE id=$1`, sessionID, slideID)
+	invalidateLiveCaches(sessionID)
+	return c.JSON(fiber.Map{"deleted": true, "id": slideID})
+}
+
+// requireLiveHost gates an action to the session's course staff / live host.
+func (h *Handlers) requireLiveHost(c *fiber.Ctx, sessionID string) *fiber.Error {
+	var courseID string
+	if err := h.Pool.QueryRow(c.Context(), `SELECT course_id FROM class_sessions WHERE id=$1`, sessionID).Scan(&courseID); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "session not found")
+	}
+	if h.canManageCourse(c, courseID) != nil && callerRole(c) != "live_host" {
+		return fiber.NewError(fiber.StatusForbidden, "only the host can do that")
+	}
+	return nil
 }
 
 // LiveSwitchableVideos lists the ready recordings the host can switch the class

@@ -561,9 +561,56 @@ html.VideoElement? _lastLiveVideo;
 html.DivElement? _liveCover;
 html.Element? _liveCoverLabel;
 html.DivElement? _liveBanner;
+html.ImageElement? _liveSlideImg;
+html.DivElement? _liveLightbox;
 // When the HOST has paused, the playback guard must stop auto-resuming so the
 // video holds on its last frame (instead of snapping back to the live edge).
 bool _liveHostPaused = false;
+
+/// Show a presented slide image over the video (host slideshow); '' hides it.
+void liveSetSlide(String imageUri) {
+  final img = _liveSlideImg;
+  if (img == null) return;
+  if (imageUri.isEmpty) {
+    img.style.display = 'none';
+    img.removeAttribute('src');
+  } else {
+    img.src = imageUri;
+    img.style.display = 'block';
+  }
+}
+
+/// Pop an image up full-screen over EVERYTHING (fixed overlay on the body, above
+/// the platform-view video); tap to dismiss. '' closes it.
+void liveShowImage(String imageUri) {
+  _liveLightbox?.remove();
+  _liveLightbox = null;
+  if (imageUri.isEmpty) return;
+  final img = html.ImageElement(src: imageUri)
+    ..style.maxWidth = '94vw'
+    ..style.maxHeight = '90vh'
+    ..style.objectFit = 'contain'
+    ..style.boxShadow = '0 10px 44px rgba(0,0,0,0.6)';
+  final box = html.DivElement()
+    ..style.position = 'fixed'
+    ..style.top = '0'
+    ..style.left = '0'
+    ..style.right = '0'
+    ..style.bottom = '0'
+    ..style.display = 'flex'
+    ..style.alignItems = 'center'
+    ..style.justifyContent = 'center'
+    ..style.background = 'rgba(0,0,0,0.9)'
+    ..style.zIndex = '2147483000'
+    ..style.cursor = 'zoom-out';
+  box.append(img);
+  box.onClick.listen((_) {
+    box.remove();
+    if (identical(_liveLightbox, box)) _liveLightbox = null;
+  });
+  html.document.body?.append(box);
+  _liveLightbox = box;
+}
 
 /// Force the live video muted/unmuted (host mute-all). No-op if not yet built.
 void liveSetMuted(bool muted) {
@@ -650,6 +697,7 @@ void liveDisposeInstance(String id) {
     _liveCover = null;
     _liveCoverLabel = null;
     _liveBanner = null;
+    _liveSlideImg = null;
     _liveHostPaused = false;
   }
 }
@@ -688,6 +736,22 @@ Widget liveHlsVideoElement(
       ..style.background = 'black'
       ..style.overflow = 'hidden';
     container.append(video);
+
+    // Presented slide (host slideshow): fills the frame over the video, hidden
+    // by default. Below the controls/banner (7/8) and the black-out cover (9).
+    final slideImg = html.ImageElement()
+      ..style.position = 'absolute'
+      ..style.top = '0'
+      ..style.left = '0'
+      ..style.width = '100%'
+      ..style.height = '100%'
+      ..style.objectFit = 'contain'
+      ..style.background = 'black'
+      ..style.display = 'none'
+      ..style.zIndex = '6';
+    container.append(slideImg);
+    _liveSlideImg = slideImg;
+
     video.onContextMenu.listen((e) => e.preventDefault());
     // Swallow any keyboard event that reaches the element (space/arrows/media
     // keys) so there is no keyboard seek/pause path either.

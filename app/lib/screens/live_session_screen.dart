@@ -3,13 +3,16 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart' hide Config;
+import 'package:image_picker/image_picker.dart';
 
 import '../config.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/web_download_stub.dart' if (dart.library.html) '../services/web_download_web.dart';
+import '../widgets/web_video_stub.dart' if (dart.library.html) '../widgets/web_video_web.dart' show liveShowImage;
 import '../widgets/live_player.dart';
 
 /// The "live room" for a simulated-live session (a recorded video streamed as if
@@ -53,6 +56,12 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   int _elapsed = 0; // seconds played (host progress readout)
   int _duration = 0; // total recording length (seconds)
   int _reloadSeq = 0; // bumped when the host seeks → re-init the player
+  // Image album / slideshow.
+  List<Map<String, dynamic>> _slides = [];
+  String _currentSlideId = '';
+  int _slidesRev = -1; // last rev seen in /state
+  int _fetchedSlidesRev = -2; // rev the local album was fetched for
+  bool _addingSlide = false;
   String? _playlistUrl; // absolute, set once live
   String _startImage = ''; // 16:9 shown in place of the video before the class
   String _endImage = ''; // 16:9 shown in place of the video after it ends
@@ -134,6 +143,8 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         _elapsed = (d['elapsed'] as num?)?.toInt() ?? _elapsed;
         _duration = (d['duration'] as num?)?.toInt() ?? _duration;
         _reloadSeq = (d['reload_seq'] as num?)?.toInt() ?? _reloadSeq;
+        _currentSlideId = d['current_slide_id']?.toString() ?? '';
+        _slidesRev = (d['slides_rev'] as num?)?.toInt() ?? _slidesRev;
         _startImage = d['start_image']?.toString() ?? '';
         _endImage = d['end_image']?.toString() ?? '';
         final sa = DateTime.tryParse(d['starts_at']?.toString() ?? '');
@@ -148,6 +159,10 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         _loaded = true;
       });
       _absorbReactions(d); // float the room's reactions from this poll
+      if (_slidesRev != _fetchedSlidesRev) {
+        _fetchedSlidesRev = _slidesRev;
+        _fetchSlides(); // album changed → refetch (images ride their own endpoint)
+      }
     } on ApiException catch (e) {
       if (mounted && !_loaded) setState(() => _fatal = e.status == 403 ? 'You are not enrolled in this class.' : 'Could not load this session.');
     } catch (_) {/* transient */}
@@ -358,6 +373,12 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
       _ctlChip('Q&A', CupertinoIcons.chat_bubble_2, _qaOn,
           () => _confirmAct(_qaOn ? 'Turn Q&A off?' : 'Turn Q&A on?', () => _control({'qa_enabled': !_qaOn}))),
       _ctlChip('Banner', CupertinoIcons.textformat, _banner.isNotEmpty, _editBanner),
+      _ctlChip('Slides', CupertinoIcons.photo_on_rectangle, _currentSlideId.isNotEmpty, _openAlbum),
+      if (_currentSlideId.isNotEmpty) ...[
+        _ctlChip('Prev', CupertinoIcons.back, false, () => _presentAdjacent(-1)),
+        _ctlChip('Next', CupertinoIcons.forward, false, () => _presentAdjacent(1)),
+        _ctlChip('Stop slide', CupertinoIcons.stop_fill, false, () => _control({'present_slide': ''})),
+      ],
       _ctlChip('Switch video', CupertinoIcons.arrow_2_squarepath, false, _switchVideo),
       _ctlChip('Attendance', CupertinoIcons.person_2_fill, false, _showAttendance),
       if (!liveNow)
@@ -459,6 +480,186 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
           child: Text(label, style: GoogleFonts.inter(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w700)),
         ),
       );
+
+  // ---- Image album / slideshow --------------------------------------------
+  String get _currentSlideImage {
+    if (_currentSlideId.isEmpty) return '';
+    for (final s in _slides) {
+      if (s['id'] == _currentSlideId) return s['image']?.toString() ?? '';
+    }
+    return '';
+  }
+
+  Future<void> _fetchSlides() async {
+    try {
+      final d = ApiClient.decode(await widget.auth.apiGet('$_base/slides'));
+      final s = ((d['slides'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
+      if (mounted) setState(() => _slides = s);
+    } catch (_) {}
+  }
+
+  Future<void> _addSlide() async {
+    if (_addingSlide) return;
+    try {
+      final x = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 1600, maxHeight: 1600, imageQuality: 82);
+      if (x == null) return;
+      final bytes = await x.readAsBytes();
+      final uri = 'data:${x.mimeType ?? 'image/jpeg'};base64,${base64Encode(bytes)}';
+      setState(() => _addingSlide = true);
+      await widget.auth.apiPost('$_base/slides', {'image': uri});
+      await _pollState(); // slides_rev bumps → triggers refetch
+      await _fetchSlides();
+    } catch (_) {} finally {
+      if (mounted) setState(() => _addingSlide = false);
+    }
+  }
+
+  Future<void> _deleteSlide(String id) async {
+    try {
+      await widget.auth.apiDelete('$_base/slides/$id');
+      await _fetchSlides();
+    } catch (_) {}
+  }
+
+  // Present the slide `dir` steps away (−1 prev / +1 next) in album order.
+  void _presentAdjacent(int dir) {
+    if (_slides.isEmpty) return;
+    var idx = _slides.indexWhere((s) => s['id'] == _currentSlideId);
+    if (idx < 0) idx = dir > 0 ? -1 : _slides.length;
+    final n = (idx + dir).clamp(0, _slides.length - 1);
+    _control({'present_slide': _slides[n]['id']});
+  }
+
+  // Pop an image up full-screen. Web uses an HTML overlay (Flutter can't reliably
+  // paint over the platform-view video); mobile uses a Flutter dialog.
+  void _popImage(String uri) {
+    if (uri.isEmpty) return;
+    if (kIsWeb) {
+      liveShowImage(uri);
+      return;
+    }
+    showDialog(
+      context: context,
+      builder: (ctx) => GestureDetector(
+        onTap: () => Navigator.pop(ctx),
+        child: Container(
+          color: Colors.black.withOpacity(0.92),
+          alignment: Alignment.center,
+          child: InteractiveViewer(child: _slideImage(uri, BoxFit.contain)),
+        ),
+      ),
+    );
+  }
+
+  Widget _slideImage(String uri, BoxFit fit) {
+    try {
+      final i = uri.indexOf(',');
+      if (i < 0) return Container(color: Colors.black);
+      return Image.memory(base64Decode(uri.substring(i + 1)), fit: fit, gaplessPlayback: true, errorBuilder: (_, __, ___) => Container(color: Colors.black));
+    } catch (_) {
+      return Container(color: Colors.black);
+    }
+  }
+
+  // The album sheet: everyone can view + tap to pop up; the host can add, delete,
+  // and present each slide to the whole room.
+  Future<void> _openAlbum() async {
+    await _fetchSlides();
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _panel,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(14))),
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Text('Slides · ${_slides.length}', style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                const Spacer(),
+                if (widget.isHost && _currentSlideId.isNotEmpty)
+                  GestureDetector(
+                    onTap: () {
+                      _control({'present_slide': ''});
+                      setSheet(() {});
+                    },
+                    child: Padding(padding: const EdgeInsets.only(right: 10), child: Text('Stop', style: GoogleFonts.inter(color: Colors.white60, fontSize: 12.5, fontWeight: FontWeight.w700))),
+                  ),
+                if (widget.isHost)
+                  GestureDetector(
+                    onTap: _addingSlide ? null : () async {
+                      await _addSlide();
+                      setSheet(() {});
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: const BoxDecoration(color: _orange),
+                      child: Text(_addingSlide ? 'Adding…' : 'Add image', style: GoogleFonts.inter(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+              ]),
+              if (widget.isHost)
+                Padding(padding: const EdgeInsets.only(top: 3), child: Text('Tap Present to show a slide to everyone; tap a slide to preview it.', style: GoogleFonts.inter(color: Colors.white38, fontSize: 11))),
+              const SizedBox(height: 12),
+              if (_slides.isEmpty)
+                const Padding(padding: EdgeInsets.symmetric(vertical: 24), child: Center(child: Text('No images yet.', style: TextStyle(color: Colors.white38, fontSize: 13))))
+              else
+                Flexible(
+                  child: GridView.builder(
+                    shrinkWrap: true,
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 8, mainAxisSpacing: 8, childAspectRatio: 16 / 9),
+                    itemCount: _slides.length,
+                    itemBuilder: (_, i) {
+                      final s = _slides[i];
+                      final id = s['id']?.toString() ?? '';
+                      final img = s['image']?.toString() ?? '';
+                      final presenting = id == _currentSlideId;
+                      return Stack(fit: StackFit.expand, children: [
+                        GestureDetector(
+                          onTap: () => _popImage(img),
+                          child: Container(
+                            decoration: BoxDecoration(border: Border.all(color: presenting ? _orange : Colors.white12, width: presenting ? 2 : 1)),
+                            child: _slideImage(img, BoxFit.cover),
+                          ),
+                        ),
+                        if (widget.isHost)
+                          Positioned(
+                            right: 2, top: 2,
+                            child: GestureDetector(
+                              onTap: () async {
+                                await _deleteSlide(id);
+                                setSheet(() {});
+                              },
+                              child: Container(padding: const EdgeInsets.all(3), color: Colors.black54, child: const Icon(CupertinoIcons.xmark, size: 12, color: Colors.white)),
+                            ),
+                          ),
+                        if (widget.isHost)
+                          Positioned(
+                            left: 2, bottom: 2,
+                            child: GestureDetector(
+                              onTap: () {
+                                _control({'present_slide': id});
+                                setSheet(() {});
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                color: presenting ? _orange : Colors.black54,
+                                child: Text(presenting ? 'Showing' : 'Present', style: GoogleFonts.inter(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+                              ),
+                            ),
+                          ),
+                      ]);
+                    },
+                  ),
+                ),
+            ]),
+          ),
+        );
+      }),
+    );
+  }
 
   // Host: switch the class to a different recording. Everyone re-inits their
   // player (reload_seq) at the start of the chosen video.
@@ -695,7 +896,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     // see the host status panel (lobby / preparing / ended / queue summary).
     if (widget.isHost && !(_status == 'live' && _playlistUrl != null)) return _hostPanel();
     if (_status == 'live' && _playlistUrl != null) {
-      return LivePlayer(key: ValueKey('$_playlistUrl|$_reloadSeq'), playlistUrl: _playlistUrl!, watermark: widget.watermark, authToken: widget.auth.token, startEpochMs: _startEpochMs, skewMs: _skewMs, title: _title, course: _course, hostMuted: _hostMuted || _blank || _paused, blank: _blank, paused: _paused, banner: _banner);
+      return LivePlayer(key: ValueKey('$_playlistUrl|$_reloadSeq'), playlistUrl: _playlistUrl!, watermark: widget.watermark, authToken: widget.auth.token, startEpochMs: _startEpochMs, skewMs: _skewMs, title: _title, course: _course, hostMuted: _hostMuted || _blank || _paused, blank: _blank, paused: _paused, banner: _banner, slide: _currentSlideImage);
     }
     if (_status == 'ended') {
       return _endImage.isNotEmpty
@@ -799,6 +1000,28 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     return Container(color: _panel, child: widget.isHost ? _hostQueue() : _studentQa());
   }
 
+  // Viewer access to the class image album (host has the Slides control chip).
+  Widget _viewerSlidesBar() {
+    if (_slides.isEmpty || widget.isHost) return const SizedBox.shrink();
+    return GestureDetector(
+      onTap: _openAlbum,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFF222228)))),
+        child: Row(children: [
+          const Icon(CupertinoIcons.photo_on_rectangle, size: 15, color: Color(0xFF8AB4F8)),
+          const SizedBox(width: 8),
+          Text('Class images', style: GoogleFonts.inter(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+          const Spacer(),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), color: Colors.white12, child: Text('${_slides.length}', style: GoogleFonts.inter(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w700))),
+          const SizedBox(width: 6),
+          const Icon(CupertinoIcons.chevron_right, size: 13, color: Colors.white38),
+        ]),
+      ),
+    );
+  }
+
   // Mentor broadcasts shown to everyone in the room (newest at the bottom).
   Widget _mentorMessages() {
     if (_messages.isEmpty) return const SizedBox.shrink();
@@ -834,6 +1057,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     final myId = widget.auth.user?.id ?? '';
     return Column(children: [
       _panelHeader('Ask Mentor', 'Ask your mentor — only your mentor sees your question.'),
+      _viewerSlidesBar(),
       _mentorMessages(),
       Expanded(
         child: _questions.isEmpty

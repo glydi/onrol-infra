@@ -31,3 +31,5 @@ void liveSetMuted(bool muted) {}
 void liveSetCover(String label) {}
 void liveSetBanner(String text) {}
 void liveSetPaused(bool paused) {}
+void liveSetSlide(String imageUri) {}
+void liveShowImage(String imageUri) {}
