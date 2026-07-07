@@ -159,9 +159,13 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         _loaded = true;
       });
       _absorbReactions(d); // float the room's reactions from this poll
-      if (_slidesRev != _fetchedSlidesRev) {
+      // Refetch the album when it changed, OR when a slide is being presented
+      // that we don't have locally yet — so the presented slide reliably shows
+      // for every viewer, not just whoever already had the album.
+      final missingPresented = _currentSlideId.isNotEmpty && !_slides.any((s) => s['id'] == _currentSlideId);
+      if (_slidesRev != _fetchedSlidesRev || missingPresented) {
         _fetchedSlidesRev = _slidesRev;
-        _fetchSlides(); // album changed → refetch (images ride their own endpoint)
+        _fetchSlides();
       }
     } on ApiException catch (e) {
       if (mounted && !_loaded) setState(() => _fatal = e.status == 403 ? 'You are not enrolled in this class.' : 'Could not load this session.');
