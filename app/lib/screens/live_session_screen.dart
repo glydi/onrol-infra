@@ -53,6 +53,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   bool _hostMuted = false;
   String _banner = '';
   bool _sendingCtl = false;
+  bool _controlsOpen = true; // host controls panel expanded
   int _elapsed = 0; // seconds played (host progress readout)
   int _duration = 0; // total recording length (seconds)
   int _reloadSeq = 0; // bumped when the host seeks → re-init the player
@@ -370,42 +371,52 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     final tiles = <Widget>[
       _ctlChip(_paused ? 'Resume' : 'Pause', _paused ? CupertinoIcons.play_fill : CupertinoIcons.pause_fill, _paused,
           () => _confirmAct(_paused ? 'Resume the class for everyone?' : 'Pause the class for everyone?', () => _control({'paused': !_paused}))),
-      _ctlChip('Black-out', CupertinoIcons.rectangle_fill, _blank,
+      _ctlChip('Blackout', CupertinoIcons.rectangle_fill, _blank,
           () => _confirmAct(_blank ? 'Remove the black-out?' : 'Black out the video for everyone?', () => _control({'blank': !_blank}))),
-      _ctlChip('Mute all', _hostMuted ? CupertinoIcons.volume_off : CupertinoIcons.volume_up, _hostMuted,
+      _ctlChip('Mute', _hostMuted ? CupertinoIcons.volume_off : CupertinoIcons.volume_up, _hostMuted,
           () => _confirmAct(_hostMuted ? 'Unmute for everyone?' : 'Mute audio for everyone?', () => _control({'muted': !_hostMuted}))),
-      _ctlChip('Reactions', CupertinoIcons.hand_thumbsup, _reactionsOn,
+      _ctlChip(_slideshowOn ? 'Stop' : 'Slideshow', _slideshowOn ? CupertinoIcons.stop_fill : CupertinoIcons.play_rectangle_fill, _slideshowOn,
+          () => _confirmAct(_slideshowOn ? 'Stop the slideshow and return to the video?' : 'Start the image slideshow for everyone (over the video)?', () => _control({'slideshow': !_slideshowOn}))),
+      _ctlChip('Slides', CupertinoIcons.photo_on_rectangle, false, _openAlbum),
+      _ctlChip('Switch', CupertinoIcons.arrow_2_squarepath, false, _switchVideo),
+      _ctlChip('React', CupertinoIcons.hand_thumbsup, _reactionsOn,
           () => _confirmAct(_reactionsOn ? 'Turn reactions off?' : 'Turn reactions on?', () => _control({'reactions_enabled': !_reactionsOn}))),
       _ctlChip('Q&A', CupertinoIcons.chat_bubble_2, _qaOn,
           () => _confirmAct(_qaOn ? 'Turn Q&A off?' : 'Turn Q&A on?', () => _control({'qa_enabled': !_qaOn}))),
       _ctlChip('Banner', CupertinoIcons.textformat, _banner.isNotEmpty, _editBanner),
-      _ctlChip('Slides', CupertinoIcons.photo_on_rectangle, false, _openAlbum),
-      _ctlChip(_slideshowOn ? 'Stop show' : 'Slideshow', _slideshowOn ? CupertinoIcons.stop_fill : CupertinoIcons.play_rectangle_fill, _slideshowOn,
-          () => _confirmAct(_slideshowOn ? 'Stop the slideshow and return to the video?' : 'Start the image slideshow for everyone (over the video)?', () => _control({'slideshow': !_slideshowOn}))),
-      _ctlChip('Switch video', CupertinoIcons.arrow_2_squarepath, false, _switchVideo),
-      _ctlChip('Attendance', CupertinoIcons.person_2_fill, false, _showAttendance),
+      _ctlChip('Attend', CupertinoIcons.person_2_fill, false, _showAttendance),
       if (!liveNow)
-        _ctlChip('Start now', CupertinoIcons.play_circle, false,
+        _ctlChip('Start', CupertinoIcons.play_circle, false,
             () => _confirmAct('Start the class now for everyone?', () => _control({'start_now': true})))
       else
-        _ctlChip('End now', CupertinoIcons.stop_circle_fill, false,
+        _ctlChip('End', CupertinoIcons.stop_circle_fill, false,
             () => _confirmAct('End the class now for everyone?', () => _control({'end_now': true}))),
     ];
     return Container(
-      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
       decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFF222228)))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _hostProgress(),
-        LayoutBuilder(builder: (ctx, cons) {
-          const gap = 7.0;
-          final cols = (cons.maxWidth / 118).floor().clamp(2, 4);
-          final itemW = (cons.maxWidth - gap * (cols - 1)) / cols;
-          return Wrap(
-            spacing: gap,
-            runSpacing: gap,
-            children: [for (final t in tiles) SizedBox(width: itemW, child: t)],
-          );
-        }),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _controlsOpen = !_controlsOpen),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+            child: Row(children: [
+              const Icon(CupertinoIcons.slider_horizontal_3, size: 14, color: Colors.white54),
+              const SizedBox(width: 8),
+              Text('HOST CONTROLS', style: GoogleFonts.inter(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.7)),
+              const Spacer(),
+              Icon(_controlsOpen ? CupertinoIcons.chevron_up : CupertinoIcons.chevron_down, size: 15, color: Colors.white38),
+            ]),
+          ),
+        ),
+        if (_controlsOpen)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
+            child: Column(children: [
+              _hostProgress(),
+              Wrap(spacing: 6, runSpacing: 6, children: tiles),
+            ]),
+          ),
       ]),
     );
   }
@@ -797,20 +808,22 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     return b.toString();
   }
 
+  // Compact icon tile (icon over a tiny label) — many fit without dominating the panel.
   Widget _ctlChip(String label, IconData icon, bool active, VoidCallback onTap) => GestureDetector(
         onTap: _sendingCtl ? null : onTap,
         behavior: HitTestBehavior.opaque,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+          width: 58,
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
           decoration: BoxDecoration(
             color: active ? _orange.withOpacity(0.9) : Colors.white.withOpacity(0.06),
             borderRadius: BorderRadius.zero,
             border: Border.all(color: active ? _orange : Colors.white24),
           ),
-          child: Row(mainAxisSize: MainAxisSize.max, mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(icon, size: 14, color: active ? Colors.white : Colors.white70),
-            const SizedBox(width: 5),
-            Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: active ? Colors.white : Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w700))),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 17, color: active ? Colors.white : Colors.white70),
+            const SizedBox(height: 4),
+            Text(label, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: active ? Colors.white : Colors.white70, fontSize: 8.5, fontWeight: FontWeight.w700)),
           ]),
         ),
       );

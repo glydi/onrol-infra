@@ -489,45 +489,55 @@ func (h *Handlers) CourseBatches(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"label": *label, "batches": out, "settings": settings})
 }
 
-// ListMentorQuestions returns the "Ask Mentor" queue: every student question
-// from live sessions in courses the caller manages, unanswered first. Powers the
-// standing Ask-Mentor section (answer any time, not just during the live class).
+// ListMentorQuestions is the "Ask Mentor" queue: every student's PRIVATE mentor
+// thread (module_comments) whose latest message is from the student — i.e. it's
+// awaiting a mentor reply — across courses the caller manages. The mentor replies
+// straight into that student's thread from here (same as opening the thread).
 func (h *Handlers) ListMentorQuestions(c *fiber.Ctx) error {
-	q := `SELECT q.id, q.session_id, co.title, cs.title, q.display_name, q.body,
-	             COALESCE(q.answer,''), q.answered, q.created_at
-	      FROM live_questions q
-	      JOIN class_sessions cs ON cs.id = q.session_id
-	      JOIN courses co ON co.id = cs.course_id`
+	q := `
+		WITH latest AS (
+			SELECT mc.id, mc.module_id, mc.course_id, mc.thread_user_id, mc.user_id,
+			       mc.body, mc.is_doubt, mc.created_at,
+			       row_number() OVER (
+			         PARTITION BY COALESCE(mc.module_id::text, 'g:'||COALESCE(mc.course_id::text,'')), mc.thread_user_id
+			         ORDER BY mc.created_at DESC) AS rn
+			FROM module_comments mc
+			WHERE mc.thread_user_id IS NOT NULL
+		)
+		SELECT l.id, COALESCE(l.module_id::text,''), eff.id::text, eff.title,
+		       COALESCE(m.title,'General'), COALESCE(su.full_name,'Student'),
+		       l.thread_user_id::text, l.body, l.is_doubt, l.created_at
+		FROM latest l
+		LEFT JOIN modules m ON m.id = l.module_id
+		JOIN courses eff ON eff.id = COALESCE(m.course_id, l.course_id)
+		JOIN users su ON su.id = l.thread_user_id
+		WHERE l.rn = 1 AND l.user_id = l.thread_user_id`
 	args := []any{}
 	if !(callerRole(c) == "manager" || callerRole(c) == "superadmin") {
-		q += ` WHERE co.owner_id = $1`
+		q += ` AND eff.owner_id = $1`
 		args = append(args, callerID(c))
 	}
-	q += ` ORDER BY q.answered ASC, q.created_at ASC LIMIT 500`
+	q += ` ORDER BY l.is_doubt DESC, l.created_at DESC LIMIT 500`
 	rows, err := h.Pool.Query(c.Context(), q, args...)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "questions load failed")
 	}
 	defer rows.Close()
 	out := []fiber.Map{}
-	waiting := 0
 	for rows.Next() {
-		var id, sid, course, sessionTitle, name, body, answer string
-		var answered bool
+		var id, moduleID, courseID, course, where, student, threadUser, body string
+		var isDoubt bool
 		var at time.Time
-		if err := rows.Scan(&id, &sid, &course, &sessionTitle, &name, &body, &answer, &answered, &at); err != nil {
+		if err := rows.Scan(&id, &moduleID, &courseID, &course, &where, &student, &threadUser, &body, &isDoubt, &at); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
-		if !answered {
-			waiting++
-		}
 		out = append(out, fiber.Map{
-			"id": id, "session_id": sid, "course": course, "session_title": sessionTitle,
-			"name": name, "body": body, "answer": answer, "answered": answered,
+			"id": id, "module_id": moduleID, "course_id": courseID, "course": course, "where": where,
+			"name": student, "thread_user_id": threadUser, "body": body, "is_doubt": isDoubt,
 			"at": at.UTC().Format(time.RFC3339),
 		})
 	}
-	return c.JSON(fiber.Map{"questions": out, "waiting": waiting})
+	return c.JSON(fiber.Map{"questions": out, "waiting": len(out)})
 }
 
 // ListEnrollmentRequests returns pending self-enroll requests for courses the

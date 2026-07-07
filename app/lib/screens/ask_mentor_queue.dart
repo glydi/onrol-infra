@@ -56,11 +56,11 @@ class _AskMentorQueueScreenState extends State<AskMentorQueueScreen> {
   void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
 
   Future<void> _answer(Map<String, dynamic> q) async {
-    final ctl = TextEditingController(text: q['answer']?.toString() ?? '');
+    final ctl = TextEditingController();
     final ok = await showFormSheet(
       context,
       square: true,
-      title: 'Answer ${(q['name']?.toString().isNotEmpty ?? false) ? q['name'] : 'student'}',
+      title: 'Reply to ${(q['name']?.toString().isNotEmpty ?? false) ? q['name'] : 'student'}',
       builder: (_) => [
         Container(
           width: double.infinity,
@@ -69,12 +69,15 @@ class _AskMentorQueueScreenState extends State<AskMentorQueueScreen> {
           child: Text(q['body']?.toString() ?? '', style: AppleTheme.body(context)),
         ),
         const SizedBox(height: 12),
-        sheetField(ctl, 'Your answer…', CupertinoIcons.text_bubble, keyboard: TextInputType.multiline, square: true),
+        sheetField(ctl, 'Your reply…', CupertinoIcons.text_bubble, keyboard: TextInputType.multiline, square: true),
       ],
       onSubmit: () async {
-        if (ctl.text.trim().isEmpty) return 'Answer required';
+        if (ctl.text.trim().isEmpty) return 'Reply required';
+        // Reply straight into the student's thread (module or course-general).
+        final mid = q['module_id']?.toString() ?? '';
+        final path = mid.isNotEmpty ? '/api/v1/modules/$mid/comments' : '/api/v1/courses/${q['course_id']}/comments';
         try {
-          await widget.auth.apiPost('/api/v1/me/live/${q['session_id']}/questions/${q['id']}/answer', {'body': ctl.text.trim()});
+          await widget.auth.apiPost(path, {'body': ctl.text.trim(), 'thread_user_id': q['thread_user_id']});
           return null;
         } on ApiException catch (e) {
           return e.message;
@@ -84,7 +87,7 @@ class _AskMentorQueueScreenState extends State<AskMentorQueueScreen> {
       },
     );
     if (ok == true) {
-      _toast('Answer sent');
+      _toast('Reply sent');
       _load(silent: true);
     }
   }
@@ -130,45 +133,34 @@ class _AskMentorQueueScreenState extends State<AskMentorQueueScreen> {
   }
 
   Widget _card(Map<String, dynamic> q, Palette p) {
-    final answered = q['answered'] == true;
     final name = q['name']?.toString().isNotEmpty == true ? q['name'].toString() : 'Student';
-    final where = [q['course'], q['session_title']].where((s) => (s?.toString().isNotEmpty ?? false)).map((s) => s.toString()).join(' · ');
+    final where = [q['course'], q['where']].where((s) => (s?.toString().isNotEmpty ?? false)).map((s) => s.toString()).join(' · ');
+    final isDoubt = q['is_doubt'] == true;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: p.card,
         borderRadius: BorderRadius.zero,
-        border: Border.all(color: answered ? p.separator : AppleColors.orange.withValues(alpha: 0.5), width: answered ? 1 : 1.4),
+        border: Border.all(color: AppleColors.orange.withValues(alpha: 0.5), width: 1.4),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Expanded(child: Text(name, style: AppleTheme.headline(context))),
-          if (answered) Text('Answered ✓', style: AppleTheme.footnote(context).copyWith(color: AppleColors.green, fontWeight: FontWeight.w700)),
+          if (isDoubt)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(color: const Color(0xFF2D7DF6).withValues(alpha: 0.16), borderRadius: BorderRadius.zero),
+              child: const Text('Doubt', style: TextStyle(color: Color(0xFF2D7DF6), fontSize: 10.5, fontWeight: FontWeight.w800)),
+            ),
         ]),
         if (where.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text(where, style: AppleTheme.footnote(context))),
         const SizedBox(height: 8),
         Text(q['body']?.toString() ?? '', style: AppleTheme.body(context)),
-        if (answered) ...[
-          const SizedBox(height: 10),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(11),
-            decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.zero),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('You answered', style: AppleTheme.footnote(context).copyWith(color: p.accent, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 3),
-              Text(q['answer']?.toString() ?? '', style: AppleTheme.body(context)),
-            ]),
-          ),
-          const SizedBox(height: 8),
-          Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () => _answer(q), child: Text('Edit answer', style: AppleTheme.footnote(context)))),
-        ] else ...[
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child: PrimaryButton(label: 'Answer', icon: CupertinoIcons.reply_thick_solid, square: true, onPressed: () => _answer(q)),
-          ),
-        ],
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: PrimaryButton(label: 'Reply', icon: CupertinoIcons.reply_thick_solid, square: true, onPressed: () => _answer(q)),
+        ),
       ]),
     );
   }
