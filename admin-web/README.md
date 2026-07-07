@@ -40,10 +40,14 @@ information architecture: `/Users/mukesh/.claude/plans/idempotent-squishing-wave
   their `max_devices` or free a slot (`DELETE /api/v1/devices/:id`).
 
 ## Deploy
-- Static files live at `/var/www/onrol-admin/` on the VPS; nginx serves them under
-  `/admin/` on the lms host. Live at **https://lms.187-127-178-100.sslip.io/admin/**
-- Redeploy (rsync only — the nginx block is already in place):
-  `bash admin-web/deploy.sh`
+- Served from a subfolder of the Flutter web root — `/var/www/onrol/admin/` — so the
+  **existing** nginx `location /` (try_files) serves it as static files. **No nginx
+  change needed.** Live at **https://lms.187-127-178-100.sslip.io/admin/**
+- `scripts/deploy.sh web` excludes `admin/` from its `--delete`, so shipping the
+  Flutter app never wipes the console.
+- Redeploy (rsync only): `bash admin-web/deploy.sh`
+- Hash-routed + no service worker on the app (`--pwa-strategy=none`), so there's no
+  SPA-fallback or cache conflict with the student app sharing the root.
 
 ## Extending (the pattern)
 Each section = list → detail. Copy **`view-courses.js`**: `registerView('x', …)`

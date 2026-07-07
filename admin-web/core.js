@@ -131,23 +131,43 @@ function formModal({ title, sub, wide, fields, submitLabel = 'Save', onSubmit })
 /* ========== information architecture (nav) ========== */
 const NAV = [
   { group: 'Overview', items: [{ id: '', icon: svg('grid'), label: 'Dashboard' }] },
-  { group: 'Teaching', items: [
+  { group: 'Academics', items: [
     { id: 'courses', icon: svg('book'), label: 'Courses' },
     { id: 'live', icon: svg('bcast'), label: 'Live Classes' },
-    { id: 'mentor', icon: svg('chat'), label: 'Ask Mentor' },
+    { id: 'assessments', icon: svg('check'), label: 'Assessments' },
+    { id: 'certificates', icon: svg('award'), label: 'Certificates' },
   ] },
-  { group: 'People', admin: true, items: [
+  { group: 'Learners', admin: true, items: [
     { id: 'students', icon: svg('users'), label: 'Students' },
     { id: 'enrollments', icon: svg('inbox'), label: 'Enrollments' },
-    { id: 'staff', icon: svg('shield'), label: 'Staff & Access' },
+    { id: 'batches', icon: svg('layers'), label: 'Batches' },
+    { id: 'devices', icon: svg('device'), label: 'Devices' },
   ] },
-  { group: 'Engage', admin: true, items: [
+  { group: 'Mentorship', items: [
+    { id: 'mentor', icon: svg('chat'), label: 'Ask Mentor' },
+  ] },
+  { group: 'Engagement', admin: true, items: [
     { id: 'announcements', icon: svg('mega'), label: 'Announcements' },
     { id: 'communities', icon: svg('hash'), label: 'Communities' },
     { id: 'calendar', icon: svg('cal'), label: 'Calendar' },
   ] },
-  { group: 'Library', admin: true, items: [{ id: 'videos', icon: svg('play'), label: 'Video Store' }] },
-  { group: 'Insights', items: [{ id: 'reports', icon: svg('chart'), label: 'Reports' }] },
+  { group: 'Media Library', admin: true, items: [
+    { id: 'videos', icon: svg('play'), label: 'Video Store' },
+    { id: 'processing', icon: svg('clock'), label: 'Processing Queue' },
+  ] },
+  { group: 'Team & Access', admin: true, items: [
+    { id: 'staff', icon: svg('shield'), label: 'Staff' },
+    { id: 'roles', icon: svg('key'), label: 'Roles & Permissions' },
+    { id: 'groups', icon: svg('layers'), label: 'Groups' },
+  ] },
+  { group: 'Reports & Insights', items: [
+    { id: 'reports', icon: svg('chart'), label: 'Reports' },
+  ] },
+  { group: 'Settings', items: [
+    { id: 'profile', icon: svg('user'), label: 'Profile' },
+    { id: 'theme', icon: svg('sun'), label: 'Toggle theme', action: 'theme' },
+    { id: 'signout', icon: svg('logout'), label: 'Sign out', action: 'signout' },
+  ] },
 ];
 function svg(name) {
   const p = {
@@ -163,6 +183,17 @@ function svg(name) {
     cal: '<rect x="3" y="5" width="18" height="16" rx="1"/><path d="M3 9h18M8 3v4M16 3v4"/>',
     play: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9l5 3-5 3z"/>',
     chart: '<path d="M4 20V4M4 20h16M8 16v-5M12 16V8M16 16v-8"/>',
+    check: '<path d="M4 12l5 5L20 6"/>',
+    award: '<circle cx="12" cy="9" r="6"/><path d="M9 14l-2 7 5-3 5 3-2-7"/>',
+    layers: '<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>',
+    device: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>',
+    clock: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
+    key: '<circle cx="8" cy="12" r="3"/><path d="M11 12h9l-2 2 2 2M17 12v3"/>',
+    user: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.4 1.4M17.6 17.6L19 19M19 5l-1.4 1.4M6.4 17.6L5 19"/>',
+    logout: '<path d="M15 4h4v16h-4"/><path d="M10 8l-4 4 4 4M6 12h9"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+    bell: '<path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 20a2 2 0 0 0 4 0"/>',
   }[name] || '';
   return `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 }
@@ -206,14 +237,15 @@ function renderSidebar() {
     if (!items.length) continue;
     html += `<div class="side-group">${esc(g.group)}</div>`;
     for (const it of items) {
+      if (it.action) { html += `<a class="side-link" data-action="${it.action}"><span class="ic">${it.icon}</span>${esc(it.label)}</a>`; continue; }
       const b = _navBadges[it.id];
       html += `<a class="side-link${it.id === cur ? ' active' : ''}" href="#/${it.id}"><span class="ic">${it.icon}</span>${esc(it.label)}${b ? `<span class="badge">${b}</span>` : ''}</a>`;
     }
   }
-  html += `</div><div class="side-foot"><a class="side-link" id="themeBtn"><span class="ic">${svg('grid')}</span>Toggle theme</a><a class="side-link" href="#/profile"><span class="ic">${svg('users')}</span>Profile</a><a class="side-link" id="signout"><span class="ic">${svg('shield')}</span>Sign out</a></div>`;
+  html += `</div>`;
   const sb = document.getElementById('sidebar'); sb.innerHTML = html;
-  sb.querySelector('#signout').onclick = logout;
-  sb.querySelector('#themeBtn').onclick = toggleTheme;
+  sb.querySelectorAll('[data-action=theme]').forEach(e => e.onclick = e2 => { e2.preventDefault(); toggleTheme(); });
+  sb.querySelectorAll('[data-action=signout]').forEach(e => e.onclick = e2 => { e2.preventDefault(); logout(); });
 }
 function toggleTheme() {
   const cur = document.documentElement.getAttribute('data-theme');
@@ -233,11 +265,47 @@ function logout() { localStorage.removeItem(K.tok); localStorage.removeItem(K.us
 function showLogin() { document.getElementById('app').hidden = true; document.getElementById('login').hidden = false; }
 function showApp() {
   document.getElementById('login').hidden = true; document.getElementById('app').hidden = false;
-  document.getElementById('userChip').innerHTML = `<div class="avatar">${esc(initials(USER.full_name))}</div><div><div class="nm">${esc(USER.full_name || '')}</div><div class="role">${esc(USER.role || '')}</div></div>`;
+  const chip = document.getElementById('userChip');
+  chip.innerHTML = `<button class="userbtn" id="userBtn"><div class="avatar">${esc(initials(USER.full_name))}</div><div class="who"><div class="nm">${esc(USER.full_name || '')}</div><div class="role">${esc(USER.role || '')}</div></div><span class="caret">▾</span></button>
+    <div class="menu" id="userMenu" hidden>
+      <a href="#/profile" data-close><span class="ic">${svg('user')}</span>Profile</a>
+      <a data-action="theme"><span class="ic">${svg('sun')}</span>Toggle theme</a>
+      <a data-action="signout"><span class="ic">${svg('logout')}</span>Sign out</a>
+    </div>`;
+  const menu = chip.querySelector('#userMenu');
+  chip.querySelector('#userBtn').onclick = e => { e.stopPropagation(); menu.hidden = !menu.hidden; };
+  document.addEventListener('click', () => { menu.hidden = true; });
+  menu.querySelector('[data-action=theme]').onclick = e => { e.preventDefault(); toggleTheme(); menu.hidden = true; };
+  menu.querySelector('[data-action=signout]').onclick = e => { e.preventDefault(); logout(); };
+  menu.querySelectorAll('[data-close]').forEach(a => a.addEventListener('click', () => menu.hidden = true));
   document.getElementById('menuBtn').onclick = () => document.getElementById('sidebar').classList.toggle('open');
-  document.getElementById('globalSearch').onkeydown = e => { if (e.key === 'Enter' && e.target.value.trim()) go('#/students?q=' + encodeURIComponent(e.target.value.trim())); };
+  document.getElementById('globalSearch').onkeydown = e => { if (e.key === 'Enter' && e.target.value.trim()) go('#/search?q=' + encodeURIComponent(e.target.value.trim())); };
   if (!location.hash) location.hash = '#/';
   route();
+  refreshAlerts();
+}
+
+/* Topbar alert badges + sidebar badges — the "needs attention" pulse. */
+async function refreshAlerts() {
+  try {
+    const [reqs, mentor, vids] = await Promise.allSettled([
+      isAdmin() ? api('/manage/enrollment-requests') : Promise.resolve({}),
+      api('/manage/mentor-questions').catch(() => ({})),
+      isAdmin() ? api('/manage/videos') : Promise.resolve({}),
+    ]);
+    const nReq = reqs.status === 'fulfilled' ? arr(reqs.value, 'requests').length : 0;
+    const nMentor = mentor.status === 'fulfilled' ? (mentor.value.waiting ?? arr(mentor.value, 'questions').length) : 0;
+    const nProc = vids.status === 'fulfilled' ? arr(vids.value, 'videos').filter(v => v.status === 'processing').length : 0;
+    setBadge('mentor', nMentor || 0);
+    if (isAdmin()) { setBadge('enrollments', nReq || 0); setBadge('processing', nProc || 0); }
+    const el = document.getElementById('alerts'); if (!el) return;
+    const chip = (n, label, href, kind) => n ? `<a class="alert ${kind}" href="${href}" title="${esc(label)}">${svg('bell')}<b>${n}</b></a>` : '';
+    el.innerHTML = [
+      chip(nMentor, nMentor + ' mentor question(s) waiting', '#/mentor', 'warn'),
+      isAdmin() ? chip(nReq, nReq + ' enrollment request(s)', '#/enrollments', 'info') : '',
+      isAdmin() ? chip(nProc, nProc + ' video(s) processing', '#/processing', 'info') : '',
+    ].join('');
+  } catch (_) {}
 }
 
 /* ========== reference view: Dashboard ========== */
@@ -261,8 +329,16 @@ registerView('', async (content, { setCrumbs }) => {
        <a href="#/mentor"><div class="big">${nMentor}</div><div class="lab">Mentor questions waiting</div></a>
        ${isAdmin() ? `<a href="#/videos"><div class="big">${nProc}</div><div class="lab">Videos still processing</div></a>` : ''}
      </div>
-     <div class="section-title" style="margin-top:24px">Jump back in</div>
-     <a class="btn" href="#/courses">Manage courses →</a>`;
+     <div class="section-title" style="margin-top:24px">Quick actions</div>
+     <div class="toolbar" style="flex-wrap:wrap">
+       <a class="btn btn-primary" href="#/courses">${svg('book')} Courses</a>
+       <a class="btn" href="#/live">${svg('bcast')} Live classes</a>
+       <a class="btn" href="#/assessments">${svg('check')} Assessments</a>
+       ${isAdmin() ? `<a class="btn" href="#/students">${svg('users')} Students</a>` : ''}
+       ${isAdmin() ? `<a class="btn" href="#/announcements">${svg('mega')} Announce</a>` : ''}
+       ${isAdmin() ? `<a class="btn" href="#/videos">${svg('play')} Upload video</a>` : ''}
+       <a class="btn" href="#/reports">${svg('chart')} Reports</a>
+     </div>`;
 });
 
 /* profile */

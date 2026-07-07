@@ -118,10 +118,26 @@ label.fld .hint{font-weight:500;color:var(--ink-4);font-size:11px}
 .crumbs a.dim:hover{color:var(--accent)}
 .spacer{flex:1}
 .search{width:260px;max-width:34vw;padding:8px 12px;font-size:13px}
-.user{display:flex;align-items:center;gap:9px;cursor:default}
-.avatar{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;display:grid;place-items:center;font-weight:800;font-size:12px}
-.user .nm{font-size:13px;font-weight:650;line-height:1.15}
-.user .role{color:var(--ink-4);font-size:11px;text-transform:capitalize}
+.user{position:relative}
+.avatar{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;display:grid;place-items:center;font-weight:800;font-size:12px;flex:none}
+.userbtn{display:flex;align-items:center;gap:9px;background:none;border:1px solid transparent;border-radius:var(--r-sm);padding:4px 8px 4px 4px;cursor:pointer}
+.userbtn:hover{background:var(--panel-2);border-color:var(--line)}
+.userbtn .who{text-align:left}
+.userbtn .nm{font-size:13px;font-weight:650;line-height:1.15;color:var(--ink)}
+.userbtn .role{color:var(--ink-4);font-size:11px}
+.userbtn .caret{color:var(--ink-4);font-size:10px}
+.user .menu{position:absolute;right:0;top:calc(100% + 6px);min-width:180px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow-lg);padding:6px;z-index:50;display:flex;flex-direction:column;gap:2px}
+.user .menu a{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--r-sm);font-size:13px;font-weight:600;color:var(--ink);cursor:pointer}
+.user .menu a:hover{background:var(--panel-2)}
+.user .menu a .ic{color:var(--ink-3);display:inline-flex}
+/* topbar alert badges */
+.alerts{display:flex;align-items:center;gap:7px}
+.alert{display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:750;border:1px solid var(--line);color:var(--ink-2);background:var(--panel-2)}
+.alert svg{width:14px;height:14px}
+.alert b{font-variant-numeric:tabular-nums}
+.alert.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,var(--line));background:var(--warn-bg)}
+.alert.info{color:var(--info);border-color:color-mix(in srgb,var(--info) 40%,var(--line));background:var(--info-bg)}
+.alert:hover{filter:brightness(1.03)}
 .content{padding:24px 28px;overflow-y:auto;flex:1}
 .only-mobile{display:none}
 

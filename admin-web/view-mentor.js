@@ -19,12 +19,23 @@
 
 const snip = (s, n = 92) => { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
 
+/* Two real tabs — both are awaiting-reply items (the endpoint returns nothing
+ * else). "Doubt queue" is the default and shows only is_doubt items; "All
+ * questions" shows the whole queue. Routed via #/mentor/<tab>, mirroring the
+ * courses tabs pattern. A "Closed/answered" list is intentionally absent —
+ * this endpoint can't produce one (see file header). */
+const MENTOR_TABS = [['doubts', 'Doubt queue'], ['all', 'All questions']];
+const mentorTab = () => {
+  const parts = location.hash.replace(/^#\/?/, '').split('?')[0].split('/').filter(Boolean);
+  return MENTOR_TABS.some(([k]) => k === parts[1]) ? parts[1] : 'doubts';
+};
+
 registerView('mentor', async (content, ctx) => {
   ctx.setCrumbs('Ask Mentor');
-  await renderMentorList(content);
+  await renderMentorList(content, mentorTab());
 });
 
-async function renderMentorList(content) {
+async function renderMentorList(content, tab = mentorTab()) {
   const data = await api('/manage/mentor-questions').catch(() => ({}));
   const qs = arr(data, 'questions');
   const waiting = data.waiting ?? qs.length;
@@ -35,11 +46,19 @@ async function renderMentorList(content) {
     ? `${waiting} awaiting reply${doubts ? ` · ${doubts} doubt${doubts > 1 ? 's' : ''}` : ''}`
     : 'All caught up — no questions waiting';
 
+  const counts = { doubts, all: qs.length };
+  const rows = tab === 'doubts' ? qs.filter(q => q.is_doubt) : qs;
+  const empty = tab === 'doubts'
+    ? 'No doubts waiting. You’re all caught up.'
+    : 'No student questions waiting. You’re all caught up.';
+
   content.innerHTML =
     pageHead({ title: 'Ask Mentor', sub }) +
+    `<div class="tabs">${MENTOR_TABS.map(([k, l]) =>
+      `<div class="tab ${k === tab ? 'active' : ''}" data-t="${k}">${esc(l)}${counts[k] ? ` <span style="opacity:.6;font-weight:600">${counts[k]}</span>` : ''}</div>`).join('')}</div>` +
     dataTable({
       clickable: true,
-      empty: 'No student questions waiting. You’re all caught up.',
+      empty,
       columns: [
         { label: 'Student', render: q => `<b>${esc(q.name || 'Student')}</b>` },
         { label: 'Course / module', render: q => `${esc(q.course || '—')}<div class="sub">${esc(q.where || 'General')}</div>` },
@@ -47,11 +66,12 @@ async function renderMentorList(content) {
         { label: 'When', render: q => { const w = q.at; return `<span title="${esc(fmtDateTime(w))}">${esc(timeAgo(w) || fmtDate(w))}</span>`; } },
         { label: 'Status', cls: 'right', render: q => q.is_doubt ? pill('bad', 'doubt') : pill('pending', 'awaiting') },
       ],
-      rows: qs,
+      rows,
     });
 
+  content.querySelectorAll('.tab').forEach(t => t.onclick = () => go('#/mentor/' + t.dataset.t));
   const byId = {};
-  qs.forEach(q => { byId[q.id] = q; });
+  rows.forEach(q => { byId[q.id] = q; });
   wire(content, { rowClick: id => openThread(byId[id], content) });
 }
 
