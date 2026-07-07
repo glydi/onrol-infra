@@ -363,10 +363,16 @@ func (h *Handlers) ManualEnroll(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
 	}
 	if req.UserID == "" && req.Email != "" {
-		if err := h.Pool.QueryRow(c.Context(),
-			`SELECT id FROM users WHERE email=$1`, strings.ToLower(strings.TrimSpace(req.Email)),
-		).Scan(&req.UserID); err != nil {
-			return fiber.NewError(fiber.StatusNotFound, "no user with that email")
+		// Resolve by email OR login-id OR phone (many students have no email) —
+		// mirrors the sign-in identity match.
+		id := strings.ToLower(strings.TrimSpace(req.Email))
+		if err := h.Pool.QueryRow(c.Context(), `
+			SELECT id FROM users
+			WHERE lower(email)=$1 OR lower(login_id)=$1 OR lower(username)=$1
+			   OR (length(regexp_replace($1,'\D','','g')) >= 8
+			       AND regexp_replace(COALESCE(phone,''),'\D','','g') LIKE '%'||regexp_replace($1,'\D','','g'))
+			LIMIT 1`, id).Scan(&req.UserID); err != nil {
+			return fiber.NewError(fiber.StatusNotFound, "no student with that email / phone / login ID")
 		}
 	}
 	if req.UserID == "" {

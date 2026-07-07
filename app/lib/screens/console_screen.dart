@@ -496,7 +496,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       const SquareMenuItem('Deactivate (block sign-in)', value: 'deactivate', icon: CupertinoIcons.nosign),
       const SquareMenuItem('Delete permanently', value: 'delete', icon: CupertinoIcons.trash, destructive: true),
     ]);
-    if (v == 'enroll') _enrollInCourse(name, email);
+    if (v == 'enroll') _enrollInCourse(userId, name);
     if (v == 'batch') _setBatch(userId, name, batch);
     if (v == 'certificate') _issueCertificate(userId, name, u['course_label']?.toString() ?? '');
     if (v == 'password') _setPassword(userId, name);
@@ -507,8 +507,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   }
 
   // Enroll a student into a course the admin picks from the loaded list.
-  Future<void> _enrollInCourse(String name, String email) async {
-    if (email.isEmpty) { _toast('This student has no email on file'); return; }
+  Future<void> _enrollInCourse(String userId, String name) async {
     if (_courses.isEmpty) { _toast('No courses to enroll in'); return; }
     final items = _courses
         .map((c) => SquareMenuItem((c as Map)['title']?.toString() ?? 'Course',
@@ -517,7 +516,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     final courseId = await showSquareMenu(context, title: 'Enroll $name in…', items: items);
     if (courseId == null) return;
     try {
-      await widget.auth.apiPost('/api/v1/manage/courses/$courseId/enroll', {'email': email});
+      // By user_id so email-less students (phone/login-id only) can be enrolled.
+      await widget.auth.apiPost('/api/v1/manage/courses/$courseId/enroll', {'user_id': userId});
       _toast('Enrolled');
       _load();
     } on ApiException catch (e) {
@@ -3713,14 +3713,13 @@ class _DeviceSheetState extends State<_DeviceSheet> {
               );
             }),
           const SizedBox(height: 8),
-          if (widget.email.isNotEmpty)
-            PrimaryButton(
-              label: 'Assign to a course',
-              icon: CupertinoIcons.book_fill,
-              busy: _busy,
-              square: true,
-              onPressed: _assignCourse,
-            ),
+          PrimaryButton(
+            label: 'Assign to a course',
+            icon: CupertinoIcons.book_fill,
+            busy: _busy,
+            square: true,
+            onPressed: _assignCourse,
+          ),
           const SizedBox(height: 10),
           PrimaryButton(
             label: 'Reset all devices',
@@ -3764,7 +3763,8 @@ class _DeviceSheetState extends State<_DeviceSheet> {
               onTap: () async {
                 Navigator.pop(ctx);
                 try {
-                  await widget.auth.apiPost('/api/v1/manage/courses/${m['id']}/enroll', {'email': widget.email});
+                  // Enroll by user_id so it works for students with no email (phone/login-id only).
+                  await widget.auth.apiPost('/api/v1/manage/courses/${m['id']}/enroll', {'user_id': widget.userId});
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Assigned to ${m['title']}'), behavior: SnackBarBehavior.floating));
                 } on ApiException catch (e) {
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message), behavior: SnackBarBehavior.floating));
