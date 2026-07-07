@@ -135,6 +135,7 @@ async function liveDetail(content, ctx, id) {
     pageHead({
       title, sub: course,
       actions: liveStatusPill(status) +
+        (isSimulated(s) ? ' ' + btn('Open host controls', { act: 'host', cls: 'btn-sm btn-primary' }) : '') +
         (hostUrl ? ' ' + btn('Copy host link', { act: 'copyhost', cls: 'btn-sm' }) : '') +
         (canEdit ? ' ' + btn('Edit', { act: 'edit', cls: 'btn-sm' }) + ' ' + btn('Delete', { act: 'del', cls: 'btn-sm btn-danger' }) : ''),
     }) +
@@ -151,13 +152,14 @@ async function liveDetail(content, ctx, id) {
       ['Simulated viewers', s.viewer_base != null ? esc(s.viewer_base) : '—'],
       ['Join link', joinUrl ? `<a href="${esc(joinUrl)}" target="_blank" rel="noopener" style="color:var(--accent)">${esc(joinUrl)}</a>` : '—'],
     ])) +
-    `<p class="stub" style="margin:10px 2px 0">${isSimulated(s)
-      ? 'Hosting the room (pause / present / answer Q&amp;A) happens in the ONROL live screen inside the app — open this class there to run it.'
-      : 'This is an external live class — students join the link above; there’s no in-app room to host.'}</p>` +
+    (isSimulated(s)
+      ? `<div class="toolbar" style="margin:14px 2px 0">${btn('Open host controls', { act: 'host', cls: 'btn-primary' })}<span class="stub">Run the room live — start/end, seek, switch video, pause / blank / mute, banner, slides &amp; slideshow, and answer Q&amp;A.</span></div>`
+      : `<p class="stub" style="margin:10px 2px 0">This is an external live class — students join the link above; there’s no in-app room to host.</p>`) +
     `<div class="section-title" style="margin-top:22px">Attendance</div><div id="attn">${loadingPage()}</div>`;
 
   wire(content, {
     acts: {
+      host: () => go('#/livehost/' + id),
       copyhost: async () => { try { await navigator.clipboard.writeText(hostUrl); toast('Host link copied', 'good'); } catch (_) { toast('Copy failed'); } },
       edit: () => scheduleSession(s),
       del: async () => { if (await confirmModal('Delete “' + title + '”? Its chat, questions and attendance go too.', { danger: true, confirmLabel: 'Delete' })) { await api('/manage/sessions/' + id, { method: 'DELETE' }); toast('Session deleted'); invalidateLive(); go('#/live'); } },
