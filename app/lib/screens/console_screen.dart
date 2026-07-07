@@ -2,8 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart' hide Text;
+import 'package:flutter/material.dart' hide Text;
+import 'package:onrol_app/widgets/upper_text.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 

@@ -1,8 +1,9 @@
 import 'dart:async';
 
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/cupertino.dart' hide Text;
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
+import 'package:onrol_app/widgets/upper_text.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 

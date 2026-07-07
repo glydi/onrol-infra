@@ -1,6 +1,7 @@
 import 'dart:ui';
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart' hide Text;
+import 'package:flutter/material.dart' hide Text;
+import 'package:onrol_app/widgets/upper_text.dart';
 
 import '../theme.dart';
 import '../theme_controller.dart';
