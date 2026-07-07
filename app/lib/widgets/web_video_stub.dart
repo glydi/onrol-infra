@@ -20,8 +20,11 @@ Widget liveHlsVideoElement(
   int skewMs = 0,
   String title = '',
   String course = '',
+  String instanceId = '',
 }) =>
     const SizedBox.shrink();
+
+void liveDisposeInstance(String id) {}
 
 // Web-only host-control hooks (mobile draws these overlays in Flutter instead).
 void liveSetMuted(bool muted) {}

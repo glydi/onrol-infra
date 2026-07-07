@@ -611,6 +611,49 @@ void liveSetBanner(String text) {
   }
 }
 
+// Each live player owns its hls.js + <video> so it can be fully torn down when
+// the Flutter widget is disposed. Without this, seeking / switching video /
+// leaving the room leaves the OLD element alive — its audio keeps playing under
+// the new one ("two voices").
+class _LiveInstance {
+  _LiveInstance(this.hls, this.video, this.timer);
+  final js.JsObject? hls;
+  final html.VideoElement video;
+  final Timer? timer;
+}
+
+final Map<String, _LiveInstance> _liveInstances = {};
+
+/// Fully tear down a live player instance (destroy hls.js, stop + remove the
+/// <video>) so no orphaned audio survives the widget's disposal.
+void liveDisposeInstance(String id) {
+  final inst = _liveInstances.remove(id);
+  if (inst == null) return;
+  try {
+    inst.timer?.cancel();
+  } catch (_) {}
+  try {
+    inst.hls?.callMethod('destroy');
+  } catch (_) {}
+  try {
+    inst.video
+      ..pause()
+      ..muted = true
+      ..removeAttribute('src')
+      ..load();
+    inst.video.remove();
+  } catch (_) {}
+  // If the host-control refs pointed at this element, drop them so a stale
+  // reference can't silently no-op or, worse, target a destroyed node.
+  if (identical(_lastLiveVideo, inst.video)) {
+    _lastLiveVideo = null;
+    _liveCover = null;
+    _liveCoverLabel = null;
+    _liveBanner = null;
+    _liveHostPaused = false;
+  }
+}
+
 Widget liveHlsVideoElement(
   String url, {
   String authToken = '',
@@ -618,6 +661,7 @@ Widget liveHlsVideoElement(
   int skewMs = 0,
   String title = '',
   String course = '',
+  String instanceId = '',
 }) {
   final viewType = 'onrol-live-${_seq++}';
   ui_web.platformViewRegistry.registerViewFactory(viewType, (int id) {
@@ -894,7 +938,7 @@ Widget liveHlsVideoElement(
       if (html.document.hidden == false) toEdge();
     });
     _liveGuardTimer?.cancel();
-    _liveGuardTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+    final guardTimer = _liveGuardTimer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (container.isConnected != true) {
         t.cancel();
         return;
@@ -904,6 +948,9 @@ Widget liveHlsVideoElement(
         video.play();
       }
     });
+    if (instanceId.isNotEmpty) {
+      _liveInstances[instanceId] = _LiveInstance(hlsRef, video, guardTimer);
+    }
     return container;
   });
   return HtmlElementView(viewType: viewType);

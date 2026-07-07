@@ -65,6 +65,10 @@ class _LivePlayerState extends State<LivePlayer> {
   // don't recreate the <video>/hls.js element and restart the stream.
   Widget? _webView;
   Timer? _syncTimer;
+  // Unique id so this player's web hls.js + <video> can be torn down on dispose
+  // (otherwise the old element keeps playing audio → "two voices").
+  static int _liveInstanceCounter = 0;
+  final String _liveId = 'onrol-live-inst-${_liveInstanceCounter++}';
 
   // Follow the live edge. The server's sliding-window playlist has no end while
   // live, so the player treats it as a genuine live stream — there is nothing to
@@ -154,6 +158,7 @@ class _LivePlayerState extends State<LivePlayer> {
   void dispose() {
     _syncTimer?.cancel();
     _c?.dispose();
+    if (kIsWeb) liveDisposeInstance(_liveId); // destroy hls.js + <video> — no orphaned audio
     SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
@@ -208,7 +213,7 @@ class _LivePlayerState extends State<LivePlayer> {
   // Cached so it's created exactly once for this player.
   Widget _webPlayer() => _webView ??= AspectRatio(
         aspectRatio: 16 / 9,
-        child: liveHlsVideoElement(widget.playlistUrl, authToken: widget.authToken, startEpochMs: widget.startEpochMs, skewMs: widget.skewMs, title: widget.title, course: widget.course),
+        child: liveHlsVideoElement(widget.playlistUrl, authToken: widget.authToken, startEpochMs: widget.startEpochMs, skewMs: widget.skewMs, title: widget.title, course: widget.course, instanceId: _liveId),
       );
 
   Widget _mobilePlayer() {
