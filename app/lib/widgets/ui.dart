@@ -158,7 +158,7 @@ class _PrimaryButtonState extends State<PrimaryButton> {
         scale: _scale * (enabled && _hover ? 1.015 : 1.0),
         duration: const Duration(milliseconds: 90),
         child: Container(
-          height: widget.square ? 46 : 44,
+          height: widget.square ? 52 : 50,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             // Admin (square): flat solid fill — sharp & standard. Else: gradient CTA.
@@ -183,9 +183,9 @@ class _PrimaryButtonState extends State<PrimaryButton> {
               : Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (widget.icon != null) ...[Icon(widget.icon, color: Colors.white, size: 18), const SizedBox(width: 7)],
+                    if (widget.icon != null) ...[Icon(widget.icon, color: Colors.white, size: 20), const SizedBox(width: 8)],
                     Text(widget.label,
-                        style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
+                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
                   ],
                 ),
         ),

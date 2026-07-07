@@ -3235,12 +3235,12 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
         decoration: BoxDecoration(color: p.accent.withOpacity(0.12), borderRadius: BorderRadius.zero),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 15, color: p.accent),
-          const SizedBox(width: 4),
-          Text(label, style: TextStyle(color: p.accent, fontSize: 13, fontWeight: FontWeight.w600)),
+          Icon(icon, size: 18, color: p.accent),
+          const SizedBox(width: 6),
+          Text(label, style: TextStyle(color: p.accent, fontSize: 14.5, fontWeight: FontWeight.w700)),
         ]),
       ),
     );
@@ -5529,12 +5529,12 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
         decoration: BoxDecoration(color: p.accent.withOpacity(0.12), borderRadius: BorderRadius.zero),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 15, color: p.accent),
-          const SizedBox(width: 4),
-          Text(label, style: TextStyle(color: p.accent, fontSize: 13, fontWeight: FontWeight.w600)),
+          Icon(icon, size: 18, color: p.accent),
+          const SizedBox(width: 6),
+          Text(label, style: TextStyle(color: p.accent, fontSize: 14.5, fontWeight: FontWeight.w700)),
         ]),
       ),
     );
