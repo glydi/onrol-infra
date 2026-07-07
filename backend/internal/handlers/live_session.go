@@ -268,6 +268,7 @@ func (h *Handlers) LiveReact(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "unknown reaction")
 	}
 	addReaction(sessionID, emoji)
+	bumpReaction(sessionID, callerID(c)) // count toward the sender's attendance engagement
 	return c.JSON(fiber.Map{"ok": true})
 }
 
@@ -537,9 +538,16 @@ func (h *Handlers) LiveAttendance(c *fiber.Ctx) error {
 	}
 	h.flushAttendance(sessionID) // persist the latest in-memory watch-time first
 
+	// Session length (for % watched) and totals for the summary header.
+	var durationSecs int
+	_ = h.Pool.QueryRow(c.Context(),
+		`SELECT COALESCE(ma.duration_seconds,0) FROM class_sessions cs LEFT JOIN media_assets ma ON ma.id=cs.media_asset_id WHERE cs.id=$1`,
+		sessionID).Scan(&durationSecs)
+
 	rows, err := h.Pool.Query(c.Context(), `
 		SELECT COALESCE(u.full_name,''), COALESCE(u.email,''), COALESCE(u.phone,''), COALESCE(u.login_id,''),
-		       a.first_seen, a.last_seen, a.watched_seconds
+		       a.first_seen, a.last_seen, a.watched_seconds, a.reactions_sent,
+		       (SELECT count(*) FROM live_questions q WHERE q.session_id=$1 AND q.user_id=a.user_id) AS questions
 		FROM live_attendance a JOIN users u ON u.id = a.user_id
 		WHERE a.session_id = $1
 		ORDER BY a.watched_seconds DESC, u.full_name ASC`, sessionID)
@@ -548,20 +556,34 @@ func (h *Handlers) LiveAttendance(c *fiber.Ctx) error {
 	}
 	defer rows.Close()
 	out := []fiber.Map{}
+	var totalWatch int64
 	for rows.Next() {
 		var name, email, phone, loginID string
 		var first, last time.Time
-		var watched int64
-		if err := rows.Scan(&name, &email, &phone, &loginID, &first, &last, &watched); err != nil {
+		var watched, reactions, questions int64
+		if err := rows.Scan(&name, &email, &phone, &loginID, &first, &last, &watched, &reactions, &questions); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		totalWatch += watched
+		pct := 0
+		if durationSecs > 0 {
+			pct = int(watched * 100 / int64(durationSecs))
+			if pct > 100 {
+				pct = 100
+			}
 		}
 		out = append(out, fiber.Map{
 			"name": name, "email": email, "phone": phone, "login_id": loginID,
 			"first_seen": first.UTC().Format(time.RFC3339), "last_seen": last.UTC().Format(time.RFC3339),
-			"watched_seconds": watched,
+			"watched_seconds": watched, "watched_pct": pct,
+			"span_seconds": int64(last.Sub(first).Seconds()), "reactions": reactions, "questions": questions,
 		})
 	}
-	return c.JSON(fiber.Map{"attendance": out, "count": len(out)})
+	avg := int64(0)
+	if len(out) > 0 {
+		avg = totalWatch / int64(len(out))
+	}
+	return c.JSON(fiber.Map{"attendance": out, "count": len(out), "duration": durationSecs, "avg_watched_seconds": avg})
 }
 
 // LiveChatList returns chat ascending. With ?after=<rfc3339> it returns only

@@ -695,9 +695,11 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   // Host: who watched and for how long, with a CSV download (web).
   Future<void> _showAttendance() async {
     List<Map<String, dynamic>> rows = [];
+    int avg = 0;
     try {
       final d = ApiClient.decode(await widget.auth.apiGet('$_base/attendance'));
       rows = ((d['attendance'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
+      avg = (d['avg_watched_seconds'] as num?)?.toInt() ?? 0;
     } catch (_) {}
     if (!mounted) return;
     showModalBottomSheet(
@@ -710,7 +712,10 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Text('Attendance · ${rows.length}', style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+              Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text('Attendance · ${rows.length}', style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                if (rows.isNotEmpty) Text('avg ${_fmtHMS(avg)} watched', style: GoogleFonts.inter(color: Colors.white38, fontSize: 11.5)),
+              ]),
               const Spacer(),
               GestureDetector(
                 onTap: rows.isEmpty ? null : () => downloadText('attendance-${widget.sessionId}.csv', _attendanceCsv(rows)),
@@ -733,13 +738,28 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                   itemBuilder: (_, i) {
                     final r = rows[i];
                     final w = (r['watched_seconds'] as num?)?.toInt() ?? 0;
+                    final pct = (r['watched_pct'] as num?)?.toInt() ?? 0;
+                    final reacts = (r['reactions'] as num?)?.toInt() ?? 0;
+                    final qs = (r['questions'] as num?)?.toInt() ?? 0;
                     final name = r['name']?.toString() ?? '';
                     final who = name.isNotEmpty ? name : (r['email']?.toString().isNotEmpty ?? false ? r['email'].toString() : (r['phone']?.toString() ?? 'Student'));
+                    final extras = <String>[if (reacts > 0) '$reacts reactions', if (qs > 0) '$qs question${qs == 1 ? '' : 's'}'];
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 9),
-                      child: Row(children: [
-                        Expanded(child: Text(who, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: Colors.white, fontSize: 13))),
-                        Text(_fmtHMS(w), style: GoogleFonts.inter(color: Colors.white60, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Expanded(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(who, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 2),
+                            Text([_relTime(r['first_seen']?.toString()), if (extras.isNotEmpty) extras.join(' · ')].where((s) => s.isNotEmpty).join(' · '),
+                                style: GoogleFonts.inter(color: Colors.white38, fontSize: 11)),
+                          ]),
+                        ),
+                        const SizedBox(width: 10),
+                        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                          Text(_fmtHMS(w), style: GoogleFonts.inter(color: Colors.white70, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                          Text('$pct%', style: GoogleFonts.inter(color: pct >= 80 ? const Color(0xFF34C759) : (pct >= 40 ? const Color(0xFFFFB020) : Colors.white38), fontSize: 11, fontWeight: FontWeight.w600)),
+                        ]),
                       ]),
                     );
                   },
@@ -751,12 +771,24 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     );
   }
 
+  // Short "joined HH:MM" label from an ISO timestamp.
+  String _relTime(String? iso) {
+    final t = DateTime.tryParse(iso ?? '')?.toLocal();
+    if (t == null) return '';
+    String two(int n) => n.toString().padLeft(2, '0');
+    return 'joined ${two(t.hour)}:${two(t.minute)}';
+  }
+
   String _attendanceCsv(List<Map<String, dynamic>> rows) {
     String esc(Object? v) => '"${(v ?? '').toString().replaceAll('"', '""')}"';
-    final b = StringBuffer('Name,Email,Phone,Login ID,First seen,Last seen,Watched (min)\n');
+    final b = StringBuffer('Name,Email,Phone,Login ID,Joined,Last active,Watched (min),% of class,Reactions,Questions\n');
     for (final r in rows) {
       final w = (r['watched_seconds'] as num?)?.toInt() ?? 0;
-      b.writeln([esc(r['name']), esc(r['email']), esc(r['phone']), esc(r['login_id']), esc(r['first_seen']), esc(r['last_seen']), (w / 60).toStringAsFixed(1)].join(','));
+      b.writeln([
+        esc(r['name']), esc(r['email']), esc(r['phone']), esc(r['login_id']),
+        esc(r['first_seen']), esc(r['last_seen']), (w / 60).toStringAsFixed(1),
+        (r['watched_pct'] as num?)?.toInt() ?? 0, (r['reactions'] as num?)?.toInt() ?? 0, (r['questions'] as num?)?.toInt() ?? 0,
+      ].join(','));
     }
     return b.toString();
   }

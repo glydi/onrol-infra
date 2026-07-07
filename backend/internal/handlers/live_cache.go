@@ -183,6 +183,7 @@ type viewerRec struct {
 	firstSeen int64 // unix sec, set once
 	lastSeen  int64 // unix sec, last heartbeat
 	watched   int64 // seconds accumulated since the last flush
+	reactions int64 // reactions sent since the last flush
 	dirty     bool  // has unflushed change
 }
 
@@ -211,6 +212,26 @@ func touchPresence(session, user string) {
 	presenceMu.Unlock()
 }
 
+// bumpReaction records that a user sent a reaction (for attendance engagement).
+func bumpReaction(session, user string) {
+	now := time.Now().Unix()
+	presenceMu.Lock()
+	m := presence[session]
+	if m == nil {
+		m = map[string]*viewerRec{}
+		presence[session] = m
+	}
+	r := m[user]
+	if r == nil {
+		r = &viewerRec{firstSeen: now, lastSeen: now}
+		m[user] = r
+	}
+	r.reactions++
+	r.lastSeen = now
+	r.dirty = true
+	presenceMu.Unlock()
+}
+
 // presenceCount returns the number of users seen within `within`.
 func presenceCount(session string, within time.Duration) int {
 	cutoff := time.Now().Unix() - int64(within.Seconds())
@@ -234,8 +255,8 @@ func presenceCount(session string, within time.Duration) int {
 // numbers are current. If onlySession is non-empty only that session is flushed.
 func (h *Handlers) flushAttendance(onlySession string) {
 	type row struct {
-		session, user            string
-		first, last, watchedSecs int64
+		session, user                  string
+		first, last, watchedSecs, react int64
 	}
 	var rows []row
 	now := time.Now().Unix()
@@ -246,8 +267,9 @@ func (h *Handlers) flushAttendance(onlySession string) {
 		}
 		for u, r := range m {
 			if r.dirty {
-				rows = append(rows, row{s, u, r.firstSeen, r.lastSeen, r.watched})
+				rows = append(rows, row{s, u, r.firstSeen, r.lastSeen, r.watched, r.reactions})
 				r.watched = 0
+				r.reactions = 0
 				r.dirty = false
 			}
 			if now-r.lastSeen > 300 { // idle → prune (already flushed above)
@@ -262,13 +284,14 @@ func (h *Handlers) flushAttendance(onlySession string) {
 
 	for _, rw := range rows {
 		_, _ = h.Pool.Exec(context.Background(), `
-			INSERT INTO live_attendance (session_id, user_id, first_seen, last_seen, watched_seconds)
-			VALUES ($1, $2, to_timestamp($3), to_timestamp($4), $5)
+			INSERT INTO live_attendance (session_id, user_id, first_seen, last_seen, watched_seconds, reactions_sent)
+			VALUES ($1, $2, to_timestamp($3), to_timestamp($4), $5, $6)
 			ON CONFLICT (session_id, user_id) DO UPDATE SET
 				first_seen      = LEAST(live_attendance.first_seen, EXCLUDED.first_seen),
 				last_seen       = GREATEST(live_attendance.last_seen, EXCLUDED.last_seen),
-				watched_seconds = live_attendance.watched_seconds + EXCLUDED.watched_seconds`,
-			rw.session, rw.user, rw.first, rw.last, rw.watchedSecs)
+				watched_seconds = live_attendance.watched_seconds + EXCLUDED.watched_seconds,
+				reactions_sent  = live_attendance.reactions_sent  + EXCLUDED.reactions_sent`,
+			rw.session, rw.user, rw.first, rw.last, rw.watchedSecs, rw.react)
 	}
 }
 

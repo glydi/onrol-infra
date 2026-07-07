@@ -542,7 +542,17 @@ void _ensureLivePulse() {
   if (_livePulseInjected) return;
   _livePulseInjected = true;
   html.document.head?.append(
-    html.StyleElement()..text = '@keyframes onrolLivePulse{0%,100%{opacity:1}50%{opacity:0.3}}',
+    html.StyleElement()
+      ..text = '@keyframes onrolLivePulse{0%,100%{opacity:1}50%{opacity:0.3}}'
+          // Kill every native media-control affordance on the live <video> — in
+          // particular the play/pause button the browser draws on hover.
+          '.onrol-live-vid::-webkit-media-controls,'
+          '.onrol-live-vid::-webkit-media-controls-enclosure,'
+          '.onrol-live-vid::-webkit-media-controls-panel,'
+          '.onrol-live-vid::-webkit-media-controls-play-button,'
+          '.onrol-live-vid::-webkit-media-controls-overlay-play-button,'
+          '.onrol-live-vid::-webkit-media-controls-start-playback-button'
+          '{display:none !important;-webkit-appearance:none !important;}',
   );
 }
 
@@ -722,6 +732,7 @@ Widget liveHlsVideoElement(
     _ensureLivePulse();
     final video = html.VideoElement()
       ..controls = false
+      ..className = 'onrol-live-vid' // CSS hides all native media controls (hover pause etc.)
       ..autoplay = true
       ..muted = true
       ..tabIndex = -1 // not keyboard-focusable → no space/arrow seek or pause
@@ -949,27 +960,6 @@ Widget liveHlsVideoElement(
     } else {
       video.src = url; // Safari plays the live HLS natively (follows the edge)
     }
-
-    // ---- Reload button: recover a stalled stream without leaving the room ----
-    void reloadStream() {
-      try {
-        final h = hlsRef;
-        if (h != null) {
-          h.callMethod('stopLoad');
-          h.callMethod('startLoad', [-1]); // reload the playlist, resume at the edge
-        } else {
-          video.src = url; // Safari: re-set the source
-        }
-        if (_liveHostPaused) {
-          video.pause();
-        } else {
-          video.play();
-          Timer(const Duration(milliseconds: 400), toEdge);
-        }
-      } catch (_) {}
-    }
-
-    controls.insertBefore(iconBtn(_icReplay, reloadStream, size: 26), muteBtn);
 
     // Show a descriptive title in the OS / browser media panel while making every
     // transport control inert (no pause/seek/skip can drive the stream).

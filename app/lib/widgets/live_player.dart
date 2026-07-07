@@ -173,27 +173,6 @@ class _LivePlayerState extends State<LivePlayer> {
     _c?.setVolume((_muted || widget.hostMuted) ? 0 : 1);
   }
 
-  // Reload the stream (recover a stall) without leaving the room. Re-creates the
-  // controller so it re-fetches the playlist and snaps to the live edge.
-  Future<void> _reload() async {
-    final old = _c;
-    setState(() => _ready = false);
-    await old?.dispose();
-    _c = VideoPlayerController.networkUrl(
-      Uri.parse(widget.playlistUrl),
-      httpHeaders: widget.authToken.isNotEmpty ? {'Authorization': 'Bearer ${widget.authToken}'} : const {},
-    );
-    try {
-      await _c!.initialize();
-      _c!.play();
-      _followEdge(force: true);
-      _applyHostState();
-      if (mounted) setState(() => _ready = true);
-    } catch (_) {
-      if (mounted) setState(() => _error = 'Could not reload the live stream.');
-    }
-  }
-
   Future<void> _toggleFullscreen() async {
     setState(() => _fullscreen = !_fullscreen);
     if (_fullscreen) {
@@ -240,8 +219,6 @@ class _LivePlayerState extends State<LivePlayer> {
         Positioned(
           bottom: 8, right: 8,
           child: Row(children: [
-            _ctlBtn(CupertinoIcons.arrow_clockwise, _reload),
-            const SizedBox(width: 6),
             _ctlBtn(_muted ? CupertinoIcons.volume_off : CupertinoIcons.volume_up, _toggleMute),
             const SizedBox(width: 6),
             _ctlBtn(_fullscreen ? CupertinoIcons.fullscreen_exit : CupertinoIcons.fullscreen, _toggleFullscreen),
