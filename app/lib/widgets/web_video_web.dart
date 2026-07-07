@@ -567,16 +567,22 @@ html.DivElement? _liveLightbox;
 // video holds on its last frame (instead of snapping back to the live edge).
 bool _liveHostPaused = false;
 
-/// Show a presented slide image over the video (host slideshow); '' hides it.
+/// Show a slide image in place of the video (host slideshow). We HIDE the
+/// <video> element itself (its audio keeps playing) rather than just stacking on
+/// top of it — a hardware-composited <video> can otherwise render above overlays
+/// regardless of z-index. '' restores the video.
 void liveSetSlide(String imageUri) {
   final img = _liveSlideImg;
+  final v = _lastLiveVideo;
   if (img == null) return;
   if (imageUri.isEmpty) {
     img.style.display = 'none';
     img.removeAttribute('src');
+    v?.style.visibility = 'visible';
   } else {
     img.src = imageUri;
     img.style.display = 'block';
+    v?.style.visibility = 'hidden'; // video invisible, audio continues
   }
 }
 
