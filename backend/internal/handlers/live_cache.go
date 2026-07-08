@@ -63,7 +63,7 @@ func (h *Handlers) liveAccessCached(c *fiber.Ctx, sessionID string) (chatOK, qaO
 	if err != nil {
 		return false, false, false, false, false // unknown session / error → not allowed (uncached)
 	}
-	isStaff = h.canManageCourse(c, courseID) == nil || callerRole(c) == "live_host"
+	isStaff = h.liveStaff(c, courseID)
 	allowed = enrolled || isStaff
 	accessMu.Lock()
 	accessCache[key] = accessEntry{chatOK, qaOK, reactOK, isStaff, allowed, now.Add(accessTTL)}

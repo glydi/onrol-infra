@@ -24,6 +24,19 @@ const liveEndGraceSecs = 25
 // toggles plus whether the caller is course STAFF (the host/admin). Access is
 // granted to an enrolled student OR to course staff. pgx.ErrNoRows means not
 // entitled (or no such session) → callers map it to 403.
+// liveStaff reports whether the caller is staff for live purposes — allowed to
+// view / host / chat on any session in the course regardless of enrollment or
+// batch. It mirrors the exact role set the playlist + HLS-key gates already
+// allow (manager/superadmin/instructor/live_host), plus any per-course manager
+// grant, so /state never 403s a host that the video gates would let in.
+func (h *Handlers) liveStaff(c *fiber.Ctx, courseID string) bool {
+	switch callerRole(c) {
+	case "superadmin", "manager", "instructor", "live_host":
+		return true
+	}
+	return h.canManageCourse(c, courseID) == nil
+}
+
 func (h *Handlers) liveAccess(c *fiber.Ctx, sessionID string) (chatOK, qaOK, isStaff bool, err error) {
 	var courseID string
 	var enrolled bool
@@ -35,7 +48,7 @@ func (h *Handlers) liveAccess(c *fiber.Ctx, sessionID string) (chatOK, qaOK, isS
 	if err != nil {
 		return
 	}
-	isStaff = h.canManageCourse(c, courseID) == nil || callerRole(c) == "live_host"
+	isStaff = h.liveStaff(c, courseID)
 	if !enrolled && !isStaff {
 		err = pgx.ErrNoRows
 	}
