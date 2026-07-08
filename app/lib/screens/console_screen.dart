@@ -2129,11 +2129,21 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   List<dynamic> _sessions = [];
   List<dynamic> _assessments = [];
   bool _loading = true;
+  // Bumped after every reload so pushed section screens (Course Content, Live
+  // Classes, Assignments) rebuild from the freshly-loaded lists without owning
+  // their own copy of the data or the editing logic.
+  final ValueNotifier<int> _rev = ValueNotifier<int>(0);
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _rev.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -2145,7 +2155,116 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       final a = await widget.auth.apiGet('/api/v1/manage/courses/${widget.courseId}/assessments');
       _assessments = (ApiClient.decode(a)['assessments'] as List?) ?? [];
     } catch (_) {}
-    if (mounted) setState(() => _loading = false);
+    if (mounted) {
+      setState(() => _loading = false);
+      _rev.value++; // refresh any open section screen
+    }
+  }
+
+  // ---- separate section screens (course hub) --------------------------------
+  // Each course area is its own screen opened from the hub, instead of one long
+  // scroll. They share this state's data + editing methods; a route pushed here
+  // rebuilds via _rev whenever _load() refreshes.
+
+  List<Widget> _modulesSection() {
+    final modules = (_course?['modules'] as List?) ?? [];
+    return [
+      if (modules.isEmpty)
+        AppleCard(square: true, child: Text('No modules yet. Add one, then add lessons inside it.', style: AppleTheme.footnote(context)))
+      else
+        ...modules.map((m) => _moduleCard(m as Map<String, dynamic>)),
+    ];
+  }
+
+  List<Widget> _liveClassesSection() => [
+        if (_sessions.isEmpty)
+          AppleCard(square: true, child: Text('No live classes scheduled. Add one — enrolled students will see it and can join.', style: AppleTheme.footnote(context)))
+        else
+          ..._sessions.map((s) => _sessionCard(s as Map<String, dynamic>)),
+      ];
+
+  List<Widget> _assignmentsSection() => [
+        if (_assessments.isEmpty)
+          AppleCard(square: true, child: Text('None yet. Add a quiz or assignment — students submit and you grade.', style: AppleTheme.footnote(context)))
+        else
+          ..._assessmentsByDay(),
+      ];
+
+  // Push a full-screen section (its own back button + optional Add action). The
+  // body is rebuilt from live state on every reload via _rev.
+  void _openSection(String title, List<Widget> Function() body, {IconData? addIcon, VoidCallback? onAdd}) {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) {
+      final p = Palette.of(context);
+      return SquareScope(
+        child: Scaffold(
+          backgroundColor: p.bg,
+          appBar: AppBar(
+            backgroundColor: p.bg.withOpacity(0.9),
+            scrolledUnderElevation: 0,
+            elevation: 0,
+            leading: IconButton(icon: const Icon(CupertinoIcons.chevron_left), onPressed: () => Navigator.pop(context)),
+            title: Text(title, style: AppleTheme.headline(context)),
+            actions: [
+              if (onAdd != null) IconButton(icon: Icon(addIcon ?? CupertinoIcons.add, color: p.accent), onPressed: onAdd),
+            ],
+          ),
+          body: ValueListenableBuilder<int>(
+            valueListenable: _rev,
+            builder: (ctx, _, __) => RefreshIndicator(
+              color: p.accent,
+              onRefresh: _load,
+              child: ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 40), children: body()),
+            ),
+          ),
+        ),
+      );
+    }));
+  }
+
+  void _openCalendar() {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) {
+      final p = Palette.of(context);
+      return SquareScope(
+        child: Scaffold(
+          backgroundColor: p.bg,
+          appBar: AppBar(
+            backgroundColor: p.bg.withOpacity(0.9),
+            scrolledUnderElevation: 0,
+            elevation: 0,
+            leading: IconButton(icon: const Icon(CupertinoIcons.chevron_left), onPressed: () => Navigator.pop(context)),
+            title: Text('Calendar', style: AppleTheme.headline(context)),
+          ),
+          body: Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: AdminCalendarScreen(auth: widget.auth)),
+        ),
+      );
+    }));
+  }
+
+  // One row in the course hub: icon · title/subtitle · chevron, opens a screen.
+  Widget _hubButton(String title, String subtitle, IconData icon, VoidCallback onTap) {
+    final p = Palette.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: AppleCard(
+        square: true,
+        onTap: onTap,
+        child: Row(children: [
+          Container(
+            width: 40, height: 40, alignment: Alignment.center,
+            decoration: BoxDecoration(color: p.accent.withOpacity(0.12), borderRadius: BorderRadius.zero),
+            child: Icon(icon, color: p.accent, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: AppleTheme.headline(context)),
+              Text(subtitle, style: AppleTheme.footnote(context)),
+            ]),
+          ),
+          Icon(CupertinoIcons.chevron_right, size: 18, color: p.secondary),
+        ]),
+      ),
+    );
   }
 
   void _toast(String m) => ScaffoldMessenger.of(context)
@@ -2241,68 +2360,24 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                     Text(_admDesc[admIndex], style: AppleTheme.footnote(context)),
                   ]),
                 ),
-                const SizedBox(height: 18),
-                Row(children: [
-                  Expanded(child: SectionHeader('Modules [ ${modules.length} ]')),
-                  _smallButton('Add', CupertinoIcons.add, _addModule),
-                ]),
-                if (modules.isEmpty)
-                  AppleCard(square: true, child: Text('No modules yet. Add one, then add lessons inside it.', style: AppleTheme.footnote(context)))
-                else
-                  ...modules.map((m) => _moduleCard(m as Map<String, dynamic>)),
-
-                const SizedBox(height: 22),
-                Row(children: [
-                  Expanded(child: SectionHeader('Live Classes [ ${_sessions.length} ]')),
-                  _smallButton('Add', CupertinoIcons.videocam_fill, _addSession),
-                ]),
-                if (_sessions.isEmpty)
-                  AppleCard(square: true, child: Text('No live classes scheduled. Add one — enrolled students will see it and can join.', style: AppleTheme.footnote(context)))
-                else
-                  ..._sessions.map((s) => _sessionCard(s as Map<String, dynamic>)),
-
-                const SizedBox(height: 22),
-                Row(children: [
-                  Expanded(child: SectionHeader('Quizzes & Assignments [ ${_assessments.length} ]')),
-                  _smallButton('Add', CupertinoIcons.doc_text_fill, _addAssignment),
-                ]),
-                if (_assessments.isEmpty)
-                  AppleCard(square: true, child: Text('None yet. Add a quiz or assignment — students submit and you grade.', style: AppleTheme.footnote(context)))
-                else
-                  ..._assessmentsByDay(),
-
-                const SizedBox(height: 22),
-                PrimaryButton(
-                  label: 'Batches & Settings',
-                  icon: CupertinoIcons.square_stack_3d_up,
-                  square: true,
-                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => CourseBatchesScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title))),
-                ),
-                const SizedBox(height: 12),
-                PrimaryButton(
-                  label: 'Doubts & Discussion',
-                  icon: CupertinoIcons.chat_bubble_2_fill,
-                  square: true,
-                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => DiscussionScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title))),
-                ),
-                const SizedBox(height: 12),
-                PrimaryButton(
-                  label: 'Study Hub material',
-                  icon: CupertinoIcons.doc_richtext,
-                  square: true,
-                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => StudyHubEditorScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title))),
-                ),
-                const SizedBox(height: 12),
-                PrimaryButton(
-                  label: 'Issue Certificates',
-                  icon: CupertinoIcons.rosette,
-                  square: true,
-                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => _IssueCertificates(auth: widget.auth, courseId: widget.courseId, title: widget.title))),
-                ),
+                const SizedBox(height: 20),
+                const SectionHeader('Manage'),
+                // Each area is its own screen (kept separate, not one long scroll).
+                _hubButton('Course Content', '${modules.length} module${modules.length == 1 ? '' : 's'}', CupertinoIcons.square_stack_3d_up_fill,
+                    () => _openSection('Course Content', _modulesSection, addIcon: CupertinoIcons.add, onAdd: _addModule)),
+                _hubButton('Live Classes', '${_sessions.length} scheduled', CupertinoIcons.videocam_fill,
+                    () => _openSection('Live Classes', _liveClassesSection, addIcon: CupertinoIcons.videocam_fill, onAdd: _addSession)),
+                _hubButton('Assignments & Quizzes', '${_assessments.length} total', CupertinoIcons.doc_text_fill,
+                    () => _openSection('Assignments & Quizzes', _assignmentsSection, addIcon: CupertinoIcons.doc_text_fill, onAdd: _addAssignment)),
+                _hubButton('Calendar', 'Live classes & deadlines', CupertinoIcons.calendar, _openCalendar),
+                _hubButton('Batches & Settings', 'Enrollment batches', CupertinoIcons.square_grid_2x2_fill,
+                    () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => CourseBatchesScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title)))),
+                _hubButton('Doubts & Discussion', 'Student questions', CupertinoIcons.chat_bubble_2_fill,
+                    () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DiscussionScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title)))),
+                _hubButton('Study Hub material', 'Reference material', CupertinoIcons.doc_richtext,
+                    () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => StudyHubEditorScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title)))),
+                _hubButton('Issue Certificates', 'Award completion', CupertinoIcons.rosette,
+                    () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => _IssueCertificates(auth: widget.auth, courseId: widget.courseId, title: widget.title)))),
               ],
             ),
     );
