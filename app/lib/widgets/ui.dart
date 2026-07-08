@@ -686,23 +686,24 @@ Future<bool?> showFormSheet(
   );
 }
 
-// Canonical batch code, e.g. "AIG 01 07 26" — course short form (upper) + batch
-// number + start month + start year, numeric parts zero-padded to 2 digits.
-// Returns '' if any part is blank (an incomplete code).
-String buildBatchCode(String course, String batch, String month, String year) {
+// Canonical batch code, e.g. "AIG 01 07 26 AA" — course short form (upper) +
+// batch number + start month + start year (numeric parts zero-padded to 2
+// digits) + a two-letter code (upper). Returns '' if any part is blank.
+String buildBatchCode(String course, String batch, String month, String year, String code) {
   final c = course.trim().toUpperCase();
   String pad(String s) {
     final n = s.trim();
     return n.isEmpty ? '' : n.padLeft(2, '0');
   }
   final b = pad(batch), m = pad(month), y = pad(year);
-  if (c.isEmpty || b.isEmpty || m.isEmpty || y.isEmpty) return '';
-  return '$c $b $m $y';
+  final s = code.trim().toUpperCase();
+  if (c.isEmpty || b.isEmpty || m.isEmpty || y.isEmpty || s.isEmpty) return '';
+  return '$c $b $m $y $s';
 }
 
-/// Four-field batch-code input (course short form · batch no. · start month ·
-/// start year) that builds a code like "AIG 01 07 26". Replaces the old plain
-/// integer batch everywhere a batch is entered.
+/// Five-field batch-code input (course short form · batch no. · start month ·
+/// start year · two-letter code) that builds a code like "AIG 01 07 26 AA".
+/// Replaces the old plain integer batch everywhere a batch is entered.
 class BatchCodeField extends StatefulWidget {
   const BatchCodeField({this.initial, required this.onChanged});
   final String? initial;
@@ -713,50 +714,56 @@ class BatchCodeField extends StatefulWidget {
 }
 
 class BatchCodeFieldState extends State<BatchCodeField> {
-  late final TextEditingController _course, _batch, _month, _year;
+  late final TextEditingController _course, _batch, _month, _year, _code;
 
   @override
   void initState() {
     super.initState();
     final raw = (widget.initial ?? '').trim();
     final parts = raw.isEmpty ? <String>[] : raw.split(RegExp(r'\s+'));
-    final ok = parts.length == 4;
-    String at(int i) => ok ? parts[i] : '';
+    // Accept a legacy 4-part code (no trailing letters) as well as the 5-part one.
+    final ok = parts.length >= 4;
+    String at(int i) => ok && i < parts.length ? parts[i] : '';
     _course = TextEditingController(text: (ok ? at(0) : 'aig').toUpperCase()); // default course code
     _batch = TextEditingController(text: at(1));
     _month = TextEditingController(text: at(2));
     _year = TextEditingController(text: at(3));
+    _code = TextEditingController(text: at(4).toUpperCase());
   }
 
   @override
   void dispose() {
-    for (final c in [_course, _batch, _month, _year]) {
+    for (final c in [_course, _batch, _month, _year, _code]) {
       c.dispose();
     }
     super.dispose();
   }
 
   void _emit() {
-    // Course code is always uppercase (e.g. AIG); force it as the user types.
-    final up = _course.text.toUpperCase();
-    if (up != _course.text) {
-      _course.value = _course.value.copyWith(
-        text: up,
-        selection: TextSelection.collapsed(offset: up.length),
-      );
+    // Course code and the trailing two-letter code are always uppercase; force
+    // it as the user types.
+    for (final ctl in [_course, _code]) {
+      final up = ctl.text.toUpperCase();
+      if (up != ctl.text) {
+        ctl.value = ctl.value.copyWith(
+          text: up,
+          selection: TextSelection.collapsed(offset: up.length),
+        );
+      }
     }
     setState(() {}); // refresh the live preview
-    widget.onChanged(buildBatchCode(_course.text, _batch.text, _month.text, _year.text));
+    widget.onChanged(buildBatchCode(_course.text, _batch.text, _month.text, _year.text, _code.text));
   }
 
-  // Live "aig ** ** **" preview — ** for any group not yet filled.
+  // Live "AIG ** ** ** **" preview — ** for any group not yet filled.
   String _preview() {
     String g(TextEditingController ctl) {
       final n = ctl.text.trim();
       return n.isEmpty ? '**' : n.padLeft(2, '0');
     }
     final c = _course.text.trim().toUpperCase();
-    return '${c.isEmpty ? 'AIG' : c} ${g(_batch)} ${g(_month)} ${g(_year)}';
+    final s = _code.text.trim().toUpperCase();
+    return '${c.isEmpty ? 'AIG' : c} ${g(_batch)} ${g(_month)} ${g(_year)} ${s.isEmpty ? '**' : s}';
   }
 
   Widget _cell(TextEditingController c, String label, String hint, {int flex = 1, bool digits = false}) {
@@ -794,6 +801,8 @@ class BatchCodeFieldState extends State<BatchCodeField> {
         _cell(_month, 'Month', '**', digits: true),
         const SizedBox(width: 8),
         _cell(_year, 'Year', '**', digits: true),
+        const SizedBox(width: 8),
+        _cell(_code, 'Code', 'AA', flex: 2),
       ]),
       const SizedBox(height: 8),
       Text(_preview(), style: AppleTheme.body(context).copyWith(fontWeight: FontWeight.w700, letterSpacing: 1.5, color: p.accent)),
