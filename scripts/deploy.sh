@@ -78,9 +78,7 @@ deploy_web() {
   ( cd "$ROOT/app" && flutter build web --release --no-tree-shake-icons --pwa-strategy=none >/dev/null )
   log "Publishing web → $HOST:$WEB_ROOT (with timestamped backup)"
   ssh "$HOST" "cp -a $WEB_ROOT $WEB_ROOT.bak-\$(date +%Y%m%d-%H%M%S) 2>/dev/null || true"
-  # NOTE: the HTML staff console lives at $WEB_ROOT/admin/ (served by the existing
-  # `location /`); exclude it so this --delete web sync never wipes it.
-  rsync -az --delete --exclude 'admin/' -e ssh "$ROOT/app/build/web/" "$HOST:$WEB_ROOT/"
+  rsync -az --delete -e ssh "$ROOT/app/build/web/" "$HOST:$WEB_ROOT/"
   local L R
   L="$(md5sum "$ROOT/app/build/web/main.dart.js" | awk '{print $1}')"
   R="$(ssh "$HOST" "md5sum $WEB_ROOT/main.dart.js | awk '{print \$1}'")"

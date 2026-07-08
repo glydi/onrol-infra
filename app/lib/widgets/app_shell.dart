@@ -7,9 +7,10 @@ import '../theme.dart';
 import 'ui.dart';
 
 class NavDest {
-  const NavDest(this.icon, this.label);
+  const NavDest(this.icon, this.label, {this.section = ''});
   final IconData icon;
   final String label;
+  final String section;
 }
 
 /// Responsive app shell: a claymorphic left **sidebar** on wide screens, and a
@@ -42,6 +43,7 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
+    final admin = p.admin;
     return LayoutBuilder(builder: (context, c) {
       final wide = c.maxWidth >= 900;
       final body = IndexedStack(index: _i, children: widget.pages);
@@ -69,7 +71,7 @@ class _AppShellState extends State<AppShell> {
                 Expanded(
                   child: Align(
                     alignment: Alignment.topCenter,
-                    child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 920), child: body),
+                    child: ConstrainedBox(constraints: BoxConstraints(maxWidth: admin ? 1180 : 920), child: body),
                   ),
                 ),
               ]),
@@ -80,7 +82,7 @@ class _AppShellState extends State<AppShell> {
 
       return Scaffold(
         drawer: Drawer(
-          backgroundColor: p.bg,
+          backgroundColor: admin ? const Color(0xFF111418) : p.bg,
           child: _Sidebar(
             auth: widget.auth,
             dests: widget.destinations,
@@ -97,8 +99,10 @@ class _AppShellState extends State<AppShell> {
           surfaceTintColor: Colors.transparent,
           elevation: 0,
           scrolledUnderElevation: 0,
-          title: Text(widget.destinations[_i].label, style: AppleTheme.headline(context)),
-          actions: widget.trailing != null ? [Padding(padding: const EdgeInsets.only(right: 12), child: widget.trailing!)] : null,
+          title: Text(widget.destinations[_i].label, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.headline(context)),
+          actions: widget.trailing != null
+              ? [Padding(padding: const EdgeInsets.only(right: 12), child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 180), child: widget.trailing!))]
+              : null,
         ),
         body: body,
       );
@@ -117,13 +121,17 @@ class _Sidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
+    final admin = p.admin;
+    final sideBg = admin ? const Color(0xFF111418) : p.bg;
+    final sideBorder = admin ? const Color(0xFF252B33) : p.separator;
+    final sideMuted = admin ? const Color(0xFF7D8794) : p.secondary;
     return Container(
-      width: 256,
+      width: admin ? 272 : 256,
       decoration: BoxDecoration(
-        color: p.bg,
-        border: Border(right: BorderSide(color: p.separator)),
+        color: sideBg,
+        border: Border(right: BorderSide(color: sideBorder)),
       ),
-      padding: EdgeInsets.fromLTRB(16, MediaQuery.of(context).padding.top + 22, 16, 18),
+      padding: EdgeInsets.fromLTRB(14, MediaQuery.of(context).padding.top + 18, 14, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -131,30 +139,50 @@ class _Sidebar extends StatelessWidget {
             Container(
               width: 38, height: 38,
               decoration: BoxDecoration(
+                color: admin ? p.accent : null,
                 borderRadius: BorderRadius.zero,
-                gradient: const LinearGradient(colors: [AppleColors.blue, AppleColors.purple], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                gradient: admin ? null : const LinearGradient(colors: [AppleColors.blue, AppleColors.purple], begin: Alignment.topLeft, end: Alignment.bottomRight),
               ),
               child: const Icon(CupertinoIcons.book_fill, color: Colors.white, size: 20),
             ),
             const SizedBox(width: 10),
-            Text('ONROL', style: AppleTheme.title2(context).copyWith(color: p.accent, fontWeight: FontWeight.w800)),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('ONROL', maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.title2(context).copyWith(color: admin ? Colors.white : p.accent, fontWeight: FontWeight.w800)),
+                if (admin) Text('LMS ADMIN', maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.footnote(context).copyWith(color: sideMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.1)),
+              ]),
+            ),
           ]),
-          const SizedBox(height: 26),
-          ...List.generate(dests.length, (i) => _tile(context, dests[i], i == index, () => onSelect(i))),
+          const SizedBox(height: 22),
+          ..._navItems(context),
           const Spacer(),
-          Text('Appearance', style: AppleTheme.footnote(context)),
+          Text('Appearance', style: AppleTheme.footnote(context).copyWith(color: sideMuted)),
           const SizedBox(height: 8),
-          const ThemeToggle(),
+          Container(
+            padding: admin ? const EdgeInsets.all(4) : EdgeInsets.zero,
+            decoration: BoxDecoration(
+              color: admin ? const Color(0xFF161A20) : Colors.transparent,
+              border: admin ? Border.all(color: const Color(0xFF252B33)) : null,
+              borderRadius: BorderRadius.zero,
+            ),
+            child: const ThemeToggle(),
+          ),
           const SizedBox(height: 16),
-          AppleCard(
+          Container(
             padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: admin ? const Color(0xFF161A20) : p.card,
+              border: Border.all(color: admin ? const Color(0xFF252B33) : p.separator),
+              borderRadius: BorderRadius.zero,
+              boxShadow: admin ? null : p.clay,
+            ),
             child: Row(children: [
               Avatar(name: auth.user?.fullName ?? 'U', size: 36),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(auth.user?.fullName ?? 'User', style: AppleTheme.body(context).copyWith(fontSize: 14, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  Text((auth.user?.role ?? '').toUpperCase(), style: AppleTheme.footnote(context).copyWith(fontSize: 10)),
+                  Text(auth.user?.fullName ?? 'User', style: AppleTheme.body(context).copyWith(fontSize: 14, fontWeight: FontWeight.w600, color: admin ? Colors.white : null), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text((auth.user?.role ?? '').toUpperCase(), style: AppleTheme.footnote(context).copyWith(fontSize: 10, color: admin ? sideMuted : null)),
                 ]),
               ),
               GestureDetector(onTap: onSignOut, child: const Icon(CupertinoIcons.square_arrow_right, size: 20, color: AppleColors.red)),
@@ -165,10 +193,33 @@ class _Sidebar extends StatelessWidget {
     );
   }
 
+  List<Widget> _navItems(BuildContext context) {
+    final p = Palette.of(context);
+    final admin = p.admin;
+    final sideMuted = admin ? const Color(0xFF7D8794) : p.secondary;
+    final out = <Widget>[];
+    String? lastSection;
+    for (var i = 0; i < dests.length; i++) {
+      final section = dests[i].section;
+      if (section.isNotEmpty && section != lastSection) {
+        out.add(Padding(
+          padding: EdgeInsets.only(top: out.isEmpty ? 0 : 18, bottom: 7, left: 6),
+          child: Text(section.toUpperCase(), style: AppleTheme.footnote(context).copyWith(color: sideMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.9)),
+        ));
+        lastSection = section;
+      }
+      out.add(_tile(context, dests[i], i == index, () => onSelect(i)));
+    }
+    return out;
+  }
+
   Widget _tile(BuildContext context, NavDest d, bool on, VoidCallback onTap) {
     final p = Palette.of(context);
+    final admin = p.admin;
+    final sideInk = admin ? const Color(0xFFC7CFDA) : p.label;
+    final sideMuted = admin ? const Color(0xFF7D8794) : p.secondary;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 4),
       child: GestureDetector(
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
@@ -179,9 +230,11 @@ class _Sidebar extends StatelessWidget {
             borderRadius: BorderRadius.zero,
           ),
           child: Row(children: [
-            Icon(d.icon, size: 20, color: on ? Colors.white : p.secondary),
+            Icon(d.icon, size: 20, color: on ? Colors.white : sideMuted),
             const SizedBox(width: 12),
-            Text(d.label, style: AppleTheme.body(context).copyWith(fontSize: 15, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: on ? Colors.white : p.label)),
+            Expanded(
+              child: Text(d.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.body(context).copyWith(fontSize: 14.5, fontWeight: on ? FontWeight.w700 : FontWeight.w600, color: on ? Colors.white : sideInk)),
+            ),
           ]),
         ),
       ),

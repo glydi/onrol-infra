@@ -34,31 +34,62 @@ class AppleColors {
   static const clayHighlightDark = Color(0xFF353A4A);
 }
 
+/// The LMS admin look: orange-red accent, neutral surfaces, flatter depth.
+class AdminColors {
+  static const accent = Color(0xFFFF4F2B);
+  static const accentDark = Color(0xFFFF6A4D);
+  static const lightBg = Color(0xFFF4F5F7);
+  static const lightCard = Color(0xFFFFFFFF);
+  static const lightCard2 = Color(0xFFF7F8FA);
+  static const lightLabel = Color(0xFF141922);
+  static const lightSecondary = Color(0xFF4A5462);
+  static const lightSeparator = Color(0xFFE4E7EC);
+  static const darkBg = Color(0xFF0C0E11);
+  static const darkCard = Color(0xFF14181D);
+  static const darkCard2 = Color(0xFF1A1F26);
+  static const darkLabel = Color(0xFFE8EDF3);
+  static const darkSecondary = Color(0xFFA7B1BD);
+  static const darkSeparator = Color(0xFF252B33);
+}
+
+/// Marks a subtree as the LMS admin skin. Student surfaces keep Apple tokens.
+class AdminSkin extends InheritedWidget {
+  const AdminSkin({super.key, required super.child});
+  static bool on(BuildContext c) => c.getInheritedWidgetOfExactType<AdminSkin>() != null;
+  @override
+  bool updateShouldNotify(AdminSkin oldWidget) => false;
+}
+
 /// Per-theme palette resolved from BuildContext.
 class Palette {
   Palette(this.context);
   final BuildContext context;
   bool get dark => Theme.of(context).brightness == Brightness.dark;
+  bool get admin => AdminSkin.on(context);
 
-  Color get bg => dark ? AppleColors.darkBg : AppleColors.lightBg;
-  Color get card => dark ? AppleColors.darkCard : AppleColors.lightCard;
-  Color get card2 => dark ? AppleColors.darkCard2 : const Color(0xFFF2F2F7);
-  Color get label => dark ? AppleColors.darkLabel : AppleColors.lightLabel;
-  Color get secondary => dark ? AppleColors.darkSecondary : AppleColors.lightSecondary;
-  Color get separator => dark ? AppleColors.darkSeparator : AppleColors.lightSeparator;
-  Color get accent => dark ? AppleColors.blueDark : AppleColors.blue;
+  Color get bg => admin ? (dark ? AdminColors.darkBg : AdminColors.lightBg) : (dark ? AppleColors.darkBg : AppleColors.lightBg);
+  Color get card => admin ? (dark ? AdminColors.darkCard : AdminColors.lightCard) : (dark ? AppleColors.darkCard : AppleColors.lightCard);
+  Color get card2 => admin ? (dark ? AdminColors.darkCard2 : AdminColors.lightCard2) : (dark ? AppleColors.darkCard2 : const Color(0xFFF2F2F7));
+  Color get label => admin ? (dark ? AdminColors.darkLabel : AdminColors.lightLabel) : (dark ? AppleColors.darkLabel : AppleColors.lightLabel);
+  Color get secondary => admin ? (dark ? AdminColors.darkSecondary : AdminColors.lightSecondary) : (dark ? AppleColors.darkSecondary : AppleColors.lightSecondary);
+  Color get separator => admin ? (dark ? AdminColors.darkSeparator : AdminColors.lightSeparator) : (dark ? AppleColors.darkSeparator : AppleColors.lightSeparator);
+  Color get accent => admin ? (dark ? AdminColors.accentDark : AdminColors.accent) : (dark ? AppleColors.blueDark : AppleColors.blue);
 
   /// Claymorphism depth: a soft cool drop shadow + a light top-left highlight,
   /// giving surfaces a puffy, inflated "clay" look.
-  List<BoxShadow> get clay => dark
-      ? [
-          BoxShadow(color: AppleColors.clayShadowDark.withOpacity(0.65), offset: const Offset(0, 14), blurRadius: 26, spreadRadius: -4),
-          BoxShadow(color: AppleColors.clayHighlightDark.withOpacity(0.55), offset: const Offset(-6, -6), blurRadius: 14, spreadRadius: -8),
-        ]
-      : [
-          BoxShadow(color: AppleColors.clayShadow.withOpacity(0.75), offset: const Offset(0, 14), blurRadius: 30, spreadRadius: -6),
-          BoxShadow(color: AppleColors.clayHighlight.withOpacity(0.9), offset: const Offset(-8, -8), blurRadius: 18, spreadRadius: -10),
-        ];
+  List<BoxShadow> get clay => admin
+      ? (dark
+          ? [BoxShadow(color: Colors.black.withOpacity(0.55), offset: const Offset(0, 10), blurRadius: 30, spreadRadius: -16), BoxShadow(color: Colors.black.withOpacity(0.4), offset: const Offset(0, 1), blurRadius: 2)]
+          : [BoxShadow(color: const Color(0xFF101C28).withOpacity(0.16), offset: const Offset(0, 8), blurRadius: 24, spreadRadius: -14), BoxShadow(color: const Color(0xFF101C28).withOpacity(0.06), offset: const Offset(0, 1), blurRadius: 2)])
+      : (dark
+          ? [
+              BoxShadow(color: AppleColors.clayShadowDark.withOpacity(0.65), offset: const Offset(0, 14), blurRadius: 26, spreadRadius: -4),
+              BoxShadow(color: AppleColors.clayHighlightDark.withOpacity(0.55), offset: const Offset(-6, -6), blurRadius: 14, spreadRadius: -8),
+            ]
+          : [
+              BoxShadow(color: AppleColors.clayShadow.withOpacity(0.75), offset: const Offset(0, 14), blurRadius: 30, spreadRadius: -6),
+              BoxShadow(color: AppleColors.clayHighlight.withOpacity(0.9), offset: const Offset(-8, -8), blurRadius: 18, spreadRadius: -10),
+            ]);
 
   static Palette of(BuildContext c) => Palette(c);
 }

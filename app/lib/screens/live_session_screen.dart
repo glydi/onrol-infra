@@ -101,7 +101,12 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     super.initState();
     _title = widget.title;
     _pollState();
-    _stateTimer = Timer.periodic(const Duration(seconds: 3), (_) => _pollState());
+    // Poll fast (1s) so a host control — pause / resume / seek / black-out —
+    // reaches every viewer within ~1s instead of lagging up to a full cycle.
+    // /state is served from a per-session in-memory cache that the host control
+    // invalidates immediately, so a tighter poll adds request volume (cache
+    // hits) without extra DB load, which is exactly what that cache is for.
+    _stateTimer = Timer.periodic(const Duration(seconds: 1), (_) => _pollState());
     _qaTimer = Timer.periodic(const Duration(seconds: 4), (_) => _pollQuestions());
     if (!widget.isHost) {
       _hbTimer = Timer.periodic(const Duration(seconds: 20), (_) => _heartbeat());

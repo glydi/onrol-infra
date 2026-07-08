@@ -181,13 +181,31 @@ class _PrimaryButtonState extends State<PrimaryButton> {
           ),
           child: widget.busy
               ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
-              : Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (widget.icon != null) ...[Icon(widget.icon, color: Colors.white, size: 20), const SizedBox(width: 8)],
-                    Text(widget.label,
-                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
-                  ],
+              : LayoutBuilder(
+                  builder: (context, c) {
+                    final reserve = widget.icon == null ? 24.0 : 52.0;
+                    final labelMax = c.maxWidth.isFinite ? (c.maxWidth - reserve).clamp(24.0, 220.0) : 220.0;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if (widget.icon != null) ...[Icon(widget.icon, color: Colors.white, size: 20), const SizedBox(width: 8)],
+                          ConstrainedBox(
+                            constraints: BoxConstraints(maxWidth: labelMax),
+                            child: Text(
+                              widget.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: false,
+                              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
         ),
       ),

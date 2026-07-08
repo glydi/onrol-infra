@@ -238,8 +238,6 @@ func (h *Handlers) buildLivePlaylist(c *fiber.Ctx, sessionID string) (string, *f
 		}
 		start += pp.segs[i].dur
 	}
-	ended := elapsed >= pp.total || (manualEnd != nil && !manualEnd.After(time.Now()))
-
 	windowStart := liveEdge - (liveWindowSegments - 1)
 	if windowStart < 0 {
 		windowStart = 0
@@ -257,9 +255,13 @@ func (h *Handlers) buildLivePlaylist(c *fiber.Ctx, sessionID string) (string, *f
 	for i := windowStart; i <= liveEdge && i < len(pp.segs); i++ {
 		fmt.Fprintf(&sb, "#EXTINF:%.6f,\n%s%s\n", pp.segs[i].dur, pp.base, pp.segs[i].name)
 	}
-	if ended {
-		sb.WriteString("#EXT-X-ENDLIST\n")
-	}
+	// Do not emit #EXT-X-ENDLIST here. /state keeps the room "live" for a grace
+	// period after the recording's nominal duration so the player can drain the
+	// final buffered/live-edge seconds. If the playlist ends during that grace
+	// period, browsers treat it as finite VOD and expose an ended progress bar
+	// while video is still visible. The room/status endpoint owns the transition
+	// to ended; the live playlist should stay live-shaped until it is no longer
+	// requested.
 	return sb.String(), nil
 }
 

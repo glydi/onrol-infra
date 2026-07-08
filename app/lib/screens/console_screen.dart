@@ -159,6 +159,22 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     }
   }
 
+  Future<void> _peopleTools() async {
+    final v = await showSquareMenu(context, title: 'People tools', items: const [
+      SquareMenuItem('Converted Leads', value: 'leads', icon: CupertinoIcons.person_2_square_stack),
+      SquareMenuItem('Announcements', value: 'announcements', icon: CupertinoIcons.speaker_2_fill),
+      SquareMenuItem('Communities', value: 'communities', icon: CupertinoIcons.person_3_fill),
+    ]);
+    if (!mounted) return;
+    if (v == 'leads') {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => ConvertedLeadsScreen(auth: widget.auth)));
+    } else if (v == 'announcements') {
+      _manageAnnouncements();
+    } else if (v == 'communities') {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => CommunitiesScreen(auth: widget.auth)));
+    }
+  }
+
   void _toast(String m) => ScaffoldMessenger.of(context)
       .showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
 
@@ -172,36 +188,43 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   @override
   Widget build(BuildContext context) {
     final dests = <NavDest>[
-      const NavDest(CupertinoIcons.square_list_fill, 'Courses'),
-      if (_isAdmin) const NavDest(CupertinoIcons.person_2_fill, 'People'),
-      if (_isAdmin) const NavDest(CupertinoIcons.calendar, 'Calendar'),
-      if (_isAdmin) const NavDest(CupertinoIcons.chat_bubble_2_fill, 'Ask Mentor'),
-      const NavDest(CupertinoIcons.person_fill, 'Profile'),
+      const NavDest(CupertinoIcons.square_list_fill, 'Courses', section: 'Learning'),
+      if (_isAdmin) const NavDest(CupertinoIcons.film, 'Video Store', section: 'Learning'),
+      if (_isAdmin) const NavDest(CupertinoIcons.compass_fill, 'Explore Courses', section: 'Learning'),
+      if (_isAdmin) const NavDest(CupertinoIcons.person_badge_plus, 'Instructors', section: 'People'),
+      if (_isAdmin) const NavDest(CupertinoIcons.person_2_fill, 'Students', section: 'People'),
+      if (_isAdmin) const NavDest(CupertinoIcons.calendar, 'Calendar', section: 'Engagement'),
+      if (_isAdmin) const NavDest(CupertinoIcons.chat_bubble_2_fill, 'Ask Mentor', section: 'Engagement'),
+      if (_isAdmin) const NavDest(CupertinoIcons.gear_alt_fill, 'Admin Settings', section: 'Account'),
+      const NavDest(CupertinoIcons.person_fill, 'Profile', section: 'Account'),
     ];
     final pages = <Widget>[
       _consolePage(),
-      if (_isAdmin) _peoplePage(),
+      if (_isAdmin) VideoStoreScreen(auth: widget.auth),
+      if (_isAdmin) ExploreCoursesScreen(auth: widget.auth, embedded: true),
+      if (_isAdmin) _instructorsPage(),
+      if (_isAdmin) _studentsPage(),
       if (_isAdmin) AdminCalendarScreen(auth: widget.auth),
       if (_isAdmin) AskMentorQueueScreen(auth: widget.auth),
+      if (_isAdmin) _adminSettingsPage(),
       _profilePage(),
     ];
     // The whole admin console renders with squared corners.
-    return SquareScope(
-      child: AppShell(
-        auth: widget.auth,
-        onSignOut: _logout,
-        trailing: _isAdmin ? _newCourseButton() : null,
-        destinations: dests,
-        pages: pages,
+    return AdminSkin(
+      child: SquareScope(
+        child: AppShell(
+          auth: widget.auth,
+          onSignOut: _logout,
+          destinations: dests,
+          pages: pages,
+        ),
       ),
     );
   }
 
-  Widget _peoplePage() {
+  Widget _instructorsPage() {
     final hp = _hPad(context);
     final instructors = _people.where((u) => u['role'] == 'instructor').toList();
-    final students = _people.where((u) => u['role'] == 'student').toList();
-    final others = _people.where((u) => u['role'] == 'manager' || u['role'] == 'superadmin').toList();
     return RefreshIndicator(
       color: Palette.of(context).accent,
       onRefresh: _load,
@@ -209,94 +232,219 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       padding: EdgeInsets.fromLTRB(hp, 18, hp, 40),
       children: [
         Row(children: [
-          Expanded(child: Text('People', style: AppleTheme.largeTitle(context))),
+          Expanded(child: Text('Instructors', style: AppleTheme.largeTitle(context))),
           HoverTap(onTap: _load, child: Icon(CupertinoIcons.arrow_clockwise, color: Palette.of(context).accent, size: 24)),
         ]),
-        Text('Create and manage accounts', style: AppleTheme.subhead(context)),
+        Text('Create and manage instructor accounts', style: AppleTheme.subhead(context)),
         const SizedBox(height: 16),
-        Row(children: [
-          Expanded(child: PrimaryButton(label: 'Add Instructor', icon: CupertinoIcons.person_badge_plus, square: true, onPressed: () => _addPerson('instructor'))),
-          const SizedBox(width: 12),
-          Expanded(child: PrimaryButton(label: 'Add Student', icon: CupertinoIcons.person_add, square: true, onPressed: () => _addPerson('student'))),
+        _actionGrid([
+          PrimaryButton(label: 'Add Instructor', icon: CupertinoIcons.person_badge_plus, square: true, onPressed: () => _addPerson('instructor')),
         ]),
-        const SizedBox(height: 12),
-        Row(children: [
-          Expanded(child: PrimaryButton(label: 'Announcements', icon: CupertinoIcons.speaker_2_fill, square: true, onPressed: _manageAnnouncements)),
-          const SizedBox(width: 12),
-          Expanded(child: PrimaryButton(label: 'Converted Leads', icon: CupertinoIcons.person_2_square_stack, square: true, onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => ConvertedLeadsScreen(auth: widget.auth),
-          )))),
-        ]),
-        const SizedBox(height: 12),
-        Row(children: [
-          Expanded(child: PrimaryButton(label: 'Communities', icon: CupertinoIcons.person_3_fill, square: true, onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => CommunitiesScreen(auth: widget.auth),
-          )))),
-          const SizedBox(width: 12),
-          // A live host can only answer questions + watch live (no other access).
-          Expanded(child: PrimaryButton(label: 'Add Live Host', icon: CupertinoIcons.dot_radiowaves_left_right, square: true, onPressed: () => _addPerson('live_host'))),
-        ]),
-        const SizedBox(height: 12),
-        PrimaryButton(label: 'All Students (roster + export)', icon: CupertinoIcons.person_2_fill, square: true,
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => AllStudentsScreen(auth: widget.auth)))),
         const SizedBox(height: 16),
-        // Search across ALL people (name/email/phone/username/role).
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-          decoration: BoxDecoration(color: Palette.of(context).card, border: Border.all(color: Palette.of(context).separator)),
-          child: Row(children: [
-            Icon(CupertinoIcons.search, size: 18, color: Palette.of(context).secondary),
-            const SizedBox(width: 10),
-            Expanded(child: TextField(
-              onChanged: (v) => setState(() => _peopleQuery = v),
-              style: AppleTheme.body(context),
-              cursorColor: Palette.of(context).accent,
-              decoration: InputDecoration(isDense: true, border: InputBorder.none,
-                  hintText: 'Search people — name, email, phone…',
-                  hintStyle: AppleTheme.body(context).copyWith(color: Palette.of(context).secondary)),
-            )),
-            if (_peopleQuery.isNotEmpty)
-              HoverTap(onTap: () => setState(() => _peopleQuery = ''),
-                  child: Icon(CupertinoIcons.clear_circled_solid, size: 18, color: Palette.of(context).secondary)),
-          ]),
-        ),
+        _peopleSearchBox('Search instructors — name, email, phone…'),
         const SizedBox(height: 18),
-        if (_peopleQuery.trim().isNotEmpty) ...[
-          // Flat search results across everyone, each with the ⋯ actions menu.
-          ..._searchResults(_peopleQuery),
-        ] else ...[
-          if (others.isNotEmpty) ...[_peopleGroup('Admins', others, manage: true), const SizedBox(height: 18)],
-          _peopleGroup('Instructors (${instructors.length})', instructors, manage: true),
-          const SizedBox(height: 18),
-          // Students: browse by course (queues/batches), or a flat list of every
-          // student across all courses.
-          Text('Students (${students.length})', style: AppleTheme.headline(context)),
-          const SizedBox(height: 8),
-          AppleSegmented(square: true, labels: const ['By course', 'All students'], selected: _allStudents ? 1 : 0, onChanged: (i) => setState(() => _allStudents = i == 1)),
-          const SizedBox(height: 14),
-          if (_allStudents)
-            // Fixed-height, self-scrolling list so the whole page doesn't grow.
-            SizedBox(
-              height: (MediaQuery.of(context).size.height * 0.6).clamp(320.0, 1000.0),
-              child: SingleChildScrollView(child: _peopleGroup('All students (${students.length})', students, manage: true)),
-            )
-          else
-            ..._courseList(students),
-        ],
+        if (_peopleQuery.trim().isNotEmpty)
+          ..._searchResults(_peopleQuery, roles: const {'instructor'})
+        else
+          _peopleGroup('Instructors [ ${instructors.length} ]', instructors, manage: true),
       ],
     ));
   }
 
-  // People-tab search: match across all users by name/email/phone/username/role.
-  List<Widget> _searchResults(String query) {
+  Widget _studentsPage() {
+    final hp = _hPad(context);
+    final students = _people.where((u) => u['role'] == 'student').toList();
+    final visibleStudents = _filterPeople(_peopleQuery, roles: const {'student'});
+    return RefreshIndicator(
+      color: Palette.of(context).accent,
+      onRefresh: _load,
+      child: ListView(
+      padding: EdgeInsets.fromLTRB(hp, 18, hp, 40),
+      children: [
+        Row(children: [
+          Expanded(child: Text('Students', style: AppleTheme.largeTitle(context))),
+          HoverTap(onTap: _load, child: Icon(CupertinoIcons.arrow_clockwise, color: Palette.of(context).accent, size: 24)),
+        ]),
+        Text('Create, enroll, batch, and manage student accounts', style: AppleTheme.subhead(context)),
+        const SizedBox(height: 16),
+        _actionGrid([
+          PrimaryButton(label: 'Add Student', icon: CupertinoIcons.person_add, square: true, onPressed: () => _addPerson('student')),
+          // A live host can only answer questions + watch live (no other access).
+          PrimaryButton(label: 'Add Live Host', icon: CupertinoIcons.dot_radiowaves_left_right, square: true, onPressed: () => _addPerson('live_host')),
+          PrimaryButton(label: 'People Tools', icon: CupertinoIcons.ellipsis_circle, square: true, onPressed: _peopleTools),
+        ]),
+        const SizedBox(height: 16),
+        _peopleSearchBox('Search students — name, email, phone…'),
+        const SizedBox(height: 18),
+        Text('Students [ ${students.length} ]', style: AppleTheme.headline(context)),
+        const SizedBox(height: 8),
+        AppleSegmented(square: true, labels: const ['Course', 'All students / export'], selected: _allStudents ? 1 : 0, onChanged: (i) => setState(() => _allStudents = i == 1)),
+        const SizedBox(height: 14),
+        if (_allStudents)
+          _studentRosterTable(visibleStudents)
+        else if (_peopleQuery.trim().isNotEmpty)
+          ..._searchResults(_peopleQuery, roles: const {'student'})
+        else
+          ..._courseList(students),
+      ],
+    ));
+  }
+
+  Widget _peopleSearchBox(String hint) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      decoration: BoxDecoration(color: Palette.of(context).card, border: Border.all(color: Palette.of(context).separator)),
+      child: Row(children: [
+        Icon(CupertinoIcons.search, size: 18, color: Palette.of(context).secondary),
+        const SizedBox(width: 10),
+        Expanded(child: TextField(
+          onChanged: (v) => setState(() => _peopleQuery = v),
+          style: AppleTheme.body(context),
+          cursorColor: Palette.of(context).accent,
+          decoration: InputDecoration(isDense: true, border: InputBorder.none,
+              hintText: hint,
+              hintStyle: AppleTheme.body(context).copyWith(color: Palette.of(context).secondary)),
+        )),
+        if (_peopleQuery.isNotEmpty)
+          HoverTap(onTap: () => setState(() => _peopleQuery = ''),
+              child: Icon(CupertinoIcons.clear_circled_solid, size: 18, color: Palette.of(context).secondary)),
+      ]),
+    );
+  }
+
+  // People-section search: match within the current role bucket by name/email/phone/username/role.
+  List<Widget> _searchResults(String query, {required Set<String> roles}) {
+    final matches = _filterPeople(query, roles: roles);
+    return [_peopleGroup('Results [ ${matches.length} ]', matches, manage: true)];
+  }
+
+  List<dynamic> _filterPeople(String query, {required Set<String> roles}) {
     final q = query.trim().toLowerCase();
-    final matches = _people.where((u) {
+    return _people.where((u) {
+      if (!roles.contains(u['role'])) return false;
+      if (q.isEmpty) return true;
       final hay = [u['full_name'], u['email'], u['phone'], u['username'], u['role'], u['course_label']]
           .map((x) => (x ?? '').toString().toLowerCase())
           .join(' ');
       return hay.contains(q);
     }).toList();
-    return [_peopleGroup('Results (${matches.length})', matches, manage: true)];
+  }
+
+  void _exportStudents(List<dynamic> students) {
+    String esc(Object? x) => '"${(x ?? '').toString().replaceAll('"', '""')}"';
+    final rows = <String>['Name,Login ID,Email,Phone,Batch,Course,Active'];
+    for (final raw in students) {
+      final s = raw as Map<String, dynamic>;
+      rows.add([s['full_name'], s['login_id'], s['email'], s['phone'], s['batch'], s['course_label'], (s['is_active'] == false) ? 'no' : 'yes']
+          .map(esc)
+          .join(','));
+    }
+    saveFileBytes('students.csv', 'text/csv', utf8.encode(rows.join('\n')));
+  }
+
+  Widget _studentRosterTable(List<dynamic> students) {
+    final p = Palette.of(context);
+    Widget cell(String text, double width, {bool strong = false, Color? color}) {
+      return SizedBox(
+        width: width,
+        child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: AppleTheme.footnote(context).copyWith(color: color ?? p.label, fontWeight: strong ? FontWeight.w800 : FontWeight.w500)),
+      );
+    }
+
+    final rows = students.cast<Map<String, dynamic>>();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Expanded(child: SectionHeader('All students / export [ ${rows.length} ]')),
+        HoverTap(
+          onTap: rows.isEmpty ? () {} : () => _exportStudents(rows),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(color: rows.isEmpty ? p.secondary.withOpacity(0.15) : p.accent, borderRadius: BorderRadius.zero),
+            child: Row(mainAxisSize: MainAxisSize.min, children: const [
+              Icon(CupertinoIcons.arrow_down_doc, size: 16, color: Colors.white),
+              SizedBox(width: 6),
+              Text('Export CSV', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
+            ]),
+          ),
+        ),
+      ]),
+      const SizedBox(height: 8),
+      if (rows.isEmpty)
+        AppleCard(square: true, child: Text('No students found.', style: AppleTheme.footnote(context)))
+      else
+        SizedBox(
+          height: (MediaQuery.of(context).size.height * 0.62).clamp(340.0, 980.0),
+          child: AppleCard(square: true, padding: EdgeInsets.zero, child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: 900,
+              child: Column(children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  color: p.card2,
+                  child: Row(children: [
+                    cell('Name', 190, strong: true, color: p.secondary),
+                    cell('Login ID', 130, strong: true, color: p.secondary),
+                    cell('Email', 220, strong: true, color: p.secondary),
+                    cell('Phone', 110, strong: true, color: p.secondary),
+                    cell('Batch', 110, strong: true, color: p.secondary),
+                    cell('Course', 110, strong: true, color: p.secondary),
+                  ]),
+                ),
+                Expanded(child: ListView.separated(
+                  itemCount: rows.length,
+                  separatorBuilder: (_, __) => Divider(height: 1, color: p.separator),
+                  itemBuilder: (_, i) {
+                    final s = rows[i];
+                    final inactive = s['is_active'] == false;
+                    return HoverTap(
+                      onTap: () => _personActions(s),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Row(children: [
+                          SizedBox(width: 190, child: Row(children: [
+                            Avatar(name: s['full_name']?.toString() ?? '?', size: 30),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text(s['full_name']?.toString() ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.body(context).copyWith(fontWeight: FontWeight.w700))),
+                          ])),
+                          cell(s['login_id']?.toString() ?? '', 130, color: p.accent),
+                          cell(s['email']?.toString() ?? '', 220),
+                          cell(s['phone']?.toString() ?? '', 110),
+                          cell(s['batch']?.toString() ?? '', 110),
+                          cell(s['course_label']?.toString() ?? '', 110),
+                          SizedBox(width: 30, child: Icon(inactive ? CupertinoIcons.nosign : CupertinoIcons.ellipsis, size: 18, color: inactive ? AppleColors.red : p.secondary)),
+                        ]),
+                      ),
+                    );
+                  },
+                )),
+              ]),
+            ),
+          )),
+        ),
+    ]);
+  }
+
+  Widget _adminSettingsPage() {
+    final hp = _hPad(context);
+    final admins = _people.where((u) => u['role'] == 'manager' || u['role'] == 'superadmin').toList();
+    return RefreshIndicator(
+      color: Palette.of(context).accent,
+      onRefresh: _load,
+      child: ListView(
+        padding: EdgeInsets.fromLTRB(hp, 18, hp, 40),
+        children: [
+          Row(children: [
+            Expanded(child: Text('Admin Settings', style: AppleTheme.largeTitle(context))),
+            HoverTap(onTap: _load, child: Icon(CupertinoIcons.arrow_clockwise, color: Palette.of(context).accent, size: 24)),
+          ]),
+          Text('Manage admin accounts and access', style: AppleTheme.subhead(context)),
+          const SizedBox(height: 16),
+          _peopleGroup('Admin accounts [ ${admins.length} ]', admins, manage: true),
+        ],
+      ),
+    );
   }
 
   // Find the loaded course row for a course_label (case-insensitive), or null.
@@ -372,7 +520,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     }
     if (unassigned.isNotEmpty) {
       out.add(const SizedBox(height: 18));
-      out.add(_peopleGroup('Unassigned — no course (${unassigned.length})', unassigned, manage: true));
+      out.add(_peopleGroup('Unassigned — no course [ ${unassigned.length} ]', unassigned, manage: true));
     }
     return out;
   }
@@ -827,10 +975,13 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           color: p.accent,
           borderRadius: BorderRadius.zero,
         ),
-        child: const Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(CupertinoIcons.add, color: Colors.white, size: 18),
-          SizedBox(width: 6),
-          Text('New Course', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(CupertinoIcons.add, color: Colors.white, size: 18),
+          const SizedBox(width: 6),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 120),
+            child: const Text('New Course', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+          ),
         ]),
       ),
     );
@@ -838,7 +989,20 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
 
   double _hPad(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
-    return (w > 712 ? ((w > 1180 ? w - 256 : w) - 700) / 2 : 18.0).clamp(18, 400);
+    return (w > 820 ? ((w > 1320 ? w - 272 : w) - 1040) / 2 : 18.0).clamp(18, 420);
+  }
+
+  Widget _actionGrid(List<Widget> actions) {
+    return LayoutBuilder(builder: (context, c) {
+      const gap = 12.0;
+      final cols = c.maxWidth >= 860 ? 3 : (c.maxWidth >= 520 ? 2 : 1);
+      final w = (c.maxWidth - gap * (cols - 1)) / cols;
+      return Wrap(
+        spacing: gap,
+        runSpacing: gap,
+        children: actions.map((a) => SizedBox(width: w, child: a)).toList(),
+      );
+    });
   }
 
   Widget _consolePage() {
@@ -851,29 +1015,32 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       child: ListView(
         padding: EdgeInsets.fromLTRB(hp, 18, hp, 40),
         children: [
-          Text('$roleLabel Console', style: AppleTheme.largeTitle(context)),
-          Text('Create and manage your courses', style: AppleTheme.subhead(context)),
-          const SizedBox(height: 16),
-          Row(children: [
-            Expanded(child: PrimaryButton(
-              label: 'Video Store',
-              icon: CupertinoIcons.film,
-              square: true,
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => VideoStoreScreen(auth: widget.auth))),
-            )),
-            const SizedBox(width: 12),
-            Expanded(child: PrimaryButton(
-              label: 'Explore Courses',
-              icon: CupertinoIcons.compass_fill,
-              square: true,
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => ExploreCoursesScreen(auth: widget.auth))).then((_) => _load()),
-            )),
-          ]),
+          LayoutBuilder(builder: (context, c) {
+            final compact = c.maxWidth < 430;
+            final title = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('$roleLabel Console', maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.largeTitle(context)),
+                Text('Create and manage your courses', maxLines: 2, overflow: TextOverflow.ellipsis, style: AppleTheme.subhead(context)),
+              ],
+            );
+            if (!_isAdmin) return title;
+            if (compact) {
+              return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                title,
+                const SizedBox(height: 12),
+                Align(alignment: Alignment.centerLeft, child: _newCourseButton()),
+              ]);
+            }
+            return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(child: title),
+              const SizedBox(width: 12),
+              _newCourseButton(),
+            ]);
+          }),
           const SizedBox(height: 20),
           if (_requests.isNotEmpty) ...[
-            SectionHeader('Enrollment Requests (${_requests.length})'),
+            SectionHeader('Enrollment Requests [ ${_requests.length} ]'),
             ..._requests.map((r) => _requestCard(r as Map<String, dynamic>)),
             const SizedBox(height: 22),
           ],
@@ -1269,7 +1436,7 @@ class _IssueCertificatesState extends State<_IssueCertificates> {
                 ]),
                 const SizedBox(height: 18),
                 Row(children: [
-                  Expanded(child: SectionHeader('Students (${_students.length})')),
+                  Expanded(child: SectionHeader('Students [ ${_students.length} ]')),
                   if (_selected.isNotEmpty)
                     GestureDetector(
                       onTap: () => _issue({'user_ids': _selected.toList()}, '${_selected.length} selected'),
@@ -1393,7 +1560,7 @@ class _QuizBuilderState extends State<_QuizBuilder> {
       const SizedBox(height: 10),
       sheetField(topic, 'Topic or source material', CupertinoIcons.text_quote),
       const SizedBox(height: 10),
-      sheetField(count, 'How many (1–20)', CupertinoIcons.number, keyboard: TextInputType.number),
+      sheetField(count, 'How many [ 1–20 ]', CupertinoIcons.number, keyboard: TextInputType.number),
       const SizedBox(height: 12),
       _label(context, 'Difficulty'),
       const SizedBox(height: 6),
@@ -1960,7 +2127,6 @@ class CourseEditorScreen extends StatefulWidget {
 class _CourseEditorScreenState extends State<CourseEditorScreen> {
   Map<String, dynamic>? _course;
   List<dynamic> _sessions = [];
-  List<dynamic> _students = [];
   List<dynamic> _assessments = [];
   bool _loading = true;
 
@@ -1976,8 +2142,6 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       _course = ApiClient.decode(r);
       final s = await widget.auth.apiGet('/api/v1/manage/courses/${widget.courseId}/sessions');
       _sessions = (ApiClient.decode(s)['sessions'] as List?) ?? [];
-      final st = await widget.auth.apiGet('/api/v1/manage/courses/${widget.courseId}/students');
-      _students = (ApiClient.decode(st)['students'] as List?) ?? [];
       final a = await widget.auth.apiGet('/api/v1/manage/courses/${widget.courseId}/assessments');
       _assessments = (ApiClient.decode(a)['assessments'] as List?) ?? [];
     } catch (_) {}
@@ -2079,7 +2243,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                 ),
                 const SizedBox(height: 18),
                 Row(children: [
-                  Expanded(child: SectionHeader('Modules (${modules.length})')),
+                  Expanded(child: SectionHeader('Modules [ ${modules.length} ]')),
                   _smallButton('Add', CupertinoIcons.add, _addModule),
                 ]),
                 if (modules.isEmpty)
@@ -2089,7 +2253,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
 
                 const SizedBox(height: 22),
                 Row(children: [
-                  Expanded(child: SectionHeader('Live Classes (${_sessions.length})')),
+                  Expanded(child: SectionHeader('Live Classes [ ${_sessions.length} ]')),
                   _smallButton('Add', CupertinoIcons.videocam_fill, _addSession),
                 ]),
                 if (_sessions.isEmpty)
@@ -2099,7 +2263,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
 
                 const SizedBox(height: 22),
                 Row(children: [
-                  Expanded(child: SectionHeader('Quizzes & Assignments (${_assessments.length})')),
+                  Expanded(child: SectionHeader('Quizzes & Assignments [ ${_assessments.length} ]')),
                   _smallButton('Add', CupertinoIcons.doc_text_fill, _addAssignment),
                 ]),
                 if (_assessments.isEmpty)
@@ -2139,29 +2303,6 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                   onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => _IssueCertificates(auth: widget.auth, courseId: widget.courseId, title: widget.title))),
                 ),
-                const SizedBox(height: 22),
-                Row(children: [
-                  Expanded(child: SectionHeader('Students (${_students.length})')),
-                  _smallButton('Enroll', CupertinoIcons.person_add, _enroll),
-                ]),
-                if (_students.isEmpty)
-                  AppleCard(square: true, child: Text('No students enrolled yet.', style: AppleTheme.footnote(context)))
-                else
-                  AppleCard(square: true, 
-                    padding: EdgeInsets.zero,
-                    child: Column(children: List.generate(_students.length, (i) {
-                      final s = _students[i] as Map<String, dynamic>;
-                      return Column(children: [
-                        if (i > 0) Divider(height: 1, indent: 56, color: Palette.of(context).separator),
-                        ListTile(
-                          leading: Avatar(name: s['name']?.toString() ?? '?', size: 36),
-                          title: Text(s['name']?.toString() ?? '', style: AppleTheme.body(context)),
-                          subtitle: Text(s['email']?.toString() ?? '', style: AppleTheme.footnote(context)),
-                          trailing: Text('${s['percent'] ?? 0}%', style: AppleTheme.footnote(context).copyWith(color: Palette.of(context).accent, fontWeight: FontWeight.w700)),
-                        ),
-                      ]);
-                    })),
-                  ),
               ],
             ),
     );
@@ -3478,21 +3619,6 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     }
   }
 
-  Future<void> _enroll() async {
-    final email = TextEditingController();
-    final ok = await showFormSheet(context, square: true, title: 'Enroll Student',
-        builder: (_) => [sheetField(email, 'Student email', CupertinoIcons.mail)],
-        onSubmit: () async {
-      if (email.text.trim().isEmpty) return 'Email required';
-      try {
-        await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/enroll', {'email': email.text.trim()});
-        return null;
-      } on ApiException catch (e) {
-        return e.message;
-      }
-    });
-    if (ok == true) _toast('Student enrolled');
-  }
 }
 
 /// Announcements hub — compose new broadcasts and delete existing ones.
@@ -3947,7 +4073,7 @@ class _CourseBatchesScreenState extends State<CourseBatchesScreen> {
     final ids = queue.map((s) => (s as Map)['id'].toString()).toList();
     final ok = await showFormSheet(context, square: true, title: 'Create Batch — ${widget.title}',
         builder: (setS) => [
-          Text('${queue.length} unassigned student(s) in the queue — assign them a batch code.', style: AppleTheme.footnote(context)),
+          Text('${queue.length} unassigned ${queue.length == 1 ? 'student' : 'students'} in the queue — assign them a batch code.', style: AppleTheme.footnote(context)),
           const SizedBox(height: 12),
           BatchCodeField(onChanged: (v) => code = v),
         ], onSubmit: () async {
@@ -4266,8 +4392,9 @@ class _LeadDetailSheet extends StatelessWidget {
 /// Curate the student Explore catalog: toggle which courses are listed — a
 /// course can appear in Explore even while it's still a draft.
 class ExploreCoursesScreen extends StatefulWidget {
-  const ExploreCoursesScreen({super.key, required this.auth});
+  const ExploreCoursesScreen({super.key, required this.auth, this.embedded = false});
   final AuthService auth;
+  final bool embedded;
 
   @override
   State<ExploreCoursesScreen> createState() => _ExploreCoursesScreenState();
@@ -4396,8 +4523,8 @@ class _ExploreCoursesScreenState extends State<ExploreCoursesScreen> {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
-        leading: IconButton(icon: const Icon(CupertinoIcons.chevron_left), onPressed: () => Navigator.pop(context)),
-        title: Text('Explore Courses ($inCount)', style: AppleTheme.headline(context)),
+        leading: widget.embedded ? null : IconButton(icon: const Icon(CupertinoIcons.chevron_left), onPressed: () => Navigator.pop(context)),
+        title: Text('Explore Courses [ $inCount ]', style: AppleTheme.headline(context)),
         actions: [IconButton(tooltip: 'Refresh', icon: const Icon(CupertinoIcons.arrow_clockwise), onPressed: _load)],
       ),
       body: _loading
@@ -4644,7 +4771,7 @@ class _AllStudentsScreenState extends State<AllStudentsScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(icon: const Icon(CupertinoIcons.chevron_left), onPressed: () => Navigator.pop(context)),
-        title: Text('All Students (${_students.length})', style: AppleTheme.headline(context)),
+        title: Text('All Students [ ${_students.length} ]', style: AppleTheme.headline(context)),
         actions: [
           IconButton(tooltip: 'Export CSV', icon: const Icon(CupertinoIcons.arrow_down_doc), onPressed: _students.isEmpty ? null : _export),
           IconButton(tooltip: 'Refresh', icon: const Icon(CupertinoIcons.arrow_clockwise), onPressed: _load),
@@ -5352,7 +5479,7 @@ class _StudyHubEditorScreenState extends State<StudyHubEditorScreen> {
                     Row(children: [
                       Icon(k.$3, size: 18, color: p.accent),
                       const SizedBox(width: 8),
-                      Expanded(child: SectionHeader('${k.$2} (${_of(k.$1).length})')),
+                      Expanded(child: SectionHeader('${k.$2} [ ${_of(k.$1).length} ]')),
                       _addBtn(k.$1),
                     ]),
                     const SizedBox(height: 8),
@@ -5569,7 +5696,7 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> {
                   const SizedBox(height: 14),
                   for (final g in const [('global', 'Global'), ('course', 'Course-wise'), ('batch', 'Batch-wise')]) ...[
                     Row(children: [
-                      Expanded(child: SectionHeader('${g.$2} (${_of(g.$1).length})')),
+                      Expanded(child: SectionHeader('${g.$2} [ ${_of(g.$1).length} ]')),
                       _smallButton('Add', CupertinoIcons.add, _createServer),
                     ]),
                     const SizedBox(height: 8),
