@@ -76,6 +76,28 @@ deploy_backend() {
 deploy_web() {
   log "Building web app"
   ( cd "$ROOT/app" && flutter build web --release --no-tree-shake-icons --pwa-strategy=none >/dev/null )
+  # We build with --pwa-strategy=none (no service worker), but browsers that
+  # loaded an OLDER build still have a Flutter service worker REGISTERED, and it
+  # serves the old app shell (main.dart.js) from its cache storage — intercepting
+  # requests before the network, so no-store headers and hard-refresh don't help.
+  # Ship a self-destroying SW at the same path: on its next update check the
+  # browser installs this, which clears all caches, unregisters itself, and
+  # reloads the tab so it re-fetches the current build from the network.
+  cat > "$ROOT/app/build/web/flutter_service_worker.js" <<'SW'
+// Self-destroying service worker — evicts a stale Flutter SW + its caches.
+self.addEventListener('install', function () { self.skipWaiting(); });
+self.addEventListener('activate', function (event) {
+  event.waitUntil((async function () {
+    try {
+      var keys = await caches.keys();
+      await Promise.all(keys.map(function (k) { return caches.delete(k); }));
+      await self.registration.unregister();
+      var cs = await self.clients.matchAll({ type: 'window' });
+      cs.forEach(function (c) { c.navigate(c.url); });
+    } catch (e) {}
+  })());
+});
+SW
   log "Publishing web → $HOST:$WEB_ROOT (with timestamped backup)"
   ssh "$HOST" "cp -a $WEB_ROOT $WEB_ROOT.bak-\$(date +%Y%m%d-%H%M%S) 2>/dev/null || true"
   rsync -az --delete -e ssh "$ROOT/app/build/web/" "$HOST:$WEB_ROOT/"
