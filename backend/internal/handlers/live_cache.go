@@ -53,6 +53,22 @@ func (h *Handlers) liveAccessCached(c *fiber.Ctx, sessionID string) (chatOK, qaO
 	}
 	accessMu.Unlock()
 
+	// A global staff role (admin / host) may view and host ANY session — resolve
+	// that from the role ALONE, before and independent of the session row, so a
+	// missing row, enrollment gap, batch mismatch, or query hiccup can never 403
+	// an admin. Toggles are read best-effort and default on for staff.
+	switch callerRole(c) {
+	case "superadmin", "manager", "instructor", "live_host":
+		chatOK, qaOK, reactOK = true, true, true
+		_ = h.Pool.QueryRow(c.Context(),
+			`SELECT chat_enabled, qa_enabled, reactions_enabled FROM class_sessions WHERE id=$1`, sessionID).
+			Scan(&chatOK, &qaOK, &reactOK)
+		accessMu.Lock()
+		accessCache[key] = accessEntry{chatOK, qaOK, reactOK, true, true, now.Add(accessTTL)}
+		accessMu.Unlock()
+		return chatOK, qaOK, reactOK, true, true
+	}
+
 	var courseID string
 	var enrolled bool
 	err := h.Pool.QueryRow(c.Context(), `
@@ -63,7 +79,7 @@ func (h *Handlers) liveAccessCached(c *fiber.Ctx, sessionID string) (chatOK, qaO
 	if err != nil {
 		return false, false, false, false, false // unknown session / error → not allowed (uncached)
 	}
-	isStaff = h.liveStaff(c, courseID)
+	isStaff = h.liveStaff(c, courseID) // per-course managers, etc.
 	allowed = enrolled || isStaff
 	accessMu.Lock()
 	accessCache[key] = accessEntry{chatOK, qaOK, reactOK, isStaff, allowed, now.Add(accessTTL)}
