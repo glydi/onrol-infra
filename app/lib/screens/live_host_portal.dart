@@ -127,6 +127,7 @@ class _LiveHostPortalScreenState extends State<LiveHostPortalScreen> {
     final live = start != null && now.isAfter(start) && (end == null || now.isBefore(end));
     final ended = end != null && now.isAfter(end);
     final waiting = (s['waiting'] as num?)?.toInt() ?? 0;
+    final batch = (s['batch']?.toString() ?? '').trim();
     final statusColor = live ? AppleColors.red : (ended ? p.secondary : AppleColors.blue);
     final statusText = live ? 'LIVE' : (ended ? 'Ended' : 'Upcoming');
     final time = start == null ? 'TBD' : '${_clock(start)} · ${start.day}/${start.month}';
@@ -145,6 +146,14 @@ class _LiveHostPortalScreenState extends State<LiveHostPortalScreen> {
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(s['title']?.toString() ?? 'Live class', style: AppleTheme.headline(context), maxLines: 1, overflow: TextOverflow.ellipsis),
             Text(['${s['course'] ?? ''}', time].where((e) => e.isNotEmpty).join(' · '), style: AppleTheme.footnote(context), maxLines: 1, overflow: TextOverflow.ellipsis),
+            // Which batch this class is for (blank = whole course / all batches).
+            const SizedBox(height: 3),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(color: (batch.isEmpty ? p.secondary : p.accent).withOpacity(0.14)),
+              child: Text(batch.isEmpty ? 'All batches' : batch,
+                  style: TextStyle(color: batch.isEmpty ? p.secondary : p.accent, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.3)),
+            ),
           ])),
           if (waiting > 0) ...[
             Container(
