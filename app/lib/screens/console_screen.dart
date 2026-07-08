@@ -22,6 +22,7 @@ import 'admin_calendar_screen.dart';
 import 'ask_mentor_queue.dart';
 import 'discussion_screen.dart';
 import 'live_session_screen.dart';
+import 'live_host_portal.dart';
 import 'login_screen.dart';
 import 'video_store_screen.dart';
 
@@ -189,6 +190,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   Widget build(BuildContext context) {
     final dests = <NavDest>[
       const NavDest(CupertinoIcons.square_list_fill, 'Courses', section: 'Learning'),
+      if (_isAdmin) const NavDest(CupertinoIcons.dot_radiowaves_left_right, 'Live Host', section: 'Learning'),
       if (_isAdmin) const NavDest(CupertinoIcons.film, 'Video Store', section: 'Learning'),
       if (_isAdmin) const NavDest(CupertinoIcons.compass_fill, 'Explore Courses', section: 'Learning'),
       if (_isAdmin) const NavDest(CupertinoIcons.person_badge_plus, 'Instructors', section: 'People'),
@@ -200,6 +202,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     ];
     final pages = <Widget>[
       _consolePage(),
+      if (_isAdmin) LiveHostPortalScreen(auth: widget.auth, embedded: true),
       if (_isAdmin) VideoStoreScreen(auth: widget.auth),
       if (_isAdmin) ExploreCoursesScreen(auth: widget.auth, embedded: true),
       if (_isAdmin) _instructorsPage(),

@@ -15,8 +15,11 @@ import 'login_screen.dart';
 /// live classes and answer student questions — nothing else (no courses, people,
 /// uploads or settings). Tapping a session opens it in host mode.
 class LiveHostPortalScreen extends StatefulWidget {
-  const LiveHostPortalScreen({super.key, required this.auth});
+  const LiveHostPortalScreen({super.key, required this.auth, this.embedded = false});
   final AuthService auth;
+  // When embedded in the admin console it drops its own Scaffold/app-bar/logout
+  // (the console supplies the chrome) and just renders the list of live classes.
+  final bool embedded;
 
   @override
   State<LiveHostPortalScreen> createState() => _LiveHostPortalScreenState();
@@ -73,6 +76,31 @@ class _LiveHostPortalScreenState extends State<LiveHostPortalScreen> {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
+    final body = _loading
+        ? const Center(child: CupertinoActivityIndicator())
+        : _err != null
+            ? Center(child: Text(_err!, style: AppleTheme.footnote(context)))
+            : RefreshIndicator(
+                color: p.accent,
+                onRefresh: _load,
+                child: ListView(
+                  padding: EdgeInsets.fromLTRB(16, widget.embedded ? 18 : 12, 16, 40),
+                  children: [
+                    if (widget.embedded) ...[
+                      Text('Live Host', style: AppleTheme.largeTitle(context)),
+                      const SizedBox(height: 4),
+                    ],
+                    Text('Enter any live class to host it — answer questions and control the room.', style: AppleTheme.subhead(context)),
+                    const SizedBox(height: 14),
+                    if (_sessions.isEmpty)
+                      AppleCard(square: true, child: Text('No live classes scheduled.', style: AppleTheme.footnote(context)))
+                    else
+                      ..._sessions.map(_card),
+                  ],
+                ),
+              );
+    // Embedded in the console: no Scaffold/app-bar/logout (the shell owns those).
+    if (widget.embedded) return body;
     return SquareScope(
       child: Scaffold(
         backgroundColor: p.bg,
@@ -86,25 +114,7 @@ class _LiveHostPortalScreenState extends State<LiveHostPortalScreen> {
             IconButton(icon: Icon(CupertinoIcons.square_arrow_right, color: p.secondary), onPressed: _logout),
           ],
         ),
-        body: _loading
-            ? const Center(child: CupertinoActivityIndicator())
-            : _err != null
-                ? Center(child: Text(_err!, style: AppleTheme.footnote(context)))
-                : RefreshIndicator(
-                    color: p.accent,
-                    onRefresh: _load,
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
-                      children: [
-                        Text('Answer questions and watch the live class.', style: AppleTheme.subhead(context)),
-                        const SizedBox(height: 14),
-                        if (_sessions.isEmpty)
-                          AppleCard(square: true, child: Text('No live classes scheduled.', style: AppleTheme.footnote(context)))
-                        else
-                          ..._sessions.map(_card),
-                      ],
-                    ),
-                  ),
+        body: body,
       ),
     );
   }
