@@ -359,12 +359,12 @@ func (h *Handlers) CompleteLesson(c *fiber.Ctx) error {
 // TakeAssessment returns the questions WITHOUT the correct answers.
 func (h *Handlers) TakeAssessment(c *fiber.Ctx) error {
 	assessID := c.Params("id")
-	var courseID, title, atype, due string
+	var courseID, title, atype, desc, due string
 	var maxScore float64
 	var published, autoAward bool
 	if err := h.Pool.QueryRow(c.Context(),
-		`SELECT course_id, title, type, max_score, COALESCE(due_at::text,''), is_published, auto_award FROM assessments WHERE id=$1`,
-		assessID).Scan(&courseID, &title, &atype, &maxScore, &due, &published, &autoAward); err != nil {
+		`SELECT course_id, title, type, description, max_score, COALESCE(due_at::text,''), is_published, auto_award FROM assessments WHERE id=$1`,
+		assessID).Scan(&courseID, &title, &atype, &desc, &maxScore, &due, &published, &autoAward); err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "assessment not found")
 	}
 	if !published || !h.isEnrolled(c, courseID) {
@@ -422,7 +422,7 @@ func (h *Handlers) TakeAssessment(c *fiber.Ctx) error {
 		}
 	}
 	return c.JSON(fiber.Map{
-		"assessment_id": assessID, "title": title, "type": atype, "max_score": maxScore, "due_at": due, "auto_award": autoAward,
+		"assessment_id": assessID, "title": title, "type": atype, "description": desc, "max_score": maxScore, "due_at": due, "auto_award": autoAward,
 		"questions": qs,
 		"submission": fiber.Map{"body": subBody, "link": subLink, "status": subStatus, "feedback": subFeedback, "score": subScore, "files": files, "answers": answersMap},
 	})

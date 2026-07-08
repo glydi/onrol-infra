@@ -2470,12 +2470,16 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
 
   Future<void> _addAssignment({String? moduleId, String? moduleTitle}) async {
     final title = TextEditingController();
+    final desc = TextEditingController();
     final day = TextEditingController();
     int type = 0; // assignment, quiz
     bool auto = false; // assignment: auto-award full points on submission
     DateTime due = DateTime.now().add(const Duration(days: 7));
     final ok = await showFormSheet(context, square: true, big: true, title: moduleId == null ? 'Add Assignment' : 'Add to "${moduleTitle ?? 'Module'}"', builder: (setS) => [
       sheetField(title, 'Title (e.g. Assignment 1)', CupertinoIcons.doc_text),
+      const SizedBox(height: 10),
+      // Roomy Markdown instructions box shown to students when they open it.
+      sheetField(desc, 'Description — supports Markdown (optional)', CupertinoIcons.text_alignleft, minLines: 5, maxLines: 12),
       const SizedBox(height: 10),
       AppleSegmented(square: true, labels: const ['Assignment', 'Quiz'], selected: type, onChanged: (i) => setS(() => type = i)),
       if (type == 0) ...[
@@ -2499,6 +2503,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/assessments', {
           'title': title.text.trim(),
           'type': type == 0 ? 'assignment' : 'quiz',
+          'description': desc.text.trim(),
           'day_number': int.tryParse(day.text.trim()),
           if (moduleId != null) 'module_id': moduleId,
           'due_at': due.toUtc().toIso8601String(),
@@ -2685,6 +2690,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   Future<void> _editAssessment(Map<String, dynamic> a) async {
     final id = a['id'].toString();
     final title = TextEditingController(text: a['title']?.toString() ?? '');
+    final desc = TextEditingController(text: a['description']?.toString() ?? '');
     final day = TextEditingController(text: a['day_number'] == null ? '' : '${a['day_number']}');
     int type = a['type'] == 'quiz' ? 1 : 0;
     bool published = a['is_published'] != false;
@@ -2695,6 +2701,8 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     DateTime due = DateTime.tryParse(a['due_at']?.toString() ?? '')?.toLocal() ?? DateTime.now().add(const Duration(days: 7));
     final ok = await showFormSheet(context, square: true, big: true, title: 'Edit ${type == 1 ? 'Quiz' : 'Assignment'}', builder: (setS) => [
       sheetField(title, 'Title', CupertinoIcons.doc_text),
+      const SizedBox(height: 10),
+      sheetField(desc, 'Description — supports Markdown (optional)', CupertinoIcons.text_alignleft, minLines: 5, maxLines: 12),
       const SizedBox(height: 10),
       AppleSegmented(square: true, labels: const ['Assignment', 'Quiz'], selected: type, onChanged: (i) => setS(() => type = i)),
       const SizedBox(height: 12),
@@ -2749,6 +2757,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       final body = <String, dynamic>{
         'title': title.text.trim(),
         'type': type == 1 ? 'quiz' : 'assignment',
+        'description': desc.text.trim(),
         'is_published': published,
         'auto_award': type == 0 && auto,
         'due_at': due.toUtc().toIso8601String(),

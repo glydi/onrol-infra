@@ -315,13 +315,17 @@ Future<bool> showSquareConfirm(BuildContext context, {required String title, req
 
 /// iOS grouped text field. When [obscure] is set it shows a reveal (eye) toggle.
 class AppleField extends StatefulWidget {
-  const AppleField({super.key, required this.controller, required this.hint, this.icon, this.obscure = false, this.keyboard, this.autofillHints});
+  const AppleField({super.key, required this.controller, required this.hint, this.icon, this.obscure = false, this.keyboard, this.autofillHints, this.minLines, this.maxLines = 1});
   final TextEditingController controller;
   final String hint;
   final IconData? icon;
   final bool obscure;
   final TextInputType? keyboard;
   final List<String>? autofillHints; // lets browsers / password managers offer to save & fill
+  // For multi-line inputs (e.g. a Markdown description): grows from minLines up
+  // to maxLines (pass maxLines: null for unbounded). Defaults to a single line.
+  final int? minLines;
+  final int? maxLines;
 
   @override
   State<AppleField> createState() => _AppleFieldState();
@@ -333,14 +337,26 @@ class _AppleFieldState extends State<AppleField> {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
+    final multiline = (widget.maxLines == null || widget.maxLines! > 1);
     return Row(
+      // A multi-line field grows downward, so pin the leading icon to the top
+      // instead of vertically centering it against the whole box.
+      crossAxisAlignment: multiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
       children: [
-        if (widget.icon != null) ...[Icon(widget.icon, size: 19, color: p.secondary), const SizedBox(width: 12)],
+        if (widget.icon != null) ...[
+          Padding(
+            padding: EdgeInsets.only(top: multiline ? 10 : 0),
+            child: Icon(widget.icon, size: 19, color: p.secondary),
+          ),
+          const SizedBox(width: 12),
+        ],
         Expanded(
           child: TextField(
             controller: widget.controller,
             obscureText: _hidden,
-            keyboardType: widget.keyboard,
+            keyboardType: multiline ? TextInputType.multiline : widget.keyboard,
+            minLines: widget.minLines,
+            maxLines: widget.obscure ? 1 : widget.maxLines,
             autofillHints: widget.autofillHints,
             style: AppleTheme.body(context),
             cursorColor: p.accent,
@@ -574,13 +590,13 @@ class SquareScope extends InheritedWidget {
   bool updateShouldNotify(SquareScope old) => square != old.square;
 }
 
-Widget sheetField(TextEditingController c, String hint, IconData icon, {TextInputType? keyboard, bool square = false, bool obscure = false}) {
+Widget sheetField(TextEditingController c, String hint, IconData icon, {TextInputType? keyboard, bool square = false, bool obscure = false, int? minLines, int? maxLines = 1}) {
   return Builder(builder: (context) {
     final p = Palette.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
       decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.zero),
-      child: AppleField(controller: c, hint: hint, icon: icon, keyboard: keyboard, obscure: obscure),
+      child: AppleField(controller: c, hint: hint, icon: icon, keyboard: keyboard, obscure: obscure, minLines: minLines, maxLines: maxLines),
     );
   });
 }

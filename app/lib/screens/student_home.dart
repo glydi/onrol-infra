@@ -1621,7 +1621,19 @@ class _StudentHomeState extends State<StudentHome> {
         } catch (_) {}
       }
 
+      final description = m['description']?.toString().trim() ?? '';
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (description.isNotEmpty) ...[
+          MarkdownView(
+            text: description,
+            textColor: _navy,
+            mutedColor: _grey,
+            accent: _orange,
+            borderColor: _cardBorder,
+            baseFontSize: 14.5,
+          ),
+          const SizedBox(height: 14),
+        ],
         if (due.isNotEmpty) ...[
           Row(children: [
             Icon(CupertinoIcons.calendar, size: 15, color: _grey),

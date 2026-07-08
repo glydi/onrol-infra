@@ -110,6 +110,7 @@ func (h *Handlers) UpdateAssessment(c *fiber.Ctx) error {
 	var req struct {
 		Title       *string  `json:"title"`
 		Type        *string  `json:"type"`
+		Description *string  `json:"description"` // Markdown instructions; "" clears
 		MaxScore    *float64 `json:"max_score"`
 		IsPublished *bool    `json:"is_published"`
 		DueAt       *string  `json:"due_at"`     // ISO8601; "" clears
@@ -121,15 +122,22 @@ func (h *Handlers) UpdateAssessment(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
 	}
+	// description is trimmed but NOT dropped when empty, so an explicit "" clears it.
+	var desc *string
+	if req.Description != nil {
+		d := strings.TrimSpace(*req.Description)
+		desc = &d
+	}
 	if _, err := h.Pool.Exec(c.Context(),
 		`UPDATE assessments SET
 		   title        = COALESCE($2, title),
 		   type         = COALESCE($3, type),
-		   max_score    = COALESCE($4, max_score),
-		   is_published = COALESCE($5, is_published),
-		   auto_award   = COALESCE($6, auto_award)
+		   description  = COALESCE($4, description),
+		   max_score    = COALESCE($5, max_score),
+		   is_published = COALESCE($6, is_published),
+		   auto_award   = COALESCE($7, auto_award)
 		 WHERE id=$1`,
-		id, trimmedPtr(req.Title), trimmedPtr(req.Type), req.MaxScore, req.IsPublished, req.AutoAward); err != nil {
+		id, trimmedPtr(req.Title), trimmedPtr(req.Type), desc, req.MaxScore, req.IsPublished, req.AutoAward); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "update failed")
 	}
 	if req.DueAt != nil {
