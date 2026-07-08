@@ -694,6 +694,7 @@ func (h *Handlers) MyCalendar(c *fiber.Ctx) error {
 		JOIN course_enrollments ce ON ce.course_id=c.id AND ce.user_id=$1
 		LEFT JOIN media_assets ma ON ma.id=cs.media_asset_id
 		WHERE cs.starts_at >= now() - interval '180 days'
+		  AND (cs.batch_number IS NULL OR cs.batch_number = (SELECT batch FROM users WHERE id=$1))
 		UNION ALL
 		SELECT 'assessment_due', a.title, a.due_at, c.title, ''::text, ''::text, ''::text, false
 		FROM assessments a JOIN courses c ON c.id=a.course_id

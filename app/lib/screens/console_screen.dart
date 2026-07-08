@@ -2128,6 +2128,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   Map<String, dynamic>? _course;
   List<dynamic> _sessions = [];
   List<dynamic> _assessments = [];
+  List<String> _batchCodes = []; // this course's batch codes, for targeting live classes
   bool _loading = true;
   // Bumped after every reload so pushed section screens (Course Content, Live
   // Classes, Assignments) rebuild from the freshly-loaded lists without owning
@@ -2154,6 +2155,12 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       _sessions = (ApiClient.decode(s)['sessions'] as List?) ?? [];
       final a = await widget.auth.apiGet('/api/v1/manage/courses/${widget.courseId}/assessments');
       _assessments = (ApiClient.decode(a)['assessments'] as List?) ?? [];
+      final b = await widget.auth.apiGet('/api/v1/manage/courses/${widget.courseId}/batches');
+      final bs = (ApiClient.decode(b)['batches'] as List?) ?? [];
+      _batchCodes = bs
+          .map((e) => (e as Map)['batch']?.toString().trim() ?? '')
+          .where((s) => s.isNotEmpty)
+          .toList();
     } catch (_) {}
     if (mounted) {
       setState(() => _loading = false);
@@ -2176,12 +2183,31 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     ];
   }
 
-  List<Widget> _liveClassesSection() => [
-        if (_sessions.isEmpty)
-          AppleCard(square: true, child: Text('No live classes scheduled. Add one — enrolled students will see it and can join.', style: AppleTheme.footnote(context)))
-        else
-          ..._sessions.map((s) => _sessionCard(s as Map<String, dynamic>)),
-      ];
+  List<Widget> _liveClassesSection() {
+    if (_sessions.isEmpty) {
+      return [AppleCard(square: true, child: Text('No live classes scheduled. Add one — pick a batch so each batch runs on its own schedule.', style: AppleTheme.footnote(context)))];
+    }
+    // Group by batch so each batch's classes are controlled independently; a
+    // session with no batch ('') is shown under "All batches".
+    final groups = <String, List<Map<String, dynamic>>>{};
+    for (final s in _sessions) {
+      final m = s as Map<String, dynamic>;
+      groups.putIfAbsent((m['batch']?.toString() ?? '').trim(), () => []).add(m);
+    }
+    final keys = groups.keys.toList()
+      ..sort((a, b) => a.isEmpty ? 1 : (b.isEmpty ? -1 : a.compareTo(b)));
+    final out = <Widget>[];
+    for (final k in keys) {
+      out.add(Padding(
+        padding: const EdgeInsets.only(top: 4, bottom: 8),
+        child: Text(k.isEmpty ? 'All batches' : k,
+            style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+      ));
+      out.addAll(groups[k]!.map(_sessionCard));
+      out.add(const SizedBox(height: 8));
+    }
+    return out;
+  }
 
   List<Widget> _assignmentsSection() => [
         if (_assessments.isEmpty)
@@ -2487,8 +2513,13 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     String? startBanner = (s['start_image']?.toString() ?? '').isEmpty ? null : s['start_image'].toString();
     String? endBanner = (s['end_image']?.toString() ?? '').isEmpty ? null : s['end_image'].toString();
     DateTime when = DateTime.tryParse(s['starts_at']?.toString() ?? '')?.toLocal() ?? DateTime.now().add(const Duration(hours: 1));
+    String batchSel = s['batch']?.toString().trim() ?? '';
     final ok = await showFormSheet(context, square: true, title: 'Edit Live Class', builder: (setS) => [
       sheetField(title, 'Title', CupertinoIcons.textformat),
+      const SizedBox(height: 10),
+      _label(context, 'Batch — who this class is for'),
+      const SizedBox(height: 6),
+      _sessionBatchField(batchSel, (v) => setS(() => batchSel = v)),
       const SizedBox(height: 10),
       AppleSegmented(square: true, labels: const ['External link', 'Recorded as live'], selected: mode, onChanged: (i) => setS(() => mode = i)),
       const SizedBox(height: 10),
@@ -2520,7 +2551,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       if (mode == 0 && url.text.trim().isEmpty && host.text.trim().isEmpty) return 'Add a join or host link';
       if (mode == 1 && (videoId == null || videoId!.isEmpty)) return 'Pick a video to stream';
       try {
-        final body = <String, dynamic>{'title': title.text.trim(), 'starts_at': when.toUtc().toIso8601String()};
+        final body = <String, dynamic>{'title': title.text.trim(), 'starts_at': when.toUtc().toIso8601String(), 'batch_number': batchSel};
         if (mode == 0) {
           body['join_url'] = url.text.trim();
           body['host_url'] = host.text.trim();
@@ -2979,6 +3010,46 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     ];
   }
 
+  // Batch-target picker for a live class: "All batches" (whole course) or one of
+  // this course's batch codes, so each batch runs on its own schedule/control.
+  Widget _sessionBatchField(String current, void Function(String) onPick) {
+    final p = Palette.of(context);
+    final label = current.isEmpty ? 'All batches (whole course)' : current;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () async {
+        final items = <SquareMenuItem>[
+          const SquareMenuItem('All batches (whole course)', value: '', icon: CupertinoIcons.globe),
+          for (final code in _batchCodes) SquareMenuItem(code, value: 'b:$code', icon: CupertinoIcons.square_grid_2x2),
+          const SquareMenuItem('Other batch code…', value: 'new', icon: CupertinoIcons.add_circled),
+        ];
+        final v = await showSquareMenu(context, title: 'Target batch', items: items);
+        if (v == null) return;
+        if (v == 'new') {
+          String code = '';
+          final ok = await showFormSheet(context, square: true, title: 'Batch code',
+              builder: (_) => [BatchCodeField(initial: current.isEmpty ? null : current, onChanged: (x) => code = x)],
+              onSubmit: () async => code.trim().isEmpty ? 'Enter the full batch code' : null);
+          if (ok == true && code.trim().isNotEmpty) onPick(code.trim());
+        } else if (v == '') {
+          onPick('');
+        } else {
+          onPick(v.toString().substring(2)); // strip "b:"
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.zero),
+        child: Row(children: [
+          Icon(CupertinoIcons.square_grid_2x2, size: 19, color: p.secondary),
+          const SizedBox(width: 12),
+          Expanded(child: Text(label, style: AppleTheme.body(context))),
+          Icon(CupertinoIcons.chevron_down, size: 16, color: p.secondary),
+        ]),
+      ),
+    );
+  }
+
   Future<void> _addSession() async {
     final title = TextEditingController();
     final url = TextEditingController();
@@ -2991,8 +3062,13 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     bool qaOn = true;
     String? startBanner;
     String? endBanner;
+    String batchSel = '';
     final ok = await showFormSheet(context, square: true, title: 'Add Live Class', builder: (setS) => [
       sheetField(title, 'Title (e.g. Lecture 1)', CupertinoIcons.textformat),
+      const SizedBox(height: 10),
+      _label(context, 'Batch — who this class is for'),
+      const SizedBox(height: 6),
+      _sessionBatchField(batchSel, (v) => setS(() => batchSel = v)),
       const SizedBox(height: 10),
       AppleSegmented(square: true, labels: const ['External link', 'Recorded as live'], selected: mode, onChanged: (i) => setS(() => mode = i)),
       const SizedBox(height: 10),
@@ -3021,7 +3097,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       if (mode == 0 && url.text.trim().isEmpty) return 'Join link required';
       if (mode == 1 && (videoId == null || videoId!.isEmpty)) return 'Pick a video to stream';
       try {
-        final body = <String, dynamic>{'title': title.text.trim(), 'starts_at': when.toUtc().toIso8601String()};
+        final body = <String, dynamic>{'title': title.text.trim(), 'starts_at': when.toUtc().toIso8601String(), 'batch_number': batchSel};
         if (mode == 0) {
           body['join_url'] = url.text.trim();
           body['host_url'] = host.text.trim();

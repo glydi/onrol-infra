@@ -29,7 +29,8 @@ func (h *Handlers) liveAccess(c *fiber.Ctx, sessionID string) (chatOK, qaOK, isS
 	var enrolled bool
 	err = h.Pool.QueryRow(c.Context(), `
 		SELECT cs.chat_enabled, cs.qa_enabled, cs.course_id,
-		       EXISTS(SELECT 1 FROM course_enrollments ce WHERE ce.course_id=cs.course_id AND ce.user_id=$2 AND ce.status='active')
+		       (EXISTS(SELECT 1 FROM course_enrollments ce WHERE ce.course_id=cs.course_id AND ce.user_id=$2 AND ce.status='active')
+		        AND (cs.batch_number IS NULL OR cs.batch_number = (SELECT batch FROM users WHERE id=$2)))
 		FROM class_sessions cs WHERE cs.id=$1`, sessionID, callerID(c)).Scan(&chatOK, &qaOK, &courseID, &enrolled)
 	if err != nil {
 		return

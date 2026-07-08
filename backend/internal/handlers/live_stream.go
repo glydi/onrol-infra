@@ -273,7 +273,8 @@ func (h *Handlers) LiveHLSKey(c *fiber.Ctx) error {
 	var allowed bool
 	err := h.Pool.QueryRow(c.Context(), `
 		SELECT ma.enc_key,
-		       (EXISTS(SELECT 1 FROM course_enrollments ce WHERE ce.course_id=cs.course_id AND ce.user_id=$2 AND ce.status='active')
+		       (EXISTS(SELECT 1 FROM course_enrollments ce WHERE ce.course_id=cs.course_id AND ce.user_id=$2 AND ce.status='active'
+		               AND (cs.batch_number IS NULL OR cs.batch_number = (SELECT batch FROM users WHERE id=$2)))
 		        OR (SELECT role FROM users WHERE id=$2) IN ('manager','superadmin','instructor','live_host'))
 		FROM class_sessions cs
 		JOIN media_assets ma ON ma.id = cs.media_asset_id

@@ -57,7 +57,8 @@ func (h *Handlers) liveAccessCached(c *fiber.Ctx, sessionID string) (chatOK, qaO
 	var enrolled bool
 	err := h.Pool.QueryRow(c.Context(), `
 		SELECT cs.chat_enabled, cs.qa_enabled, cs.reactions_enabled, cs.course_id,
-		       EXISTS(SELECT 1 FROM course_enrollments ce WHERE ce.course_id=cs.course_id AND ce.user_id=$2 AND ce.status='active')
+		       (EXISTS(SELECT 1 FROM course_enrollments ce WHERE ce.course_id=cs.course_id AND ce.user_id=$2 AND ce.status='active')
+		        AND (cs.batch_number IS NULL OR cs.batch_number = (SELECT batch FROM users WHERE id=$2)))
 		FROM class_sessions cs WHERE cs.id=$1`, sessionID, callerID(c)).Scan(&chatOK, &qaOK, &reactOK, &courseID, &enrolled)
 	if err != nil {
 		return false, false, false, false, false // unknown session / error → not allowed (uncached)
@@ -157,7 +158,8 @@ func (h *Handlers) playlistAllowed(c *fiber.Ctx, sessionID string) bool {
 	var allowed bool
 	err := h.Pool.QueryRow(c.Context(), `
 		SELECT (EXISTS(SELECT 1 FROM course_enrollments ce JOIN class_sessions cs ON cs.course_id=ce.course_id
-		               WHERE cs.id=$1 AND ce.user_id=$2 AND ce.status='active')
+		               WHERE cs.id=$1 AND ce.user_id=$2 AND ce.status='active'
+		                 AND (cs.batch_number IS NULL OR cs.batch_number = (SELECT batch FROM users WHERE id=$2)))
 		        OR (SELECT role FROM users WHERE id=$2) IN ('manager','superadmin','instructor','live_host'))`,
 		sessionID, callerID(c)).Scan(&allowed)
 	if err != nil {
