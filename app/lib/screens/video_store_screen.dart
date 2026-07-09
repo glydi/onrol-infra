@@ -242,6 +242,22 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
       )));
   }
 
+  Future<void> _rename(String id, String current) async {
+    final ctl = TextEditingController(text: current);
+    final ok = await showFormSheet(context, square: true, title: 'Rename video',
+        builder: (_) => [sheetField(ctl, 'Video title', CupertinoIcons.textformat)],
+        onSubmit: () async {
+      if (ctl.text.trim().isEmpty) return 'Title required';
+      try {
+        await widget.auth.apiPatch('/api/v1/manage/videos/$id', {'title': ctl.text.trim()});
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) { _toast('Renamed'); _load(); }
+  }
+
   Future<void> _delete(String id, String title) async {
     final yes = await showSquareConfirm(context,
         title: 'Delete video',
@@ -364,6 +380,11 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
             HoverTap(
               onTap: () { if (!processing) _retranscode(v['id'].toString()); },
               child: Icon(CupertinoIcons.arrow_2_circlepath, size: 20, color: processing ? p.separator : p.secondary),
+            ),
+            const SizedBox(width: 14),
+            HoverTap(
+              onTap: () => _rename(v['id'].toString(), title),
+              child: Icon(CupertinoIcons.pencil, size: 20, color: p.secondary),
             ),
             const SizedBox(width: 14),
             HoverTap(

@@ -71,6 +71,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Post("/manage/videos/upload/part", auth, mgr, h.UploadVideoPart)
 	api.Post("/manage/videos/upload/complete", auth, mgr, h.CompleteVideoUpload)
 	api.Post("/manage/videos/:id/retranscode", auth, mgr, h.RetranscodeVideo)
+	api.Patch("/manage/videos/:id", auth, mgr, h.RenameVideo)
 	api.Delete("/manage/videos/:id", auth, mgr, h.DeleteVideo)
 	api.Post("/manage/users/:id/role", auth, mgr, h.SetUserRole)
 	api.Post("/manage/users/:id/password", auth, mgr, h.ResetUserPassword)

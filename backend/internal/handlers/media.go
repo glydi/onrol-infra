@@ -309,6 +309,25 @@ func (h *Handlers) RetranscodeVideo(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"id": id, "status": "processing"})
 }
 
+// RenameVideo updates a video's display title in the library.
+func (h *Handlers) RenameVideo(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var req struct {
+		Title string `json:"title"`
+	}
+	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Title) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "title required")
+	}
+	ct, err := h.Pool.Exec(c.Context(), `UPDATE media_assets SET title=$2 WHERE id=$1`, id, strings.TrimSpace(req.Title))
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "rename failed")
+	}
+	if ct.RowsAffected() == 0 {
+		return fiber.NewError(fiber.StatusNotFound, "not found")
+	}
+	return c.JSON(fiber.Map{"id": id, "title": strings.TrimSpace(req.Title)})
+}
+
 // DeleteVideo removes the library record, the source object, and the HLS folder.
 func (h *Handlers) DeleteVideo(c *fiber.Ctx) error {
 	id := c.Params("id")
