@@ -79,8 +79,9 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   final _qaCtl = TextEditingController();
   bool _sendingQa = false;
 
-  // Host: live listeners (who's watching right now).
+  // Host: live listeners (who's watching right now) + a join/leave feed.
   List<Map<String, dynamic>> _listeners = [];
+  List<Map<String, dynamic>> _feed = [];
   int _listenerCount = 0;
   bool _listenersOpen = false;
   Timer? _listenersTimer;
@@ -252,9 +253,11 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     try {
       final d = ApiClient.decode(await widget.auth.apiGet('$_base/listeners'));
       final ls = ((d['listeners'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
+      final fd = ((d['feed'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
       if (mounted) {
         setState(() {
           _listeners = ls;
+          _feed = fd;
           _listenerCount = (d['count'] as num?)?.toInt() ?? ls.length;
         });
       }
@@ -743,79 +746,182 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   // Host: who watched and for how long, with a CSV download (web).
   Future<void> _showAttendance() async {
     List<Map<String, dynamic>> rows = [];
-    int avg = 0;
+    int avg = 0, present = 0, absent = 0;
+    String batch = '';
+    Map<String, int> sc = {};
     try {
       final d = ApiClient.decode(await widget.auth.apiGet('$_base/attendance'));
       rows = ((d['attendance'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
       avg = (d['avg_watched_seconds'] as num?)?.toInt() ?? 0;
+      present = (d['present'] as num?)?.toInt() ?? 0;
+      absent = (d['absent'] as num?)?.toInt() ?? 0;
+      batch = d['batch']?.toString() ?? '';
+      sc = ((d['status_counts'] as Map?) ?? {}).map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
     } catch (_) {}
     if (!mounted) return;
+    String query = '';
+    int sort = 0; // 0 = watch% desc, 1 = name, 2 = status
     showModalBottomSheet(
       context: context,
       backgroundColor: _panel,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(14))),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                Text('Attendance · ${rows.length}', style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
-                if (rows.isNotEmpty) Text('avg ${_fmtHMS(avg)} watched', style: GoogleFonts.inter(color: Colors.white38, fontSize: 11.5)),
-              ]),
-              const Spacer(),
-              GestureDetector(
-                onTap: rows.isEmpty ? null : () => downloadText('attendance-${widget.sessionId}.csv', _attendanceCsv(rows)),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(color: rows.isEmpty ? Colors.white12 : _orange, borderRadius: BorderRadius.zero),
-                  child: Text('Download CSV', style: GoogleFonts.inter(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
+        final q = query.trim().toLowerCase();
+        int rank(String s) => const {'present': 0, 'late': 1, 'left_early': 2, 'partial': 3, 'absent': 4}[s] ?? 5;
+        final list = rows.where((r) {
+          if (q.isEmpty) return true;
+          return [r['name'], r['email'], r['phone'], r['login_id']].any((v) => (v?.toString().toLowerCase() ?? '').contains(q));
+        }).toList()
+          ..sort((a, b) {
+            switch (sort) {
+              case 1:
+                return (a['name']?.toString() ?? '').toLowerCase().compareTo((b['name']?.toString() ?? '').toLowerCase());
+              case 2:
+                return rank(a['status']?.toString() ?? '').compareTo(rank(b['status']?.toString() ?? ''));
+              default:
+                return ((b['watched_pct'] as num?)?.toInt() ?? 0).compareTo((a['watched_pct'] as num?)?.toInt() ?? 0);
+            }
+          });
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(left: 16, right: 16, top: 14, bottom: 16 + MediaQuery.of(ctx).viewInsets.bottom),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                  Text('Attendance${batch.isNotEmpty ? ' · $batch' : ''}', style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                  Text('${rows.length} on roster · avg ${_fmtHMS(avg)} watched', style: GoogleFonts.inter(color: Colors.white38, fontSize: 11.5)),
+                ]),
+                const Spacer(),
+                GestureDetector(
+                  onTap: rows.isEmpty ? null : () => downloadText('attendance-${widget.sessionId}.csv', _attendanceCsv(rows)),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(color: rows.isEmpty ? Colors.white12 : _orange, borderRadius: BorderRadius.zero),
+                    child: Text('CSV', style: GoogleFonts.inter(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                  ),
                 ),
+              ]),
+              const SizedBox(height: 10),
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                _statChip('Present', present, const Color(0xFF34C759)),
+                if ((sc['late'] ?? 0) > 0) _statChip('Late', sc['late']!, const Color(0xFFFFB020)),
+                if ((sc['left_early'] ?? 0) > 0) _statChip('Left early', sc['left_early']!, const Color(0xFFFF9F0A)),
+                if ((sc['partial'] ?? 0) > 0) _statChip('Partial', sc['partial']!, const Color(0xFFFF9F0A)),
+                _statChip('Absent', absent, const Color(0xFFFF453A)),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.06)),
+                    child: TextField(
+                      onChanged: (v) => setS(() => query = v),
+                      style: GoogleFonts.inter(color: Colors.white, fontSize: 13),
+                      decoration: InputDecoration(isDense: true, border: InputBorder.none, hintText: 'Search students…', hintStyle: GoogleFonts.inter(color: Colors.white38, fontSize: 13)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => setS(() => sort = (sort + 1) % 3),
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.06)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(CupertinoIcons.arrow_up_arrow_down, size: 12, color: Colors.white54),
+                      const SizedBox(width: 5),
+                      Text(sort == 0 ? 'Watch%' : (sort == 1 ? 'Name' : 'Status'), style: GoogleFonts.inter(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700)),
+                    ]),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 8),
+              if (list.isEmpty)
+                const Padding(padding: EdgeInsets.symmetric(vertical: 24), child: Center(child: Text('No students.', style: TextStyle(color: Colors.white38, fontSize: 13))))
+              else
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: list.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFF222228)),
+                    itemBuilder: (_, i) => _attendanceRow(list[i]),
+                  ),
+                ),
+            ]),
+          ),
+        );
+      }),
+    );
+  }
+
+  ({String label, Color color}) _statusStyle(String s) {
+    switch (s) {
+      case 'present':
+        return (label: 'Present', color: const Color(0xFF34C759));
+      case 'late':
+        return (label: 'Late', color: const Color(0xFFFFB020));
+      case 'left_early':
+        return (label: 'Left early', color: const Color(0xFFFF9F0A));
+      case 'partial':
+        return (label: 'Partial', color: const Color(0xFFFF9F0A));
+      default:
+        return (label: 'Absent', color: const Color(0xFFFF453A));
+    }
+  }
+
+  Widget _statChip(String label, int n, Color color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        decoration: BoxDecoration(color: color.withOpacity(0.14)),
+        child: Text('$label $n', style: GoogleFonts.inter(color: color, fontSize: 11.5, fontWeight: FontWeight.w700)),
+      );
+
+  Widget _attendanceRow(Map<String, dynamic> r) {
+    final w = (r['watched_seconds'] as num?)?.toInt() ?? 0;
+    final pct = (r['watched_pct'] as num?)?.toInt() ?? 0;
+    final reacts = (r['reactions'] as num?)?.toInt() ?? 0;
+    final qs = (r['questions'] as num?)?.toInt() ?? 0;
+    final status = r['status']?.toString() ?? 'absent';
+    final st = _statusStyle(status);
+    final absent = status == 'absent';
+    final name = r['name']?.toString() ?? '';
+    final who = name.isNotEmpty ? name : (r['email']?.toString().isNotEmpty ?? false ? r['email'].toString() : (r['phone']?.toString() ?? 'Student'));
+    final extras = <String>[
+      if (!absent) _relTime(r['first_seen']?.toString()),
+      if (reacts > 0) '$reacts reactions',
+      if (qs > 0) '$qs question${qs == 1 ? '' : 's'}',
+    ].where((s) => s.isNotEmpty).toList();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      child: Row(children: [
+        Container(width: 5, height: 34, color: st.color.withOpacity(absent ? 0.5 : 0.9)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Flexible(child: Text(who, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: absent ? Colors.white54 : Colors.white, fontSize: 13, fontWeight: FontWeight.w600))),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(color: st.color.withOpacity(0.16)),
+                child: Text(st.label, style: GoogleFonts.inter(color: st.color, fontSize: 9.5, fontWeight: FontWeight.w700)),
               ),
             ]),
-            const SizedBox(height: 12),
-            if (rows.isEmpty)
-              const Padding(padding: EdgeInsets.symmetric(vertical: 24), child: Center(child: Text('No attendance recorded yet.', style: TextStyle(color: Colors.white38, fontSize: 13))))
-            else
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: rows.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFF222228)),
-                  itemBuilder: (_, i) {
-                    final r = rows[i];
-                    final w = (r['watched_seconds'] as num?)?.toInt() ?? 0;
-                    final pct = (r['watched_pct'] as num?)?.toInt() ?? 0;
-                    final reacts = (r['reactions'] as num?)?.toInt() ?? 0;
-                    final qs = (r['questions'] as num?)?.toInt() ?? 0;
-                    final name = r['name']?.toString() ?? '';
-                    final who = name.isNotEmpty ? name : (r['email']?.toString().isNotEmpty ?? false ? r['email'].toString() : (r['phone']?.toString() ?? 'Student'));
-                    final extras = <String>[if (reacts > 0) '$reacts reactions', if (qs > 0) '$qs question${qs == 1 ? '' : 's'}'];
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 9),
-                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Expanded(
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(who, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
-                            const SizedBox(height: 2),
-                            Text([_relTime(r['first_seen']?.toString()), if (extras.isNotEmpty) extras.join(' · ')].where((s) => s.isNotEmpty).join(' · '),
-                                style: GoogleFonts.inter(color: Colors.white38, fontSize: 11)),
-                          ]),
-                        ),
-                        const SizedBox(width: 10),
-                        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                          Text(_fmtHMS(w), style: GoogleFonts.inter(color: Colors.white70, fontSize: 12.5, fontWeight: FontWeight.w700)),
-                          Text('$pct%', style: GoogleFonts.inter(color: pct >= 80 ? const Color(0xFF34C759) : (pct >= 40 ? const Color(0xFFFFB020) : Colors.white38), fontSize: 11, fontWeight: FontWeight.w600)),
-                        ]),
-                      ]),
-                    );
-                  },
-                ),
-              ),
+            if (extras.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(extras.join(' · '), style: GoogleFonts.inter(color: Colors.white38, fontSize: 11)),
+            ],
           ]),
         ),
-      ),
+        const SizedBox(width: 10),
+        if (!absent)
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text(_fmtHMS(w), style: GoogleFonts.inter(color: Colors.white70, fontSize: 12.5, fontWeight: FontWeight.w700)),
+            Text('$pct%', style: GoogleFonts.inter(color: pct >= 80 ? const Color(0xFF34C759) : (pct >= 40 ? const Color(0xFFFFB020) : const Color(0xFFFF453A)), fontSize: 11, fontWeight: FontWeight.w600)),
+          ]),
+      ]),
     );
   }
 
@@ -827,13 +933,21 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     return 'joined ${two(t.hour)}:${two(t.minute)}';
   }
 
+  // Bare "HH:MM" clock from an ISO timestamp (for the live feed).
+  String _relClock(String? iso) {
+    final t = DateTime.tryParse(iso ?? '')?.toLocal();
+    if (t == null) return '';
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(t.hour)}:${two(t.minute)}';
+  }
+
   String _attendanceCsv(List<Map<String, dynamic>> rows) {
     String esc(Object? v) => '"${(v ?? '').toString().replaceAll('"', '""')}"';
-    final b = StringBuffer('Name,Email,Phone,Login ID,Joined,Last active,Watched (min),% of class,Reactions,Questions\n');
+    final b = StringBuffer('Name,Email,Phone,Login ID,Status,Joined,Last active,Watched (min),% of class,Reactions,Questions\n');
     for (final r in rows) {
       final w = (r['watched_seconds'] as num?)?.toInt() ?? 0;
       b.writeln([
-        esc(r['name']), esc(r['email']), esc(r['phone']), esc(r['login_id']),
+        esc(r['name']), esc(r['email']), esc(r['phone']), esc(r['login_id']), esc(r['status']),
         esc(r['first_seen']), esc(r['last_seen']), (w / 60).toStringAsFixed(1),
         (r['watched_pct'] as num?)?.toInt() ?? 0, (r['reactions'] as num?)?.toInt() ?? 0, (r['questions'] as num?)?.toInt() ?? 0,
       ].join(','));
@@ -1160,19 +1274,39 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-            constraints: const BoxConstraints(maxHeight: 150),
-            child: _listeners.isEmpty
-                ? Align(alignment: Alignment.centerLeft, child: Text('No one is watching yet.', style: GoogleFonts.inter(color: Colors.white38, fontSize: 12)))
-                : SingleChildScrollView(
-                    child: Wrap(spacing: 6, runSpacing: 6, children: [
-                      for (final l in _listeners)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                          decoration: BoxDecoration(color: Colors.white.withOpacity(0.06)),
-                          child: Text(l['name']?.toString() ?? 'Student', style: GoogleFonts.inter(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w600)),
-                        ),
-                    ]),
-                  ),
+            constraints: const BoxConstraints(maxHeight: 230),
+            child: SingleChildScrollView(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                if (_listeners.isEmpty)
+                  Text('No one is watching yet.', style: GoogleFonts.inter(color: Colors.white38, fontSize: 12))
+                else
+                  Wrap(spacing: 6, runSpacing: 6, children: [
+                    for (final l in _listeners)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.06)),
+                        child: Text(l['name']?.toString() ?? 'Student', style: GoogleFonts.inter(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w600)),
+                      ),
+                  ]),
+                if (_feed.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text('RECENT', style: GoogleFonts.inter(color: Colors.white30, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                  const SizedBox(height: 5),
+                  for (final e in _feed.take(20))
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(children: [
+                        Icon(e['join'] == true ? CupertinoIcons.arrow_down_left_circle : CupertinoIcons.arrow_up_right_circle,
+                            size: 12, color: e['join'] == true ? const Color(0xFF34C759) : Colors.white38),
+                        const SizedBox(width: 6),
+                        Expanded(child: Text('${e['name'] ?? 'Student'} ${e['join'] == true ? 'joined' : 'left'}',
+                            maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: Colors.white54, fontSize: 11.5))),
+                        Text(_relClock(e['at']?.toString()), style: GoogleFonts.inter(color: Colors.white30, fontSize: 10.5)),
+                      ]),
+                    ),
+                ],
+              ]),
+            ),
           ),
       ]),
     );

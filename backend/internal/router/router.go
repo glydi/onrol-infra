@@ -104,6 +104,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Post("/manage/courses/:id/prerequisites", auth, inst, h.AddPrerequisite)
 	api.Post("/manage/courses/:id/enroll", auth, inst, h.ManualEnroll)
 	api.Get("/manage/courses/:id/comments", auth, inst, h.ListCourseComments)
+	api.Get("/manage/courses/:id/live-attendance", auth, inst, h.CourseLiveAttendance) // per-student attendance rate
 	api.Get("/manage/courses/:id/assessments", auth, inst, h.ListCourseAssessments)
 	api.Post("/manage/courses/:id/assessments", auth, inst, h.CreateAssessment)
 	api.Get("/manage/assessments/:id/questions", auth, inst, h.ListQuestions)

@@ -203,12 +203,64 @@ type viewerRec struct {
 	watched   int64 // seconds accumulated since the last flush
 	reactions int64 // reactions sent since the last flush
 	dirty     bool  // has unflushed change
+	left      bool  // emitted a "left" event (reset on rejoin) — feed de-dupe
 }
 
 var (
 	presenceMu sync.Mutex
 	presence   = map[string]map[string]*viewerRec{} // session -> user -> record
 )
+
+// ---- live join/leave feed ----------------------------------------------------
+// A small ring of join/leave events per session drives the host's live feed.
+// Joins are recorded when a viewer first heartbeats (or returns after a gap);
+// leaves are swept when a viewer stops heartbeating (goneAfter). All guarded by
+// presenceMu (recorded alongside presence updates).
+
+const goneAfter = 35 // s without a heartbeat → considered to have left
+
+type liveEvent struct {
+	user string
+	join bool
+	ts   int64
+}
+
+var liveEvents = map[string][]liveEvent{} // session -> recent events (bounded)
+
+// addLiveEvent appends an event; caller must hold presenceMu.
+func addLiveEvent(session, user string, join bool) {
+	ev := append(liveEvents[session], liveEvent{user: user, join: join, ts: time.Now().Unix()})
+	if len(ev) > 120 {
+		ev = ev[len(ev)-120:]
+	}
+	liveEvents[session] = ev
+}
+
+// sweepLeaves marks viewers who stopped heartbeating as "left" and records the
+// event once. Called when the host fetches the feed so leaves show promptly.
+func sweepLeaves(session string) {
+	now := time.Now().Unix()
+	presenceMu.Lock()
+	if m := presence[session]; m != nil {
+		for u, r := range m {
+			if !r.left && now-r.lastSeen > goneAfter {
+				r.left = true
+				addLiveEvent(session, u, false)
+			}
+		}
+	}
+	presenceMu.Unlock()
+}
+
+// liveFeed returns a copy of the session's recent join/leave events.
+func liveFeed(session string) []liveEvent {
+	presenceMu.Lock()
+	defer presenceMu.Unlock()
+	ev := liveEvents[session]
+	out := make([]liveEvent, len(ev))
+	copy(out, ev)
+	return out
+}
 
 func touchPresence(session, user string) {
 	now := time.Now().Unix()
@@ -220,9 +272,14 @@ func touchPresence(session, user string) {
 	}
 	if r := m[user]; r == nil {
 		m[user] = &viewerRec{firstSeen: now, lastSeen: now, dirty: true}
+		addLiveEvent(session, user, true) // joined
 	} else {
 		if d := now - r.lastSeen; d > 0 && d <= maxBeatGap {
 			r.watched += d
+		}
+		if r.left { // returned after being marked gone
+			r.left = false
+			addLiveEvent(session, user, true)
 		}
 		r.lastSeen = now
 		r.dirty = true
@@ -318,6 +375,7 @@ func (h *Handlers) flushAttendance(onlySession string) {
 		}
 		if len(m) == 0 {
 			delete(presence, s)
+			delete(liveEvents, s)
 		}
 	}
 	presenceMu.Unlock()

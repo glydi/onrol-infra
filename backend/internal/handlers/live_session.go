@@ -285,30 +285,62 @@ func (h *Handlers) LiveHeartbeat(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"ok": true})
 }
 
-// LiveListeners returns the host's live-listeners list: the users currently in
-// the room (seen in the last 30s), with their names. Host-only.
+// LiveListeners returns the host's live view: who is in the room right now
+// (seen in the last 30s) plus a recent join/leave feed, both with names.
+// Host-only.
 func (h *Handlers) LiveListeners(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
 	_, _, isStaff, err := h.liveAccess(c, sessionID)
 	if err != nil || !isStaff {
 		return fiber.NewError(fiber.StatusForbidden, "host only")
 	}
+	sweepLeaves(sessionID) // record anyone who just dropped so the feed is current
 	ids := presenceUsers(sessionID, 30*time.Second)
-	out := []fiber.Map{}
-	if len(ids) > 0 {
-		rows, qerr := h.Pool.Query(c.Context(),
-			`SELECT id, COALESCE(NULLIF(full_name,''), COALESCE(email, username, 'Student')) FROM users WHERE id = ANY($1) ORDER BY full_name`, ids)
-		if qerr == nil {
+	events := liveFeed(sessionID)
+
+	// Resolve display names for everyone referenced (listeners + feed) in one go.
+	idset := map[string]struct{}{}
+	for _, id := range ids {
+		idset[id] = struct{}{}
+	}
+	for _, e := range events {
+		idset[e.user] = struct{}{}
+	}
+	names := map[string]string{}
+	if len(idset) > 0 {
+		list := make([]string, 0, len(idset))
+		for id := range idset {
+			list = append(list, id)
+		}
+		if rows, qerr := h.Pool.Query(c.Context(),
+			`SELECT id, COALESCE(NULLIF(full_name,''), COALESCE(email, username, 'Student')) FROM users WHERE id = ANY($1)`, list); qerr == nil {
 			defer rows.Close()
 			for rows.Next() {
 				var id, name string
 				if rows.Scan(&id, &name) == nil {
-					out = append(out, fiber.Map{"id": id, "name": name})
+					names[id] = name
 				}
 			}
 		}
 	}
-	return c.JSON(fiber.Map{"listeners": out, "count": len(ids)})
+	nm := func(id string) string {
+		if n, ok := names[id]; ok && n != "" {
+			return n
+		}
+		return "Student"
+	}
+
+	listeners := make([]fiber.Map, 0, len(ids))
+	for _, id := range ids {
+		listeners = append(listeners, fiber.Map{"id": id, "name": nm(id)})
+	}
+	// Newest events first, capped for the feed panel.
+	feed := []fiber.Map{}
+	for i := len(events) - 1; i >= 0 && len(feed) < 40; i-- {
+		e := events[i]
+		feed = append(feed, fiber.Map{"name": nm(e.user), "join": e.join, "at": time.Unix(e.ts, 0).UTC().Format(time.RFC3339)})
+	}
+	return c.JSON(fiber.Map{"listeners": listeners, "count": len(ids), "feed": feed})
 }
 
 // LiveReact records a floating reaction (👍👏❤️😂😮🎉🚀👌). It's an in-memory
@@ -604,33 +636,45 @@ func (h *Handlers) LiveAttendance(c *fiber.Ctx) error {
 	}
 	h.flushAttendance(sessionID) // persist the latest in-memory watch-time first
 
-	// Session length (for % watched) and totals for the summary header.
+	// Session context: batch, scheduled start, and length (for % watched + the
+	// late / left-early status calc).
+	var batch *string
+	var startsAt time.Time
 	var durationSecs int
 	_ = h.Pool.QueryRow(c.Context(),
-		`SELECT COALESCE(ma.duration_seconds,0) FROM class_sessions cs LEFT JOIN media_assets ma ON ma.id=cs.media_asset_id WHERE cs.id=$1`,
-		sessionID).Scan(&durationSecs)
+		`SELECT cs.batch_number, cs.starts_at, COALESCE(ma.duration_seconds,0)
+		 FROM class_sessions cs LEFT JOIN media_assets ma ON ma.id=cs.media_asset_id WHERE cs.id=$1`,
+		sessionID).Scan(&batch, &startsAt, &durationSecs)
 
+	// Roster = active enrollees of the course, narrowed to THIS session's batch
+	// (a batchless session covers the whole course). LEFT JOIN attendance so
+	// enrolled-but-absent students appear too, marked "absent".
 	rows, err := h.Pool.Query(c.Context(), `
 		SELECT COALESCE(u.full_name,''), COALESCE(u.email,''), COALESCE(u.phone,''), COALESCE(u.login_id,''),
-		       a.first_seen, a.last_seen, a.watched_seconds, a.reactions_sent,
-		       (SELECT count(*) FROM live_questions q WHERE q.session_id=$1 AND q.user_id=a.user_id) AS questions
-		FROM live_attendance a JOIN users u ON u.id = a.user_id
-		WHERE a.session_id = $1
-		ORDER BY a.watched_seconds DESC, u.full_name ASC`, sessionID)
+		       a.first_seen, a.last_seen, COALESCE(a.watched_seconds,0), COALESCE(a.reactions_sent,0),
+		       (SELECT count(*) FROM live_questions q WHERE q.session_id=$1 AND q.user_id=u.id) AS questions
+		FROM class_sessions cs
+		JOIN course_enrollments ce ON ce.course_id = cs.course_id AND ce.status='active'
+		JOIN users u ON u.id = ce.user_id
+		LEFT JOIN live_attendance a ON a.session_id=$1 AND a.user_id=u.id
+		WHERE cs.id=$1 AND (cs.batch_number IS NULL OR u.batch = cs.batch_number)
+		ORDER BY (a.first_seen IS NULL), COALESCE(a.watched_seconds,0) DESC, u.full_name ASC`, sessionID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "attendance load failed")
 	}
 	defer rows.Close()
+
 	out := []fiber.Map{}
+	counts := map[string]int{"present": 0, "late": 0, "left_early": 0, "partial": 0, "absent": 0}
 	var totalWatch int64
+	present := 0
 	for rows.Next() {
 		var name, email, phone, loginID string
-		var first, last time.Time
+		var first, last *time.Time // NULL for an absentee (no attendance row)
 		var watched, reactions, questions int64
 		if err := rows.Scan(&name, &email, &phone, &loginID, &first, &last, &watched, &reactions, &questions); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
-		totalWatch += watched
 		pct := 0
 		if durationSecs > 0 {
 			pct = int(watched * 100 / int64(durationSecs))
@@ -638,18 +682,98 @@ func (h *Handlers) LiveAttendance(c *fiber.Ctx) error {
 				pct = 100
 			}
 		}
-		out = append(out, fiber.Map{
+		status := "absent"
+		if first != nil { // attended in some form
+			present++
+			totalWatch += watched
+			late := first.After(startsAt.Add(5 * time.Minute))
+			leftEarly := false
+			if durationSecs > 0 && last != nil {
+				end := startsAt.Add(time.Duration(durationSecs) * time.Second)
+				leftEarly = last.Before(end.Add(-5*time.Minute)) && pct < 90
+			}
+			switch {
+			case pct < 25:
+				status = "partial"
+			case late:
+				status = "late"
+			case leftEarly:
+				status = "left_early"
+			default:
+				status = "present"
+			}
+		}
+		counts[status]++
+		row := fiber.Map{
 			"name": name, "email": email, "phone": phone, "login_id": loginID,
-			"first_seen": first.UTC().Format(time.RFC3339), "last_seen": last.UTC().Format(time.RFC3339),
 			"watched_seconds": watched, "watched_pct": pct,
-			"span_seconds": int64(last.Sub(first).Seconds()), "reactions": reactions, "questions": questions,
-		})
+			"reactions": reactions, "questions": questions, "status": status,
+		}
+		if first != nil {
+			row["first_seen"] = first.UTC().Format(time.RFC3339)
+			row["span_seconds"] = int64(0)
+			if last != nil {
+				row["last_seen"] = last.UTC().Format(time.RFC3339)
+				row["span_seconds"] = int64(last.Sub(*first).Seconds())
+			}
+		}
+		out = append(out, row)
 	}
 	avg := int64(0)
-	if len(out) > 0 {
-		avg = totalWatch / int64(len(out))
+	if present > 0 {
+		avg = totalWatch / int64(present)
 	}
-	return c.JSON(fiber.Map{"attendance": out, "count": len(out), "duration": durationSecs, "avg_watched_seconds": avg})
+	batchLabel := ""
+	if batch != nil {
+		batchLabel = *batch
+	}
+	return c.JSON(fiber.Map{
+		"attendance": out, "count": len(out), "present": present, "absent": counts["absent"],
+		"status_counts": counts, "duration": durationSecs, "avg_watched_seconds": avg, "batch": batchLabel,
+	})
+}
+
+// CourseLiveAttendance returns each enrolled student's live-class attendance
+// rate across the whole course — attended vs expected sessions, batch-aware (a
+// student is only expected at their batch's sessions + course-wide ones). Staff.
+func (h *Handlers) CourseLiveAttendance(c *fiber.Ctx) error {
+	courseID := c.Params("id")
+	if err := h.canManageCourse(c, courseID); err != nil {
+		return err
+	}
+	h.flushAttendance("") // persist recent watch-time so "attended" is current
+	rows, err := h.Pool.Query(c.Context(), `
+		WITH sess AS (
+			SELECT id, batch_number FROM class_sessions
+			WHERE course_id=$1 AND media_asset_id IS NOT NULL AND starts_at <= now()
+		)
+		SELECT COALESCE(u.full_name,''), COALESCE(u.email,''), COALESCE(u.login_id,''), COALESCE(u.batch,''),
+		       (SELECT count(*) FROM sess s WHERE s.batch_number IS NULL OR s.batch_number = u.batch) AS expected,
+		       (SELECT count(DISTINCT a.session_id) FROM live_attendance a JOIN sess s ON s.id=a.session_id
+		         WHERE a.user_id=u.id AND a.watched_seconds > 0
+		           AND (s.batch_number IS NULL OR s.batch_number = u.batch)) AS attended
+		FROM course_enrollments ce JOIN users u ON u.id=ce.user_id
+		WHERE ce.course_id=$1 AND ce.status='active'
+		ORDER BY u.full_name`, courseID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "load failed")
+	}
+	defer rows.Close()
+	out := []fiber.Map{}
+	for rows.Next() {
+		var name, email, loginID, batch string
+		var expected, attended int
+		if err := rows.Scan(&name, &email, &loginID, &batch, &expected, &attended); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		rate := 0
+		if expected > 0 {
+			rate = attended * 100 / expected
+		}
+		out = append(out, fiber.Map{"name": name, "email": email, "login_id": loginID, "batch": batch,
+			"attended": attended, "expected": expected, "rate": rate})
+	}
+	return c.JSON(fiber.Map{"students": out, "count": len(out)})
 }
 
 // LiveChatList returns chat ascending. With ?after=<rfc3339> it returns only

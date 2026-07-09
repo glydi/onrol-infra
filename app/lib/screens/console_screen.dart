@@ -2398,6 +2398,8 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                     () => _openSection('Live Classes', _liveClassesSection, addIcon: CupertinoIcons.videocam_fill, onAdd: _addSession)),
                 _hubButton('Assignments & Quizzes', '${_assessments.length} total', CupertinoIcons.doc_text_fill,
                     () => _openSection('Assignments & Quizzes', _assignmentsSection, addIcon: CupertinoIcons.doc_text_fill, onAdd: _addAssignment)),
+                _hubButton('Live Attendance', 'Who attends the live classes', CupertinoIcons.chart_bar_alt_fill,
+                    () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => CourseLiveAttendanceScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title)))),
                 _hubButton('Calendar', 'Live classes & deadlines', CupertinoIcons.calendar, _openCalendar),
                 _hubButton('Batches & Settings', 'Enrollment batches', CupertinoIcons.square_grid_2x2_fill,
                     () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => CourseBatchesScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title)))),
@@ -4102,6 +4104,149 @@ class _DeviceSheetState extends State<_DeviceSheet> {
   }
 }
 
+
+/// Live attendance across the whole course: each enrolled student's rate of
+/// attended vs expected live classes (batch-aware), with search + CSV export.
+class CourseLiveAttendanceScreen extends StatefulWidget {
+  const CourseLiveAttendanceScreen({super.key, required this.auth, required this.courseId, required this.title});
+  final AuthService auth;
+  final String courseId;
+  final String title;
+
+  @override
+  State<CourseLiveAttendanceScreen> createState() => _CourseLiveAttendanceScreenState();
+}
+
+class _CourseLiveAttendanceScreenState extends State<CourseLiveAttendanceScreen> {
+  bool _loading = true;
+  List<Map<String, dynamic>> _students = [];
+  String _query = '';
+  int _sort = 0; // 0 = rate asc (worst first), 1 = name
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (mounted) setState(() => _loading = true);
+    try {
+      final d = ApiClient.decode(await widget.auth.apiGet('/api/v1/manage/courses/${widget.courseId}/live-attendance'));
+      _students = ((d['students'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  void _export() {
+    String esc(Object? v) => '"${(v ?? '').toString().replaceAll('"', '""')}"';
+    final b = StringBuffer('Name,Email,Login ID,Batch,Attended,Expected,Rate %\n');
+    for (final s in _students) {
+      b.writeln([esc(s['name']), esc(s['email']), esc(s['login_id']), esc(s['batch']),
+        (s['attended'] as num?)?.toInt() ?? 0, (s['expected'] as num?)?.toInt() ?? 0, (s['rate'] as num?)?.toInt() ?? 0].join(','));
+    }
+    saveFileBytes('live-attendance.csv', 'text/csv', utf8.encode(b.toString()));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final q = _query.trim().toLowerCase();
+    final list = _students.where((s) {
+      if (q.isEmpty) return true;
+      return [s['name'], s['email'], s['login_id'], s['batch']].any((v) => (v?.toString().toLowerCase() ?? '').contains(q));
+    }).toList()
+      ..sort((a, b) {
+        if (_sort == 1) return (a['name']?.toString() ?? '').toLowerCase().compareTo((b['name']?.toString() ?? '').toLowerCase());
+        return ((a['rate'] as num?)?.toInt() ?? 0).compareTo((b['rate'] as num?)?.toInt() ?? 0);
+      });
+    return SquareScope(
+      child: Scaffold(
+        backgroundColor: p.bg,
+        appBar: AppBar(
+          backgroundColor: p.bg.withOpacity(0.9),
+          scrolledUnderElevation: 0,
+          elevation: 0,
+          leading: IconButton(icon: const Icon(CupertinoIcons.chevron_left), onPressed: () => Navigator.pop(context)),
+          title: Text('Live Attendance', style: AppleTheme.headline(context)),
+          actions: [
+            IconButton(tooltip: 'Sort', icon: const Icon(CupertinoIcons.arrow_up_arrow_down), onPressed: () => setState(() => _sort = (_sort + 1) % 2)),
+            IconButton(tooltip: 'Export CSV', icon: const Icon(CupertinoIcons.arrow_down_doc), onPressed: _students.isEmpty ? null : _export),
+          ],
+        ),
+        body: _loading
+            ? const Center(child: CupertinoActivityIndicator())
+            : RefreshIndicator(
+                color: p.accent,
+                onRefresh: _load,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
+                  children: [
+                    Text(widget.title, style: AppleTheme.subhead(context)),
+                    const SizedBox(height: 4),
+                    Text('Attended vs expected live classes per student (${_sort == 0 ? 'lowest first' : 'by name'}).', style: AppleTheme.footnote(context)),
+                    const SizedBox(height: 12),
+                    _peopleSearchField(),
+                    const SizedBox(height: 12),
+                    if (list.isEmpty)
+                      AppleCard(square: true, child: Text(_students.isEmpty ? 'No enrolled students, or no live classes have happened yet.' : 'No matches.', style: AppleTheme.footnote(context)))
+                    else
+                      ...list.map(_row),
+                  ],
+                ),
+              ),
+      ),
+    );
+  }
+
+  Widget _peopleSearchField() {
+    final p = Palette.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+      child: Row(children: [
+        Icon(CupertinoIcons.search, size: 17, color: p.secondary),
+        const SizedBox(width: 8),
+        Expanded(child: TextField(
+          onChanged: (v) => setState(() => _query = v),
+          style: AppleTheme.body(context),
+          decoration: InputDecoration(isDense: true, border: InputBorder.none, hintText: 'Search students…', hintStyle: AppleTheme.body(context).copyWith(color: p.secondary)),
+        )),
+      ]),
+    );
+  }
+
+  Widget _row(Map<String, dynamic> s) {
+    final p = Palette.of(context);
+    final attended = (s['attended'] as num?)?.toInt() ?? 0;
+    final expected = (s['expected'] as num?)?.toInt() ?? 0;
+    final rate = (s['rate'] as num?)?.toInt() ?? 0;
+    final batch = s['batch']?.toString() ?? '';
+    final name = s['name']?.toString().isNotEmpty == true ? s['name'].toString() : (s['email']?.toString() ?? 'Student');
+    final color = rate >= 80 ? AppleColors.green : (rate >= 50 ? AppleColors.orange : AppleColors.red);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: AppleCard(square: true,
+        child: Row(children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(name, style: AppleTheme.headline(context), maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text([if (batch.isNotEmpty) batch, '$attended of $expected classes'].join(' · '), style: AppleTheme.footnote(context)),
+          ])),
+          const SizedBox(width: 10),
+          // Rate pill + tiny bar.
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text('$rate%', style: AppleTheme.headline(context).copyWith(color: color)),
+            const SizedBox(height: 4),
+            SizedBox(width: 64, child: ClipRect(child: LinearProgressIndicator(
+              value: (rate / 100).clamp(0.0, 1.0), minHeight: 5,
+              backgroundColor: p.separator, valueColor: AlwaysStoppedAnimation(color),
+            ))),
+          ]),
+        ]),
+      ),
+    );
+  }
+}
 
 /// Per-course batch portal: shows the students of a course grouped by batch
 /// (the unassigned queue first), resolved by the course's label.
