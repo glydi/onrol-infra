@@ -79,6 +79,12 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   final _qaCtl = TextEditingController();
   bool _sendingQa = false;
 
+  // Host: live listeners (who's watching right now).
+  List<Map<String, dynamic>> _listeners = [];
+  int _listenerCount = 0;
+  bool _listenersOpen = false;
+  Timer? _listenersTimer;
+
   // Mentor broadcasts (host → all viewers), shown to everyone in the room.
   final List<Map<String, dynamic>> _messages = [];
   final _chatCtl = TextEditingController();
@@ -111,6 +117,10 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     if (!widget.isHost) {
       _hbTimer = Timer.periodic(const Duration(seconds: 20), (_) => _heartbeat());
       _heartbeat();
+    } else {
+      // Host: show who's listening, refreshed every few seconds.
+      _listenersTimer = Timer.periodic(const Duration(seconds: 8), (_) => _pollListeners());
+      _pollListeners();
     }
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted && _status == 'upcoming') setState(() {}); // refresh countdown
@@ -127,6 +137,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     _hbTimer?.cancel();
     _tick?.cancel();
     _chatTimer?.cancel();
+    _listenersTimer?.cancel();
     _qaCtl.dispose();
     _chatCtl.dispose();
     super.dispose();
@@ -225,11 +236,28 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   }
 
   Future<void> _pollQuestions() async {
-    if (!_qaOn) return;
+    // The host always polls (they must see questions even if Q&A is toggled off
+    // for students); a student only polls when Q&A is on.
+    if (!_qaOn && !widget.isHost) return;
     try {
       final d = ApiClient.decode(await widget.auth.apiGet('$_base/questions'));
       final qs = ((d['questions'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
       if (mounted) setState(() => _questions..clear()..addAll(qs));
+    } catch (_) {}
+  }
+
+  // Host: refresh the live-listeners list (who's watching now).
+  Future<void> _pollListeners() async {
+    if (!widget.isHost) return;
+    try {
+      final d = ApiClient.decode(await widget.auth.apiGet('$_base/listeners'));
+      final ls = ((d['listeners'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
+      if (mounted) {
+        setState(() {
+          _listeners = ls;
+          _listenerCount = (d['count'] as num?)?.toInt() ?? ls.length;
+        });
+      }
     } catch (_) {}
   }
 
@@ -1108,11 +1136,54 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   }
 
   // Host: the queue — unanswered first; answer each one (goes to the asker).
+  // Host: a "N listening" bar that expands to show who is watching right now.
+  Widget _listenersBar() {
+    final n = _listenerCount;
+    return Container(
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.06)))),
+      child: Column(children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _listenersOpen = !_listenersOpen),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(children: [
+              const Icon(CupertinoIcons.dot_radiowaves_left_right, size: 15, color: Color(0xFF34C759)),
+              const SizedBox(width: 8),
+              Text('$n listening now', style: GoogleFonts.inter(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
+              const Spacer(),
+              Icon(_listenersOpen ? CupertinoIcons.chevron_up : CupertinoIcons.chevron_down, size: 14, color: Colors.white38),
+            ]),
+          ),
+        ),
+        if (_listenersOpen)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+            constraints: const BoxConstraints(maxHeight: 150),
+            child: _listeners.isEmpty
+                ? Align(alignment: Alignment.centerLeft, child: Text('No one is watching yet.', style: GoogleFonts.inter(color: Colors.white38, fontSize: 12)))
+                : SingleChildScrollView(
+                    child: Wrap(spacing: 6, runSpacing: 6, children: [
+                      for (final l in _listeners)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                          decoration: BoxDecoration(color: Colors.white.withOpacity(0.06)),
+                          child: Text(l['name']?.toString() ?? 'Student', style: GoogleFonts.inter(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w600)),
+                        ),
+                    ]),
+                  ),
+          ),
+      ]),
+    );
+  }
+
   Widget _hostQueue() {
     final waiting = _questions.where((q) => q['answered'] != true).length;
     return Column(children: [
       _panelHeader('Questions', waiting > 0 ? '$waiting waiting to be answered' : 'All caught up'),
       _hostControls(),
+      _listenersBar(),
       _mentorMessages(),
       Expanded(
         child: _questions.isEmpty

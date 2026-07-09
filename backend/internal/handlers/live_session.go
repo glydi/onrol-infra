@@ -38,6 +38,18 @@ func (h *Handlers) liveStaff(c *fiber.Ctx, courseID string) bool {
 }
 
 func (h *Handlers) liveAccess(c *fiber.Ctx, sessionID string) (chatOK, qaOK, isStaff bool, err error) {
+	// Global staff (admin/host) may chat + read/answer Q&A on ANY session —
+	// resolve from the role alone, independent of the session row / enrollment /
+	// batch, so a data or query hiccup never blocks a host from the questions
+	// students asked. Toggles are read best-effort (default on for staff).
+	switch callerRole(c) {
+	case "superadmin", "manager", "instructor", "live_host":
+		chatOK, qaOK = true, true
+		_ = h.Pool.QueryRow(c.Context(),
+			`SELECT chat_enabled, qa_enabled FROM class_sessions WHERE id=$1`, sessionID).Scan(&chatOK, &qaOK)
+		return chatOK, qaOK, true, nil
+	}
+
 	var courseID string
 	var enrolled bool
 	err = h.Pool.QueryRow(c.Context(), `
@@ -271,6 +283,32 @@ func (h *Handlers) LiveHeartbeat(c *fiber.Ctx) error {
 	}
 	touchPresence(sessionID, callerID(c))
 	return c.JSON(fiber.Map{"ok": true})
+}
+
+// LiveListeners returns the host's live-listeners list: the users currently in
+// the room (seen in the last 30s), with their names. Host-only.
+func (h *Handlers) LiveListeners(c *fiber.Ctx) error {
+	sessionID := c.Params("id")
+	_, _, isStaff, err := h.liveAccess(c, sessionID)
+	if err != nil || !isStaff {
+		return fiber.NewError(fiber.StatusForbidden, "host only")
+	}
+	ids := presenceUsers(sessionID, 30*time.Second)
+	out := []fiber.Map{}
+	if len(ids) > 0 {
+		rows, qerr := h.Pool.Query(c.Context(),
+			`SELECT id, COALESCE(NULLIF(full_name,''), COALESCE(email, username, 'Student')) FROM users WHERE id = ANY($1) ORDER BY full_name`, ids)
+		if qerr == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var id, name string
+				if rows.Scan(&id, &name) == nil {
+					out = append(out, fiber.Map{"id": id, "name": name})
+				}
+			}
+		}
+	}
+	return c.JSON(fiber.Map{"listeners": out, "count": len(ids)})
 }
 
 // LiveReact records a floating reaction (👍👏❤️😂😮🎉🚀👌). It's an in-memory

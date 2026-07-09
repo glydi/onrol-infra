@@ -268,6 +268,28 @@ func presenceCount(session string, within time.Duration) int {
 	return n
 }
 
+// presenceUsers returns the user ids seen within `within` (for the host's live
+// listeners list). Capped so a huge room can't blow up the response.
+func presenceUsers(session string, within time.Duration) []string {
+	cutoff := time.Now().Unix() - int64(within.Seconds())
+	presenceMu.Lock()
+	defer presenceMu.Unlock()
+	m := presence[session]
+	if m == nil {
+		return nil
+	}
+	out := make([]string, 0, len(m))
+	for u, r := range m {
+		if r.lastSeen >= cutoff {
+			out = append(out, u)
+			if len(out) >= 500 {
+				break
+			}
+		}
+	}
+	return out
+}
+
 // flushAttendance writes accumulated watch-time deltas to live_attendance and
 // prunes viewers idle for >5min. Called periodically and before an export so the
 // numbers are current. If onlySession is non-empty only that session is flushed.

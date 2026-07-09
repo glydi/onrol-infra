@@ -331,6 +331,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	// Simulated-live sessions (a recorded video served as a live stream).
 	api.Get("/me/live/:id/state", auth, h.LiveSessionState)
 	api.Post("/me/live/:id/heartbeat", auth, h.LiveHeartbeat)
+	api.Get("/me/live/:id/listeners", auth, h.LiveListeners) // host-only: who's watching now
 	api.Post("/me/live/:id/react", auth, h.LiveReact)
 	api.Post("/me/live/:id/control", auth, h.LiveControl)      // host-only room controls
 	api.Get("/me/live/:id/attendance", auth, h.LiveAttendance)   // host-only: who watched, how long
