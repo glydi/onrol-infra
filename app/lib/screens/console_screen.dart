@@ -2454,6 +2454,8 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
               _smallButton('Host', CupertinoIcons.dot_radiowaves_left_right, () => _openHost(s)),
               const SizedBox(width: 6),
             ],
+            _smallButton('Log', CupertinoIcons.doc_text_search, () => _openLog(s)),
+            const SizedBox(width: 6),
             _smallButton('Edit', CupertinoIcons.pencil, () => _editSession(s)),
             const SizedBox(width: 6),
             HoverTap(onTap: () => _deleteSession(s), child: const Icon(CupertinoIcons.trash, size: 18, color: AppleColors.red)),
@@ -2464,6 +2466,14 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         ),
       ),
     );
+  }
+
+  // Open the saved interaction log (Q&A + chat) for a session — reviewable any
+  // time after the class.
+  void _openLog(Map<String, dynamic> s) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => SessionLogScreen(auth: widget.auth, sessionId: s['id'].toString(), title: s['title']?.toString() ?? 'Live Class'),
+    ));
   }
 
   // Open the live host console: the admin sees all student chats (private to
@@ -4244,6 +4254,151 @@ class _CourseLiveAttendanceScreenState extends State<CourseLiveAttendanceScreen>
           ]),
         ]),
       ),
+    );
+  }
+}
+
+/// Saved interaction log for a live session — the Q&A and chat transcript,
+/// reviewable any time after the class (persisted in the database).
+class SessionLogScreen extends StatefulWidget {
+  const SessionLogScreen({super.key, required this.auth, required this.sessionId, required this.title});
+  final AuthService auth;
+  final String sessionId;
+  final String title;
+
+  @override
+  State<SessionLogScreen> createState() => _SessionLogScreenState();
+}
+
+class _SessionLogScreenState extends State<SessionLogScreen> {
+  bool _loading = true;
+  List<Map<String, dynamic>> _questions = [];
+  List<Map<String, dynamic>> _chat = [];
+  int _tab = 0; // 0 = Q&A, 1 = Chat
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (mounted) setState(() => _loading = true);
+    try {
+      final d = ApiClient.decode(await widget.auth.apiGet('/api/v1/manage/sessions/${widget.sessionId}/log'));
+      _questions = ((d['questions'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
+      _chat = ((d['chat'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  String _clock(String? iso) {
+    final t = DateTime.tryParse(iso ?? '')?.toLocal();
+    if (t == null) return '';
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(t.hour)}:${two(t.minute)} · ${t.day}/${t.month}';
+  }
+
+  void _export() {
+    String esc(Object? v) => '"${(v ?? '').toString().replaceAll('"', '""')}"';
+    final b = StringBuffer();
+    if (_tab == 0) {
+      b.writeln('Time,Student,Question,Answer,Answered');
+      for (final q in _questions) {
+        b.writeln([esc(q['at']), esc(q['name']), esc(q['body']), esc(q['answer']), (q['answered'] == true).toString()].join(','));
+      }
+    } else {
+      b.writeln('Time,From,Message');
+      for (final m in _chat) {
+        b.writeln([esc(m['at']), esc(m['from_staff'] == true ? 'Host' : m['name']), esc(m['body'])].join(','));
+      }
+    }
+    saveFileBytes('session-${_tab == 0 ? 'qa' : 'chat'}-${widget.sessionId}.csv', 'text/csv', utf8.encode(b.toString()));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final items = _tab == 0 ? _questions : _chat;
+    return SquareScope(
+      child: Scaffold(
+        backgroundColor: p.bg,
+        appBar: AppBar(
+          backgroundColor: p.bg.withOpacity(0.9),
+          scrolledUnderElevation: 0,
+          elevation: 0,
+          leading: IconButton(icon: const Icon(CupertinoIcons.chevron_left), onPressed: () => Navigator.pop(context)),
+          title: Text('Session Log', style: AppleTheme.headline(context)),
+          actions: [
+            IconButton(tooltip: 'Export CSV', icon: const Icon(CupertinoIcons.arrow_down_doc), onPressed: items.isEmpty ? null : _export),
+          ],
+        ),
+        body: _loading
+            ? const Center(child: CupertinoActivityIndicator())
+            : Column(children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(widget.title, style: AppleTheme.subhead(context)),
+                    const SizedBox(height: 10),
+                    AppleSegmented(square: true, labels: ['Q&A  [ ${_questions.length} ]', 'Chat  [ ${_chat.length} ]'],
+                        selected: _tab, onChanged: (i) => setState(() => _tab = i)),
+                  ]),
+                ),
+                Expanded(
+                  child: items.isEmpty
+                      ? Center(child: Text(_tab == 0 ? 'No questions were asked.' : 'No chat messages.', style: AppleTheme.footnote(context)))
+                      : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 40),
+                          itemCount: items.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          itemBuilder: (_, i) => _tab == 0 ? _qCard(items[i]) : _chatCard(items[i]),
+                        ),
+                ),
+              ]),
+      ),
+    );
+  }
+
+  Widget _qCard(Map<String, dynamic> q) {
+    final answered = q['answered'] == true;
+    return AppleCard(square: true,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(q['name']?.toString().isNotEmpty == true ? q['name'].toString() : 'Student',
+              style: AppleTheme.footnote(context).copyWith(color: AppleColors.blue, fontWeight: FontWeight.w700))),
+          Text(_clock(q['at']?.toString()), style: AppleTheme.footnote(context)),
+        ]),
+        const SizedBox(height: 4),
+        Text(q['body']?.toString() ?? '', style: AppleTheme.body(context)),
+        if (answered && (q['answer']?.toString().isNotEmpty ?? false)) ...[
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: AppleColors.green.withOpacity(0.10), border: Border.all(color: AppleColors.green.withOpacity(0.4))),
+            child: Text('Answer: ${q['answer']}', style: AppleTheme.footnote(context).copyWith(color: Palette.of(context).label)),
+          ),
+        ] else ...[
+          const SizedBox(height: 6),
+          Text('Unanswered', style: AppleTheme.footnote(context).copyWith(color: AppleColors.orange, fontWeight: FontWeight.w600)),
+        ],
+      ]),
+    );
+  }
+
+  Widget _chatCard(Map<String, dynamic> m) {
+    final staff = m['from_staff'] == true;
+    return AppleCard(square: true,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(staff ? 'Host' : (m['name']?.toString().isNotEmpty == true ? m['name'].toString() : 'Student'),
+              style: AppleTheme.footnote(context).copyWith(color: staff ? AppleColors.orange : AppleColors.blue, fontWeight: FontWeight.w700))),
+          Text(_clock(m['at']?.toString()), style: AppleTheme.footnote(context)),
+        ]),
+        const SizedBox(height: 4),
+        Text(m['body']?.toString() ?? '', style: AppleTheme.body(context)),
+      ]),
     );
   }
 }

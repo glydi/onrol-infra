@@ -776,6 +776,63 @@ func (h *Handlers) CourseLiveAttendance(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"students": out, "count": len(out)})
 }
 
+// SessionInteractionLog returns a session's SAVED interactions — the full Q&A
+// (questions + answers) and chat transcript — for staff to review any time after
+// the class. Gated to the session's course staff (not the live-room access
+// check), so it works long after the room has ended.
+func (h *Handlers) SessionInteractionLog(c *fiber.Ctx) error {
+	sessionID := c.Params("id")
+	var courseID, title, startsAt string
+	if err := h.Pool.QueryRow(c.Context(),
+		`SELECT course_id, title, COALESCE(starts_at::text,'') FROM class_sessions WHERE id=$1`, sessionID).Scan(&courseID, &title, &startsAt); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "session not found")
+	}
+	if err := h.canManageCourse(c, courseID); err != nil {
+		return err
+	}
+
+	questions := []fiber.Map{}
+	if rows, err := h.Pool.Query(c.Context(),
+		`SELECT COALESCE(display_name,''), body, COALESCE(answer,''), answered, created_at, answered_at
+		 FROM live_questions WHERE session_id=$1 ORDER BY created_at`, sessionID); err == nil {
+		for rows.Next() {
+			var name, body, answer string
+			var answered bool
+			var at time.Time
+			var ansAt *time.Time
+			if rows.Scan(&name, &body, &answer, &answered, &at, &ansAt) == nil {
+				m := fiber.Map{"name": name, "body": body, "answer": answer, "answered": answered, "at": at.UTC().Format(time.RFC3339)}
+				if ansAt != nil {
+					m["answered_at"] = ansAt.UTC().Format(time.RFC3339)
+				}
+				questions = append(questions, m)
+			}
+		}
+		rows.Close()
+	}
+
+	chat := []fiber.Map{}
+	if rows, err := h.Pool.Query(c.Context(),
+		`SELECT COALESCE(display_name,''), body, from_staff, created_at
+		 FROM live_chat_messages WHERE session_id=$1 ORDER BY created_at`, sessionID); err == nil {
+		for rows.Next() {
+			var name, body string
+			var staff bool
+			var at time.Time
+			if rows.Scan(&name, &body, &staff, &at) == nil {
+				chat = append(chat, fiber.Map{"name": name, "body": body, "from_staff": staff, "at": at.UTC().Format(time.RFC3339)})
+			}
+		}
+		rows.Close()
+	}
+
+	return c.JSON(fiber.Map{
+		"title": title, "starts_at": startsAt,
+		"questions": questions, "chat": chat,
+		"q_count": len(questions), "chat_count": len(chat),
+	})
+}
+
 // LiveChatList returns chat ascending. With ?after=<rfc3339> it returns only
 // newer messages (the client passes the last message's timestamp as the cursor).
 func (h *Handlers) LiveChatList(c *fiber.Ctx) error {
