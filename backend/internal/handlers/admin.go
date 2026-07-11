@@ -85,7 +85,8 @@ func (h *Handlers) AdminDeleteAllCourses(c *fiber.Ctx) error {
 func (h *Handlers) CreateWebinar(c *fiber.Ctx) error {
 	var req struct {
 		Title          string `json:"title"`
-		EmbedSessionID string `json:"embed_session_id"`
+		EmbedSessionID string `json:"embed_session_id"` // == Zoho meetingKey
+		ZohoInstanceID string `json:"zoho_instance_id"` // webinar sysId (for REST API v2)
 		WebformURL     string `json:"webform_url"`
 		WebformSysID   string `json:"webform_sys_id"`
 		WebformDigest  string `json:"webform_digest"`
@@ -105,9 +106,9 @@ func (h *Handlers) CreateWebinar(c *fiber.Ctx) error {
 	var id string
 	err := h.Pool.QueryRow(c.Context(),
 		`INSERT INTO webinars
-		   (title, embed_session_id, webform_url, webform_sys_id, webform_digest, webform_enc, return_url)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-		req.Title, req.EmbedSessionID, req.WebformURL, req.WebformSysID,
+		   (title, embed_session_id, zoho_instance_id, webform_url, webform_sys_id, webform_digest, webform_enc, return_url)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+		req.Title, req.EmbedSessionID, req.ZohoInstanceID, req.WebformURL, req.WebformSysID,
 		req.WebformDigest, req.WebformEnc, req.ReturnURL,
 	).Scan(&id)
 	if err != nil {

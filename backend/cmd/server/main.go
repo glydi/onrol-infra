@@ -51,9 +51,18 @@ func main() {
 	// TODO: replace the stub with a real Play Integrity / App Attest verifier.
 	attestor := middleware.NewStubAttestor()
 
-	// The Zoho client needs no secrets for the embed/web-form paths; per-webinar
-	// tokens live in the DB. Always available; /live 404s if no webinar row.
-	zClient := zoho.New(zoho.Config{WebinarBase: cfg.Zoho.WebinarBase})
+	// The Zoho client: embed/web-form paths need no secrets; the REST API v2
+	// registration path activates when the OAuth fields below are set. Per-webinar
+	// ids live in the DB. Always available; /live 404s if no webinar row.
+	zClient := zoho.New(zoho.Config{
+		WebinarBase:  cfg.Zoho.WebinarBase,
+		APIBase:      cfg.Zoho.APIBase,
+		AccountsBase: cfg.Zoho.AccountsBase,
+		OrgID:        cfg.Zoho.OrgID,
+		ClientID:     cfg.Zoho.ClientID,
+		ClientSecret: cfg.Zoho.ClientSecret,
+		RefreshToken: cfg.Zoho.RefreshToken,
+	})
 
 	h := handlers.New(cfg, pool, jwtm, attestor, zClient)
 

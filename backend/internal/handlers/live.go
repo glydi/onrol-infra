@@ -32,17 +32,18 @@ func (h *Handlers) LiveJoin(c *fiber.Ctx) error {
 
 	// Load the webinar config.
 	var (
-		title, embedSessionID                           string
+		title, embedSessionID, zohoInstanceID           string
 		webformURL, webformSysID, webformDigest, encTok string
 		returnURL                                       string
 	)
 	err := h.Pool.QueryRow(c.Context(),
-		`SELECT title, COALESCE(embed_session_id,''), COALESCE(webform_url,''),
-		        COALESCE(webform_sys_id,''), COALESCE(webform_digest,''),
-		        COALESCE(webform_enc,''), COALESCE(return_url,'')
+		`SELECT title, COALESCE(embed_session_id,''), COALESCE(zoho_instance_id,''),
+		        COALESCE(webform_url,''), COALESCE(webform_sys_id,''),
+		        COALESCE(webform_digest,''), COALESCE(webform_enc,''),
+		        COALESCE(return_url,'')
 		   FROM webinars WHERE id=$1 AND is_active`,
 		webinarID,
-	).Scan(&title, &embedSessionID, &webformURL, &webformSysID, &webformDigest, &encTok, &returnURL)
+	).Scan(&title, &embedSessionID, &zohoInstanceID, &webformURL, &webformSysID, &webformDigest, &encTok, &returnURL)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fiber.NewError(fiber.StatusNotFound, "webinar not found")
 	}
@@ -70,9 +71,22 @@ func (h *Handlers) LiveJoin(c *fiber.Ctx) error {
 
 	embedURL := h.Zoho.EmbedURL(embedSessionID, email)
 
-	// Best-effort server-side registration to bind identity / maybe get a link.
 	var joinURL, registrantNote string
-	if webformSysID != "" {
+
+	// Preferred path: the real OAuth REST API v2. Registers the student
+	// server-side and returns their private join link synchronously. Needs the
+	// webinar's meetingKey (== embed_session_id) and instance id (sysId).
+	if h.Zoho.APIEnabled() && embedSessionID != "" && zohoInstanceID != "" {
+		link, aerr := h.Zoho.RegisterAttendee(c.Context(), embedSessionID, zohoInstanceID, fullName, email)
+		if aerr != nil {
+			registrantNote = "api registration failed: " + aerr.Error()
+		} else {
+			joinURL = link
+		}
+	}
+
+	// Best-effort fallback: server-side web-form registration POST.
+	if joinURL == "" && webformSysID != "" {
 		res, ferr := h.Zoho.RegisterViaWebForm(c.Context(), zoho.WebForm{
 			URL: webformURL, SysID: webformSysID, Digest: webformDigest,
 			Enc: encTok, ReturnURL: returnURL,

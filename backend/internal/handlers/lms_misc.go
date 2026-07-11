@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -185,14 +186,17 @@ func (h *Handlers) CreateSession(c *fiber.Ctx) error {
 		WebinarID string `json:"webinar_id"`
 		JoinURL   string `json:"join_url"` // direct live link (Zoho/Meet/etc.) students join
 		HostURL   string `json:"host_url"` // host/start link instructors use to run + record
+		// When set, provision a NEW Zoho webinar via the REST API and link it to
+		// this session so students auto-register for private per-user join links.
+		CreateZohoWebinar bool `json:"create_zoho_webinar"`
 		// Simulated-live: when set, this session plays a recorded video as live.
 		MediaAssetID string `json:"media_asset_id"`
 		ChatEnabled  *bool  `json:"chat_enabled"`
 		QAEnabled    *bool  `json:"qa_enabled"`
 		ViewerBase   int    `json:"viewer_base"`
-		StartImage   string `json:"start_image"`   // 16:9 shown before the class (countdown overlaid)
-		EndImage     string `json:"end_image"`     // 16:9 shown after the class ends
-		BatchNumber  string `json:"batch_number"`  // target batch code; "" = whole course
+		StartImage   string `json:"start_image"`  // 16:9 shown before the class (countdown overlaid)
+		EndImage     string `json:"end_image"`    // 16:9 shown after the class ends
+		BatchNumber  string `json:"batch_number"` // target batch code; "" = whole course
 	}
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Title) == "" || req.StartsAt == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "title and starts_at required")
@@ -203,6 +207,41 @@ func (h *Handlers) CreateSession(c *fiber.Ctx) error {
 	}
 	if req.EndsAt != "" {
 		ends = req.EndsAt
+	}
+
+	// Provision a brand-new Zoho webinar and link it to this session. The webinars
+	// row is what LiveJoin registers students against (private per-user links).
+	if req.CreateZohoWebinar {
+		if h.Zoho == nil || !h.Zoho.APIEnabled() {
+			return fiber.NewError(fiber.StatusServiceUnavailable, "Zoho API not configured")
+		}
+		startT, perr := time.Parse(time.RFC3339, req.StartsAt)
+		if perr != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "invalid starts_at for Zoho webinar")
+		}
+		dur := time.Hour
+		if req.EndsAt != "" {
+			if endT, e := time.Parse(time.RFC3339, req.EndsAt); e == nil && endT.After(startT) {
+				dur = endT.Sub(startT)
+			}
+		}
+		cw, cerr := h.Zoho.CreateWebinar(c.Context(), req.Title, "", h.Cfg.Zoho.PresenterZUID, startT, dur, h.Cfg.Zoho.Timezone)
+		if cerr != nil {
+			return fiber.NewError(fiber.StatusBadGateway, "Zoho webinar create failed: "+cerr.Error())
+		}
+		var wid string
+		if e := h.Pool.QueryRow(c.Context(),
+			`INSERT INTO webinars (title, embed_session_id, zoho_instance_id) VALUES ($1,$2,$3) RETURNING id`,
+			req.Title, cw.MeetingKey, cw.InstanceID).Scan(&wid); e != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "webinar link failed")
+		}
+		req.WebinarID = wid
+		if req.HostURL == "" {
+			req.HostURL = cw.StartLink // instructor start/record link
+		}
+		if req.JoinURL == "" {
+			req.JoinURL = cw.RegURL // public register link as graceful fallback
+		}
 	}
 	if req.WebinarID != "" {
 		webinar = req.WebinarID
@@ -249,7 +288,7 @@ func (h *Handlers) UpdateSession(c *fiber.Ctx) error {
 		ChatEnabled  *bool   `json:"chat_enabled"`
 		QAEnabled    *bool   `json:"qa_enabled"`
 		ViewerBase   *int    `json:"viewer_base"`
-		StartImage   *string `json:"start_image"`  // "" clears, omit keeps
+		StartImage   *string `json:"start_image"` // "" clears, omit keeps
 		EndImage     *string `json:"end_image"`
 		BatchNumber  *string `json:"batch_number"` // "" = whole course, omit keeps
 	}
@@ -353,7 +392,8 @@ func (h *Handlers) MyLive(c *fiber.Ctx) error {
 		       COALESCE(cs.ends_at, CASE WHEN cs.media_asset_id IS NOT NULL AND ma.duration_seconds > 0
 		                                 THEN cs.starts_at + make_interval(secs => ma.duration_seconds) END) AS ends_at,
 		       COALESCE(cs.join_url,''), COALESCE(cs.location,''), c.title,
-		       cs.media_asset_id IS NOT NULL AS simulated
+		       cs.media_asset_id IS NOT NULL AS simulated,
+		       COALESCE(cs.webinar_id::text,'')
 		FROM class_sessions cs
 		JOIN courses c ON c.id = cs.course_id
 		JOIN course_enrollments ce ON ce.course_id = c.id AND ce.user_id = $1
@@ -372,10 +412,10 @@ func (h *Handlers) MyLive(c *fiber.Ctx) error {
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var id, title, joinURL, location, course string
+		var id, title, joinURL, location, course, webinarID string
 		var startsAt, endsAt any
 		var simulated bool
-		if err := rows.Scan(&id, &title, &startsAt, &endsAt, &joinURL, &location, &course, &simulated); err != nil {
+		if err := rows.Scan(&id, &title, &startsAt, &endsAt, &joinURL, &location, &course, &simulated, &webinarID); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		// Fall back to a join link stored in `location` if join_url is unset.
@@ -386,7 +426,7 @@ func (h *Handlers) MyLive(c *fiber.Ctx) error {
 		if simulated {
 			kind = "simulated" // played in-app as a fake-live recording, not an external link
 		}
-		out = append(out, fiber.Map{"id": id, "title": title, "starts_at": startsAt, "ends_at": endsAt, "join_url": joinURL, "course": course, "kind": kind})
+		out = append(out, fiber.Map{"id": id, "title": title, "starts_at": startsAt, "ends_at": endsAt, "join_url": joinURL, "course": course, "kind": kind, "webinar_id": webinarID})
 	}
 	return c.JSON(fiber.Map{"live": out})
 }

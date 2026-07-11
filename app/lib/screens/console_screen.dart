@@ -3085,12 +3085,18 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       const SizedBox(height: 6),
       _sessionBatchField(batchSel, (v) => setS(() => batchSel = v)),
       const SizedBox(height: 10),
-      AppleSegmented(square: true, labels: const ['External link', 'Recorded as live'], selected: mode, onChanged: (i) => setS(() => mode = i)),
+      AppleSegmented(square: true, labels: const ['External link', 'Recorded as live', 'Zoho webinar'], selected: mode, onChanged: (i) => setS(() => mode = i)),
       const SizedBox(height: 10),
       if (mode == 0) ...[
         sheetField(url, 'Join link — students attend', CupertinoIcons.link),
         const SizedBox(height: 10),
         sheetField(host, 'Host link — instructor records (Zoho host URL, optional)', CupertinoIcons.videocam_circle),
+      ] else if (mode == 2) ...[
+        AppleCard(square: true, child: Row(children: [
+          const Icon(CupertinoIcons.dot_radiowaves_left_right, size: 18, color: AppleColors.blue),
+          const SizedBox(width: 10),
+          Expanded(child: Text('A new Zoho webinar is created automatically. Each student is registered on join and gets their own private link — no shared URL to paste.', style: AppleTheme.footnote(context))),
+        ])),
       ] else
         ..._simLiveFields(videoId, videoTitle, qaOn, viewers,
             () => _pickFromStore((id, t) => setS(() {
@@ -3116,6 +3122,9 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         if (mode == 0) {
           body['join_url'] = url.text.trim();
           body['host_url'] = host.text.trim();
+        } else if (mode == 2) {
+          // Backend provisions a new Zoho webinar and links it to this session.
+          body['create_zoho_webinar'] = true;
         } else {
           body['media_asset_id'] = videoId;
           body['qa_enabled'] = qaOn;

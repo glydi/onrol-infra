@@ -423,7 +423,7 @@ func (h *Handlers) TakeAssessment(c *fiber.Ctx) error {
 	}
 	return c.JSON(fiber.Map{
 		"assessment_id": assessID, "title": title, "type": atype, "description": desc, "max_score": maxScore, "due_at": due, "auto_award": autoAward,
-		"questions": qs,
+		"questions":  qs,
 		"submission": fiber.Map{"body": subBody, "link": subLink, "status": subStatus, "feedback": subFeedback, "score": subScore, "files": files, "answers": answersMap},
 	})
 }
@@ -564,7 +564,7 @@ func (h *Handlers) SubmitAssessment(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"assessment_id": assessID, "status": status,
 		"needs_manual_grading": needsManual,
-		"score": percent, "percent": percent,
+		"score":                percent, "percent": percent,
 		"correct": correctCount, "total": total,
 	})
 }
@@ -686,6 +686,7 @@ func (h *Handlers) MyCalendar(c *fiber.Ctx) error {
 		       cs.id::text AS ref_id,
 		       CASE WHEN cs.media_asset_id IS NOT NULL THEN 'simulated' ELSE 'external' END AS live_kind,
 		       COALESCE(cs.join_url,'') AS join_url,
+		       COALESCE(cs.webinar_id::text,'') AS webinar_id,
 		       (now() > COALESCE(cs.ends_at,
 		           CASE WHEN cs.media_asset_id IS NOT NULL AND ma.duration_seconds > 0
 		                THEN cs.starts_at + make_interval(secs => ma.duration_seconds)
@@ -696,12 +697,12 @@ func (h *Handlers) MyCalendar(c *fiber.Ctx) error {
 		WHERE cs.starts_at >= now() - interval '180 days'
 		  AND (cs.batch_number IS NULL OR cs.batch_number = (SELECT batch FROM users WHERE id=$1))
 		UNION ALL
-		SELECT 'assessment_due', a.title, a.due_at, c.title, ''::text, ''::text, ''::text, false
+		SELECT 'assessment_due', a.title, a.due_at, c.title, ''::text, ''::text, ''::text, ''::text, false
 		FROM assessments a JOIN courses c ON c.id=a.course_id
 		JOIN course_enrollments ce ON ce.course_id=c.id AND ce.user_id=$1
 		WHERE a.due_at IS NOT NULL AND a.due_at >= now() - interval '7 days' AND a.is_published
 		UNION ALL
-		SELECT 'announcement', an.title, an.created_at, COALESCE(c.title,''), ''::text, ''::text, ''::text, false
+		SELECT 'announcement', an.title, an.created_at, COALESCE(c.title,''), ''::text, ''::text, ''::text, ''::text, false
 		FROM announcements an
 		LEFT JOIN courses c ON c.id=an.course_id
 		JOIN users me ON me.id=$1
@@ -713,7 +714,7 @@ func (h *Handlers) MyCalendar(c *fiber.Ctx) error {
 		     OR (an.course_id IS NOT NULL AND EXISTS (
 		            SELECT 1 FROM course_enrollments ce WHERE ce.course_id=an.course_id AND ce.user_id=me.id)) )
 		UNION ALL
-		SELECT 'event', e.title, e.starts_at, COALESCE(e.location,''), ''::text, ''::text, ''::text, false
+		SELECT 'event', e.title, e.starts_at, COALESCE(e.location,''), ''::text, ''::text, ''::text, ''::text, false
 		FROM calendar_events e JOIN users me ON me.id=$1
 		WHERE e.starts_at >= now() - interval '7 days'
 		  AND ( e.audience='all'
@@ -726,10 +727,10 @@ func (h *Handlers) MyCalendar(c *fiber.Ctx) error {
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var kind, title, course, refID, liveKind, joinURL string
+		var kind, title, course, refID, liveKind, joinURL, webinarID string
 		var at any
 		var ended bool
-		if err := rows.Scan(&kind, &title, &at, &course, &refID, &liveKind, &joinURL, &ended); err != nil {
+		if err := rows.Scan(&kind, &title, &at, &course, &refID, &liveKind, &joinURL, &webinarID, &ended); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		row := fiber.Map{"kind": kind, "title": title, "at": at, "course": course}
@@ -737,6 +738,7 @@ func (h *Handlers) MyCalendar(c *fiber.Ctx) error {
 			row["id"] = refID
 			row["live_kind"] = liveKind
 			row["join_url"] = joinURL
+			row["webinar_id"] = webinarID
 			row["ended"] = ended
 		}
 		out = append(out, row)

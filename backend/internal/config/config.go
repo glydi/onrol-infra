@@ -18,11 +18,26 @@ const (
 	AttestationEnforce AttestationMode = "enforce" // reject on failure
 )
 
-// Zoho holds the regional base for Zoho Webinar. Per-webinar tokens (embed
-// session id, web-form digest/enc/sysId) live in the webinars DB table, not
-// here, because they differ per webinar.
+// Zoho holds Zoho Webinar config. Per-webinar tokens (embed session id /
+// meetingKey, web-form digest/enc/sysId, instance id) live in the webinars DB
+// table because they differ per webinar. The OAuth fields below are org-wide
+// and drive the real REST API v2 registration path (see zoho.Client).
 type Zoho struct {
-	WebinarBase string // e.g. https://webinar.zoho.in (.in DC for India)
+	WebinarBase   string // e.g. https://webinar.zoho.in (embed/web-form base, .in DC)
+	APIBase       string // ZOHO_API_BASE, e.g. https://meeting.zoho.in/api/v2
+	AccountsBase  string // ZOHO_ACCOUNTS_BASE, e.g. https://accounts.zoho.in
+	OrgID         string // ZOHO_ORG_ID — the numeric org id (zsoid) in the API path
+	ClientID      string // ZOHO_OAUTH_CLIENT_ID
+	ClientSecret  string // ZOHO_OAUTH_CLIENT_SECRET
+	RefreshToken  string // ZOHO_OAUTH_REFRESH_TOKEN (scope: ZohoMeeting.webinar.READ,CREATE)
+	PresenterZUID string // ZOHO_PRESENTER_ZUID — required to create webinars via the API
+	Timezone      string // ZOHO_TIMEZONE — webinar timezone (default Asia/Kolkata)
+}
+
+// APIEnabled reports whether the OAuth REST API registration path is fully
+// configured. When false, live join falls back to the embed/web-form flow.
+func (z Zoho) APIEnabled() bool {
+	return z.OrgID != "" && z.ClientID != "" && z.ClientSecret != "" && z.RefreshToken != ""
 }
 
 type Config struct {
@@ -92,7 +107,15 @@ func Load() (Config, error) {
 		AdminAPIKey:     os.Getenv("ADMIN_API_KEY"),
 		AppBaseURL:      strings.TrimRight(getenv("APP_BASE_URL", "https://lms.187-127-178-100.sslip.io"), "/"),
 		Zoho: Zoho{
-			WebinarBase: getenv("ZOHO_WEBINAR_BASE", "https://webinar.zoho.in"),
+			WebinarBase:   getenv("ZOHO_WEBINAR_BASE", "https://webinar.zoho.in"),
+			APIBase:       getenv("ZOHO_API_BASE", "https://meeting.zoho.in/api/v2"),
+			AccountsBase:  getenv("ZOHO_ACCOUNTS_BASE", "https://accounts.zoho.in"),
+			OrgID:         os.Getenv("ZOHO_ORG_ID"),
+			ClientID:      os.Getenv("ZOHO_OAUTH_CLIENT_ID"),
+			ClientSecret:  os.Getenv("ZOHO_OAUTH_CLIENT_SECRET"),
+			RefreshToken:  os.Getenv("ZOHO_OAUTH_REFRESH_TOKEN"),
+			PresenterZUID: os.Getenv("ZOHO_PRESENTER_ZUID"),
+			Timezone:      getenv("ZOHO_TIMEZONE", "Asia/Kolkata"),
 		},
 		Integrations: Integrations{
 			RazorpayKey:    os.Getenv("RAZORPAY_KEY_ID"),

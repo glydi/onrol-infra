@@ -1268,7 +1268,7 @@ class _StudentHomeState extends State<StudentHome> {
   // Dispatches a live-class tap: a simulated-live session (a recorded video
   // served as live) opens our in-app live room; an external (Zoho/Meet/Jitsi)
   // session keeps the existing WebView/new-tab behavior.
-  void _openLive(Map<String, dynamic> session) {
+  Future<void> _openLive(Map<String, dynamic> session) async {
     if ((session['kind']?.toString() ?? 'external') == 'simulated') {
       final id = session['id']?.toString() ?? '';
       if (id.isEmpty || !mounted) return;
@@ -1282,7 +1282,30 @@ class _StudentHomeState extends State<StudentHome> {
       ));
       return;
     }
-    _openUrl(session['join_url']?.toString() ?? '');
+    // Zoho-linked class: register this student server-side for their own private
+    // join link, then open it INSIDE our live room — the Zoho stream is only the
+    // video; the Q&A/chat/watermark UI stays the app's own, same as every class.
+    final wid = session['webinar_id']?.toString() ?? '';
+    final sid = session['id']?.toString() ?? '';
+    if (wid.isNotEmpty) {
+      try {
+        final m = ApiClient.decode(await widget.auth.apiPost('/api/v1/live/$wid/join', {}));
+        final url = m['url']?.toString() ?? '';
+        if (url.isNotEmpty && sid.isNotEmpty && mounted) {
+          Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => LiveSessionScreen(
+              auth: widget.auth,
+              sessionId: sid,
+              watermark: widget.auth.user?.email ?? 'student',
+              title: session['title']?.toString() ?? 'Live Class',
+              externalUrl: url,
+            ),
+          ));
+          return;
+        }
+      } catch (_) {/* fall through to the shared join link */}
+    }
+    await _openUrl(session['join_url']?.toString() ?? '');
   }
 
   // Joins a live class (Zoho / Meet / Jitsi link). On mobile we load it inside
@@ -3579,8 +3602,9 @@ class _LiveCardState extends State<_LiveCard> {
     // end (gives away the length) nor start — to keep the live illusion. Real
     // external (Zoho) sessions keep the start–end range.
     final timeLabel = simulated ? '' : (start == null ? 'TBD' : (end == null ? _clock(start) : '${_clock(start)} – ${_clock(end)}'));
-    // Simulated-live sessions open in-app (no external link needed).
-    final hasLink = simulated || url.isNotEmpty;
+    // Simulated-live sessions open in-app (no external link needed); a
+    // Zoho-linked class resolves its private link on join via webinar_id.
+    final hasLink = simulated || url.isNotEmpty || (d['webinar_id']?.toString() ?? '').isNotEmpty;
 
     return _Entrance(
       index: widget.index,
@@ -5000,7 +5024,7 @@ class _CalendarViewState extends State<_CalendarView> {
             if (isSession && widget.onOpenSession != null) {
               return GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => widget.onOpenSession!({'id': m['id'], 'kind': m['live_kind'], 'title': m['title'], 'join_url': m['join_url']}),
+                onTap: () => widget.onOpenSession!({'id': m['id'], 'kind': m['live_kind'], 'title': m['title'], 'join_url': m['join_url'], 'webinar_id': m['webinar_id']}),
                 child: card,
               );
             }
