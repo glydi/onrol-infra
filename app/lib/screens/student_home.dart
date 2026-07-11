@@ -6751,15 +6751,17 @@ class _StudentHomeNotifState extends State<_StudentHomeNotif> {
                         style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: _navy, height: 1.4),
                       ),
                       const SizedBox(height: 4),
-                      // Expanded → rendered Markdown; collapsed → a plain snippet.
+                      // Markdown is rendered in BOTH states — full when expanded,
+                      // and a rendered (clipped) preview when collapsed, so the
+                      // snippet never shows raw **/#/- syntax before you open it.
                       if (_open)
                         MarkdownView(text: widget.body!, textColor: _navy, mutedColor: _grey, accent: _orange, borderColor: _cardBorder, dark: _isDark)
                       else
-                        Text(
-                          widget.body!.replaceAll(RegExp(r'\s+'), ' ').trim(),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.inter(fontSize: 12.5, color: _grey, height: 1.4),
+                        ClipRect(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxHeight: 42),
+                            child: MarkdownView(text: widget.body!, textColor: _grey, mutedColor: _grey, accent: _orange, borderColor: _cardBorder, dark: _isDark, baseFontSize: 12.5),
+                          ),
                         ),
                     ]);
                   }),
