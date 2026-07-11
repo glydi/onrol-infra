@@ -10,29 +10,31 @@ const _hideZohoControlsCss = '''
 html, body { pointer-events: none !important; }
 ''';
 
-// Auto-press Zoho's "Join Now"/entry (and any "join audio") button as the SPA
-// mounts it, so the student enters the session without a tap. A scripted click
-// isn't blocked by pointer-events:none. We scan ALL elements (Zoho renders the
-// button as a styled div/span, not always a <button>), match the exact join
-// text, and click the clickable ancestor. Retries ~48s as the page rebuilds.
+// Auto-press Zoho's attendee "Join Now" so the student enters without a tap. The
+// button is `#joinWebinarBtn` and its handler is `myWindow.joinTheWebinar()`, so
+// we (1) call that handler directly — the most reliable trigger since the button
+// uses a custom data-zm-click, not a native onclick — (2) click the button by id,
+// and (3) fall back to matching the exact "Join Now" text. Scripted calls aren't
+// blocked by pointer-events:none. Retries ~42s as the SPA mounts/rebuilds.
 const _autoJoinJs = r'''
 (function(){
   var tries = 0;
-  function label(el){ return ((el.innerText || el.textContent || el.value || (el.getAttribute && el.getAttribute('aria-label')) || '') + '').trim().toLowerCase(); }
-  function visible(el){ var r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
   var timer = setInterval(function(){
     tries++;
     try {
-      var nodes = document.querySelectorAll('button, a, [role="button"], input[type="button"], input[type="submit"], div, span');
+      if (window.myWindow && typeof window.myWindow.joinTheWebinar === 'function') {
+        window.myWindow.joinTheWebinar();
+      }
+      var btn = document.getElementById('joinWebinarBtn');
+      if (btn) { btn.click(); }
+      var nodes = document.querySelectorAll('button, a, [role="button"]');
       for (var i = 0; i < nodes.length; i++) {
-        var el = nodes[i], t = label(el);
-        if (/^join now$|^join$|^join webinar$|^join the webinar$|^join meeting$|^join with computer audio$|^join audio$/.test(t) && visible(el)) {
-          (el.closest('button, a, [role="button"], input') || el).click();
-        }
+        var t = ((nodes[i].innerText || nodes[i].textContent || '') + '').trim().toLowerCase();
+        if (t === 'join now' || t === 'join') { nodes[i].click(); }
       }
     } catch (e) {}
     if (tries > 60) clearInterval(timer);
-  }, 800);
+  }, 700);
 })();
 ''';
 
