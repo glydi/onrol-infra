@@ -10,25 +10,29 @@ const _hideZohoControlsCss = '''
 html, body { pointer-events: none !important; }
 ''';
 
-// Auto-press Zoho's "Join now"/entry (and any "join audio") button as the SPA
-// mounts it, so the student enters the session without a tap. Retries for ~40s.
+// Auto-press Zoho's "Join Now"/entry (and any "join audio") button as the SPA
+// mounts it, so the student enters the session without a tap. A scripted click
+// isn't blocked by pointer-events:none. We scan ALL elements (Zoho renders the
+// button as a styled div/span, not always a <button>), match the exact join
+// text, and click the clickable ancestor. Retries ~48s as the page rebuilds.
 const _autoJoinJs = r'''
 (function(){
   var tries = 0;
+  function label(el){ return ((el.innerText || el.textContent || el.value || (el.getAttribute && el.getAttribute('aria-label')) || '') + '').trim().toLowerCase(); }
+  function visible(el){ var r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
   var timer = setInterval(function(){
     tries++;
     try {
-      var nodes = document.querySelectorAll('button, a, [role="button"], input[type="button"], input[type="submit"]');
+      var nodes = document.querySelectorAll('button, a, [role="button"], input[type="button"], input[type="submit"], div, span');
       for (var i = 0; i < nodes.length; i++) {
-        var el = nodes[i];
-        var t = ((el.innerText || el.value || el.getAttribute('aria-label') || '') + '').trim().toLowerCase();
-        if (/^join$|join now|join webinar|join the webinar|join meeting|join with computer|join audio/.test(t)) {
-          el.click();
+        var el = nodes[i], t = label(el);
+        if (/^join now$|^join$|^join webinar$|^join the webinar$|^join meeting$|^join with computer audio$|^join audio$/.test(t) && visible(el)) {
+          (el.closest('button, a, [role="button"], input') || el).click();
         }
       }
     } catch (e) {}
-    if (tries > 40) clearInterval(timer);
-  }, 1000);
+    if (tries > 60) clearInterval(timer);
+  }, 800);
 })();
 ''';
 
