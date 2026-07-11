@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"regexp"
 	"strings"
 	"time"
 
@@ -189,6 +190,9 @@ func (h *Handlers) CreateSession(c *fiber.Ctx) error {
 		// When set, provision a NEW Zoho webinar via the REST API and link it to
 		// this session so students auto-register for private per-user join links.
 		CreateZohoWebinar bool `json:"create_zoho_webinar"`
+		// YouTube Live: paste the live URL or video id; students watch a clean,
+		// logo-masked autoplaying embed in our live room (no join click).
+		YouTubeURL string `json:"youtube_url"`
 		// Simulated-live: when set, this session plays a recorded video as live.
 		MediaAssetID string `json:"media_asset_id"`
 		ChatEnabled  *bool  `json:"chat_enabled"`
@@ -258,15 +262,40 @@ func (h *Handlers) CreateSession(c *fiber.Ctx) error {
 	if strings.TrimSpace(req.EndImage) != "" {
 		endImg = req.EndImage
 	}
+	var ytID any
+	if id := extractYouTubeID(req.YouTubeURL); id != "" {
+		ytID = id
+	}
 	var id string
 	if err := h.Pool.QueryRow(c.Context(),
-		`INSERT INTO class_sessions (course_id, title, starts_at, ends_at, location, instructor_id, capacity, webinar_id, join_url, host_url, media_asset_id, chat_enabled, qa_enabled, viewer_base, start_image, end_image, batch_number)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id`,
-		courseID, req.Title, req.StartsAt, ends, req.Location, callerID(c), req.Capacity, webinar, req.JoinURL, req.HostURL, media, chat, qa, req.ViewerBase, startImg, endImg, batch).Scan(&id); err != nil {
+		`INSERT INTO class_sessions (course_id, title, starts_at, ends_at, location, instructor_id, capacity, webinar_id, join_url, host_url, media_asset_id, chat_enabled, qa_enabled, viewer_base, start_image, end_image, batch_number, youtube_id)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING id`,
+		courseID, req.Title, req.StartsAt, ends, req.Location, callerID(c), req.Capacity, webinar, req.JoinURL, req.HostURL, media, chat, qa, req.ViewerBase, startImg, endImg, batch, ytID).Scan(&id); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": req.Title})
 }
+
+// extractYouTubeID pulls the 11-char video id from a YouTube URL (watch, youtu.be,
+// /live/, /embed/) or returns a bare id unchanged. Empty if none found.
+func extractYouTubeID(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if m := youtubeIDRe.FindStringSubmatch(s); m != nil {
+		return m[1]
+	}
+	if bareYouTubeIDRe.MatchString(s) {
+		return s
+	}
+	return ""
+}
+
+var (
+	youtubeIDRe     = regexp.MustCompile(`(?:v=|youtu\.be/|/live/|/embed/|/shorts/)([A-Za-z0-9_-]{11})`)
+	bareYouTubeIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`)
+)
 
 // UpdateSession edits a live session — primarily to update/replace the live
 // video (join) link, but title and start time can be changed too.
@@ -393,7 +422,7 @@ func (h *Handlers) MyLive(c *fiber.Ctx) error {
 		                                 THEN cs.starts_at + make_interval(secs => ma.duration_seconds) END) AS ends_at,
 		       COALESCE(cs.join_url,''), COALESCE(cs.location,''), c.title,
 		       cs.media_asset_id IS NOT NULL AS simulated,
-		       COALESCE(cs.webinar_id::text,'')
+		       COALESCE(cs.webinar_id::text,''), COALESCE(cs.youtube_id,'')
 		FROM class_sessions cs
 		JOIN courses c ON c.id = cs.course_id
 		JOIN course_enrollments ce ON ce.course_id = c.id AND ce.user_id = $1
@@ -412,10 +441,10 @@ func (h *Handlers) MyLive(c *fiber.Ctx) error {
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var id, title, joinURL, location, course, webinarID string
+		var id, title, joinURL, location, course, webinarID, youtubeID string
 		var startsAt, endsAt any
 		var simulated bool
-		if err := rows.Scan(&id, &title, &startsAt, &endsAt, &joinURL, &location, &course, &simulated, &webinarID); err != nil {
+		if err := rows.Scan(&id, &title, &startsAt, &endsAt, &joinURL, &location, &course, &simulated, &webinarID, &youtubeID); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		// Fall back to a join link stored in `location` if join_url is unset.
@@ -425,8 +454,10 @@ func (h *Handlers) MyLive(c *fiber.Ctx) error {
 		kind := "external"
 		if simulated {
 			kind = "simulated" // played in-app as a fake-live recording, not an external link
+		} else if youtubeID != "" {
+			kind = "youtube" // watched as a clean autoplay embed in our live room
 		}
-		out = append(out, fiber.Map{"id": id, "title": title, "starts_at": startsAt, "ends_at": endsAt, "join_url": joinURL, "course": course, "kind": kind, "webinar_id": webinarID})
+		out = append(out, fiber.Map{"id": id, "title": title, "starts_at": startsAt, "ends_at": endsAt, "join_url": joinURL, "course": course, "kind": kind, "webinar_id": webinarID, "youtube_id": youtubeID})
 	}
 	return c.JSON(fiber.Map{"live": out})
 }

@@ -16,13 +16,14 @@ import '../widgets/web_video_stub.dart' if (dart.library.html) '../widgets/web_v
 import '../widgets/live_player.dart';
 import '../widgets/watermark_overlay.dart';
 import '../widgets/live_embed_stub.dart' if (dart.library.html) '../widgets/live_embed_web.dart';
+import '../widgets/youtube_embed_stub.dart' if (dart.library.html) '../widgets/youtube_embed_web.dart';
 
 /// The "live room" for a simulated-live session (a recorded video streamed as if
 /// it were live): a pre-start lobby + countdown, a time-locked player, and a
 /// Q&A channel. Questions go PRIVATELY to the host; the host answers each asker.
 /// In host mode (admin) there's no player — just the question queue to answer.
 class LiveSessionScreen extends StatefulWidget {
-  const LiveSessionScreen({super.key, required this.auth, required this.sessionId, required this.watermark, this.title = 'Live Class', this.isHost = false, this.externalUrl = ''});
+  const LiveSessionScreen({super.key, required this.auth, required this.sessionId, required this.watermark, this.title = 'Live Class', this.isHost = false, this.externalUrl = '', this.youtubeId = ''});
   final AuthService auth;
   final String sessionId;
   final String watermark;
@@ -34,6 +35,9 @@ class LiveSessionScreen extends StatefulWidget {
   // URL as the video instead of the recorded-as-live HLS player. Everything else
   // (Q&A, chat, watermark, header) stays the app's own live-room UI.
   final String externalUrl;
+  // YouTube Live: when set, the stage embeds this YouTube video id as a clean,
+  // logo-free, autoplaying player (no join click). Sound via an in-room button.
+  final String youtubeId;
 
   @override
   State<LiveSessionScreen> createState() => _LiveSessionScreenState();
@@ -48,6 +52,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
 
   // Server state.
   String _status = 'upcoming'; // upcoming | preparing | live | ended
+  bool _ytUnmuted = false; // YouTube sessions start muted (autoplay); our button unmutes
   String _title = '';
   String _course = '';
   int _viewers = 0;
@@ -1077,6 +1082,10 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     // The host watches the live video too (when it's playing); otherwise they
     // see the host status panel (lobby / preparing / ended / queue summary).
     if (widget.isHost && !(_status == 'live' && _playlistUrl != null)) return _hostPanel();
+    // YouTube-Live: clean autoplaying embed once live — no logo, no join click.
+    if (_status == 'live' && widget.youtubeId.isNotEmpty) {
+      return _youtubeStage();
+    }
     // Zoho-hosted webinar: embed the provider's video in our stage once live, so
     // the surrounding live-room UI (Q&A/chat/watermark) stays identical. Zoho's
     // own "Join Now" is auto-pressed on mobile (injected JS) / clicked by the
@@ -1097,6 +1106,37 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     }
     if (_status == 'preparing') return _preparing();
     return _lobby();
+  }
+
+  // Clean YouTube-Live player: no logo/controls, autoplaying. Browsers force
+  // muted autoplay, so our own "Tap for sound" (a real gesture) unmutes it.
+  Widget _youtubeStage() {
+    return AspectRatio(
+      aspectRatio: 16 / 9,
+      child: Stack(fit: StackFit.expand, children: [
+        WatermarkOverlay(label: widget.watermark, child: youtubeEmbed(widget.youtubeId)),
+        if (!_ytUnmuted)
+          Positioned(
+            right: 12,
+            bottom: 12,
+            child: GestureDetector(
+              onTap: () {
+                youtubeUnmute(widget.youtubeId);
+                setState(() => _ytUnmuted = true);
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                decoration: BoxDecoration(color: _orange, borderRadius: BorderRadius.zero),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(CupertinoIcons.volume_up, size: 15, color: Colors.white),
+                  const SizedBox(width: 7),
+                  Text('Tap for sound', style: GoogleFonts.inter(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                ]),
+              ),
+            ),
+          ),
+      ]),
+    );
   }
 
   Widget _hostPanel() {

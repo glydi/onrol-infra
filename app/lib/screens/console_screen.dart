@@ -3069,9 +3069,10 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     final title = TextEditingController();
     final url = TextEditingController();
     final host = TextEditingController();
+    final yt = TextEditingController();
     final viewers = TextEditingController(text: '0');
     DateTime when = DateTime.now().add(const Duration(hours: 1));
-    int mode = 0; // 0 = external link, 1 = recorded-as-live
+    int mode = 0; // 0 = external link, 1 = recorded-as-live, 2 = Zoho, 3 = YouTube
     String? videoId;
     String videoTitle = '';
     bool qaOn = true;
@@ -3085,7 +3086,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       const SizedBox(height: 6),
       _sessionBatchField(batchSel, (v) => setS(() => batchSel = v)),
       const SizedBox(height: 10),
-      AppleSegmented(square: true, labels: const ['External link', 'Recorded as live', 'Zoho webinar'], selected: mode, onChanged: (i) => setS(() => mode = i)),
+      AppleSegmented(square: true, labels: const ['External link', 'Recorded as live', 'Zoho webinar', 'YouTube'], selected: mode, onChanged: (i) => setS(() => mode = i)),
       const SizedBox(height: 10),
       if (mode == 0) ...[
         sheetField(url, 'Join link — students attend', CupertinoIcons.link),
@@ -3096,6 +3097,14 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
           const Icon(CupertinoIcons.dot_radiowaves_left_right, size: 18, color: AppleColors.blue),
           const SizedBox(width: 10),
           Expanded(child: Text('A new Zoho webinar is created automatically. Each student is registered on join and gets their own private link — no shared URL to paste.', style: AppleTheme.footnote(context))),
+        ])),
+      ] else if (mode == 3) ...[
+        sheetField(yt, 'YouTube Live link or video ID', CupertinoIcons.play_rectangle),
+        const SizedBox(height: 8),
+        AppleCard(square: true, child: Row(children: [
+          const Icon(CupertinoIcons.play_circle, size: 18, color: AppleColors.red),
+          const SizedBox(width: 10),
+          Expanded(child: Text('Students watch the stream inside the live room — no logo, no controls, no join click. Broadcast the webinar to this YouTube Live (Zoho simulcast / OBS).', style: AppleTheme.footnote(context))),
         ])),
       ] else
         ..._simLiveFields(videoId, videoTitle, qaOn, viewers,
@@ -3117,6 +3126,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       if (title.text.trim().isEmpty) return 'Title required';
       if (mode == 0 && url.text.trim().isEmpty) return 'Join link required';
       if (mode == 1 && (videoId == null || videoId!.isEmpty)) return 'Pick a video to stream';
+      if (mode == 3 && yt.text.trim().isEmpty) return 'YouTube link required';
       try {
         final body = <String, dynamic>{'title': title.text.trim(), 'starts_at': when.toUtc().toIso8601String(), 'batch_number': batchSel};
         if (mode == 0) {
@@ -3125,6 +3135,8 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         } else if (mode == 2) {
           // Backend provisions a new Zoho webinar and links it to this session.
           body['create_zoho_webinar'] = true;
+        } else if (mode == 3) {
+          body['youtube_url'] = yt.text.trim();
         } else {
           body['media_asset_id'] = videoId;
           body['qa_enabled'] = qaOn;

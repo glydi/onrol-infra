@@ -1282,6 +1282,24 @@ class _StudentHomeState extends State<StudentHome> {
       ));
       return;
     }
+    // YouTube-Live class: open our live room with the clean autoplay embed as the
+    // video (no join click, no logo). Q&A/chat/watermark stay the app's own.
+    final yt = session['youtube_id']?.toString() ?? '';
+    if (yt.isNotEmpty) {
+      final id = session['id']?.toString() ?? '';
+      if (id.isNotEmpty && mounted) {
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => LiveSessionScreen(
+            auth: widget.auth,
+            sessionId: id,
+            watermark: widget.auth.user?.email ?? 'student',
+            title: session['title']?.toString() ?? 'Live Class',
+            youtubeId: yt,
+          ),
+        ));
+        return;
+      }
+    }
     // Zoho-linked class: register this student server-side for their own private
     // join link, then open it INSIDE our live room — the Zoho stream is only the
     // video; the Q&A/chat/watermark UI stays the app's own, same as every class.
@@ -3603,8 +3621,11 @@ class _LiveCardState extends State<_LiveCard> {
     // external (Zoho) sessions keep the start–end range.
     final timeLabel = simulated ? '' : (start == null ? 'TBD' : (end == null ? _clock(start) : '${_clock(start)} – ${_clock(end)}'));
     // Simulated-live sessions open in-app (no external link needed); a
-    // Zoho-linked class resolves its private link on join via webinar_id.
-    final hasLink = simulated || url.isNotEmpty || (d['webinar_id']?.toString() ?? '').isNotEmpty;
+    // Zoho-linked class resolves its private link on join via webinar_id; a
+    // YouTube-Live class opens the clean embed via youtube_id.
+    final hasLink = simulated || url.isNotEmpty ||
+        (d['webinar_id']?.toString() ?? '').isNotEmpty ||
+        (d['youtube_id']?.toString() ?? '').isNotEmpty;
 
     return _Entrance(
       index: widget.index,
@@ -5024,7 +5045,7 @@ class _CalendarViewState extends State<_CalendarView> {
             if (isSession && widget.onOpenSession != null) {
               return GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => widget.onOpenSession!({'id': m['id'], 'kind': m['live_kind'], 'title': m['title'], 'join_url': m['join_url'], 'webinar_id': m['webinar_id']}),
+                onTap: () => widget.onOpenSession!({'id': m['id'], 'kind': m['live_kind'], 'title': m['title'], 'join_url': m['join_url'], 'webinar_id': m['webinar_id'], 'youtube_id': m['youtube_id']}),
                 child: card,
               );
             }
