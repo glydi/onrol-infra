@@ -125,7 +125,7 @@ func (h *Handlers) buildLiveState(c *fiber.Ctx, sessionID string, now time.Time)
 	var startsAt time.Time
 	var assetID *string
 	var pausedAt, manualEnd *time.Time
-	var title, course, hlsURL, startImg, endImg, banner string
+	var title, course, hlsURL, liveHLSURL, startImg, endImg, banner string
 	var chatOK, qaOK, reactOK, blank, muted bool
 	var viewerBase, durationSecs, reloadSeq, slidesRev, slideshowSecs int
 	var currentSlide *string
@@ -133,7 +133,7 @@ func (h *Handlers) buildLiveState(c *fiber.Ctx, sessionID string, now time.Time)
 	err := h.Pool.QueryRow(c.Context(), `
 		SELECT cs.starts_at, cs.media_asset_id, cs.title, c.title,
 		       cs.chat_enabled, cs.qa_enabled, cs.reactions_enabled, cs.viewer_base, COALESCE(ma.duration_seconds, 0),
-		       COALESCE(ma.hls_url,''), COALESCE(cs.start_image,''), COALESCE(cs.end_image,''),
+		       COALESCE(ma.hls_url,''), COALESCE(cs.live_hls_url,''), COALESCE(cs.start_image,''), COALESCE(cs.end_image,''),
 		       cs.paused_at, cs.blank, cs.muted, cs.banner, cs.manual_ended_at, cs.reload_seq,
 		       cs.current_slide_id, cs.slides_rev, cs.slideshow_at, cs.slideshow_secs
 		FROM class_sessions cs
@@ -141,7 +141,7 @@ func (h *Handlers) buildLiveState(c *fiber.Ctx, sessionID string, now time.Time)
 		LEFT JOIN media_assets ma ON ma.id = cs.media_asset_id
 		WHERE cs.id = $1`, sessionID).Scan(
 		&startsAt, &assetID, &title, &course, &chatOK, &qaOK, &reactOK, &viewerBase, &durationSecs,
-		&hlsURL, &startImg, &endImg, &pausedAt, &blank, &muted, &banner, &manualEnd, &reloadSeq,
+		&hlsURL, &liveHLSURL, &startImg, &endImg, &pausedAt, &blank, &muted, &banner, &manualEnd, &reloadSeq,
 		&currentSlide, &slidesRev, &slideshowAt, &slideshowSecs)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, fiber.NewError(fiber.StatusForbidden, "not entitled to this session")
@@ -268,8 +268,14 @@ func (h *Handlers) buildLiveState(c *fiber.Ctx, sessionID string, now time.Time)
 	// remove). The window is re-derived from the server clock every request, so a
 	// reload resumes at the correct wall-clock second. Its AES key is the
 	// auth-gated /me/live/:id/hls.key.
-	if status == "live" && hlsURL != "" {
-		out["playlist_url"] = h.Cfg.AppBaseURL + "/api/v1/me/live/" + sessionID + "/playlist.m3u8"
+	if status == "live" {
+		if liveHLSURL != "" {
+			// A real external live feed (Cloudflare Stream / OBS / Zoho custom-RTMP
+			// simulcast): the player loads this .m3u8 directly — just the video.
+			out["playlist_url"] = liveHLSURL
+		} else if hlsURL != "" {
+			out["playlist_url"] = h.Cfg.AppBaseURL + "/api/v1/me/live/" + sessionID + "/playlist.m3u8"
+		}
 	}
 	return out, nil
 }

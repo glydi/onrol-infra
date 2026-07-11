@@ -1269,7 +1269,11 @@ class _StudentHomeState extends State<StudentHome> {
   // served as live) opens our in-app live room; an external (Zoho/Meet/Jitsi)
   // session keeps the existing WebView/new-tab behavior.
   Future<void> _openLive(Map<String, dynamic> session) async {
-    if ((session['kind']?.toString() ?? 'external') == 'simulated') {
+    final kind = session['kind']?.toString() ?? 'external';
+    // Recorded-as-live AND real live-HLS streams both play in our own live room
+    // via LivePlayer (the /state playlist_url drives it) — just the video, no
+    // buttons, with our Q&A/chat.
+    if (kind == 'simulated' || kind == 'livestream') {
       final id = session['id']?.toString() ?? '';
       if (id.isEmpty || !mounted) return;
       Navigator.of(context).push(MaterialPageRoute(
@@ -3622,8 +3626,10 @@ class _LiveCardState extends State<_LiveCard> {
     final timeLabel = simulated ? '' : (start == null ? 'TBD' : (end == null ? _clock(start) : '${_clock(start)} – ${_clock(end)}'));
     // Simulated-live sessions open in-app (no external link needed); a
     // Zoho-linked class resolves its private link on join via webinar_id; a
-    // YouTube-Live class opens the clean embed via youtube_id.
+    // YouTube-Live class opens the clean embed via youtube_id; a live-HLS stream
+    // opens the in-app player.
     final hasLink = simulated || url.isNotEmpty ||
+        (d['kind']?.toString() ?? '') == 'livestream' ||
         (d['webinar_id']?.toString() ?? '').isNotEmpty ||
         (d['youtube_id']?.toString() ?? '').isNotEmpty;
 

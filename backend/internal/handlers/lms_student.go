@@ -685,6 +685,7 @@ func (h *Handlers) MyCalendar(c *fiber.Ctx) error {
 		SELECT 'session' AS kind, cs.title, cs.starts_at AS at, c.title AS course,
 		       cs.id::text AS ref_id,
 		       CASE WHEN cs.media_asset_id IS NOT NULL THEN 'simulated'
+		            WHEN COALESCE(cs.live_hls_url,'') <> '' THEN 'livestream'
 		            WHEN COALESCE(cs.youtube_id,'') <> '' THEN 'youtube'
 		            ELSE 'external' END AS live_kind,
 		       COALESCE(cs.join_url,'') AS join_url,
