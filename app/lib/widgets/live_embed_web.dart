@@ -56,15 +56,17 @@ Widget liveEmbed(String url) {
         ..allow = 'camera; microphone; autoplay; fullscreen; display-capture'
         ..allowFullscreen = true;
 
-      // Cover strips over Zoho's top and bottom chrome. They also absorb taps in
-      // those regions so a stray tap can't hit a hidden Zoho control.
+      // Top 30%: a transparent shield that intercepts all touch/hover (default
+      // pointer-events) so Zoho's top controls can't be reached or triggered —
+      // the video still shows through it. (Bottom strip below is opaque to hide
+      // the floating control bar.)
       final top = html.DivElement()
         ..style.position = 'absolute'
         ..style.top = '0'
         ..style.left = '0'
         ..style.right = '0'
-        ..style.height = '9%'
-        ..style.background = '#000';
+        ..style.height = '30%'
+        ..style.background = 'transparent';
       // Zoho's control bar floats a bit above the bottom edge, so the strip must
       // reach up ~22% to fully cover it (timer / help / reactions / more / leave).
       final bottom = html.DivElement()

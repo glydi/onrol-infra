@@ -1578,8 +1578,23 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     if (_status == 'live' && widget.externalUrl.isNotEmpty) {
       return AspectRatio(
         aspectRatio: 16 / 9,
-        child: WatermarkOverlay(
-            label: widget.watermark, child: liveEmbed(widget.externalUrl)),
+        child: Stack(fit: StackFit.expand, children: [
+          WatermarkOverlay(
+              label: widget.watermark, child: liveEmbed(widget.externalUrl)),
+          // Host room controls mirrored over the Zoho embed.
+          if (_blank)
+            Container(
+                color: Colors.black,
+                alignment: Alignment.center,
+                child: Text('Back shortly', style: GoogleFonts.inter(color: Colors.white38, fontSize: 15, fontWeight: FontWeight.w600))),
+          if (_banner.isNotEmpty && !_blank)
+            Positioned(
+                top: 0, left: 0, right: 0,
+                child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    color: _orange,
+                    child: Text(_banner, textAlign: TextAlign.center, style: GoogleFonts.inter(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)))),
+        ]),
       );
     }
     if (_status == 'live' && _playlistUrl != null) {
