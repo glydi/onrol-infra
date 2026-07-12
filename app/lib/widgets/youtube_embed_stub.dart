@@ -4,8 +4,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 // One controller per embed so the (our-side) unmute button can drive the player.
 final _ytControllers = <String, InAppWebViewController>{};
 
-String _embedUrl(String id) =>
-    'https://www.youtube-nocookie.com/embed/$id'
+String _embedUrl(String id) => 'https://www.youtube-nocookie.com/embed/$id'
     '?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1'
     '&playsinline=1&iv_load_policy=3&fs=0&disablekb=1&enablejsapi=1';
 
@@ -28,5 +27,14 @@ Widget youtubeEmbed(String videoId) => InAppWebView(
 /// we can reach its <video> element directly.
 void youtubeUnmute(String videoId) {
   _ytControllers[videoId]?.evaluateJavascript(
-      source: 'var v=document.querySelector("video"); if(v){v.muted=false; v.play();}');
+      source:
+          'var v=document.querySelector("video"); if(v){v.muted=false; v.play();}');
+}
+
+/// Host-driven mute/unmute (mirrors the room's Mute control onto the player).
+void youtubeSetMuted(String videoId, bool muted) {
+  _ytControllers[videoId]?.evaluateJavascript(
+    source:
+        'var v=document.querySelector("video"); if(v){v.muted=${muted ? 'true' : 'false'};}',
+  );
 }

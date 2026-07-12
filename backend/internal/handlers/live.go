@@ -66,7 +66,7 @@ func (h *Handlers) LiveJoin(c *fiber.Ctx) error {
 		  WHERE user_id=$1 AND webinar_key=$2`, userID, webinarID,
 	).Scan(&cachedJoin)
 	if cachedJoin != "" {
-		return c.JSON(fiber.Map{"mode": "join", "url": cachedJoin, "cached": true, "title": title})
+		return c.JSON(fiber.Map{"mode": "join", "url": zoho.ParticipantURL(cachedJoin), "cached": true, "title": title})
 	}
 
 	embedURL := h.Zoho.EmbedURL(embedSessionID, email)
@@ -107,7 +107,7 @@ func (h *Handlers) LiveJoin(c *fiber.Ctx) error {
 			 VALUES ($1,$2,$3)
 			 ON CONFLICT (user_id, webinar_key) DO UPDATE SET join_url=EXCLUDED.join_url`,
 			userID, webinarID, joinURL)
-		return c.JSON(fiber.Map{"mode": "join", "url": joinURL, "cached": false, "title": title})
+		return c.JSON(fiber.Map{"mode": "join", "url": zoho.ParticipantURL(joinURL), "cached": false, "title": title})
 	}
 
 	// Fall back to the reliable embed-registration widget.

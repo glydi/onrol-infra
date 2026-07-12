@@ -318,7 +318,7 @@ func (c *Client) CreateWebinar(ctx context.Context, topic, agenda, presenterZUID
 	}
 	meetingKey := fmt.Sprintf("%v", out.Session.MeetingKey)
 	if out.Error.Message != "" || meetingKey == "" || meetingKey == "<nil>" {
-		return nil, fmt.Errorf("zoho create webinar failed (%d): %s", resp.StatusCode, firstNonEmpty(out.Error.Message, snippet(body)))
+		return nil, fmt.Errorf("%s", firstNonEmpty(out.Error.Message, snippet(body)))
 	}
 	instanceID := out.Session.SysID
 	if instanceID == "" && len(out.Session.InstanceID) > 0 {
@@ -405,6 +405,43 @@ func (c *Client) RegisterAttendee(ctx context.Context, meetingKey, instanceID, f
 		msg = snippet(body)
 	}
 	return "", fmt.Errorf("zoho register: no join link (%d): %s", resp.StatusCode, msg)
+}
+
+// ParticipantURL skips Zoho's redundant "You're all set" launcher page for a
+// registered attendee. Zoho's own WebinarJoin client turns the private
+// /meeting/register/join link into this participant URL when "Join Now" is
+// pressed. Doing the same transformation here is especially important on web,
+// where browser same-origin rules prevent ONROL from pressing a button inside
+// Zoho's iframe.
+//
+// Unknown URL shapes are returned unchanged so a future Zoho link format keeps
+// using the safe launcher instead of producing a broken participant URL.
+func ParticipantURL(joinLink string) string {
+	u, err := url.Parse(joinLink)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.Path != "/meeting/register/join" {
+		return joinLink
+	}
+	q := u.Query()
+	sessionID := q.Get("sessionId")
+	registerKey := q.Get("registerKey")
+	if sessionID == "" || registerKey == "" {
+		return joinLink
+	}
+
+	participantQuery := url.Values{
+		"key":         {sessionID},
+		"registerKey": {registerKey},
+	}
+	if uname := q.Get("uname"); uname != "" {
+		participantQuery.Set("uname", uname)
+	}
+	if lastName := q.Get("lastname"); lastName != "" {
+		participantQuery.Set("lastname", lastName)
+	}
+	u.Path = "/meeting/webinar-participant.do"
+	u.RawQuery = participantQuery.Encode()
+	u.Fragment = ""
+	return u.String()
 }
 
 func snippet(b []byte) string {

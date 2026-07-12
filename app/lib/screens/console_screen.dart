@@ -3137,6 +3137,11 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       if (mode == 1 && (videoId == null || videoId!.isEmpty)) return 'Pick a video to stream';
       if (mode == 3 && yt.text.trim().isEmpty) return 'YouTube link required';
       if (mode == 4 && live.text.trim().isEmpty) return 'Live HLS URL required';
+      // Zoho only accepts webinars scheduled in the future — reject a past/now
+      // start with a clear message instead of Zoho's cryptic 400.
+      if (mode == 2 && !when.isAfter(DateTime.now().add(const Duration(minutes: 2)))) {
+        return 'Zoho webinars must start in the future — pick a time at least a few minutes from now.';
+      }
       try {
         final body = <String, dynamic>{'title': title.text.trim(), 'starts_at': when.toUtc().toIso8601String(), 'batch_number': batchSel};
         if (mode == 0) {

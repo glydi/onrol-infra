@@ -20,7 +20,29 @@ class LiveScreen extends StatefulWidget {
 }
 
 class _LiveScreenState extends State<LiveScreen> {
-  double _progress = 0;
+  // Zoho renders its attendee button after the page itself has loaded. Retry
+  // while the SPA mounts so students enter the class without pressing it.
+  static const _autoJoinJs = r'''
+(function(){
+  var tries = 0;
+  var timer = setInterval(function(){
+    tries++;
+    try {
+      if (window.myWindow && typeof window.myWindow.joinTheWebinar === 'function') {
+        window.myWindow.joinTheWebinar();
+      }
+      var btn = document.getElementById('joinWebinarBtn');
+      if (btn) { btn.click(); }
+      var nodes = document.querySelectorAll('button, a, [role="button"]');
+      for (var i = 0; i < nodes.length; i++) {
+        var text = ((nodes[i].innerText || nodes[i].textContent || '') + '').trim().toLowerCase();
+        if (text === 'join now' || text === 'join') { nodes[i].click(); }
+      }
+    } catch (e) {}
+    if (tries > 60) clearInterval(timer);
+  }, 700);
+})();
+''';
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +51,7 @@ class _LiveScreenState extends State<LiveScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: bg.withOpacity(0.85),
+        backgroundColor: bg.withValues(alpha: 0.85),
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
@@ -37,13 +59,9 @@ class _LiveScreenState extends State<LiveScreen> {
           icon: const Icon(CupertinoIcons.chevron_left, size: 22),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text('Live Class', style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 17)),
-        bottom: _progress < 1
-            ? PreferredSize(
-                preferredSize: const Size.fromHeight(2),
-                child: LinearProgressIndicator(value: _progress, minHeight: 2, color: const Color(0xFF007AFF)),
-              )
-            : null,
+        title: Text('Live Class',
+            style:
+                GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 17)),
       ),
       body: WatermarkOverlay(
         label: widget.watermark,
@@ -66,8 +84,11 @@ class _LiveScreenState extends State<LiveScreen> {
             return false;
           },
           // Every navigation stays in the WebView — never hand off to a browser.
-          shouldOverrideUrlLoading: (_, __) async => NavigationActionPolicy.ALLOW,
-          onProgressChanged: (_, p) => setState(() => _progress = p / 100),
+          shouldOverrideUrlLoading: (_, __) async =>
+              NavigationActionPolicy.ALLOW,
+          onLoadStop: (controller, _) async {
+            await controller.evaluateJavascript(source: _autoJoinJs);
+          },
         ),
       ),
     );

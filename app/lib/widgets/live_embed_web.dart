@@ -33,18 +33,50 @@ const _pressJs = r'''
 var _pressInjected = false;
 
 /// Embeds a provider (e.g. Zoho) live URL as an <iframe> — the VIDEO source
-/// inside our own live room on web.
+/// inside our own live room on web. Opaque strips cover Zoho's top/bottom control
+/// bars (we can't hide them inside a cross-origin frame, but we can cover them
+/// from our side), while the centre — the video and "Join Now" — stays visible
+/// and tappable so the student can still join (we can't click it for them).
 Widget liveEmbed(String url) {
   final viewType = 'live-embed-${url.hashCode}';
   try {
     ui_web.platformViewRegistry.registerViewFactory(viewType, (int id) {
-      return html.IFrameElement()
+      final container = html.DivElement()
+        ..style.position = 'relative'
+        ..style.width = '100%'
+        ..style.height = '100%'
+        ..style.background = '#000'
+        ..style.overflow = 'hidden';
+
+      final f = html.IFrameElement()
         ..src = url
         ..style.border = 'none'
         ..style.width = '100%'
         ..style.height = '100%'
         ..allow = 'camera; microphone; autoplay; fullscreen; display-capture'
         ..allowFullscreen = true;
+
+      // Cover strips over Zoho's top and bottom chrome. They also absorb taps in
+      // those regions so a stray tap can't hit a hidden Zoho control.
+      final top = html.DivElement()
+        ..style.position = 'absolute'
+        ..style.top = '0'
+        ..style.left = '0'
+        ..style.right = '0'
+        ..style.height = '9%'
+        ..style.background = '#000';
+      final bottom = html.DivElement()
+        ..style.position = 'absolute'
+        ..style.bottom = '0'
+        ..style.left = '0'
+        ..style.right = '0'
+        ..style.height = '13%'
+        ..style.background = '#000';
+
+      container.append(f);
+      container.append(top);
+      container.append(bottom);
+      return container;
     });
   } catch (_) {}
   // Inject the same-origin press attempt once for the page.
