@@ -2449,11 +2449,10 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
               _smallButton('Host & record', CupertinoIcons.videocam_circle_fill, () => _openLink(hostUrl)),
               const SizedBox(width: 6),
             ],
-            // Host console — only for recorded-as-live sessions.
-            if (simulated) ...[
-              _smallButton('Host', CupertinoIcons.dot_radiowaves_left_right, () => _openHost(s)),
-              const SizedBox(width: 6),
-            ],
+            // Answer — opens the in-app host room where the admin sees each
+            // student's question and replies. Available for every live class.
+            _smallButton('Answer', CupertinoIcons.chat_bubble_2_fill, () => _openHost(s)),
+            const SizedBox(width: 6),
             _smallButton('Log', CupertinoIcons.doc_text_search, () => _openLog(s)),
             const SizedBox(width: 6),
             _smallButton('Edit', CupertinoIcons.pencil, () => _editSession(s)),

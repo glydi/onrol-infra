@@ -393,7 +393,7 @@ func (h *Handlers) ListCourseSessions(c *fiber.Ctx) error {
 	rows, err := h.Pool.Query(c.Context(),
 		`SELECT cs.id, cs.title, cs.starts_at, COALESCE(cs.join_url,''), COALESCE(cs.host_url,''), COALESCE(cs.location,''),
 		        COALESCE(cs.media_asset_id::text,''), cs.chat_enabled, cs.qa_enabled, cs.viewer_base, COALESCE(ma.title,''),
-		        COALESCE(cs.start_image,''), COALESCE(cs.end_image,''), COALESCE(cs.batch_number,'')
+		        COALESCE(cs.start_image,''), COALESCE(cs.end_image,''), COALESCE(cs.batch_number,''), COALESCE(cs.webinar_id::text,'')
 		 FROM class_sessions cs
 		 LEFT JOIN media_assets ma ON ma.id = cs.media_asset_id
 		 WHERE cs.course_id=$1 ORDER BY cs.starts_at`, courseID)
@@ -403,11 +403,11 @@ func (h *Handlers) ListCourseSessions(c *fiber.Ctx) error {
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var id, title, joinURL, hostURL, loc, mediaID, mediaTitle, startImg, endImg, batch string
+		var id, title, joinURL, hostURL, loc, mediaID, mediaTitle, startImg, endImg, batch, webinarID string
 		var chatOK, qaOK bool
 		var viewerBase int
 		var startsAt any
-		if err := rows.Scan(&id, &title, &startsAt, &joinURL, &hostURL, &loc, &mediaID, &chatOK, &qaOK, &viewerBase, &mediaTitle, &startImg, &endImg, &batch); err != nil {
+		if err := rows.Scan(&id, &title, &startsAt, &joinURL, &hostURL, &loc, &mediaID, &chatOK, &qaOK, &viewerBase, &mediaTitle, &startImg, &endImg, &batch, &webinarID); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		kind := "external"
@@ -416,7 +416,7 @@ func (h *Handlers) ListCourseSessions(c *fiber.Ctx) error {
 		}
 		out = append(out, fiber.Map{"id": id, "title": title, "starts_at": startsAt, "join_url": joinURL, "host_url": hostURL, "location": loc,
 			"media_asset_id": mediaID, "media_title": mediaTitle, "kind": kind, "chat_enabled": chatOK, "qa_enabled": qaOK, "viewer_base": viewerBase,
-			"start_image": startImg, "end_image": endImg, "batch": batch})
+			"start_image": startImg, "end_image": endImg, "batch": batch, "webinar_id": webinarID})
 	}
 	return c.JSON(fiber.Map{"sessions": out})
 }
