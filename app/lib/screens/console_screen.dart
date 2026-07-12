@@ -2543,6 +2543,8 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         sheetField(host, 'Host link — instructor starts & records (Zoho host URL)', CupertinoIcons.videocam_circle),
         const SizedBox(height: 6),
         _label(context, 'The host link is shown only to staff via “Host & record”. Students never see it.'),
+        const SizedBox(height: 10),
+        sheetField(viewers, 'Fake viewer count (displayed-count floor, 0 = off)', CupertinoIcons.eye, keyboard: TextInputType.number),
       ] else
         ..._simLiveFields(videoId, videoTitle, qaOn, viewers,
             () => _pickFromStore((id, t) => setS(() {
@@ -2569,6 +2571,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         if (mode == 0) {
           body['join_url'] = url.text.trim();
           body['host_url'] = host.text.trim();
+          body['viewer_base'] = int.tryParse(viewers.text.trim()) ?? 0;
         } else {
           body['media_asset_id'] = videoId;
           body['qa_enabled'] = qaOn;
@@ -3128,6 +3131,12 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
               if (d != null) setS(() { if (isEnd) endBanner = d; else startBanner = d; });
             },
             onClearBanner: (isEnd) => setS(() { if (isEnd) endBanner = null; else startBanner = null; })),
+      // In-room live modes (Zoho / YouTube / HLS) show a viewer count too — let
+      // the admin seed a fake floor like the recorded-as-live classes.
+      if (mode == 2 || mode == 3 || mode == 4) ...[
+        const SizedBox(height: 8),
+        sheetField(viewers, 'Fake viewer count (displayed-count floor, 0 = off)', CupertinoIcons.eye, keyboard: TextInputType.number),
+      ],
       const SizedBox(height: 12),
       _DateTimeRow(value: when, onPick: (d) => setS(() => when = d)),
     ], onSubmit: () async {
@@ -3149,10 +3158,13 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         } else if (mode == 2) {
           // Backend provisions a new Zoho webinar and links it to this session.
           body['create_zoho_webinar'] = true;
+          body['viewer_base'] = int.tryParse(viewers.text.trim()) ?? 0;
         } else if (mode == 3) {
           body['youtube_url'] = yt.text.trim();
+          body['viewer_base'] = int.tryParse(viewers.text.trim()) ?? 0;
         } else if (mode == 4) {
           body['live_hls_url'] = live.text.trim();
+          body['viewer_base'] = int.tryParse(viewers.text.trim()) ?? 0;
         } else {
           body['media_asset_id'] = videoId;
           body['qa_enabled'] = qaOn;
