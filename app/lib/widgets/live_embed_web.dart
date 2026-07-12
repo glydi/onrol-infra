@@ -66,9 +66,18 @@ Widget liveEmbed(String url) {
         ..style.right = '0'
         ..style.height = '30%'
         ..style.background = 'transparent';
+      // Bottom 10%: opaque cover over Zoho's bottom edge / control bar.
+      final bottom = html.DivElement()
+        ..style.position = 'absolute'
+        ..style.bottom = '0'
+        ..style.left = '0'
+        ..style.right = '0'
+        ..style.height = '10%'
+        ..style.background = '#000';
 
       container.append(f);
       container.append(top);
+      container.append(bottom);
       return container;
     });
   } catch (_) {}
