@@ -58,8 +58,7 @@ Widget liveEmbed(String url) {
 
       // Top 30%: a transparent shield that intercepts all touch/hover (default
       // pointer-events) so Zoho's top controls can't be reached or triggered —
-      // the video still shows through it. (Bottom strip below is opaque to hide
-      // the floating control bar.)
+      // the video still shows through it.
       final top = html.DivElement()
         ..style.position = 'absolute'
         ..style.top = '0'
@@ -67,19 +66,9 @@ Widget liveEmbed(String url) {
         ..style.right = '0'
         ..style.height = '30%'
         ..style.background = 'transparent';
-      // Zoho's control bar floats a bit above the bottom edge, so the strip must
-      // reach up ~22% to fully cover it (timer / help / reactions / more / leave).
-      final bottom = html.DivElement()
-        ..style.position = 'absolute'
-        ..style.bottom = '0'
-        ..style.left = '0'
-        ..style.right = '0'
-        ..style.height = '22%'
-        ..style.background = '#000';
 
       container.append(f);
       container.append(top);
-      container.append(bottom);
       return container;
     });
   } catch (_) {}
