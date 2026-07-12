@@ -1053,18 +1053,26 @@ func (h *Handlers) LiveQuestionPost(c *fiber.Ctx) error {
 		"id": id, "user_id": callerID(c), "name": name, "body": body, "answered": false, "at": at.UTC().Format(time.RFC3339Nano)})
 }
 
-// ListLiveHostSessions lists the simulated-live sessions for the live-host
-// portal (recent + upcoming), each with its count of unanswered questions.
+// ListLiveHostSessions lists the in-room live sessions for the live-host portal
+// (recent + upcoming), each with its count of unanswered questions. Includes
+// every type that plays inside our live room — recorded-as-live, Zoho webinar,
+// YouTube-live and live-HLS — so the host can open any of them and answer Q&A.
 func (h *Handlers) ListLiveHostSessions(c *fiber.Ctx) error {
 	rows, err := h.Pool.Query(c.Context(), `
 		SELECT cs.id, cs.title, c.title, cs.starts_at,
-		       cs.starts_at + make_interval(secs => COALESCE(ma.duration_seconds,0)) AS ends_at,
+		       CASE WHEN cs.media_asset_id IS NOT NULL
+		            THEN cs.starts_at + make_interval(secs => COALESCE(ma.duration_seconds,0))
+		            ELSE cs.ends_at END AS ends_at,
 		       COALESCE(cs.batch_number,''),
 		       (SELECT count(*) FROM live_questions q WHERE q.session_id=cs.id AND NOT q.answered) AS waiting
 		FROM class_sessions cs
 		JOIN courses c ON c.id = cs.course_id
-		JOIN media_assets ma ON ma.id = cs.media_asset_id
-		WHERE cs.media_asset_id IS NOT NULL AND cs.starts_at >= now() - interval '2 days'
+		LEFT JOIN media_assets ma ON ma.id = cs.media_asset_id
+		WHERE (cs.media_asset_id IS NOT NULL
+		       OR cs.webinar_id IS NOT NULL
+		       OR COALESCE(cs.youtube_id,'') <> ''
+		       OR COALESCE(cs.live_hls_url,'') <> '')
+		  AND cs.starts_at >= now() - interval '2 days'
 		ORDER BY cs.starts_at`)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
