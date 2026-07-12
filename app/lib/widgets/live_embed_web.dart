@@ -65,12 +65,14 @@ Widget liveEmbed(String url) {
         ..style.right = '0'
         ..style.height = '9%'
         ..style.background = '#000';
+      // Zoho's control bar floats a bit above the bottom edge, so the strip must
+      // reach up ~22% to fully cover it (timer / help / reactions / more / leave).
       final bottom = html.DivElement()
         ..style.position = 'absolute'
         ..style.bottom = '0'
         ..style.left = '0'
         ..style.right = '0'
-        ..style.height = '13%'
+        ..style.height = '22%'
         ..style.background = '#000';
 
       container.append(f);
