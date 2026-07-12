@@ -66,13 +66,15 @@ Widget liveEmbed(String url) {
         ..style.right = '0'
         ..style.height = '30%'
         ..style.background = 'transparent';
-      // Bottom 10%: opaque cover over Zoho's bottom edge / control bar.
+      // Bottom cover over Zoho's bottom edge / control bar: 10% on desktop, but
+      // 15% on phone-sized viewports (mobile view) where the bar sits taller.
+      final isMobile = (html.window.innerWidth ?? 1024) <= 640;
       final bottom = html.DivElement()
         ..style.position = 'absolute'
         ..style.bottom = '0'
         ..style.left = '0'
         ..style.right = '0'
-        ..style.height = '10%'
+        ..style.height = isMobile ? '15%' : '10%'
         ..style.background = '#000';
 
       container.append(f);
