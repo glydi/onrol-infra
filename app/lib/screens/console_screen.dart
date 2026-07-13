@@ -2932,22 +2932,38 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       if (x == null) return null;
       final raw = await x.readAsBytes();
       if (raw.isEmpty) return null;
-      Uint8List out;
-      String mime;
+      // Keep well under nginx's 10MB body limit — and a session PATCH may carry
+      // BOTH a start and an end image at once.
+      const maxBytes = 1500000; // ~1.5MB per image
       final decoded = img.decodeImage(raw);
-      if (decoded != null) {
-        final resized = img.copyResize(decoded, width: decoded.width > 960 ? 960 : decoded.width);
-        out = img.encodeJpg(resized, quality: 80);
-        mime = 'image/jpeg';
-      } else {
-        out = raw;
-        mime = x.mimeType ?? 'image/png';
+      if (decoded == null) {
+        // Format we can't re-encode (e.g. HEIC / some WebP). Send the original
+        // as-is if it's already small enough; otherwise ask for a JPG/PNG rather
+        // than silently rejecting.
+        if (raw.lengthInBytes <= maxBytes) {
+          return 'data:${x.mimeType ?? 'image/png'};base64,${base64Encode(raw)}';
+        }
+        _toast('That image format isn’t supported — try a JPG or PNG.');
+        return null;
       }
-      if (out.lengthInBytes > 900000) {
+      // Re-encode to JPEG, progressively shrinking (width, then quality) until it
+      // fits — so large phone photos succeed instead of being rejected.
+      var width = decoded.width > 1280 ? 1280 : decoded.width;
+      var quality = 82;
+      Uint8List out = img.encodeJpg(img.copyResize(decoded, width: width), quality: quality);
+      while (out.lengthInBytes > maxBytes && (width > 480 || quality > 45)) {
+        if (width > 480) {
+          width = (width * 0.8).round();
+        } else {
+          quality -= 10;
+        }
+        out = img.encodeJpg(img.copyResize(decoded, width: width), quality: quality);
+      }
+      if (out.lengthInBytes > maxBytes) {
         _toast('Image too large — try a smaller one.');
         return null;
       }
-      return 'data:$mime;base64,${base64Encode(out)}';
+      return 'data:image/jpeg;base64,${base64Encode(out)}';
     } catch (_) {
       _toast('Could not read that image.');
       return null;
