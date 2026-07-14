@@ -26,6 +26,52 @@ import 'live_host_portal.dart';
 import 'login_screen.dart';
 import 'video_store_screen.dart';
 
+// Maps a file extension to an image MIME type, or null if it isn't an image.
+// Top-level so every State in this file's admin screens can share it.
+String? _imageMime(String ext) {
+  switch (ext) {
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'png':
+      return 'image/png';
+    case 'webp':
+      return 'image/webp';
+    case 'gif':
+      return 'image/gif';
+    case 'bmp':
+      return 'image/bmp';
+    case 'heic':
+    case 'heif':
+      return 'image/heic';
+    default:
+      return null;
+  }
+}
+
+// JPEG-encode a downscaled copy under [maxBytes]; null on any failure (the
+// pure-Dart image codec can throw on web for some inputs).
+Uint8List? _tryCompress(Uint8List raw, int maxBytes) {
+  try {
+    final decoded = img.decodeImage(raw);
+    if (decoded == null) return null;
+    var width = decoded.width > 1280 ? 1280 : decoded.width;
+    var quality = 80;
+    Uint8List out = img.encodeJpg(img.copyResize(decoded, width: width), quality: quality);
+    while (out.lengthInBytes > maxBytes && (width > 480 || quality > 40)) {
+      if (width > 480) {
+        width = (width * 0.8).round();
+      } else {
+        quality -= 10;
+      }
+      out = img.encodeJpg(img.copyResize(decoded, width: width), quality: quality);
+    }
+    return out.lengthInBytes <= maxBytes ? out : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 /// Mentor/Admin management console — author courses, lessons and enrollments.
 class ConsoleScreen extends StatefulWidget {
   const ConsoleScreen({super.key, required this.auth});
@@ -1165,39 +1211,26 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   // or null if cancelled/failed. Same approach as profile avatars.
   Future<String?> _pickImageDataUri() async {
     try {
-      // FilePicker opens reliably on web (unlike ImagePicker here).
+      // FilePicker (no type filter) opens reliably on web; ImagePicker does not.
       final res = await FilePicker.platform.pickFiles(withData: true);
       if (res == null || res.files.isEmpty) return null;
       final raw = res.files.first.bytes;
       if (raw == null || raw.isEmpty) return null;
-      const maxBytes = 1500000; // ~1.5MB
-      final decoded = img.decodeImage(raw);
-      if (decoded == null) {
-        if (raw.lengthInBytes <= maxBytes) {
-          final ext = (res.files.first.extension ?? 'png').toLowerCase();
-          final mime = ext == 'jpg' || ext == 'jpeg' ? 'image/jpeg' : ext == 'webp' ? 'image/webp' : 'image/png';
-          return 'data:$mime;base64,${base64Encode(raw)}';
-        }
-        _toast('That image format isn’t supported — try a JPG or PNG.');
+      final mime = _imageMime((res.files.first.extension ?? '').toLowerCase());
+      if (mime == null) {
+        _toast('Please pick a JPG, PNG or WebP image.');
         return null;
       }
-      // Progressively shrink until it fits, so large photos succeed.
-      var width = decoded.width > 1000 ? 1000 : decoded.width;
-      var quality = 82;
-      Uint8List out = img.encodeJpg(img.copyResize(decoded, width: width), quality: quality);
-      while (out.lengthInBytes > maxBytes && (width > 480 || quality > 45)) {
-        if (width > 480) {
-          width = (width * 0.8).round();
-        } else {
-          quality -= 10;
-        }
-        out = img.encodeJpg(img.copyResize(decoded, width: width), quality: quality);
+      const maxBytes = 2500000; // ~2.5MB
+      // Send as-is when it fits (the web image codec can throw); only compress
+      // oversized files, and never let that abort the upload.
+      if (raw.lengthInBytes <= maxBytes) {
+        return 'data:$mime;base64,${base64Encode(raw)}';
       }
-      if (out.lengthInBytes > maxBytes) {
-        _toast('Image too large — try a smaller one.');
-        return null;
-      }
-      return 'data:image/jpeg;base64,${base64Encode(out)}';
+      final compressed = _tryCompress(raw, maxBytes);
+      if (compressed != null) return 'data:image/jpeg;base64,${base64Encode(compressed)}';
+      _toast('Image too large — please pick one under ~2.5 MB.');
+      return null;
     } catch (_) {
       _toast('Could not load that image.');
       return null;
@@ -2994,50 +3027,32 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   // Pick a 16:9 banner and return it as a downscaled JPEG data URI (≤~900 KB).
   Future<String?> _pickBanner() async {
     try {
-      // Use FilePicker (not ImagePicker) — it reliably opens the file dialog on
-      // web here, where ImagePicker could fail to even open the picker.
+      // FilePicker (no type filter) opens reliably on web; ImagePicker /
+      // FileType.image do not.
       final res = await FilePicker.platform.pickFiles(withData: true);
       if (res == null || res.files.isEmpty) return null;
       final pf = res.files.first;
       final raw = pf.bytes;
       if (raw == null || raw.isEmpty) return null;
-      // Keep well under nginx's 10MB body limit — and a session PATCH may carry
-      // BOTH a start and an end image at once.
-      const maxBytes = 1500000; // ~1.5MB per image
-      final decoded = img.decodeImage(raw);
-      if (decoded == null) {
-        // Couldn't decode: an image format we can't re-encode (HEIC / some WebP)
-        // — send it as-is if it's a known image type and small enough; otherwise
-        // ask for a supported image instead of accepting a non-image file.
-        final ext = (pf.extension ?? '').toLowerCase();
-        const imgExt = {'jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'heic', 'heif'};
-        if (imgExt.contains(ext) && raw.lengthInBytes <= maxBytes) {
-          final mime = ext == 'jpg' || ext == 'jpeg'
-              ? 'image/jpeg'
-              : ext == 'webp' ? 'image/webp' : ext == 'gif' ? 'image/gif' : 'image/png';
-          return 'data:$mime;base64,${base64Encode(raw)}';
-        }
+      final ext = (pf.extension ?? '').toLowerCase();
+      final mime = _imageMime(ext);
+      if (mime == null) {
         _toast('Please pick a JPG, PNG or WebP image.');
         return null;
       }
-      // Re-encode to JPEG, progressively shrinking (width, then quality) until it
-      // fits — so large phone photos succeed instead of being rejected.
-      var width = decoded.width > 1280 ? 1280 : decoded.width;
-      var quality = 82;
-      Uint8List out = img.encodeJpg(img.copyResize(decoded, width: width), quality: quality);
-      while (out.lengthInBytes > maxBytes && (width > 480 || quality > 45)) {
-        if (width > 480) {
-          width = (width * 0.8).round();
-        } else {
-          quality -= 10;
-        }
-        out = img.encodeJpg(img.copyResize(decoded, width: width), quality: quality);
+      // Send the original as-is when it already fits — the web image codec is
+      // fragile, so we DON'T decode/re-encode unless the file is genuinely too
+      // big. nginx allows 10MB and a PATCH may carry a start AND an end image.
+      const maxBytes = 2500000; // ~2.5MB per image
+      if (raw.lengthInBytes <= maxBytes) {
+        return 'data:$mime;base64,${base64Encode(raw)}';
       }
-      if (out.lengthInBytes > maxBytes) {
-        _toast('Image too large — try a smaller one.');
-        return null;
-      }
-      return 'data:image/jpeg;base64,${base64Encode(out)}';
+      // Too big — try to downscale/compress, but wrap it so a web decode failure
+      // doesn't abort the whole upload.
+      final compressed = _tryCompress(raw, maxBytes);
+      if (compressed != null) return 'data:image/jpeg;base64,${base64Encode(compressed)}';
+      _toast('Image too large — please pick one under ~2.5 MB.');
+      return null;
     } catch (_) {
       _toast('Could not read that image.');
       return null;
@@ -5036,34 +5051,43 @@ class _ExploreCoursesScreenState extends State<ExploreCoursesScreen> {
 
   Future<String?> _pickImage() async {
     try {
-      // FilePicker opens reliably on web (unlike ImagePicker here).
+      // FilePicker (no type filter) opens reliably on web; ImagePicker does not.
       final res = await FilePicker.platform.pickFiles(withData: true);
       if (res == null || res.files.isEmpty) return null;
       final raw = res.files.first.bytes;
       if (raw == null || raw.isEmpty) return null;
-      const maxBytes = 1500000; // ~1.5MB
-      final decoded = img.decodeImage(raw);
-      if (decoded == null) {
-        if (raw.lengthInBytes <= maxBytes) {
-          final ext = (res.files.first.extension ?? 'png').toLowerCase();
-          final mime = ext == 'jpg' || ext == 'jpeg' ? 'image/jpeg' : ext == 'webp' ? 'image/webp' : 'image/png';
-          return 'data:$mime;base64,${base64Encode(raw)}';
-        }
-        return null;
+      final ext = (res.files.first.extension ?? '').toLowerCase();
+      const mimes = {
+        'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
+        'webp': 'image/webp', 'gif': 'image/gif', 'bmp': 'image/bmp',
+        'heic': 'image/heic', 'heif': 'image/heic',
+      };
+      final mime = mimes[ext];
+      if (mime == null) return null;
+      const maxBytes = 2500000; // ~2.5MB
+      // Send as-is when it fits; only decode/compress oversized files, wrapped so
+      // a web codec failure can't abort the upload.
+      if (raw.lengthInBytes <= maxBytes) {
+        return 'data:$mime;base64,${base64Encode(raw)}';
       }
-      var width = decoded.width > 1000 ? 1000 : decoded.width;
-      var quality = 82;
-      Uint8List out = img.encodeJpg(img.copyResize(decoded, width: width), quality: quality);
-      while (out.lengthInBytes > maxBytes && (width > 480 || quality > 45)) {
-        if (width > 480) {
-          width = (width * 0.8).round();
-        } else {
-          quality -= 10;
+      try {
+        final decoded = img.decodeImage(raw);
+        if (decoded != null) {
+          var width = decoded.width > 1000 ? 1000 : decoded.width;
+          var quality = 80;
+          Uint8List out = img.encodeJpg(img.copyResize(decoded, width: width), quality: quality);
+          while (out.lengthInBytes > maxBytes && (width > 480 || quality > 40)) {
+            if (width > 480) {
+              width = (width * 0.8).round();
+            } else {
+              quality -= 10;
+            }
+            out = img.encodeJpg(img.copyResize(decoded, width: width), quality: quality);
+          }
+          if (out.lengthInBytes <= maxBytes) return 'data:image/jpeg;base64,${base64Encode(out)}';
         }
-        out = img.encodeJpg(img.copyResize(decoded, width: width), quality: quality);
-      }
-      if (out.lengthInBytes > maxBytes) return null;
-      return 'data:image/jpeg;base64,${base64Encode(out)}';
+      } catch (_) {}
+      return null;
     } catch (_) {
       return null;
     }
