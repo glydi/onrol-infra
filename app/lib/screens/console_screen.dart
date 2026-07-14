@@ -6,7 +6,6 @@ import 'package:flutter/cupertino.dart' hide Text;
 import 'package:flutter/material.dart' hide Text;
 import 'package:onrol_app/widgets/upper_text.dart';
 import 'package:image/image.dart' as img;
-import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../services/api_client.dart';
@@ -47,6 +46,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   bool get _isAdmin => widget.auth.user?.role == 'manager' || widget.auth.user?.role == 'superadmin';
 
   Timer? _refreshTimer;
+  int _mentorWaiting = 0; // unanswered student questions across managed courses
 
   @override
   void initState() {
@@ -73,6 +73,10 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       if (_isAdmin) {
         final u = await widget.auth.apiGet('/api/v1/manage/users');
         _people = (ApiClient.decode(u)['users'] as List?) ?? _people;
+        try {
+          final mq = await widget.auth.apiGet('/api/v1/manage/mentor-questions');
+          _mentorWaiting = (ApiClient.decode(mq)['waiting'] as num?)?.toInt() ?? _mentorWaiting;
+        } catch (_) {}
       }
     } catch (_) {
       if (quiet) return; // leave existing data untouched on a background refresh
@@ -197,7 +201,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       if (_isAdmin) const NavDest(CupertinoIcons.person_badge_plus, 'Instructors', section: 'People'),
       if (_isAdmin) const NavDest(CupertinoIcons.person_2_fill, 'Students', section: 'People'),
       if (_isAdmin) const NavDest(CupertinoIcons.calendar, 'Calendar', section: 'Engagement'),
-      if (_isAdmin) const NavDest(CupertinoIcons.chat_bubble_2_fill, 'Ask Mentor', section: 'Engagement'),
+      if (_isAdmin) NavDest(CupertinoIcons.chat_bubble_2_fill, 'Ask Mentor', section: 'Engagement', badge: _mentorWaiting),
       if (_isAdmin) const NavDest(CupertinoIcons.gear_alt_fill, 'Admin Settings', section: 'Account'),
       const NavDest(CupertinoIcons.person_fill, 'Profile', section: 'Account'),
     ];
@@ -2463,8 +2467,9 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
               const SizedBox(width: 6),
             ],
             // Answer — opens the in-app host room where the admin sees each
-            // student's question and replies. Available for every live class.
-            _smallButton('Answer', CupertinoIcons.chat_bubble_2_fill, () => _openHost(s)),
+            // student's question and replies. A red badge shows how many student
+            // questions are still waiting for an answer.
+            _answerButton(s),
             const SizedBox(width: 6),
             _smallButton('Log', CupertinoIcons.doc_text_search, () => _openLog(s)),
             const SizedBox(width: 6),
@@ -2486,6 +2491,28 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => SessionLogScreen(auth: widget.auth, sessionId: s['id'].toString(), title: s['title']?.toString() ?? 'Live Class'),
     ));
+  }
+
+  // The "Answer" button with a red count badge when student questions are
+  // waiting to be answered for this session.
+  Widget _answerButton(Map<String, dynamic> s) {
+    final waiting = (s['waiting'] as num?)?.toInt() ?? 0;
+    final btn = _smallButton('Answer', CupertinoIcons.chat_bubble_2_fill, () => _openHost(s));
+    if (waiting <= 0) return btn;
+    return Stack(clipBehavior: Clip.none, children: [
+      btn,
+      Positioned(
+        top: -6, right: -6,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          constraints: const BoxConstraints(minWidth: 18),
+          decoration: const BoxDecoration(color: AppleColors.red, shape: BoxShape.rectangle, borderRadius: BorderRadius.all(Radius.circular(9))),
+          child: Text(waiting > 99 ? '99+' : '$waiting',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
+        ),
+      ),
+    ]);
   }
 
   // Open the live host console: the admin sees all student chats (private to
@@ -2604,6 +2631,24 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     }
   }
 
+  // The highest day_number that actually has lessons in the open course, so the
+  // assessment forms can warn when a quiz/assignment is placed on an empty day
+  // (which would otherwise fold to the end of the last day for students).
+  int _maxContentDay() {
+    int mx = 0;
+    void scan(List mods) {
+      for (final mm in mods) {
+        for (final l in (((mm as Map)['lessons'] as List?) ?? const [])) {
+          final d = ((l as Map)['day_number'] as num?)?.toInt();
+          if (d != null && d > mx) mx = d;
+        }
+        scan((mm['submodules'] as List?) ?? const []);
+      }
+    }
+    scan((_course?['modules'] as List?) ?? const []);
+    return mx;
+  }
+
   Future<void> _addAssignment({String? moduleId, String? moduleTitle}) async {
     final title = TextEditingController();
     final desc = TextEditingController();
@@ -2631,6 +2676,10 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       ],
       const SizedBox(height: 10),
       sheetField(day, 'Day number (e.g. 1, 2, 3 — optional)', CupertinoIcons.calendar, keyboard: TextInputType.number),
+      if (_maxContentDay() > 0) ...[
+        const SizedBox(height: 6),
+        _label(context, 'This course’s lessons go up to Day ${_maxContentDay()}. A quiz on a day with no lessons shows at the end of the last day for students.'),
+      ],
       const SizedBox(height: 12),
       _DateTimeRow(value: due, onPick: (d) => setS(() => due = d)),
     ], onSubmit: () async {
@@ -2848,6 +2897,10 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       if (scope == 0) ...[
         const SizedBox(height: 10),
         sheetField(day, 'Day number (blank = unscheduled)', CupertinoIcons.calendar, keyboard: TextInputType.number),
+        if (_maxContentDay() > 0) ...[
+          const SizedBox(height: 6),
+          _label(context, 'This course’s lessons go up to Day ${_maxContentDay()}. A quiz on a day with no lessons shows at the end of the last day for students.'),
+        ],
       ] else if (modules.isEmpty) ...[
         const SizedBox(height: 8),
         Text('Add a module first to scope it module-wise.', style: AppleTheme.footnote(context)),
@@ -4980,22 +5033,34 @@ class _ExploreCoursesScreenState extends State<ExploreCoursesScreen> {
 
   Future<String?> _pickImage() async {
     try {
-      final x = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 1280, maxHeight: 1280, imageQuality: 82);
-      if (x == null) return null;
-      final raw = await x.readAsBytes();
-      if (raw.isEmpty) return null;
-      Uint8List out;
-      String mime;
+      // FilePicker opens reliably on web (unlike ImagePicker here).
+      final res = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+      if (res == null || res.files.isEmpty) return null;
+      final raw = res.files.first.bytes;
+      if (raw == null || raw.isEmpty) return null;
+      const maxBytes = 1500000; // ~1.5MB
       final decoded = img.decodeImage(raw);
-      if (decoded != null) {
-        out = img.encodeJpg(img.copyResize(decoded, width: decoded.width > 800 ? 800 : decoded.width), quality: 80);
-        mime = 'image/jpeg';
-      } else {
-        out = raw;
-        mime = x.mimeType ?? 'image/png';
+      if (decoded == null) {
+        if (raw.lengthInBytes <= maxBytes) {
+          final ext = (res.files.first.extension ?? 'png').toLowerCase();
+          final mime = ext == 'jpg' || ext == 'jpeg' ? 'image/jpeg' : ext == 'webp' ? 'image/webp' : 'image/png';
+          return 'data:$mime;base64,${base64Encode(raw)}';
+        }
+        return null;
       }
-      if (out.lengthInBytes > 900000) return null;
-      return 'data:$mime;base64,${base64Encode(out)}';
+      var width = decoded.width > 1000 ? 1000 : decoded.width;
+      var quality = 82;
+      Uint8List out = img.encodeJpg(img.copyResize(decoded, width: width), quality: quality);
+      while (out.lengthInBytes > maxBytes && (width > 480 || quality > 45)) {
+        if (width > 480) {
+          width = (width * 0.8).round();
+        } else {
+          quality -= 10;
+        }
+        out = img.encodeJpg(img.copyResize(decoded, width: width), quality: quality);
+      }
+      if (out.lengthInBytes > maxBytes) return null;
+      return 'data:image/jpeg;base64,${base64Encode(out)}';
     } catch (_) {
       return null;
     }

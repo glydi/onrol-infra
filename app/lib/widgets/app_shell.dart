@@ -7,10 +7,11 @@ import '../theme.dart';
 import 'ui.dart';
 
 class NavDest {
-  const NavDest(this.icon, this.label, {this.section = ''});
+  const NavDest(this.icon, this.label, {this.section = '', this.badge = 0});
   final IconData icon;
   final String label;
   final String section;
+  final int badge; // >0 shows a red count pill on the nav item
 }
 
 /// Responsive app shell: a claymorphic left **sidebar** on wide screens, and a
@@ -235,6 +236,16 @@ class _Sidebar extends StatelessWidget {
             Expanded(
               child: Text(d.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.body(context).copyWith(fontSize: 14.5, fontWeight: on ? FontWeight.w700 : FontWeight.w600, color: on ? Colors.white : sideInk)),
             ),
+            if (d.badge > 0)
+              Container(
+                margin: const EdgeInsets.only(left: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                constraints: const BoxConstraints(minWidth: 18),
+                decoration: BoxDecoration(color: on ? Colors.white : AppleColors.red, borderRadius: BorderRadius.circular(9)),
+                child: Text(d.badge > 99 ? '99+' : '${d.badge}',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: on ? p.accent : Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
+              ),
           ]),
         ),
       ),
