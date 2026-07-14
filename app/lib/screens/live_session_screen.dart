@@ -2081,7 +2081,9 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
           waiting > 0 ? '$waiting waiting to be answered' : 'All caught up'),
       _hostControls(),
       _listenersBar(),
-      _mentorMessages(),
+      // No broadcast echo strip on the host side — the host typed it; showing it
+      // back as a strip over the questions read as a glitchy overlay. Students
+      // still see broadcasts in their own panel (_studentQa).
       Expanded(
         child: _questions.isEmpty
             ? Center(
