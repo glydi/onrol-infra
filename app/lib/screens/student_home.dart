@@ -963,10 +963,14 @@ class _StudentHomeState extends State<StudentHome> {
                   Text('${(m['course_grade'] as num).round()}%', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800, color: _green)),
                 ]),
               ),
-            // The course's day-wise assignments & quizzes sit inside the first
-            // module's day boxes, alongside that day's lessons.
+            // Each quiz/assignment sits inside ITS OWN module's day boxes;
+            // anything not tied to a module falls back to the first module.
             for (var i = 0; i < modules.length; i++)
-              _moduleBox(modules[i] as Map<String, dynamic>, () => setS(() {}), assessments: i == 0 ? assessments : const []),
+              _moduleBox(modules[i] as Map<String, dynamic>, () => setS(() {}),
+                  allAssessments: assessments,
+                  unassigned: i == 0
+                      ? assessments.where((a) => ((a as Map)['module_id']?.toString() ?? '').isEmpty).toList()
+                      : const []),
             // No modules but there are assessments → show them as day boxes.
             if (modules.isEmpty && assessments.isNotEmpty)
               ..._lessonsByDay(const [], () => setS(() {}), assessments: assessments),
@@ -1027,10 +1031,17 @@ class _StudentHomeState extends State<StudentHome> {
 
   // One module as a bordered box: a tinted title bar, its day folders, a
   // comments link, and any nested sub-modules (indented boxes below).
-  Widget _moduleBox(Map<String, dynamic> md, VoidCallback rebuild, {bool isSub = false, List assessments = const []}) {
+  Widget _moduleBox(Map<String, dynamic> md, VoidCallback rebuild, {bool isSub = false, List allAssessments = const [], List unassigned = const []}) {
     final lessons = (md['lessons'] as List?) ?? [];
     final subs = (md['submodules'] as List?) ?? [];
     final title = md['title']?.toString() ?? 'Module';
+    final mid = md['id']?.toString() ?? '';
+    // This module's quizzes/assignments = those whose module_id matches it,
+    // plus any unassigned ones (handed only to the first top-level module).
+    final assessments = <Map<String, dynamic>>[
+      ...allAssessments.where((a) => ((a as Map)['module_id']?.toString() ?? '') == mid && mid.isNotEmpty).map((a) => (a as Map).cast<String, dynamic>()),
+      ...unassigned.map((a) => (a as Map).cast<String, dynamic>()),
+    ];
     return Container(
       margin: EdgeInsets.only(top: isSub ? 8 : 12, left: isSub ? 10 : 0),
       decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
@@ -1056,8 +1067,8 @@ class _StudentHomeState extends State<StudentHome> {
             else if (lessons.isNotEmpty || assessments.isNotEmpty)
               ..._lessonsByDay(lessons, rebuild, assessments: assessments, dayLabels: (md['day_labels'] as Map?)?.cast<String, dynamic>() ?? const {}),
             // "Ask your mentor" lives in its own home tile now (not per module).
-            // Nested sub-modules.
-            for (final s in subs) _moduleBox(s as Map<String, dynamic>, rebuild, isSub: true),
+            // Nested sub-modules — pass the full list so each picks its own.
+            for (final s in subs) _moduleBox(s as Map<String, dynamic>, rebuild, isSub: true, allAssessments: allAssessments),
           ]),
         ),
       ]),

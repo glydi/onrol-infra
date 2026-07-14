@@ -757,6 +757,7 @@ func (h *Handlers) MyCalendar(c *fiber.Ctx) error {
 func (h *Handlers) MyAssessments(c *fiber.Ctx) error {
 	rows, err := h.Pool.Query(c.Context(), `
 		SELECT a.id, a.title, a.type, a.max_score, a.day_number,
+		       COALESCE(a.module_id::text,''),
 		       COALESCE(a.due_at::text,''), c.title AS course,
 		       (SELECT count(*) FROM questions q WHERE q.assessment_id=a.id) AS qcount,
 		       s.id IS NOT NULL AS submitted,
@@ -773,17 +774,17 @@ func (h *Handlers) MyAssessments(c *fiber.Ctx) error {
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var id, title, typ, due, course, subStatus string
+		var id, title, typ, moduleID, due, course, subStatus string
 		var maxScore float64
 		var day *int
 		var qc int
 		var submitted bool
 		var score *float64
-		if err := rows.Scan(&id, &title, &typ, &maxScore, &day, &due, &course, &qc, &submitted, &score, &subStatus); err != nil {
+		if err := rows.Scan(&id, &title, &typ, &maxScore, &day, &moduleID, &due, &course, &qc, &submitted, &score, &subStatus); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		out = append(out, fiber.Map{"id": id, "title": title, "type": typ, "max_score": maxScore,
-			"day_number": day, "due_at": due, "course": course, "questions": qc, "submitted": submitted,
+			"day_number": day, "module_id": moduleID, "due_at": due, "course": course, "questions": qc, "submitted": submitted,
 			"score": score, "status": subStatus})
 	}
 	return c.JSON(fiber.Map{"assessments": out})
