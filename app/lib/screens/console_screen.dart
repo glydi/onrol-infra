@@ -7,6 +7,7 @@ import 'package:flutter/material.dart' hide Text;
 import 'package:onrol_app/widgets/upper_text.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
@@ -1160,27 +1161,39 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   // or null if cancelled/failed. Same approach as profile avatars.
   Future<String?> _pickImageDataUri() async {
     try {
-      final x = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 1280, maxHeight: 1280, imageQuality: 82);
-      if (x == null) return null;
-      final raw = await x.readAsBytes();
-      if (raw.isEmpty) return null;
-      Uint8List out;
-      String mime;
+      // FilePicker opens reliably on web (unlike ImagePicker here).
+      final res = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+      if (res == null || res.files.isEmpty) return null;
+      final raw = res.files.first.bytes;
+      if (raw == null || raw.isEmpty) return null;
+      const maxBytes = 1500000; // ~1.5MB
       final decoded = img.decodeImage(raw);
-      if (decoded != null) {
-        // Cover ratio ~16:9, width 800.
-        final resized = img.copyResize(decoded, width: decoded.width > 800 ? 800 : decoded.width);
-        out = img.encodeJpg(resized, quality: 80);
-        mime = 'image/jpeg';
-      } else {
-        out = raw;
-        mime = x.mimeType ?? 'image/png';
+      if (decoded == null) {
+        if (raw.lengthInBytes <= maxBytes) {
+          final ext = (res.files.first.extension ?? 'png').toLowerCase();
+          final mime = ext == 'jpg' || ext == 'jpeg' ? 'image/jpeg' : ext == 'webp' ? 'image/webp' : 'image/png';
+          return 'data:$mime;base64,${base64Encode(raw)}';
+        }
+        _toast('That image format isn’t supported — try a JPG or PNG.');
+        return null;
       }
-      if (out.lengthInBytes > 900000) {
+      // Progressively shrink until it fits, so large photos succeed.
+      var width = decoded.width > 1000 ? 1000 : decoded.width;
+      var quality = 82;
+      Uint8List out = img.encodeJpg(img.copyResize(decoded, width: width), quality: quality);
+      while (out.lengthInBytes > maxBytes && (width > 480 || quality > 45)) {
+        if (width > 480) {
+          width = (width * 0.8).round();
+        } else {
+          quality -= 10;
+        }
+        out = img.encodeJpg(img.copyResize(decoded, width: width), quality: quality);
+      }
+      if (out.lengthInBytes > maxBytes) {
         _toast('Image too large — try a smaller one.');
         return null;
       }
-      return 'data:$mime;base64,${base64Encode(out)}';
+      return 'data:image/jpeg;base64,${base64Encode(out)}';
     } catch (_) {
       _toast('Could not load that image.');
       return null;
@@ -2928,10 +2941,13 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   // Pick a 16:9 banner and return it as a downscaled JPEG data URI (≤~900 KB).
   Future<String?> _pickBanner() async {
     try {
-      final x = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 1600, maxHeight: 1600, imageQuality: 82);
-      if (x == null) return null;
-      final raw = await x.readAsBytes();
-      if (raw.isEmpty) return null;
+      // Use FilePicker (not ImagePicker) — it reliably opens the file dialog on
+      // web here, where ImagePicker could fail to even open the picker.
+      final res = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+      if (res == null || res.files.isEmpty) return null;
+      final pf = res.files.first;
+      final raw = pf.bytes;
+      if (raw == null || raw.isEmpty) return null;
       // Keep well under nginx's 10MB body limit — and a session PATCH may carry
       // BOTH a start and an end image at once.
       const maxBytes = 1500000; // ~1.5MB per image
@@ -2941,7 +2957,9 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         // as-is if it's already small enough; otherwise ask for a JPG/PNG rather
         // than silently rejecting.
         if (raw.lengthInBytes <= maxBytes) {
-          return 'data:${x.mimeType ?? 'image/png'};base64,${base64Encode(raw)}';
+          final ext = (pf.extension ?? 'png').toLowerCase();
+          final mime = ext == 'jpg' || ext == 'jpeg' ? 'image/jpeg' : ext == 'webp' ? 'image/webp' : 'image/png';
+          return 'data:$mime;base64,${base64Encode(raw)}';
         }
         _toast('That image format isn’t supported — try a JPG or PNG.');
         return null;

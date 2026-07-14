@@ -976,8 +976,10 @@ class _StudentHomeState extends State<StudentHome> {
     ]);
   }
 
-  // A single assessment row (tap to open the quiz / assignment).
-  Widget _assessmentTile(Map<String, dynamic> m) {
+  // A single assessment row (tap to open the quiz / assignment). When [siblings]
+  // is given it opens inside the material reader (so it reads like course
+  // material and Prev/Next page through everything); otherwise as a pop-up.
+  Widget _assessmentTile(Map<String, dynamic> m, {List<Map<String, dynamic>>? siblings}) {
     final isQuiz = m['type'] == 'quiz';
     final submitted = m['submitted'] == true;
     final status = m['status']?.toString() ?? '';
@@ -1002,7 +1004,9 @@ class _StudentHomeState extends State<StudentHome> {
       badge = isQuiz ? 'Start' : 'Pending';
     }
     return GestureDetector(
-      onTap: () => _openAssessment(m),
+      onTap: () => (siblings != null && siblings.isNotEmpty)
+          ? _openReaderAt(siblings, m)
+          : _openAssessment(m),
       child: _row(
         isQuiz ? CupertinoIcons.question_square_fill : CupertinoIcons.doc_text_fill,
         m['title']?.toString() ?? 'Assessment',
@@ -1079,15 +1083,22 @@ class _StudentHomeState extends State<StudentHome> {
         if (b == null) return -1;
         return a.compareTo(b);
       });
-    // Full lesson order (Day 1, 2, … then Unscheduled) for the reader's prev/next.
-    final ordered = <Map<String, dynamic>>[for (final k in keys) ...(groups[k] ?? const [])];
+    // Full material order (Day 1, 2, … then Unscheduled) — each day's lessons
+    // THEN its quizzes/assignments — so the reader's Next pages through every
+    // item, assessments included, in the same order they appear in the list.
+    final ordered = <Map<String, dynamic>>[
+      for (final k in keys) ...[
+        ...(groups[k] ?? const []),
+        ...(aGroups[k] ?? const []),
+      ]
+    ];
     final out = <Widget>[];
     for (final k in keys) {
       final ls = groups[k] ?? const [];
       final asmts = aGroups[k] ?? const [];
       final children = <Widget>[
         ...ls.map((ll) => _lessonRow(ll, rebuild, siblings: ordered)),
-        ...asmts.map((m) => _assessmentTile(m)),
+        ...asmts.map((m) => _assessmentTile(m, siblings: ordered)),
       ];
       final custom = k == null ? '' : (dayLabels[k.toString()]?.toString() ?? '');
       out.add(_DayFolder(
@@ -1366,16 +1377,7 @@ class _StudentHomeState extends State<StudentHome> {
       final items = (siblings != null && siblings.isNotEmpty) ? siblings : <Map<String, dynamic>>[l];
       var idx = items.indexWhere((x) => x['id'].toString() == id);
       if (idx < 0) idx = 0;
-      if (mounted) {
-        Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => _TextMaterialScreen(
-            auth: widget.auth,
-            items: items,
-            index: idx,
-            onOpen: (m) => _openLesson(m),
-          ),
-        ));
-      }
+      _pushReader(items, idx);
       return; // the reader stamps progress per material it shows
     }
     // Stamp last-access, and auto-mark link/document materials complete on open
@@ -1387,19 +1389,56 @@ class _StudentHomeState extends State<StudentHome> {
     }
   }
 
+  // Push the full-page material reader at [idx] through [items]. Assessments in
+  // the list render inline via [_assessmentContent].
+  void _pushReader(List<Map<String, dynamic>> items, int idx) {
+    if (!mounted) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => _TextMaterialScreen(
+        auth: widget.auth,
+        items: items,
+        index: idx,
+        onOpen: (m) => _openLesson(m),
+        buildAssessment: (item, reload) => _assessmentContent(item, inReader: true, onReload: reload),
+      ),
+    ));
+  }
+
+  // Open the reader positioned on [item] (used when tapping a quiz/assignment
+  // tile — it lands on that assessment, and Prev/Next page through the rest).
+  void _openReaderAt(List<Map<String, dynamic>> items, Map<String, dynamic> item) {
+    var idx = items.indexWhere((x) => x['id'].toString() == item['id'].toString());
+    if (idx < 0) idx = 0;
+    _pushReader(items, idx);
+  }
+
   // Opens a quiz (loads questions, collects answers) or an assignment (a
   // free-text submission + link), and submits them.
   Future<void> _openAssessment(Map<String, dynamic> a) async {
-    final id = a['id'].toString();
     final isAssignment = (a['type']?.toString() ?? 'quiz') == 'assignment';
-    final answers = <String, String>{};
     _showPanel(isAssignment ? CupertinoIcons.doc_text_fill : CupertinoIcons.question_square_fill,
         a['title']?.toString() ?? (isAssignment ? 'Assignment' : 'Quiz'),
-        a['course']?.toString() ?? (isAssignment ? 'Assignment' : 'Quiz'), [
-      _future(_apiMap('/api/v1/me/assessments/$id'), (m) {
-        if (isAssignment) return _assignmentView(id, m);
-        final qs = (m['questions'] as List?) ?? [];
-        if (qs.isEmpty) return _emptyText('This quiz has no questions yet.');
+        a['course']?.toString() ?? (isAssignment ? 'Assignment' : 'Quiz'),
+        [_assessmentContent(a)]);
+  }
+
+  // The quiz/assignment UI, shared by the pop-up panel and the inline material
+  // reader. When [inReader] is true a quiz submit does NOT pop a route; instead
+  // [onReload] refetches the reader page so the locked/graded state shows in
+  // place — so a quiz/assignment reads like any other course material.
+  Widget _assessmentContent(Map<String, dynamic> a, {bool inReader = false, VoidCallback? onReload}) {
+    final id = a['id'].toString();
+    final isAssignment = (a['type']?.toString() ?? 'quiz') == 'assignment';
+    return _future(_apiMap('/api/v1/me/assessments/$id'), (m) {
+      if (isAssignment) return _assignmentView(id, m);
+      return _quizView(id, m, inReader: inReader, onReload: onReload);
+    });
+  }
+
+  Widget _quizView(String id, Map<String, dynamic> m, {bool inReader = false, VoidCallback? onReload}) {
+    final answers = <String, String>{};
+    final qs = (m['questions'] as List?) ?? [];
+    if (qs.isEmpty) return _emptyText('This quiz has no questions yet.');
         // Once submitted, the quiz is locked: show the submitted answers, no edits.
         final submission = (m['submission'] as Map?)?.cast<String, dynamic>() ?? {};
         final submittedAnswers = (submission['answers'] as Map?)?.cast<String, dynamic>() ?? {};
@@ -1568,7 +1607,11 @@ class _StudentHomeState extends State<StudentHome> {
                 try {
                   final res = await widget.auth.apiPost('/api/v1/me/assessments/$id/submit', {'answers': answers});
                   if (!mounted) return;
-                  Navigator.of(ctx).pop();
+                  if (inReader) {
+                    onReload?.call(); // refetch in place → shows the locked/graded state
+                  } else {
+                    Navigator.of(ctx).pop();
+                  }
                   // Show the auto-graded result (and XP earned) right away.
                   String msg = 'Submitted ✓';
                   try {
@@ -1599,8 +1642,6 @@ class _StudentHomeState extends State<StudentHome> {
             ),
           ]);
         });
-      }),
-    ]);
   }
 
   // Assignment: a free-text response + an optional attachment link. Shows the
@@ -7415,11 +7456,14 @@ class _NoteMarkdown extends StatelessWidget {
 /// rendered inline as Markdown; video/link/document materials show an Open
 /// button (handled by [onOpen], which opens them the normal way).
 class _TextMaterialScreen extends StatefulWidget {
-  const _TextMaterialScreen({required this.auth, required this.items, required this.index, required this.onOpen});
+  const _TextMaterialScreen({required this.auth, required this.items, required this.index, required this.onOpen, this.buildAssessment});
   final AuthService auth;
   final List<Map<String, dynamic>> items; // all materials in module order
   final int index;
   final void Function(Map<String, dynamic> material) onOpen;
+  // Builds a quiz/assignment inline (when an item in [items] is an assessment).
+  // [reload] refetches this page so the graded/locked state shows after submit.
+  final Widget Function(Map<String, dynamic> item, VoidCallback reload)? buildAssessment;
 
   @override
   State<_TextMaterialScreen> createState() => _TextMaterialScreenState();
@@ -7427,7 +7471,13 @@ class _TextMaterialScreen extends StatefulWidget {
 
 class _TextMaterialScreenState extends State<_TextMaterialScreen> {
   late int _i;
+  int _tick = 0; // bumped to refetch an inline assessment after submit
   final ScrollController _scroll = ScrollController();
+
+  static bool _isAssessment(Map<String, dynamic> it) {
+    final t = it['type']?.toString() ?? '';
+    return t == 'quiz' || t == 'assignment';
+  }
 
   @override
   void initState() {
@@ -7446,6 +7496,7 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
   // complete on view (videos complete when watched, not on open).
   void _stamp() {
     final it = widget.items[_i];
+    if (_isAssessment(it)) return; // assessments aren't lessons — no lesson stamp
     final id = it['id']?.toString();
     if (id == null) return;
     widget.auth.apiPost('/api/v1/me/lessons/$id/progress', {'position': 0}).ignore();
@@ -7479,6 +7530,8 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
     final title = it['title']?.toString() ?? 'Material';
     final body = it['url']?.toString() ?? '';
     final done = it['completed'] == true;
+    final isAssessment = _isAssessment(it);
+    final isQuiz = type == 'quiz';
     final isVideo = type == 'video' && body.isNotEmpty;
     final hasPrev = _i > 0;
     final hasNext = _i < widget.items.length - 1;
@@ -7493,7 +7546,7 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
             child: Row(children: [
               _Pressable(onTap: () => Navigator.of(context).maybePop(), child: Padding(padding: const EdgeInsets.all(8), child: Icon(CupertinoIcons.chevron_back, size: 22, color: _navy))),
               const SizedBox(width: 2),
-              Icon(CupertinoIcons.doc_text_fill, size: 16, color: _orange),
+              Icon(isAssessment ? (isQuiz ? CupertinoIcons.question_square_fill : CupertinoIcons.doc_text_fill) : CupertinoIcons.doc_text_fill, size: 16, color: _orange),
               const SizedBox(width: 6),
               Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: _navy))),
               if (type == 'text') ...[
@@ -7518,7 +7571,32 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
                   // The material sits in a bordered "page" box so the text isn't
                   // floating on the bare background.
                   // Text materials: each main (##) section becomes its own box.
-                  child: type == 'text'
+                  child: isAssessment
+                      // Quiz / assignment rendered inline, like any other page:
+                      // title + the assessment UI in a bordered material box.
+                      ? Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.fromLTRB(22, 22, 22, 26),
+                          decoration: BoxDecoration(color: _surface, border: Border.all(color: _cardBorder)),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                            Row(children: [
+                              Icon(isQuiz ? CupertinoIcons.question_square_fill : CupertinoIcons.doc_text_fill, size: 18, color: _orange),
+                              const SizedBox(width: 8),
+                              Text(isQuiz ? 'Quiz' : 'Assignment', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700, color: _orange, letterSpacing: 0.4)),
+                            ]),
+                            const SizedBox(height: 10),
+                            Text(title, style: GoogleFonts.inter(fontSize: 26, fontWeight: FontWeight.w800, color: _navy, height: 1.25)),
+                            const SizedBox(height: 16),
+                            if (widget.buildAssessment != null)
+                              KeyedSubtree(
+                                key: ValueKey('asmt-${it['id']}-$_tick'),
+                                child: widget.buildAssessment!(it, () => setState(() => _tick++)),
+                              )
+                            else
+                              _openCard(type, it),
+                          ]),
+                        )
+                      : type == 'text'
                       ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                           _sectionBox(Text(title, style: GoogleFonts.inter(fontSize: 26, fontWeight: FontWeight.w800, color: _navy, height: 1.25))),
                           if (body.trim().isEmpty)
@@ -7547,18 +7625,20 @@ class _TextMaterialScreenState extends State<_TextMaterialScreen> {
             child: Row(children: [
               _navButton(CupertinoIcons.chevron_back, 'Previous', hasPrev, () => _go(-1)),
               const Spacer(),
-              _Pressable(
-                onTap: done ? null : _complete,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                  decoration: BoxDecoration(color: done ? _green.withOpacity(0.12) : _orange.withOpacity(0.10), border: Border.all(color: done ? _green : _orange)),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(done ? CupertinoIcons.checkmark_alt_circle_fill : CupertinoIcons.circle, size: 16, color: done ? _green : _orange),
-                    const SizedBox(width: 6),
-                    Text(done ? 'Completed' : 'Mark done', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700, color: done ? _green : _orange)),
-                  ]),
+              // Assessments complete by being submitted, not by a "mark done".
+              if (!isAssessment)
+                _Pressable(
+                  onTap: done ? null : _complete,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                    decoration: BoxDecoration(color: done ? _green.withOpacity(0.12) : _orange.withOpacity(0.10), border: Border.all(color: done ? _green : _orange)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(done ? CupertinoIcons.checkmark_alt_circle_fill : CupertinoIcons.circle, size: 16, color: done ? _green : _orange),
+                      const SizedBox(width: 6),
+                      Text(done ? 'Completed' : 'Mark done', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700, color: done ? _green : _orange)),
+                    ]),
+                  ),
                 ),
-              ),
               const Spacer(),
               _navButton(CupertinoIcons.chevron_forward, 'Next', hasNext, () => _go(1), trailing: true),
             ]),
