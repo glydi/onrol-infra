@@ -1166,7 +1166,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   Future<String?> _pickImageDataUri() async {
     try {
       // FilePicker opens reliably on web (unlike ImagePicker here).
-      final res = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+      final res = await FilePicker.platform.pickFiles(withData: true);
       if (res == null || res.files.isEmpty) return null;
       final raw = res.files.first.bytes;
       if (raw == null || raw.isEmpty) return null;
@@ -2996,7 +2996,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     try {
       // Use FilePicker (not ImagePicker) — it reliably opens the file dialog on
       // web here, where ImagePicker could fail to even open the picker.
-      final res = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+      final res = await FilePicker.platform.pickFiles(withData: true);
       if (res == null || res.files.isEmpty) return null;
       final pf = res.files.first;
       final raw = pf.bytes;
@@ -3006,15 +3006,18 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       const maxBytes = 1500000; // ~1.5MB per image
       final decoded = img.decodeImage(raw);
       if (decoded == null) {
-        // Format we can't re-encode (e.g. HEIC / some WebP). Send the original
-        // as-is if it's already small enough; otherwise ask for a JPG/PNG rather
-        // than silently rejecting.
-        if (raw.lengthInBytes <= maxBytes) {
-          final ext = (pf.extension ?? 'png').toLowerCase();
-          final mime = ext == 'jpg' || ext == 'jpeg' ? 'image/jpeg' : ext == 'webp' ? 'image/webp' : 'image/png';
+        // Couldn't decode: an image format we can't re-encode (HEIC / some WebP)
+        // — send it as-is if it's a known image type and small enough; otherwise
+        // ask for a supported image instead of accepting a non-image file.
+        final ext = (pf.extension ?? '').toLowerCase();
+        const imgExt = {'jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'heic', 'heif'};
+        if (imgExt.contains(ext) && raw.lengthInBytes <= maxBytes) {
+          final mime = ext == 'jpg' || ext == 'jpeg'
+              ? 'image/jpeg'
+              : ext == 'webp' ? 'image/webp' : ext == 'gif' ? 'image/gif' : 'image/png';
           return 'data:$mime;base64,${base64Encode(raw)}';
         }
-        _toast('That image format isn’t supported — try a JPG or PNG.');
+        _toast('Please pick a JPG, PNG or WebP image.');
         return null;
       }
       // Re-encode to JPEG, progressively shrinking (width, then quality) until it
@@ -5034,7 +5037,7 @@ class _ExploreCoursesScreenState extends State<ExploreCoursesScreen> {
   Future<String?> _pickImage() async {
     try {
       // FilePicker opens reliably on web (unlike ImagePicker here).
-      final res = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+      final res = await FilePicker.platform.pickFiles(withData: true);
       if (res == null || res.files.isEmpty) return null;
       final raw = res.files.first.bytes;
       if (raw == null || raw.isEmpty) return null;
