@@ -1083,10 +1083,24 @@ class _StudentHomeState extends State<StudentHome> {
       final ll = l as Map<String, dynamic>;
       groups.putIfAbsent((ll['day_number'] as num?)?.toInt(), () => []).add(ll);
     }
+    final lessonDays = groups.keys.whereType<int>().toList()..sort();
     final aGroups = <int?, List<Map<String, dynamic>>>{};
     for (final a in assessments) {
       final am = a as Map<String, dynamic>;
-      aGroups.putIfAbsent((am['day_number'] as num?)?.toInt(), () => []).add(am);
+      final ad = (am['day_number'] as num?)?.toInt();
+      int? bucket;
+      if (ad == null) {
+        bucket = null; // Unscheduled
+      } else if (groups.containsKey(ad) || lessonDays.isEmpty) {
+        bucket = ad; // shares a day with lessons, or an assessment-only module
+      } else {
+        // No lessons on this day → attach to the nearest lesson day at or before
+        // it (else the first), so a day-7 quiz in a 5-day course lands in Day 5
+        // instead of creating a phantom, gapped "Day 7" folder.
+        final before = lessonDays.where((d) => d <= ad).toList();
+        bucket = before.isNotEmpty ? before.last : lessonDays.first;
+      }
+      aGroups.putIfAbsent(bucket, () => []).add(am);
     }
     final keys = <int?>{...groups.keys, ...aGroups.keys}.toList()
       ..sort((a, b) {
