@@ -1888,8 +1888,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   Widget _studentQa() {
     final myId = widget.auth.user?.id ?? '';
     return Column(children: [
-      _panelHeader('Ask Mentor',
-          'Ask your mentor — only your mentor sees your question.'),
+      _panelHeader('Ask Mentor', ''),
       _mentorMessages(),
       Expanded(
         child: _questions.isEmpty
@@ -2218,9 +2217,11 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                   color: Colors.white,
                   fontSize: 14,
                   fontWeight: FontWeight.w700)),
-          const SizedBox(height: 1),
-          Text(sub,
-              style: GoogleFonts.inter(color: Colors.white38, fontSize: 11)),
+          if (sub.isNotEmpty) ...[
+            const SizedBox(height: 1),
+            Text(sub,
+                style: GoogleFonts.inter(color: Colors.white38, fontSize: 11)),
+          ],
         ]),
       );
 
