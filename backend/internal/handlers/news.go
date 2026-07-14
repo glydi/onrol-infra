@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -316,7 +317,7 @@ func fetchFeed(ctx context.Context, f newsFeed) []newsArticle {
 	var out []newsArticle
 	for _, it := range feed.Items { // RSS
 		title := cleanText(it.Title)
-		if title == "" || it.Link == "" {
+		if title == "" || it.Link == "" || !isEnglishText(title) {
 			continue
 		}
 		out = append(out, newsArticle{
@@ -330,7 +331,7 @@ func fetchFeed(ctx context.Context, f newsFeed) []newsArticle {
 	for _, e := range feed.Entries { // Atom
 		title := cleanText(e.Title)
 		link := atomLink(e.Links)
-		if title == "" || link == "" {
+		if title == "" || link == "" || !isEnglishText(title) {
 			continue
 		}
 		out = append(out, newsArticle{
@@ -342,6 +343,28 @@ func fetchFeed(ctx context.Context, f newsFeed) []newsArticle {
 		})
 	}
 	return out
+}
+
+// isEnglishText keeps the feed English-only: it returns false when a headline is
+// dominated by non-Latin scripts (Greek, Cyrillic, Arabic, Hebrew, Devanagari,
+// CJK, Hangul, …). Latin letters up to Latin Extended-B (…U+024F) count as
+// English; anything above that is treated as a foreign-script letter. A title
+// with more than 15% foreign-script letters is dropped.
+func isEnglishText(s string) bool {
+	var letters, foreign int
+	for _, r := range s {
+		if !unicode.IsLetter(r) {
+			continue
+		}
+		letters++
+		if r > 0x024F {
+			foreign++
+		}
+	}
+	if letters == 0 {
+		return true // nothing to judge (numbers/punctuation) — keep it
+	}
+	return float64(foreign)/float64(letters) < 0.15
 }
 
 // atomLink prefers the rel="alternate" (or rel-less) link to the article.
