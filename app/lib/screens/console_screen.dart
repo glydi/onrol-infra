@@ -2689,6 +2689,12 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     int type = 0; // assignment, quiz
     bool auto = false; // assignment: auto-award full points on submission
     DateTime due = DateTime.now().add(const Duration(days: 7));
+    // When NOT adding inside a specific module, let the admin choose where it
+    // goes: by Day (no module) or under a chosen Module. Without this the
+    // assessment has no module and always lands in the first one.
+    final modules = (_course?['modules'] as List?) ?? const [];
+    int scope = 0; // 0=Day, 1=Module
+    String selModuleId = modules.isNotEmpty ? (modules.first as Map)['id'].toString() : '';
     final ok = await showFormSheet(context, square: true, big: true, title: moduleId == null ? 'Add Assignment' : 'Add to "${moduleTitle ?? 'Module'}"', builder: (setS) => [
       sheetField(title, 'Title (e.g. Assignment 1)', CupertinoIcons.doc_text),
       const SizedBox(height: 10),
@@ -2707,27 +2713,62 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         const SizedBox(height: 10),
         _label(context, 'Quiz — each question is 1 point, graded automatically; the score is a percentage.'),
       ],
-      const SizedBox(height: 10),
-      sheetField(day, 'Day number (e.g. 1, 2, 3 — optional)', CupertinoIcons.calendar, keyboard: TextInputType.number),
-      if (_maxContentDay() > 0) ...[
+      // Placement. When added inside a module already, just a day field. Else a
+      // Day/Module toggle so it can be filed under the right module.
+      if (moduleId == null && modules.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        Text('Organize by', style: AppleTheme.footnote(context)),
         const SizedBox(height: 6),
-        _label(context, 'This course’s lessons go up to Day ${_maxContentDay()}. A quiz on a day with no lessons shows at the end of the last day for students.'),
+        AppleSegmented(square: true, labels: const ['Day', 'Module'], selected: scope, onChanged: (i) => setS(() => scope = i)),
+      ],
+      if (moduleId == null && scope == 1 && modules.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        ...modules.map((mm) {
+          final mid = (mm as Map)['id'].toString();
+          final sel = mid == selModuleId;
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setS(() => selModuleId = mid),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Row(children: [
+                Icon(sel ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle, size: 20, color: sel ? Palette.of(context).accent : Palette.of(context).secondary),
+                const SizedBox(width: 10),
+                Expanded(child: Text(mm['title']?.toString() ?? 'Module', style: AppleTheme.body(context))),
+              ]),
+            ),
+          );
+        }),
+      ] else ...[
+        const SizedBox(height: 10),
+        sheetField(day, 'Day number (e.g. 1, 2, 3 — optional)', CupertinoIcons.calendar, keyboard: TextInputType.number),
+        if (_maxContentDay() > 0) ...[
+          const SizedBox(height: 6),
+          _label(context, 'This course’s lessons go up to Day ${_maxContentDay()}. A quiz on a day with no lessons shows at the end of the last day for students.'),
+        ],
       ],
       const SizedBox(height: 12),
       _DateTimeRow(value: due, onPick: (d) => setS(() => due = d)),
     ], onSubmit: () async {
       if (title.text.trim().isEmpty) return 'Title required';
+      // Chosen module: the one we were opened inside, else the picked one when
+      // organizing by module. Otherwise it's day-scoped (no module).
+      final mid = moduleId ?? (scope == 1 ? selModuleId : null);
       try {
-        await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/assessments', {
+        final body = <String, dynamic>{
           'title': title.text.trim(),
           'type': type == 0 ? 'assignment' : 'quiz',
           'description': desc.text.trim(),
-          'day_number': int.tryParse(day.text.trim()),
-          if (moduleId != null) 'module_id': moduleId,
           'due_at': due.toUtc().toIso8601String(),
           'is_published': true,
           'auto_award': type == 0 && auto,
-        });
+        };
+        if (mid != null && mid.isNotEmpty) {
+          body['module_id'] = mid;
+        } else {
+          body['day_number'] = int.tryParse(day.text.trim());
+        }
+        await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/assessments', body);
         return null;
       } on ApiException catch (e) {
         return e.message;
