@@ -190,6 +190,9 @@ func (h *Handlers) CreateSession(c *fiber.Ctx) error {
 		// When set, provision a NEW Zoho webinar via the REST API and link it to
 		// this session so students auto-register for private per-user join links.
 		CreateZohoWebinar bool `json:"create_zoho_webinar"`
+		// Which Zoho account hosts the webinar (id from /manage/zoho-accounts).
+		// Empty = the default account.
+		ZohoAccount string `json:"zoho_account"`
 		// YouTube Live: paste the live URL or video id; students watch a clean,
 		// logo-masked autoplaying embed in our live room (no join click).
 		YouTubeURL string `json:"youtube_url"`
@@ -220,7 +223,9 @@ func (h *Handlers) CreateSession(c *fiber.Ctx) error {
 	// Provision a brand-new Zoho webinar and link it to this session. The webinars
 	// row is what LiveJoin registers students against (private per-user links).
 	if req.CreateZohoWebinar {
-		if h.Zoho == nil || !h.Zoho.APIEnabled() {
+		acct := h.Cfg.Zoho.Account(req.ZohoAccount)
+		cl := h.zohoFor(req.ZohoAccount)
+		if acct == nil || cl == nil || !cl.APIEnabled() {
 			return fiber.NewError(fiber.StatusServiceUnavailable, "Zoho API not configured")
 		}
 		startT, perr := time.Parse(time.RFC3339, req.StartsAt)
@@ -233,14 +238,14 @@ func (h *Handlers) CreateSession(c *fiber.Ctx) error {
 				dur = endT.Sub(startT)
 			}
 		}
-		cw, cerr := h.Zoho.CreateWebinar(c.Context(), req.Title, "", h.Cfg.Zoho.PresenterZUID, startT, dur, h.Cfg.Zoho.Timezone)
+		cw, cerr := cl.CreateWebinar(c.Context(), req.Title, "", acct.PresenterZUID, startT, dur, h.Cfg.Zoho.Timezone)
 		if cerr != nil {
 			return fiber.NewError(fiber.StatusBadGateway, "Zoho webinar create failed: "+cerr.Error())
 		}
 		var wid string
 		if e := h.Pool.QueryRow(c.Context(),
-			`INSERT INTO webinars (title, embed_session_id, zoho_instance_id) VALUES ($1,$2,$3) RETURNING id`,
-			req.Title, cw.MeetingKey, cw.InstanceID).Scan(&wid); e != nil {
+			`INSERT INTO webinars (title, embed_session_id, zoho_instance_id, zoho_account) VALUES ($1,$2,$3,$4) RETURNING id`,
+			req.Title, cw.MeetingKey, cw.InstanceID, acct.ID).Scan(&wid); e != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "webinar link failed")
 		}
 		req.WebinarID = wid
@@ -385,6 +390,16 @@ func (h *Handlers) DeleteSession(c *fiber.Ctx) error {
 }
 
 // ListCourseSessions returns a course's live sessions for staff (console).
+// ListZohoAccounts returns the selectable Zoho accounts (id + label) so the
+// admin can choose which one hosts a new webinar. Empty when Zoho isn't set up.
+func (h *Handlers) ListZohoAccounts(c *fiber.Ctx) error {
+	out := []fiber.Map{}
+	for _, a := range h.Cfg.Zoho.Accounts {
+		out = append(out, fiber.Map{"id": a.ID, "label": a.Label})
+	}
+	return c.JSON(fiber.Map{"accounts": out})
+}
+
 func (h *Handlers) ListCourseSessions(c *fiber.Ctx) error {
 	courseID := c.Params("id")
 	if err := h.canManageCourse(c, courseID); err != nil {

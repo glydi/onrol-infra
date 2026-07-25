@@ -32,12 +32,46 @@ type Zoho struct {
 	RefreshToken  string // ZOHO_OAUTH_REFRESH_TOKEN (scope: ZohoMeeting.webinar.READ,CREATE)
 	PresenterZUID string // ZOHO_PRESENTER_ZUID — required to create webinars via the API
 	Timezone      string // ZOHO_TIMEZONE — webinar timezone (default Asia/Kolkata)
+	// Accounts is every configured Zoho account: the "default" one (the fields
+	// above) plus any additional ones (ZOHO2_*). The admin can pick which account
+	// hosts a webinar; each webinar remembers the account that created it.
+	Accounts []ZohoAccount
+}
+
+// ZohoAccount is one selectable Zoho account (its own OAuth app + org). The
+// shared bases/timezone come from the parent Zoho config.
+type ZohoAccount struct {
+	ID            string // stable key stored on the webinar row ("default", "2025", …)
+	Label         string // shown to the admin in the picker
+	OrgID         string
+	ClientID      string
+	ClientSecret  string
+	RefreshToken  string
+	PresenterZUID string
+}
+
+func (a ZohoAccount) Configured() bool {
+	return a.OrgID != "" && a.ClientID != "" && a.ClientSecret != "" && a.RefreshToken != ""
 }
 
 // APIEnabled reports whether the OAuth REST API registration path is fully
 // configured. When false, live join falls back to the embed/web-form flow.
 func (z Zoho) APIEnabled() bool {
 	return z.OrgID != "" && z.ClientID != "" && z.ClientSecret != "" && z.RefreshToken != ""
+}
+
+// Account returns the configured account with [id], or the default (first)
+// account when id is empty/unknown. Returns nil only if none are configured.
+func (z Zoho) Account(id string) *ZohoAccount {
+	for i := range z.Accounts {
+		if z.Accounts[i].ID == id {
+			return &z.Accounts[i]
+		}
+	}
+	if len(z.Accounts) > 0 {
+		return &z.Accounts[0]
+	}
+	return nil
 }
 
 type Config struct {
@@ -156,6 +190,27 @@ func Load() (Config, error) {
 	}
 	if cfg.MaxDevices < 1 {
 		return cfg, fmt.Errorf("MAX_DEVICES_PER_USER must be >= 1")
+	}
+
+	// Build the selectable Zoho account list: the default account (the ZOHO_*
+	// vars) first, then an optional second account (ZOHO2_*). Only fully-
+	// configured accounts are added, so an unset second account is simply absent.
+	def := ZohoAccount{
+		ID: "default", Label: getenv("ZOHO_LABEL", "Default"),
+		OrgID: cfg.Zoho.OrgID, ClientID: cfg.Zoho.ClientID, ClientSecret: cfg.Zoho.ClientSecret,
+		RefreshToken: cfg.Zoho.RefreshToken, PresenterZUID: cfg.Zoho.PresenterZUID,
+	}
+	if def.Configured() {
+		cfg.Zoho.Accounts = append(cfg.Zoho.Accounts, def)
+	}
+	alt := ZohoAccount{
+		ID: getenv("ZOHO2_ID", "2025"), Label: getenv("ZOHO2_LABEL", "2025"),
+		OrgID: os.Getenv("ZOHO2_ORG_ID"), ClientID: os.Getenv("ZOHO2_OAUTH_CLIENT_ID"),
+		ClientSecret: os.Getenv("ZOHO2_OAUTH_CLIENT_SECRET"), RefreshToken: os.Getenv("ZOHO2_OAUTH_REFRESH_TOKEN"),
+		PresenterZUID: os.Getenv("ZOHO2_PRESENTER_ZUID"),
+	}
+	if alt.Configured() {
+		cfg.Zoho.Accounts = append(cfg.Zoho.Accounts, alt)
 	}
 	return cfg, nil
 }

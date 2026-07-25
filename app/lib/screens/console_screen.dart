@@ -2182,6 +2182,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   List<dynamic> _sessions = [];
   List<dynamic> _assessments = [];
   List<String> _batchCodes = []; // this course's batch codes, for targeting live classes
+  List<Map<String, dynamic>> _zohoAccounts = []; // selectable Zoho accounts for webinars
   bool _loading = true;
   // Bumped after every reload so pushed section screens (Course Content, Live
   // Classes, Assignments) rebuild from the freshly-loaded lists without owning
@@ -2214,6 +2215,12 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
           .map((e) => (e as Map)['batch']?.toString().trim() ?? '')
           .where((s) => s.isNotEmpty)
           .toList();
+      try {
+        final z = await widget.auth.apiGet('/api/v1/manage/zoho-accounts');
+        _zohoAccounts = ((ApiClient.decode(z)['accounts'] as List?) ?? [])
+            .map((e) => (e as Map).cast<String, dynamic>())
+            .toList();
+      } catch (_) {}
     } catch (_) {}
     if (mounted) {
       setState(() => _loading = false);
@@ -3228,6 +3235,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     String? startBanner;
     String? endBanner;
     String batchSel = '';
+    String zohoAccount = _zohoAccounts.isNotEmpty ? _zohoAccounts.first['id'].toString() : '';
     final ok = await showFormSheet(context, square: true, title: 'Add Live Class', builder: (setS) => [
       sheetField(title, 'Title (e.g. Lecture 1)', CupertinoIcons.textformat),
       const SizedBox(height: 10),
@@ -3247,6 +3255,18 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
           const SizedBox(width: 10),
           Expanded(child: Text('A new Zoho webinar is created automatically. Each student is registered on join and gets their own private link — no shared URL to paste.', style: AppleTheme.footnote(context))),
         ])),
+        // Pick which Zoho account hosts it (only when more than one is set up).
+        if (_zohoAccounts.length > 1) ...[
+          const SizedBox(height: 10),
+          _label(context, 'Zoho account'),
+          const SizedBox(height: 6),
+          AppleSegmented(
+            square: true,
+            labels: _zohoAccounts.map((a) => a['label']?.toString() ?? a['id'].toString()).toList(),
+            selected: _zohoAccounts.indexWhere((a) => a['id'].toString() == zohoAccount).clamp(0, _zohoAccounts.length - 1),
+            onChanged: (i) => setS(() => zohoAccount = _zohoAccounts[i]['id'].toString()),
+          ),
+        ],
       ] else if (mode == 3) ...[
         sheetField(yt, 'YouTube Live link or video ID', CupertinoIcons.play_rectangle),
         const SizedBox(height: 8),
@@ -3304,6 +3324,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         } else if (mode == 2) {
           // Backend provisions a new Zoho webinar and links it to this session.
           body['create_zoho_webinar'] = true;
+          if (zohoAccount.isNotEmpty) body['zoho_account'] = zohoAccount;
           body['viewer_base'] = int.tryParse(viewers.text.trim()) ?? 0;
         } else if (mode == 3) {
           body['youtube_url'] = yt.text.trim();

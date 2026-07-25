@@ -34,16 +34,16 @@ func (h *Handlers) LiveJoin(c *fiber.Ctx) error {
 	var (
 		title, embedSessionID, zohoInstanceID           string
 		webformURL, webformSysID, webformDigest, encTok string
-		returnURL                                       string
+		returnURL, zohoAccount                          string
 	)
 	err := h.Pool.QueryRow(c.Context(),
 		`SELECT title, COALESCE(embed_session_id,''), COALESCE(zoho_instance_id,''),
 		        COALESCE(webform_url,''), COALESCE(webform_sys_id,''),
 		        COALESCE(webform_digest,''), COALESCE(webform_enc,''),
-		        COALESCE(return_url,'')
+		        COALESCE(return_url,''), COALESCE(zoho_account,'default')
 		   FROM webinars WHERE id=$1 AND is_active`,
 		webinarID,
-	).Scan(&title, &embedSessionID, &zohoInstanceID, &webformURL, &webformSysID, &webformDigest, &encTok, &returnURL)
+	).Scan(&title, &embedSessionID, &zohoInstanceID, &webformURL, &webformSysID, &webformDigest, &encTok, &returnURL, &zohoAccount)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fiber.NewError(fiber.StatusNotFound, "webinar not found")
 	}
@@ -69,15 +69,17 @@ func (h *Handlers) LiveJoin(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"mode": "join", "url": zoho.ParticipantURL(cachedJoin), "cached": true, "title": title})
 	}
 
-	embedURL := h.Zoho.EmbedURL(embedSessionID, email)
+	// Use the Zoho client for the account that created this webinar.
+	cl := h.zohoFor(zohoAccount)
+	embedURL := cl.EmbedURL(embedSessionID, email)
 
 	var joinURL, registrantNote string
 
 	// Preferred path: the real OAuth REST API v2. Registers the student
 	// server-side and returns their private join link synchronously. Needs the
 	// webinar's meetingKey (== embed_session_id) and instance id (sysId).
-	if h.Zoho.APIEnabled() && embedSessionID != "" && zohoInstanceID != "" {
-		link, aerr := h.Zoho.RegisterAttendee(c.Context(), embedSessionID, zohoInstanceID, fullName, email)
+	if cl.APIEnabled() && embedSessionID != "" && zohoInstanceID != "" {
+		link, aerr := cl.RegisterAttendee(c.Context(), embedSessionID, zohoInstanceID, fullName, email)
 		if aerr != nil {
 			registrantNote = "api registration failed: " + aerr.Error()
 		} else {
@@ -87,7 +89,7 @@ func (h *Handlers) LiveJoin(c *fiber.Ctx) error {
 
 	// Best-effort fallback: server-side web-form registration POST.
 	if joinURL == "" && webformSysID != "" {
-		res, ferr := h.Zoho.RegisterViaWebForm(c.Context(), zoho.WebForm{
+		res, ferr := cl.RegisterViaWebForm(c.Context(), zoho.WebForm{
 			URL: webformURL, SysID: webformSysID, Digest: webformDigest,
 			Enc: encTok, ReturnURL: returnURL,
 		}, fullName, email, "Asia/Kolkata")

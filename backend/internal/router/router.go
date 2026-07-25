@@ -90,6 +90,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Get("/manage/categories", auth, inst, h.ListCategories)
 	api.Post("/manage/categories", auth, inst, h.CreateCategory)
 	api.Get("/manage/instructors", auth, inst, h.ListInstructors)
+	api.Get("/manage/zoho-accounts", auth, inst, h.ListZohoAccounts) // selectable Zoho accounts for the webinar picker
 	api.Get("/manage/courses", auth, inst, h.ListCourses)
 	api.Post("/manage/courses", auth, mgr, h.CreateCourse) // only admin/manager creates courses
 	api.Get("/manage/courses/:id", auth, inst, h.GetManagedCourse)
