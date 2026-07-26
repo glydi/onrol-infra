@@ -88,12 +88,14 @@ func (c *Client) APIEnabled() bool {
 // EmbedURL builds the registration-widget URL for the Flutter WebView. The
 // email prefill is best-effort — Zoho may or may not honour it.
 func (c *Client) EmbedURL(sessionID, email string) string {
-	u := fmt.Sprintf("%s/meeting/register/embed?sessionId=%s",
+	// NOTE: do NOT append &email= — Zoho's register/embed endpoint rejects it with
+	// {"error":{"code":2000,"parameter_name":"email","message":"EXTRA_PARAM_FOUND"}}
+	// and shows that JSON instead of the webinar. Students register server-side
+	// via RegisterAttendee; our forensic identity is the watermark, not Zoho's
+	// form. email is kept in the signature for callers but intentionally unused.
+	_ = email
+	return fmt.Sprintf("%s/meeting/register/embed?sessionId=%s",
 		strings.TrimRight(c.cfg.WebinarBase, "/"), url.QueryEscape(sessionID))
-	if email != "" {
-		u += "&email=" + url.QueryEscape(email)
-	}
-	return u
 }
 
 // WebForm holds the hidden tokens copied from a webinar's embed registration
