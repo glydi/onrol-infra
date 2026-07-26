@@ -942,10 +942,18 @@ class _StudentHomeState extends State<StudentHome> {
   void _openContent(String courseId, String title, {String? imageUrl}) {
     _showPanel(CupertinoIcons.book_fill, title, 'Course content', [
       if (imageUrl != null && imageUrl.isNotEmpty) _courseBanner(imageUrl),
-      _future(Future.wait([_apiMap('/api/v1/me/courses/$courseId/content'), _apiList('/api/v1/me/assessments', 'assessments')]), (List d) {
+      _future(Future.wait([
+        _apiMap('/api/v1/me/courses/$courseId/content'),
+        // Assessments are secondary — never let their failure blank the course.
+        _apiList('/api/v1/me/assessments', 'assessments').catchError((_) => <dynamic>[]),
+      ]), (List d) {
         final m = d[0] as Map<String, dynamic>;
         final modules = (m['modules'] as List?) ?? [];
-        final assessments = (d[1] as List).where((a) => (a as Map<String, dynamic>)['course']?.toString() == title).toList();
+        final assessments = (d[1] as List)
+            .whereType<Map>()
+            .where((a) => a['course']?.toString() == title)
+            .map((a) => a.cast<String, dynamic>())
+            .toList();
         if (modules.isEmpty && assessments.isEmpty) return _emptyText('No content in this course yet.');
         return StatefulBuilder(builder: (ctx, setS) {
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -960,7 +968,7 @@ class _StudentHomeState extends State<StudentHome> {
                   const SizedBox(width: 8),
                   Text('Course grade', style: GoogleFonts.inter(fontSize: 13.5, fontWeight: FontWeight.w700, color: _navy)),
                   const Spacer(),
-                  Text('${(m['course_grade'] as num).round()}%', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800, color: _green)),
+                  Text('${(m['course_grade'] as num?)?.round() ?? 0}%', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800, color: _green)),
                 ]),
               ),
             // Each quiz/assignment sits inside ITS OWN module's day boxes;
@@ -969,7 +977,7 @@ class _StudentHomeState extends State<StudentHome> {
               _moduleBox(modules[i] as Map<String, dynamic>, () => setS(() {}),
                   allAssessments: assessments,
                   unassigned: i == 0
-                      ? assessments.where((a) => ((a as Map)['module_id']?.toString() ?? '').isEmpty).toList()
+                      ? assessments.where((a) => (a['module_id']?.toString() ?? '').isEmpty).toList()
                       : const []),
             // No modules but there are assessments → show them as day boxes.
             if (modules.isEmpty && assessments.isNotEmpty)
@@ -1056,7 +1064,7 @@ class _StudentHomeState extends State<StudentHome> {
           child: Row(children: [
             if (isSub) Padding(padding: const EdgeInsets.only(right: 6), child: Icon(Icons.subdirectory_arrow_right, size: 15, color: _orange)),
             Expanded(child: Text(title, style: GoogleFonts.inter(fontSize: isSub ? 13.5 : 15, fontWeight: FontWeight.w700, color: _orange))),
-            if (md['grade'] != null) _gradePill((md['grade'] as num).round()),
+            if (md['grade'] is num) _gradePill((md['grade'] as num).round()),
           ]),
         ),
         Padding(
