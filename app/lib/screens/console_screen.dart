@@ -2282,7 +2282,12 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       scrollDirection: Axis.horizontal,
       child: Row(children: [
         for (final t in tabs) ...[
-          _batchTabChip(t.isEmpty ? 'All' : t, _moduleBatch == t, () => setState(() => _moduleBatch = t)),
+          // Bump _rev so the pushed section screen (a ValueListenableBuilder on
+          // _rev) actually rebuilds with the newly selected batch.
+          _batchTabChip(t.isEmpty ? 'All' : t, _moduleBatch == t, () {
+            _moduleBatch = t;
+            _rev.value++;
+          }),
           const SizedBox(width: 6),
         ],
       ]),
