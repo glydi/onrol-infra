@@ -295,6 +295,10 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
           : RefreshIndicator(
               color: p.accent,
               onRefresh: _load,
+              // Constrain the content width so cards aren't stretched full-screen
+              // on wide monitors.
+              child: Center(child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1000),
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
                 children: [
@@ -353,7 +357,7 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
                     }),
                   ],
                 ],
-              ),
+              ))),
             ),
     ));
   }
