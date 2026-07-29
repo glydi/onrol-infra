@@ -6,6 +6,17 @@ import 'package:onrol_app/widgets/upper_text.dart';
 import '../theme.dart';
 import '../theme_controller.dart';
 
+// Corner radii for every box the app draws. Admin/LMS panels used to be hard
+// squared (radius 0); they're rounded now. Keeping the values here means the
+// whole app — cards, buttons, dialogs, sheets, fields — changes in one place.
+const double kRadiusCard = 12;
+const double kRadiusButton = 10;
+const double kRadiusDialog = 14;
+const double kRadiusSheet = 16;
+const double kRadiusField = 10;
+const double kRadiusChip = 8;
+const double kRadiusPill = 999; // fully rounded (progress bars)
+
 /// A frosted, translucent top bar (iOS large-title style).
 class GlassHeader extends StatelessWidget implements PreferredSizeWidget {
   const GlassHeader({super.key, required this.title, this.trailing, this.leading});
@@ -75,7 +86,7 @@ class _AppleCardState extends State<AppleCard> {
       padding: widget.padding,
       decoration: BoxDecoration(
         color: p.card,
-        borderRadius: BorderRadius.zero,
+        borderRadius: BorderRadius.circular(kRadiusCard),
         border: Border.all(color: hovered ? p.accent : p.separator),
         boxShadow: hovered
             ? [BoxShadow(color: Colors.black.withOpacity(p.dark ? 0.32 : 0.08), blurRadius: 12, offset: const Offset(0, 4))]
@@ -174,7 +185,7 @@ class _PrimaryButtonState extends State<PrimaryButton> {
                     end: Alignment.bottomRight,
                   ),
             // Compact, Coursera-style: small radius, no heavy glow.
-            borderRadius: BorderRadius.zero,
+            borderRadius: BorderRadius.circular(kRadiusButton),
             boxShadow: (!widget.square && enabled)
                 ? [BoxShadow(color: p.accent.withOpacity(0.20), offset: const Offset(0, 3), blurRadius: 8, spreadRadius: -2)]
                 : null,
@@ -234,7 +245,7 @@ Future<Object?> showSquareMenu(BuildContext context, {String? title, required Li
       return Dialog(
         backgroundColor: p.card,
         elevation: 0,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(kRadiusDialog)),
         insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 360),
@@ -272,7 +283,7 @@ Future<bool> showSquareConfirm(BuildContext context, {required String title, req
       return Dialog(
         backgroundColor: p.card,
         elevation: 0,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(kRadiusDialog)),
         insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 380),
@@ -429,7 +440,7 @@ class AppleProgress extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     return ClipRRect(
-      borderRadius: BorderRadius.zero,
+      borderRadius: BorderRadius.circular(kRadiusPill),
       child: LinearProgressIndicator(
         value: value.clamp(0, 1),
         minHeight: 7,
@@ -543,7 +554,7 @@ class AppleSegmented extends StatelessWidget {
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: p.dark ? AppleColors.darkCard2 : const Color(0xFFE9E9EB),
-        borderRadius: BorderRadius.zero,
+        borderRadius: BorderRadius.circular(kRadiusButton),
       ),
       child: Row(
         children: List.generate(labels.length, (i) {
@@ -559,7 +570,7 @@ class AppleSegmented extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: on ? p.card : Colors.transparent,
-                  borderRadius: BorderRadius.zero,
+                  borderRadius: BorderRadius.circular(kRadiusChip),
                   boxShadow: on && !p.dark
                       ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 6, offset: const Offset(0, 2))]
                       : null,
@@ -595,7 +606,7 @@ Widget sheetField(TextEditingController c, String hint, IconData icon, {TextInpu
     final p = Palette.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-      decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.zero),
+      decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(kRadiusField)),
       child: AppleField(controller: c, hint: hint, icon: icon, keyboard: keyboard, obscure: obscure, minLines: minLines, maxLines: maxLines),
     );
   });
@@ -657,7 +668,7 @@ Future<bool?> showFormSheet(
                 margin: EdgeInsets.all(full ? 12 : (big ? 16 : 10)),
                 height: full ? screenH * 0.95 : (big ? (screenH * 0.82).clamp(0.0, 820.0) : null),
                 padding: EdgeInsets.all(full ? 22 : (big ? 26 : 20)),
-                decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.zero),
+                decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(kRadiusSheet)),
                 child: Column(mainAxisSize: wide ? MainAxisSize.max : MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   Center(child: Text(title, style: AppleTheme.title2(ctx))),
                   const SizedBox(height: 16),

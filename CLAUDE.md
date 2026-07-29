@@ -58,6 +58,11 @@ cd app && flutter build web --no-tree-shake-icons --pwa-strategy=none
 ## Conventions
 
 - Add a new migration file (next number) for schema changes; don't mutate old ones.
-- Admin/CRM panels use **squared buttons** (`PrimaryButton(square: true)`, radius 6).
+- Admin/CRM panels use **rounded corners**. Radii live in one place —
+  `kRadiusCard` / `kRadiusButton` / `kRadiusDialog` / `kRadiusSheet` /
+  `kRadiusField` / `kRadiusChip` / `kRadiusPill` in `app/lib/widgets/ui.dart`.
+  Use those constants rather than a literal; don't reintroduce
+  `BorderRadius.zero`. (`square: true` still selects the admin styling — it no
+  longer means radius 0.)
 - Keep new code in the style of the surrounding file (naming, comments, idioms).
 - Commit/push only when asked; if on `main`, branch first.

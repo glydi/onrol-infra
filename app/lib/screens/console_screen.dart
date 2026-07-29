@@ -240,6 +240,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   @override
   Widget build(BuildContext context) {
     final dests = <NavDest>[
+      // First entry, so AppShell's initialIndex of 0 lands here by default.
+      const NavDest(CupertinoIcons.house_fill, 'Home', section: 'Learning'),
       const NavDest(CupertinoIcons.square_list_fill, 'Courses', section: 'Learning'),
       if (_isAdmin) const NavDest(CupertinoIcons.dot_radiowaves_left_right, 'Live Host', section: 'Learning'),
       if (_isAdmin) const NavDest(CupertinoIcons.film, 'Video Store', section: 'Learning'),
@@ -253,6 +255,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       const NavDest(CupertinoIcons.person_fill, 'Profile', section: 'Account'),
     ];
     final pages = <Widget>[
+      _homePage(),
       _consolePage(),
       if (_isAdmin) LiveHostPortalScreen(auth: widget.auth, embedded: true),
       if (_isAdmin) VideoStoreScreen(auth: widget.auth),
@@ -1062,6 +1065,99 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     });
   }
 
+  // The console's landing page: headline numbers, anything waiting on a
+  // decision, then the course list — one screen that answers "what's the state
+  // of everything?" without opening a tab. Built from data _load() already
+  // fetches, so it costs no extra requests.
+  Widget _homePage() {
+    final p = Palette.of(context);
+    final hp = _hPad(context);
+    final students = _people.where((u) => u['role'] == 'student').length;
+    final instructors = _people.where((u) => u['role'] == 'instructor').length;
+    final published = _courses.where((c) => (c as Map)['status'] == 'published').length;
+    final drafts = _courses.length - published;
+    return RefreshIndicator(
+      color: p.accent,
+      onRefresh: _load,
+      child: ListView(
+        padding: EdgeInsets.fromLTRB(hp, 18, hp, 40),
+        children: [
+          Text('Overview', style: AppleTheme.largeTitle(context)),
+          Text('Everything across your courses at a glance', style: AppleTheme.subhead(context)),
+          const SizedBox(height: 18),
+          if (_loading)
+            const Padding(padding: EdgeInsets.symmetric(vertical: 40), child: Center(child: CupertinoActivityIndicator()))
+          else ...[
+            _statGrid([
+              _stat('Courses', '${_courses.length}',
+                  '$published published · $drafts draft', CupertinoIcons.square_list_fill),
+              if (_isAdmin)
+                _stat('Students', '$students', 'enrolled learners', CupertinoIcons.person_2_fill),
+              if (_isAdmin)
+                _stat('Instructors', '$instructors', 'mentors', CupertinoIcons.person_badge_plus),
+              _stat('Requests', '${_requests.length}', 'awaiting a decision', CupertinoIcons.tray_arrow_down_fill),
+              if (_isAdmin)
+                _stat('Questions', '$_mentorWaiting', 'awaiting a reply', CupertinoIcons.chat_bubble_2_fill),
+            ]),
+            const SizedBox(height: 22),
+            // Only surfaces when there's genuinely something to act on.
+            if (_requests.isNotEmpty) ...[
+              SectionHeader('Needs your attention [ ${_requests.length} ]'),
+              ..._requests.take(5).map((r) => _requestCard(r as Map<String, dynamic>)),
+              if (_requests.length > 5)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text('+ ${_requests.length - 5} more — see Courses',
+                      style: AppleTheme.footnote(context)),
+                ),
+              const SizedBox(height: 22),
+            ],
+            const SectionHeader('Your Courses'),
+            if (_courses.isEmpty)
+              AppleCard(square: true, child: Text('No courses yet.', style: AppleTheme.footnote(context)))
+            else
+              ..._courses.map((c) => _courseRow(c as Map<String, dynamic>)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // Headline numbers side by side, wrapping down to one column on a phone.
+  Widget _statGrid(List<Widget> tiles) {
+    return LayoutBuilder(builder: (_, c) {
+      const gap = 12.0;
+      final w = c.maxWidth;
+      final cols = w >= 1000 ? 4 : (w >= 700 ? 3 : (w >= 440 ? 2 : 1));
+      final tileW = cols == 1 ? w : (w - gap * (cols - 1)) / cols;
+      return Wrap(spacing: gap, runSpacing: gap, children: [
+        for (final t in tiles) SizedBox(width: tileW, child: t),
+      ]);
+    });
+  }
+
+  Widget _stat(String label, String value, String sub, IconData icon) {
+    final p = Palette.of(context);
+    return AppleCard(
+      square: true,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(icon, size: 18, color: p.accent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(label.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: AppleTheme.footnote(context).copyWith(
+                    fontWeight: FontWeight.w700, letterSpacing: 1.1, color: p.secondary)),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        Text(value, style: AppleTheme.headline(context).copyWith(fontSize: 28, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 2),
+        Text(sub, maxLines: 2, overflow: TextOverflow.ellipsis, style: AppleTheme.footnote(context)),
+      ]),
+    );
+  }
+
   Widget _consolePage() {
     final p = Palette.of(context);
     final roleLabel = widget.auth.user?.role == 'instructor' ? 'Mentor' : 'Admin';
@@ -1338,7 +1434,10 @@ List<Widget> _mdEditor(BuildContext context, {required TextEditingController bod
 
   Widget editor() => Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+        decoration: BoxDecoration(
+          color: p.card2,
+          borderRadius: BorderRadius.circular(kRadiusField),
+          border: Border.all(color: p.separator)),
         child: TextField(
           controller: body,
           expands: true,
@@ -1355,7 +1454,10 @@ List<Widget> _mdEditor(BuildContext context, {required TextEditingController bod
   Widget rendered() => Container(
         width: double.infinity,
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+        decoration: BoxDecoration(
+          color: p.card2,
+          borderRadius: BorderRadius.circular(kRadiusField),
+          border: Border.all(color: p.separator)),
         child: SingleChildScrollView(
           child: MarkdownView(
             text: body.text,
@@ -1739,7 +1841,10 @@ class _QuizBuilderState extends State<_QuizBuilder> {
           },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-            decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+            decoration: BoxDecoration(
+          color: p.card2,
+          borderRadius: BorderRadius.circular(kRadiusField),
+          border: Border.all(color: p.separator)),
             child: Row(children: [
               Expanded(child: Text(typeLabels[type], style: AppleTheme.body(context).copyWith(fontWeight: FontWeight.w700))),
               Icon(CupertinoIcons.chevron_up_chevron_down, size: 16, color: p.secondary),
@@ -3376,7 +3481,10 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     return AspectRatio(
       aspectRatio: 16 / 9,
       child: Container(
-        decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+        decoration: BoxDecoration(
+          color: p.card2,
+          borderRadius: BorderRadius.circular(kRadiusField),
+          border: Border.all(color: p.separator)),
         child: ClipRect(
           child: src.startsWith('data:')
               ? Image.memory(base64Decode(src.substring(src.indexOf(',') + 1)), fit: BoxFit.cover, width: double.infinity, errorBuilder: (_, __, ___) => const SizedBox())
@@ -3397,7 +3505,10 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       const SizedBox(height: 8),
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-        decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+        decoration: BoxDecoration(
+          color: p.card2,
+          borderRadius: BorderRadius.circular(kRadiusField),
+          border: Border.all(color: p.separator)),
         child: Row(children: [
           Icon(picked ? CupertinoIcons.film_fill : CupertinoIcons.film, size: 18, color: picked ? AppleColors.green : p.secondary),
           const SizedBox(width: 10),
@@ -4420,7 +4531,10 @@ class _AnnouncementsSheetState extends State<_AnnouncementsSheet> {
                             final body = a['body']?.toString() ?? '';
                             return Container(
                               padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+                              decoration: BoxDecoration(
+          color: p.card2,
+          borderRadius: BorderRadius.circular(kRadiusField),
+          border: Border.all(color: p.separator)),
                               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                   Text(a['title']?.toString() ?? '', style: AppleTheme.body(context).copyWith(fontWeight: FontWeight.w700)),
@@ -4741,7 +4855,10 @@ class _CourseLiveAttendanceScreenState extends State<CourseLiveAttendanceScreen>
     final p = Palette.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-      decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+      decoration: BoxDecoration(
+          color: p.card2,
+          borderRadius: BorderRadius.circular(kRadiusField),
+          border: Border.all(color: p.separator)),
       child: Row(children: [
         Icon(CupertinoIcons.search, size: 17, color: p.secondary),
         const SizedBox(width: 8),
@@ -5193,7 +5310,9 @@ class _CourseBatchesScreenState extends State<CourseBatchesScreen> {
           if (!isQueue)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
-              color: p.accent.withValues(alpha: 0.12),
+              decoration: BoxDecoration(
+                  color: p.accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(kRadiusChip)),
               child: Text(letter,
                   style: AppleTheme.body(context).copyWith(
                       fontWeight: FontWeight.w800, letterSpacing: 0.5, color: p.accent)),
@@ -5246,7 +5365,10 @@ class _CourseBatchesScreenState extends State<CourseBatchesScreen> {
     final box = Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-      decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+      decoration: BoxDecoration(
+          color: p.card2,
+          borderRadius: BorderRadius.circular(kRadiusField),
+          border: Border.all(color: p.separator)),
       child: Row(children: [
         Icon(icon, size: 18, color: live ? p.accent : p.secondary),
         const SizedBox(width: 10),
@@ -6953,7 +7075,10 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> {
               for (final ch in channels)
                 Container(
                   padding: const EdgeInsets.only(left: 10, right: 4, top: 5, bottom: 5),
-                  decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+                  decoration: BoxDecoration(
+          color: p.card2,
+          borderRadius: BorderRadius.circular(kRadiusField),
+          border: Border.all(color: p.separator)),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Text('#${(ch as Map)['name']}', style: AppleTheme.footnote(context)),
                     GestureDetector(
@@ -7082,7 +7207,10 @@ class _SubmissionsScreenState extends State<_SubmissionsScreen> {
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+          decoration: BoxDecoration(
+          color: p.card2,
+          borderRadius: BorderRadius.circular(kRadiusField),
+          border: Border.all(color: p.separator)),
           child: Text(body, style: AppleTheme.body(context).copyWith(fontSize: 14, height: 1.4)),
         ),
         const SizedBox(height: 12),
