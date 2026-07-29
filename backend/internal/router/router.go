@@ -110,6 +110,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Delete("/manage/module-store/:id", auth, inst, h.DeleteStoreModule)
 	api.Post("/manage/module-store/:id/lessons", auth, inst, h.AddStoreLesson)
 	api.Delete("/manage/module-store-lessons/:id", auth, inst, h.DeleteStoreLesson)
+	api.Post("/manage/module-store-lessons/:id/move", auth, inst, h.MoveStoreLesson)
 	api.Post("/manage/courses/:id/modules/from-store", auth, inst, h.AddModuleFromStore)
 	api.Post("/manage/modules/:id/to-store", auth, inst, h.SaveModuleToStore) // promote a course module into the store
 	api.Patch("/manage/modules/:id", auth, inst, h.UpdateModule)

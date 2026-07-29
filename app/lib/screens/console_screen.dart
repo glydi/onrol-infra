@@ -7358,29 +7358,59 @@ class _StoreModuleDetailScreenState extends State<StoreModuleDetailScreen> {
   Future<void> _addLesson() async {
     final title = TextEditingController();
     final body = TextEditingController();
-    final day = TextEditingController();
-    int type = 0; // 0=text, 1=link, 2=file
-    const types = ['text', 'link', 'file'];
-    final ok = await showFormSheet(context, square: true, big: true, title: 'Add lesson to ${widget.code}', builder: (setS) => [
-      AppleSegmented(square: true, labels: const ['Text', 'Link', 'Document'], selected: type, onChanged: (i) => setS(() => type = i)),
+    int type = 0; // text, video, link, file — same options as a course lesson
+    int vsrc = 0; // 0 = R2 (MP4), 1 = HLS (.m3u8)
+    bool downloadable = true;
+    bool preview = false;
+    final ok = await showFormSheet(context, square: true, full: true, title: 'Add lesson to ${widget.code}', builder: (setS) => [
+      sheetField(title, 'Lesson title', CupertinoIcons.doc_text),
       const SizedBox(height: 10),
-      sheetField(title, 'Lesson title', CupertinoIcons.textformat),
+      AppleSegmented(square: true, labels: const ['Text', 'Video', 'Link', 'Document'], selected: type, onChanged: (i) => setS(() => type = i)),
+      if (type == 1) ...[
+        const SizedBox(height: 12),
+        _label(context, 'Video source'),
+        const SizedBox(height: 6),
+        AppleSegmented(square: true, labels: const ['R2 (MP4)', 'HLS (.m3u8)'], selected: vsrc, onChanged: (i) => setS(() => vsrc = i)),
+        if (vsrc == 0) ...[
+          const SizedBox(height: 8),
+          PrimaryButton(
+            label: 'Choose from Video Store', icon: CupertinoIcons.film, square: true,
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => VideoStoreScreen(auth: widget.auth, onPick: (id, url, t) {
+                body.text = url;
+                if (title.text.trim().isEmpty) title.text = t;
+                setS(() {});
+                Navigator.of(context).pop();
+              }),
+            )),
+          ),
+        ],
+      ],
       const SizedBox(height: 10),
       if (type == 0)
-        sheetField(body, 'Content — supports Markdown', CupertinoIcons.text_alignleft, minLines: 6, maxLines: 16)
+        ..._mdEditor(context, body: body, preview: preview, onPreview: (v) => setS(() => preview = v), refresh: () => setS(() {}))
       else
-        sheetField(body, type == 1 ? 'Link URL (https://…)' : 'Document URL (PDF, Doc…)', CupertinoIcons.link),
-      const SizedBox(height: 10),
-      sheetField(day, 'Day number (optional)', CupertinoIcons.calendar, keyboard: TextInputType.number),
+        sheetField(
+          body,
+          type == 1 ? (vsrc == 0 ? 'R2 video URL (…/video.mp4)' : 'HLS playlist URL (…/index.m3u8)') : type == 3 ? 'Document URL (PDF / Word / PPT …)' : 'Link URL (https://…)',
+          type == 1 ? (vsrc == 0 ? CupertinoIcons.play_rectangle : CupertinoIcons.antenna_radiowaves_left_right) : type == 3 ? CupertinoIcons.doc_richtext : CupertinoIcons.link,
+        ),
+      if (type == 3) ...[
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(child: _label(context, 'Allow learners to download this document')),
+          CupertinoSwitch(value: downloadable, activeTrackColor: AppleColors.green, onChanged: (v) => setS(() => downloadable = v)),
+        ]),
+      ],
     ], onSubmit: () async {
       if (title.text.trim().isEmpty) return 'Title required';
-      if (type != 0 && !body.text.trim().startsWith('http')) return 'Enter a valid URL';
+      if (type != 0 && body.text.trim().isEmpty) return type == 1 ? 'Video URL required' : 'URL required';
       try {
         await widget.auth.apiPost('/api/v1/manage/module-store/${widget.moduleId}/lessons', {
           'title': title.text.trim(),
-          'type': types[type],
+          'type': ['text', 'video', 'link', 'file'][type],
           'body': body.text.trim(),
-          'day_number': int.tryParse(day.text.trim()),
+          if (type == 3) 'downloadable': downloadable,
         });
         return null;
       } on ApiException catch (e) {
@@ -7388,6 +7418,14 @@ class _StoreModuleDetailScreenState extends State<StoreModuleDetailScreen> {
       }
     });
     if (ok == true) { _toast('Lesson added'); _load(); }
+  }
+
+  // Manual reordering — swap this lesson with its neighbour.
+  Future<void> _moveLesson(Map<String, dynamic> l, String dir) async {
+    try {
+      await widget.auth.apiPost('/api/v1/manage/module-store-lessons/${l['id']}/move', {'dir': dir});
+      _load();
+    } catch (_) {}
   }
 
   Future<void> _deleteLesson(Map<String, dynamic> l) async {
@@ -7412,27 +7450,36 @@ class _StoreModuleDetailScreenState extends State<StoreModuleDetailScreen> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
               children: [
-                Text('Lessons here are copied into a course when you add this module by its code. Add video lessons in the course after copying (they use the Video Store).', style: AppleTheme.footnote(context)),
+                Text('Lessons are shown in the order below (use ↑ ↓ to reorder) and copy into a course in that order when you add this module by its code.', style: AppleTheme.footnote(context)),
                 const SizedBox(height: 12),
                 if (_lessons.isEmpty)
                   AppleCard(square: true, child: Text('No lessons yet. Tap ＋ to add one.', style: AppleTheme.footnote(context)))
                 else
-                  ..._lessons.map((l) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: AppleCard(square: true, child: Row(children: [
-                          Icon(switch (l['type']?.toString()) {
-                            'link' => CupertinoIcons.link,
-                            'file' => CupertinoIcons.doc_richtext,
-                            'video' => CupertinoIcons.play_rectangle_fill,
-                            _ => CupertinoIcons.doc_text_fill,
-                          }, size: 18, color: p.accent),
-                          const SizedBox(width: 10),
-                          Expanded(child: Text(l['title']?.toString() ?? 'Lesson', style: AppleTheme.body(context))),
-                          if ((l['day_number']) != null)
-                            Padding(padding: const EdgeInsets.only(right: 8), child: Text('Day ${l['day_number']}', style: AppleTheme.footnote(context))),
-                          HoverTap(onTap: () => _deleteLesson(l), child: const Icon(CupertinoIcons.trash, size: 17, color: AppleColors.red)),
-                        ])),
-                      )),
+                  ..._lessons.asMap().entries.map((e) {
+                    final i = e.key;
+                    final l = e.value;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: AppleCard(square: true, child: Row(children: [
+                        Icon(switch (l['type']?.toString()) {
+                          'link' => CupertinoIcons.link,
+                          'file' => CupertinoIcons.doc_richtext,
+                          'video' => CupertinoIcons.play_rectangle_fill,
+                          _ => CupertinoIcons.doc_text_fill,
+                        }, size: 18, color: p.accent),
+                        const SizedBox(width: 10),
+                        Expanded(child: Text(l['title']?.toString() ?? 'Lesson', style: AppleTheme.body(context))),
+                        // Manual reorder.
+                        HoverTap(onTap: i == 0 ? null : () => _moveLesson(l, 'up'),
+                            child: Icon(CupertinoIcons.arrow_up, size: 17, color: i == 0 ? p.separator : p.secondary)),
+                        const SizedBox(width: 10),
+                        HoverTap(onTap: i == _lessons.length - 1 ? null : () => _moveLesson(l, 'down'),
+                            child: Icon(CupertinoIcons.arrow_down, size: 17, color: i == _lessons.length - 1 ? p.separator : p.secondary)),
+                        const SizedBox(width: 12),
+                        HoverTap(onTap: () => _deleteLesson(l), child: const Icon(CupertinoIcons.trash, size: 17, color: AppleColors.red)),
+                      ])),
+                    );
+                  }),
               ],
             ),
     )));

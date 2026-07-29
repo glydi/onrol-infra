@@ -134,6 +134,48 @@ func (h *Handlers) DeleteStoreModule(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"ok": true})
 }
 
+// MoveStoreLesson swaps a store lesson's position with its neighbour (manual
+// ordering — up/down), so the store module keeps the order the admin sets.
+func (h *Handlers) MoveStoreLesson(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var req struct {
+		Dir string `json:"dir"` // "up" | "down"
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "bad request")
+	}
+	var storeID string
+	var pos int
+	if err := h.Pool.QueryRow(c.Context(),
+		`SELECT store_module_id::text, position FROM module_store_lessons WHERE id=$1`, id).Scan(&storeID, &pos); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "lesson not found")
+	}
+	op, order := "<", "DESC"
+	if req.Dir == "down" {
+		op, order = ">", "ASC"
+	}
+	var nid string
+	var npos int
+	err := h.Pool.QueryRow(c.Context(),
+		`SELECT id::text, position FROM module_store_lessons
+		 WHERE store_module_id=$1 AND position `+op+` $2 ORDER BY position `+order+` LIMIT 1`,
+		storeID, pos).Scan(&nid, &npos)
+	if err != nil {
+		return c.JSON(fiber.Map{"ok": true}) // already at the edge — no-op
+	}
+	tx, terr := h.Pool.Begin(c.Context())
+	if terr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "tx failed")
+	}
+	defer tx.Rollback(c.Context())
+	_, _ = tx.Exec(c.Context(), `UPDATE module_store_lessons SET position=$2 WHERE id=$1`, id, npos)
+	_, _ = tx.Exec(c.Context(), `UPDATE module_store_lessons SET position=$2 WHERE id=$1`, nid, pos)
+	if err := tx.Commit(c.Context()); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "commit failed")
+	}
+	return c.JSON(fiber.Map{"ok": true})
+}
+
 // DeleteStoreLesson removes a lesson from a store module.
 func (h *Handlers) DeleteStoreLesson(c *fiber.Ctx) error {
 	if _, err := h.Pool.Exec(c.Context(), `DELETE FROM module_store_lessons WHERE id=$1`, c.Params("id")); err != nil {
