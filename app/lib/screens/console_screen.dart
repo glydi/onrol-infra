@@ -2451,17 +2451,61 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
 
   // Add a stored module into this course/batch by its code.
   Future<void> _addModuleFromStore(String batch) async {
+    // Load the store modules so the admin can PICK one from a list (and still
+    // type a code/ID manually if they prefer).
+    List<Map<String, dynamic>> mods = [];
+    try {
+      final r = await widget.auth.apiGet('/api/v1/manage/module-store');
+      mods = ((ApiClient.decode(r)['modules'] as List?) ?? [])
+          .map((e) => (e as Map).cast<String, dynamic>())
+          .toList();
+    } catch (_) {}
+    if (!mounted) return;
     final code = TextEditingController();
-    final ok = await showFormSheet(context, square: true,
-        title: batch.isEmpty ? 'Add module by code' : 'Add module by code → $batch',
-        builder: (_) => [
-          _label(context, batch.isEmpty
-              ? 'Pulls a stored module (with its lessons) into this course for all batches.'
-              : 'Pulls a stored module (with its lessons) into batch “$batch”. It’s an independent copy — later store edits won’t change it.'),
-          const SizedBox(height: 8),
-          sheetField(code, 'Module code (e.g. AI-01)', CupertinoIcons.number),
-        ], onSubmit: () async {
-          if (code.text.trim().isEmpty) return 'Enter a module code';
+    final ok = await showFormSheet(context, square: true, big: true,
+        title: batch.isEmpty ? 'Add module' : 'Add module → $batch',
+        builder: (setS) {
+          final p = Palette.of(context);
+          return [
+            _label(context, batch.isEmpty
+                ? 'Pick a module from the store (or type its code). It’s copied in for all batches.'
+                : 'Pick a module from the store (or type its code). It’s copied into “$batch” as an independent module.'),
+            const SizedBox(height: 10),
+            if (mods.isEmpty)
+              _label(context, 'No modules in the store yet — create one in the Module Store, or type a code below.')
+            else
+              ...mods.map((m) {
+                final c = m['code'].toString();
+                final sel = code.text.trim().toUpperCase() == c.toUpperCase();
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => setS(() => code.text = c),
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                    decoration: BoxDecoration(color: sel ? p.accent.withOpacity(0.10) : p.card2, border: Border.all(color: sel ? p.accent : p.separator)),
+                    child: Row(children: [
+                      Icon(sel ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle, size: 20, color: sel ? p.accent : p.secondary),
+                      const SizedBox(width: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(color: p.accent.withOpacity(0.14)),
+                        child: Text(c, style: TextStyle(color: p.accent, fontWeight: FontWeight.w800, fontSize: 11.5)),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(m['title']?.toString() ?? 'Module', style: AppleTheme.body(context))),
+                      Text('${m['lessons'] ?? 0} lessons', style: AppleTheme.footnote(context)),
+                    ]),
+                  ),
+                );
+              }),
+            const SizedBox(height: 12),
+            _label(context, 'Or enter a module code / ID'),
+            const SizedBox(height: 6),
+            sheetField(code, 'Module code (e.g. AI-01)', CupertinoIcons.number),
+          ];
+        }, onSubmit: () async {
+          if (code.text.trim().isEmpty) return 'Select a module or enter a code';
           try {
             await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/modules/from-store',
                 {'code': code.text.trim(), 'batch_number': batch});
