@@ -168,6 +168,46 @@ func (h *Handlers) GetStoreModule(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"id": id, "code": code, "title": title, "lessons": lessons})
 }
 
+// syncStoreModule pushes a store module's current lessons to every COURSE module
+// linked to it by store_code — so editing the store updates all copies live.
+// Best-effort: logs nothing, returns any DB error.
+func (h *Handlers) syncStoreModule(c *fiber.Ctx, storeID string) {
+	var code string
+	if err := h.Pool.QueryRow(c.Context(), `SELECT code FROM module_store WHERE id=$1`, storeID).Scan(&code); err != nil {
+		return
+	}
+	tx, err := h.Pool.Begin(c.Context())
+	if err != nil {
+		return
+	}
+	defer tx.Rollback(c.Context())
+	// Replace lessons in every linked course module with the store's current set.
+	rows, err := tx.Query(c.Context(), `SELECT id FROM modules WHERE store_code=$1`, code)
+	if err != nil {
+		return
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			ids = append(ids, id)
+		}
+	}
+	rows.Close()
+	for _, mid := range ids {
+		if _, err := tx.Exec(c.Context(), `DELETE FROM lessons WHERE module_id=$1`, mid); err != nil {
+			return
+		}
+		if _, err := tx.Exec(c.Context(),
+			`INSERT INTO lessons (module_id, title, type, video_id, body, position, downloadable, day_number)
+			 SELECT $1, title, type, video_id, body, position, downloadable, day_number
+			   FROM module_store_lessons WHERE store_module_id=$2`, mid, storeID); err != nil {
+			return
+		}
+	}
+	_ = tx.Commit(c.Context())
+}
+
 // AddStoreLesson adds a lesson to a store module.
 func (h *Handlers) AddStoreLesson(c *fiber.Ctx) error {
 	moduleID := c.Params("id")
@@ -204,6 +244,7 @@ func (h *Handlers) AddStoreLesson(c *fiber.Ctx) error {
 		moduleID, strings.TrimSpace(req.Title), req.Type, vid, req.Body, req.DayNumber, downloadable).Scan(&id); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
 	}
+	h.syncStoreModule(c, moduleID) // push to linked course modules
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id})
 }
 
@@ -255,13 +296,19 @@ func (h *Handlers) MoveStoreLesson(c *fiber.Ctx) error {
 	if err := tx.Commit(c.Context()); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "commit failed")
 	}
+	h.syncStoreModule(c, storeID)
 	return c.JSON(fiber.Map{"ok": true})
 }
 
 // DeleteStoreLesson removes a lesson from a store module.
 func (h *Handlers) DeleteStoreLesson(c *fiber.Ctx) error {
+	var storeID string
+	_ = h.Pool.QueryRow(c.Context(), `SELECT store_module_id::text FROM module_store_lessons WHERE id=$1`, c.Params("id")).Scan(&storeID)
 	if _, err := h.Pool.Exec(c.Context(), `DELETE FROM module_store_lessons WHERE id=$1`, c.Params("id")); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "delete failed")
+	}
+	if storeID != "" {
+		h.syncStoreModule(c, storeID)
 	}
 	return c.JSON(fiber.Map{"ok": true})
 }
@@ -307,6 +354,10 @@ func (h *Handlers) SaveModuleToStore(c *fiber.Ctx) error {
 		   FROM lessons WHERE module_id=$2`,
 		storeID, moduleID); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "lesson copy failed")
+	}
+	// Link the source module to the new store module so it stays in sync with it.
+	if _, err := tx.Exec(c.Context(), `UPDATE modules SET store_code=$1 WHERE id=$2`, code, moduleID); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "link failed")
 	}
 	if err := tx.Commit(c.Context()); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "commit failed")
