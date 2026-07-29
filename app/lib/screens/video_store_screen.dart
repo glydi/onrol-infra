@@ -60,6 +60,11 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
             .map((e) => (e as Map).cast<String, dynamic>())
             .toList();
       } catch (_) {}
+      // With no "All" chip there must always be a real selection: land on the
+      // first folder, or Unfiled when there are no folders yet.
+      if (_folder.isEmpty) {
+        _folder = _folders.isNotEmpty ? _folders.first['id'].toString() : '__none__';
+      }
     } catch (_) {
       _err = 'Could not load the video store';
     }
@@ -353,15 +358,14 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
     ));
   }
 
-  // Folder chips (All / Unfiled / each folder) with a New-folder button. Long-
-  // press a folder chip to rename or delete it.
+  // Folder chips (Unfiled / each folder) with a New-folder button. Long-press a
+  // folder chip to rename or delete it. There's deliberately no "All" chip —
+  // the store is browsed one folder at a time.
   Widget _folderBar() {
     final unfiled = _videos.where((v) => ((v as Map)['folder_id']?.toString() ?? '').isEmpty).length;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(children: [
-        _folderChip('All', '', _videos.length, null),
-        const SizedBox(width: 6),
         _folderChip('Unfiled', '__none__', unfiled, null),
         for (final f in _folders) ...[
           const SizedBox(width: 6),
@@ -468,7 +472,9 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
     if (!yes) return;
     try {
       await widget.auth.apiDelete('/api/v1/manage/video-folders/${f['id']}');
-      if (_folder == f['id'].toString()) _folder = '';
+      // Its videos land in Unfiled, so follow them there rather than leaving
+      // no chip selected.
+      if (_folder == f['id'].toString()) _folder = '__none__';
       _toast('Folder deleted'); _load();
     } catch (_) { _toast('Could not delete'); }
   }
