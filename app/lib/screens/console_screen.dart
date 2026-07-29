@@ -7469,11 +7469,11 @@ class _StoreModuleDetailScreenState extends State<StoreModuleDetailScreen> {
                         }, size: 18, color: p.accent),
                         const SizedBox(width: 10),
                         Expanded(child: Text(l['title']?.toString() ?? 'Lesson', style: AppleTheme.body(context))),
-                        // Manual reorder.
-                        HoverTap(onTap: i == 0 ? null : () => _moveLesson(l, 'up'),
+                        // Manual reorder (no-op at the edges).
+                        HoverTap(onTap: i == 0 ? () {} : () => _moveLesson(l, 'up'),
                             child: Icon(CupertinoIcons.arrow_up, size: 17, color: i == 0 ? p.separator : p.secondary)),
                         const SizedBox(width: 10),
-                        HoverTap(onTap: i == _lessons.length - 1 ? null : () => _moveLesson(l, 'down'),
+                        HoverTap(onTap: i == _lessons.length - 1 ? () {} : () => _moveLesson(l, 'down'),
                             child: Icon(CupertinoIcons.arrow_down, size: 17, color: i == _lessons.length - 1 ? p.separator : p.secondary)),
                         const SizedBox(width: 12),
                         HoverTap(onTap: () => _deleteLesson(l), child: const Icon(CupertinoIcons.trash, size: 17, color: AppleColors.red)),
