@@ -1126,8 +1126,10 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: AppleCard(square: true, 
+        // A course opens on its batches first — every management area (content,
+        // live classes, quizzes…) lives inside a batch.
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => SquareScope(child: CourseEditorScreen(auth: widget.auth, courseId: c['id'].toString(), title: c['title'].toString())),
+          builder: (_) => CourseBatchesScreen(auth: widget.auth, courseId: c['id'].toString(), title: c['title'].toString()),
         )).then((_) => _load()),
         child: Row(children: [
           Container(
@@ -2168,10 +2170,14 @@ class _InstructorDropdown extends StatelessWidget {
 
 /// Course editor — modules, lessons, publish, enroll.
 class CourseEditorScreen extends StatefulWidget {
-  const CourseEditorScreen({super.key, required this.auth, required this.courseId, required this.title});
+  const CourseEditorScreen({super.key, required this.auth, required this.courseId, required this.title, this.batch});
   final AuthService auth;
   final String courseId;
   final String title;
+  /// When set, this editor manages ONE batch: course content, live classes and
+  /// the batch picker are scoped to it. null = the whole course (every batch),
+  /// which is how the course-wide entry points still open it.
+  final String? batch;
 
   @override
   State<CourseEditorScreen> createState() => _CourseEditorScreenState();
@@ -2191,9 +2197,27 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   // their own copy of the data or the editing logic.
   final ValueNotifier<int> _rev = ValueNotifier<int>(0);
 
+  /// True when this editor was opened for a single batch — the batch tabs are
+  /// hidden and every section is filtered down to that batch.
+  bool get _batchLocked => (widget.batch ?? '').trim().isNotEmpty;
+
+  /// Headcount subtitle for the Students tile of the batch we're locked to.
+  String get _batchStudentsLabel {
+    final want = widget.batch?.trim();
+    for (final b in _batches) {
+      if ((b['batch']?.toString().trim() ?? '') == want) {
+        final n = (b['students'] as List?)?.length ?? 0;
+        return '$n student${n == 1 ? '' : 's'} · login IDs, access';
+      }
+    }
+    return 'Roster, login IDs, access';
+  }
+
   @override
   void initState() {
     super.initState();
+    // Opened from a batch → start on (and stay on) that batch's content.
+    _moduleBatch = widget.batch?.trim() ?? '';
     _load();
   }
 
@@ -2248,8 +2272,11 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     return [
       // Batch tabs — All + each of this course's batch codes. Each batch gets its
       // own view; "Add module by code" and new modules target the selected batch.
-      _batchTabs(),
-      const SizedBox(height: 10),
+      // Hidden when the editor is already locked to one batch.
+      if (!_batchLocked) ...[
+        _batchTabs(),
+        const SizedBox(height: 10),
+      ],
       // Selected batch → its details (students, live classes, rename).
       if (sel.isNotEmpty) ...[
         _batchDetailCard(sel, visible.length),
@@ -2442,15 +2469,23 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   }
 
   List<Widget> _liveClassesSection() {
-    if (_sessions.isEmpty) {
-      return [AppleCard(square: true, child: Text('No live classes scheduled. Add one — pick a batch so each batch runs on its own schedule.', style: AppleTheme.footnote(context)))];
-    }
     // Group by batch so each batch's classes are controlled independently; a
     // session with no batch ('') is shown under "All batches".
     final groups = <String, List<Map<String, dynamic>>>{};
     for (final s in _sessions) {
       final m = s as Map<String, dynamic>;
-      groups.putIfAbsent((m['batch']?.toString() ?? '').trim(), () => []).add(m);
+      final b = (m['batch']?.toString() ?? '').trim();
+      // Locked to one batch → only its classes, plus the ones that run for
+      // every batch (no batch set).
+      if (_batchLocked && b.isNotEmpty && b != widget.batch!.trim()) continue;
+      groups.putIfAbsent(b, () => []).add(m);
+    }
+    if (groups.isEmpty) {
+      return [AppleCard(square: true, child: Text(
+          _batchLocked
+              ? 'No live classes for this batch yet. Add one with the ＋ above.'
+              : 'No live classes scheduled. Add one — pick a batch so each batch runs on its own schedule.',
+          style: AppleTheme.footnote(context)))];
     }
     final keys = groups.keys.toList()
       ..sort((a, b) => a.isEmpty ? 1 : (b.isEmpty ? -1 : a.compareTo(b)));
@@ -2587,7 +2622,8 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         scrolledUnderElevation: 0,
         elevation: 0,
         leading: IconButton(icon: const Icon(CupertinoIcons.chevron_left), onPressed: () => Navigator.pop(context)),
-        title: Text(widget.title, style: AppleTheme.headline(context)),
+        title: Text(_batchLocked ? '${widget.title} · Batch ${widget.batch!.trim()}' : widget.title,
+            overflow: TextOverflow.ellipsis, style: AppleTheme.headline(context)),
       ),
       body: _loading
           ? const Center(child: CupertinoActivityIndicator())
@@ -2647,6 +2683,14 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                 const SizedBox(height: 20),
                 const SectionHeader('Manage'),
                 // Each area is its own screen (kept separate, not one long scroll).
+                // Inside a batch, its roster is the first thing you manage.
+                if (_batchLocked)
+                  _hubButton('Students', _batchStudentsLabel, CupertinoIcons.person_2_fill,
+                      () => Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => BatchStudentsScreen(
+                                auth: widget.auth, courseId: widget.courseId,
+                                title: widget.title, batch: widget.batch!.trim()),
+                          )).then((_) => _load())),
                 _hubButton('Course Content', '${modules.length} module${modules.length == 1 ? '' : 's'}', CupertinoIcons.square_stack_3d_up_fill,
                     () => _openSection('Course Content', _modulesSection, addIcon: CupertinoIcons.add, onAdd: _addModule)),
                 _hubButton('Live Classes', '${_sessions.length} scheduled', CupertinoIcons.videocam_fill,
@@ -2656,8 +2700,11 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                 _hubButton('Live Attendance', 'Who attends the live classes', CupertinoIcons.chart_bar_alt_fill,
                     () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => CourseLiveAttendanceScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title)))),
                 _hubButton('Calendar', 'Live classes & deadlines', CupertinoIcons.calendar, _openCalendar),
-                _hubButton('Batches & Settings', 'Enrollment batches', CupertinoIcons.square_grid_2x2_fill,
-                    () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => CourseBatchesScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title)))),
+                // Already inside a batch → don't offer a way back into the batch
+                // list from here (the back button does that).
+                if (!_batchLocked)
+                  _hubButton('Batches & Settings', 'Enrollment batches', CupertinoIcons.square_grid_2x2_fill,
+                      () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => CourseBatchesScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title)))),
                 _hubButton('Doubts & Discussion', 'Student questions', CupertinoIcons.chat_bubble_2_fill,
                     () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DiscussionScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title)))),
                 _hubButton('Study Hub material', 'Reference material', CupertinoIcons.doc_richtext,
@@ -3447,7 +3494,8 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     bool qaOn = true;
     String? startBanner;
     String? endBanner;
-    String batchSel = '';
+    // Added from inside a batch → that batch is the default audience.
+    String batchSel = widget.batch?.trim() ?? '';
     String zohoAccount = _zohoAccounts.isNotEmpty ? _zohoAccounts.first['id'].toString() : '';
     final ok = await showFormSheet(context, square: true, title: 'Add Live Class', builder: (setS) => [
       sheetField(title, 'Title (e.g. Lecture 1)', CupertinoIcons.textformat),
@@ -4012,14 +4060,20 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   Future<void> _addModule({String? parentId, String? parentTitle}) async {
     final title = TextEditingController();
     final sub = parentId != null;
+    // A module belongs to whichever batch is being viewed; '' = shared by all
+    // batches (the "All" tab, or a course opened outside a batch).
+    final target = _moduleBatch.trim();
     final ok = await showFormSheet(context, square: true, big: true,
-        title: sub ? 'Add Sub-module to "${parentTitle ?? 'Module'}"' : 'Add Module',
+        title: sub
+            ? 'Add Sub-module to "${parentTitle ?? 'Module'}"'
+            : (target.isEmpty ? 'Add Module (all batches)' : 'Add Module → $target'),
         builder: (_) => [sheetField(title, sub ? 'Sub-module title' : 'Module title', CupertinoIcons.folder)],
         onSubmit: () async {
       if (title.text.trim().isEmpty) return 'Title required';
       await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/modules', {
         'title': title.text.trim(),
         if (sub) 'parent_module_id': parentId,
+        if (target.isNotEmpty) 'batch_number': target,
       });
       return null;
     });
@@ -4997,124 +5051,6 @@ class _CourseBatchesScreenState extends State<CourseBatchesScreen> {
     if (ok == true) { _toast('Batch created'); _load(); }
   }
 
-  // Move a student to a different batch code (leave blank to return to the queue).
-  // POST the batch move; returns an error message, or null on success.
-  Future<String?> _doMove(String userId, String code) async {
-    try {
-      await widget.auth.apiPost('/api/v1/manage/users/$userId/batch', {'batch': code.trim()});
-      return null;
-    } on ApiException catch (e) {
-      return e.message;
-    }
-  }
-
-  // Move a student: show this course's EXISTING batches to push them straight
-  // into one, plus options to build a new batch code or return to the queue.
-  Future<void> _reassign(String userId, String name, dynamic current) async {
-    final cur = current?.toString().trim() ?? '';
-    final existing = <String>[]; // other batch codes already in this course
-    for (final b in _batches) {
-      final code = (b as Map)['batch']?.toString().trim() ?? '';
-      if (code.isNotEmpty && code != cur && !existing.contains(code)) existing.add(code);
-    }
-    final items = <SquareMenuItem>[
-      for (final code in existing)
-        SquareMenuItem('Push into  $code', value: 'b:$code', icon: CupertinoIcons.arrow_right_circle_fill),
-      const SquareMenuItem('Create a new batch…', value: 'new', icon: CupertinoIcons.add_circled),
-      if (cur.isNotEmpty) const SquareMenuItem('Return to queue (unassign)', value: 'queue', icon: CupertinoIcons.tray),
-    ];
-    final v = await showSquareMenu(context, title: 'Move $name', items: items);
-    if (v == null) return;
-    if (v == 'new') { await _reassignNew(userId, name, current); return; }
-    final code = v == 'queue' ? '' : v.toString().substring(2); // strip "b:"
-    final err = await _doMove(userId, code);
-    if (err != null) { _toast(err); return; }
-    _toast(code.isEmpty ? 'Returned to queue' : 'Moved to $code');
-    _load();
-  }
-
-  // Build a brand-new batch code for the student (the 4-field code builder).
-  Future<void> _reassignNew(String userId, String name, dynamic current) async {
-    String code = current?.toString() ?? '';
-    final ok = await showFormSheet(context, square: true, title: 'New batch — $name',
-        builder: (_) => [
-          Text('Build a new batch code — leave blank to return to the queue', style: AppleTheme.footnote(context)),
-          const SizedBox(height: 8),
-          BatchCodeField(initial: current?.toString(), onChanged: (v) => code = v),
-        ],
-        onSubmit: () => _doMove(userId, code));
-    if (ok == true) { _toast('Student moved'); _load(); }
-  }
-
-  // Per-student hub inside a course — everything an admin needs for one student
-  // here: move them to another batch, issue this course's certificate, or reset
-  // their password.
-  Future<void> _studentActions(Map<String, dynamic> s, dynamic batch) async {
-    final userId = s['id'].toString();
-    final name = s['name']?.toString() ?? 'Student';
-    final v = await showSquareMenu(context, title: name, items: const [
-      SquareMenuItem('Move to another batch', value: 'move', icon: CupertinoIcons.arrow_right_arrow_left),
-      SquareMenuItem('Issue certificate', value: 'certificate', icon: CupertinoIcons.checkmark_seal),
-      SquareMenuItem('Set / change password', value: 'password', icon: CupertinoIcons.lock),
-      SquareMenuItem('Delete student', value: 'delete', icon: CupertinoIcons.trash, destructive: true),
-    ]);
-    if (v == 'move') _reassign(userId, name, batch);
-    if (v == 'certificate') _issueCertificate(userId, name);
-    if (v == 'password') _setPassword(userId, name);
-    if (v == 'delete') _deleteStudent(userId, name);
-  }
-
-  // Permanently remove a student from the batch view.
-  Future<void> _deleteStudent(String userId, String name) async {
-    final yes = await showSquareConfirm(context,
-        title: 'Delete $name?',
-        message: 'This permanently removes the student and all their data (enrollments, progress, submissions). This cannot be undone.',
-        confirmLabel: 'Delete', destructive: true);
-    if (!yes) return;
-    try {
-      await widget.auth.apiDelete('/api/v1/manage/users/$userId/permanent');
-      _toast('Student deleted');
-    } catch (_) {
-      _toast("Couldn't delete");
-    }
-    _load();
-  }
-
-  // Issue this course's completion certificate to a single student.
-  Future<void> _issueCertificate(String userId, String name) async {
-    final yes = await showSquareConfirm(context,
-        title: 'Issue certificate',
-        message: 'Issue a "${widget.title}" completion certificate to $name?',
-        confirmLabel: 'Issue');
-    if (!yes) return;
-    try {
-      await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/certificates', {'user_ids': [userId]});
-      _toast('Certificate issued');
-    } on ApiException catch (e) {
-      _toast(e.message);
-    } catch (_) {
-      _toast('Could not issue certificate');
-    }
-  }
-
-  // Set/change a student's login password (min 8 chars).
-  Future<void> _setPassword(String userId, String name) async {
-    final ctrl = TextEditingController();
-    final ok = await showFormSheet(context, square: true, title: 'Set Password — $name',
-        builder: (_) => [sheetField(ctrl, 'New password (min 8)', CupertinoIcons.lock, obscure: true)],
-        onSubmit: () async {
-      final pwd = ctrl.text.trim();
-      if (pwd.length < 8) return 'Password must be at least 8 characters';
-      try {
-        await widget.auth.apiPost('/api/v1/manage/users/$userId/password', {'password': pwd});
-        return null;
-      } on ApiException catch (e) {
-        return e.message;
-      }
-    });
-    if (ok == true) _toast('Password updated');
-  }
-
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
@@ -5172,47 +5108,358 @@ class _CourseBatchesScreenState extends State<CourseBatchesScreen> {
                   else if (_batches.isEmpty)
                     AppleCard(square: true, child: Text('No students in this course yet.', style: AppleTheme.footnote(context)))
                   else
-                    ..._batches.map((b) => _batchGroup(b as Map<String, dynamic>)),
+                    _batchGrid(),
                 ],
               ),
             ),
     ));
   }
 
-  Widget _batchGroup(Map<String, dynamic> b) {
+  /// Batches sit side by side with a gap — 3 up on a wide screen, 2 on a
+  /// tablet, stacked on a phone. Each batch is a self-contained box holding
+  /// its own management entry point and its own roster.
+  Widget _batchGrid() {
+    return LayoutBuilder(builder: (_, c) {
+      const gap = 14.0;
+      final w = c.maxWidth;
+      final cols = w >= 1080 ? 3 : (w >= 720 ? 2 : 1);
+      final cardW = cols == 1 ? w : (w - gap * (cols - 1)) / cols;
+      return Wrap(
+        spacing: gap,
+        runSpacing: gap,
+        children: [
+          for (final b in _batches)
+            SizedBox(width: cardW, child: _batchCard(b as Map<String, dynamic>)),
+        ],
+      );
+    });
+  }
+
+  Widget _batchCard(Map<String, dynamic> b) {
+    final p = Palette.of(context);
     final batch = b['batch'];
     final students = (b['students'] as List?) ?? [];
-    final title = batch == null ? 'Queue · Unassigned (${students.length})' : 'Batch $batch (${students.length})';
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      SectionHeader(title),
-      AppleCard(square: true, 
-        padding: EdgeInsets.zero,
-        child: Column(children: List.generate(students.length, (i) {
-          final s = students[i] as Map<String, dynamic>;
-          final dl = (s['days_left'] as num?)?.toInt(); // null = no time limit
-          return Column(children: [
-            if (i > 0) Divider(height: 1, indent: 56, color: Palette.of(context).separator),
-            ListTile(
-              leading: Avatar(name: s['name']?.toString() ?? '?', size: 36),
-              title: Text(s['name']?.toString() ?? '', style: AppleTheme.body(context)),
-              subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(s['email']?.toString() ?? '', style: AppleTheme.footnote(context)),
-                if ((s['login_id']?.toString() ?? '').isNotEmpty)
-                  Text('Login ID: ${s['login_id']}', style: AppleTheme.footnote(context).copyWith(color: Palette.of(context).accent, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
-                if (dl != null)
-                  Text(dl <= 0 ? 'Access ended' : 'Access: $dl day${dl == 1 ? '' : 's'} left',
-                      style: AppleTheme.footnote(context).copyWith(
-                          color: dl <= 0 ? const Color(0xFFD11A2A) : (dl <= 3 ? const Color(0xFFCC6A00) : Palette.of(context).secondary),
-                          fontWeight: FontWeight.w700)),
-              ]),
-              trailing: Icon(CupertinoIcons.ellipsis, size: 18, color: Palette.of(context).secondary),
-              onTap: () => _studentActions(s, batch),
+    final code = batch?.toString().trim() ?? '';
+    final isQueue = code.isEmpty; // the unassigned queue isn't a real batch
+    // Batch codes in a course differ only by a trailing letter
+    // ("AIG 01 07 26 A" / "… B"), so the chip carries that letter — it's what
+    // actually tells them apart at a glance.
+    final letter = isQueue ? '' : code.split(RegExp(r'\s+')).last;
+    final head = '${students.length} student${students.length == 1 ? '' : 's'}';
+    return AppleCard(
+      square: true,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Which batch this is, and how many people are in it.
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(isQueue ? 'QUEUE' : 'BATCH',
+                  style: AppleTheme.footnote(context).copyWith(
+                      fontWeight: FontWeight.w700, letterSpacing: 1.2, color: p.secondary)),
+              const SizedBox(height: 2),
+              Text(isQueue ? 'Unassigned' : code,
+                  style: AppleTheme.headline(context).copyWith(fontSize: 22, fontWeight: FontWeight.w800),
+                  overflow: TextOverflow.ellipsis),
+            ]),
+          ),
+          if (!isQueue)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+              color: p.accent.withValues(alpha: 0.12),
+              child: Text(letter,
+                  style: AppleTheme.body(context).copyWith(
+                      fontWeight: FontWeight.w800, letterSpacing: 0.5, color: p.accent)),
             ),
-          ]);
-        })),
-      ),
-      const SizedBox(height: 18),
+        ]),
+        const SizedBox(height: 14),
+        // Everything you manage for this batch — content, live classes,
+        // quizzes, certificates.
+        if (!isQueue)
+          _batchInnerBox(
+            icon: CupertinoIcons.square_stack_3d_up_fill,
+            title: 'Manage batch',
+            sub: '$head · content, live classes, quizzes',
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => SquareScope(child: CourseEditorScreen(
+                  auth: widget.auth, courseId: widget.courseId, title: widget.title, batch: code)),
+            )).then((_) => _load()),
+          ),
+        // The queue has no management screen, so its roster is reachable
+        // straight from the card. For a real batch, Students lives INSIDE
+        // Manage Batch instead.
+        if (isQueue)
+          _batchInnerBox(
+            icon: CupertinoIcons.person_2_fill,
+            title: 'Students',
+            sub: students.isEmpty
+                ? 'Nobody here yet'
+                : '${students.length} waiting to be assigned',
+            onTap: students.isEmpty
+                ? null
+                : () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => BatchStudentsScreen(
+                          auth: widget.auth, courseId: widget.courseId,
+                          title: widget.title, batch: null),
+                    )).then((_) => _load()),
+          ),
+      ]),
+    );
+  }
+
+  /// A nested, tappable box inside a batch card. Null onTap = inert (greyed).
+  Widget _batchInnerBox({
+    required IconData icon,
+    required String title,
+    required String sub,
+    VoidCallback? onTap,
+  }) {
+    final p = Palette.of(context);
+    final live = onTap != null;
+    final box = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+      child: Row(children: [
+        Icon(icon, size: 18, color: live ? p.accent : p.secondary),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: AppleTheme.body(context)),
+            const SizedBox(height: 1),
+            Text(sub, style: AppleTheme.footnote(context)),
+          ]),
+        ),
+        if (live) Icon(CupertinoIcons.chevron_right, size: 15, color: p.secondary),
+      ]),
+    );
+    return live ? HoverTap(onTap: onTap, child: box) : box;
+  }
+}
+
+/// The roster for ONE batch — or the unassigned queue when [batch] is null.
+/// Reached from "Students" inside Manage Batch (and straight from the queue
+/// card, which has no management screen of its own). Owns the per-student
+/// actions so the batch list doesn't have to.
+class BatchStudentsScreen extends StatefulWidget {
+  const BatchStudentsScreen({
+    super.key,
+    required this.auth,
+    required this.courseId,
+    required this.title,
+    required this.batch,
+  });
+  final AuthService auth;
+  final String courseId;
+  final String title; // course title — used in the certificate copy
+  final String? batch; // null = the unassigned queue
+
+  @override
+  State<BatchStudentsScreen> createState() => _BatchStudentsScreenState();
+}
+
+class _BatchStudentsScreenState extends State<BatchStudentsScreen> {
+  bool _loading = true;
+  String? _err;
+  List<dynamic> _batches = []; // all batches — the move menu offers the others
+  List<dynamic> _students = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (mounted) setState(() { _loading = true; _err = null; });
+    try {
+      final r = await widget.auth.apiGet('/api/v1/manage/courses/${widget.courseId}/batches');
+      _batches = (ApiClient.decode(r)['batches'] as List?) ?? [];
+      final want = widget.batch?.trim();
+      _students = const [];
+      for (final b in _batches) {
+        final code = (b as Map)['batch']?.toString().trim();
+        if ((want == null && code == null) || (want != null && code == want)) {
+          _students = (b['students'] as List?) ?? [];
+          break;
+        }
+      }
+    } catch (_) {
+      _err = 'Could not load students';
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  void _toast(String m) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
+
+  Future<String?> _doMove(String userId, String code) async {
+    try {
+      await widget.auth.apiPost('/api/v1/manage/users/$userId/batch', {'batch': code.trim()});
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    }
+  }
+
+  // Move a student: show this course's EXISTING batches to push them straight
+  // into one, plus options to build a new batch code or return to the queue.
+  Future<void> _reassign(String userId, String name, dynamic current) async {
+    final cur = current?.toString().trim() ?? '';
+    final existing = <String>[]; // other batch codes already in this course
+    for (final b in _batches) {
+      final code = (b as Map)['batch']?.toString().trim() ?? '';
+      if (code.isNotEmpty && code != cur && !existing.contains(code)) existing.add(code);
+    }
+    final items = <SquareMenuItem>[
+      for (final code in existing)
+        SquareMenuItem('Push into  $code', value: 'b:$code', icon: CupertinoIcons.arrow_right_circle_fill),
+      const SquareMenuItem('Create a new batch…', value: 'new', icon: CupertinoIcons.add_circled),
+      if (cur.isNotEmpty) const SquareMenuItem('Return to queue (unassign)', value: 'queue', icon: CupertinoIcons.tray),
+    ];
+    final v = await showSquareMenu(context, title: 'Move $name', items: items);
+    if (v == null) return;
+    if (v == 'new') { await _reassignNew(userId, name, current); return; }
+    final code = v == 'queue' ? '' : v.toString().substring(2); // strip "b:"
+    final err = await _doMove(userId, code);
+    if (err != null) { _toast(err); return; }
+    _toast(code.isEmpty ? 'Returned to queue' : 'Moved to $code');
+    _load();
+  }
+
+  // Build a brand-new batch code for the student (the 4-field code builder).
+  Future<void> _reassignNew(String userId, String name, dynamic current) async {
+    String code = current?.toString() ?? '';
+    final ok = await showFormSheet(context, square: true, title: 'New batch — $name',
+        builder: (_) => [
+          Text('Build a new batch code — leave blank to return to the queue', style: AppleTheme.footnote(context)),
+          const SizedBox(height: 8),
+          BatchCodeField(initial: current?.toString(), onChanged: (v) => code = v),
+        ],
+        onSubmit: () => _doMove(userId, code));
+    if (ok == true) { _toast('Student moved'); _load(); }
+  }
+
+  // Per-student hub — move them to another batch, issue this course's
+  // certificate, or reset their password.
+  Future<void> _studentActions(Map<String, dynamic> s) async {
+    final userId = s['id'].toString();
+    final name = s['name']?.toString() ?? 'Student';
+    final v = await showSquareMenu(context, title: name, items: const [
+      SquareMenuItem('Move to another batch', value: 'move', icon: CupertinoIcons.arrow_right_arrow_left),
+      SquareMenuItem('Issue certificate', value: 'certificate', icon: CupertinoIcons.checkmark_seal),
+      SquareMenuItem('Set / change password', value: 'password', icon: CupertinoIcons.lock),
+      SquareMenuItem('Delete student', value: 'delete', icon: CupertinoIcons.trash, destructive: true),
     ]);
+    if (v == 'move') _reassign(userId, name, widget.batch);
+    if (v == 'certificate') _issueCertificate(userId, name);
+    if (v == 'password') _setPassword(userId, name);
+    if (v == 'delete') _deleteStudent(userId, name);
+  }
+
+  // Permanently remove a student.
+  Future<void> _deleteStudent(String userId, String name) async {
+    final yes = await showSquareConfirm(context,
+        title: 'Delete $name?',
+        message: 'This permanently removes the student and all their data (enrollments, progress, submissions). This cannot be undone.',
+        confirmLabel: 'Delete', destructive: true);
+    if (!yes) return;
+    try {
+      await widget.auth.apiDelete('/api/v1/manage/users/$userId/permanent');
+      _toast('Student deleted');
+    } catch (_) {
+      _toast("Couldn't delete");
+    }
+    _load();
+  }
+
+  // Issue this course's completion certificate to a single student.
+  Future<void> _issueCertificate(String userId, String name) async {
+    final yes = await showSquareConfirm(context,
+        title: 'Issue certificate',
+        message: 'Issue a "${widget.title}" completion certificate to $name?',
+        confirmLabel: 'Issue');
+    if (!yes) return;
+    try {
+      await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/certificates', {'user_ids': [userId]});
+      _toast('Certificate issued');
+    } on ApiException catch (e) {
+      _toast(e.message);
+    } catch (_) {
+      _toast('Could not issue certificate');
+    }
+  }
+
+  // Set/change a student's login password (min 8 chars).
+  Future<void> _setPassword(String userId, String name) async {
+    final ctrl = TextEditingController();
+    final ok = await showFormSheet(context, square: true, title: 'Set Password — $name',
+        builder: (_) => [sheetField(ctrl, 'New password (min 8)', CupertinoIcons.lock, obscure: true)],
+        onSubmit: () async {
+      final pwd = ctrl.text.trim();
+      if (pwd.length < 8) return 'Password must be at least 8 characters';
+      try {
+        await widget.auth.apiPost('/api/v1/manage/users/$userId/password', {'password': pwd});
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) _toast('Password updated');
+  }
+
+  Widget _studentTile(Map<String, dynamic> s) {
+    final p = Palette.of(context);
+    final dl = (s['days_left'] as num?)?.toInt(); // null = no time limit
+    return ListTile(
+      leading: Avatar(name: s['name']?.toString() ?? '?', size: 36),
+      title: Text(s['name']?.toString() ?? '', style: AppleTheme.body(context)),
+      subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(s['email']?.toString() ?? '', style: AppleTheme.footnote(context)),
+        if ((s['login_id']?.toString() ?? '').isNotEmpty)
+          Text('Login ID: ${s['login_id']}',
+              style: AppleTheme.footnote(context).copyWith(color: p.accent, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+        if (dl != null)
+          Text(dl <= 0 ? 'Access ended' : 'Access: $dl day${dl == 1 ? '' : 's'} left',
+              style: AppleTheme.footnote(context).copyWith(
+                  color: dl <= 0 ? const Color(0xFFD11A2A) : (dl <= 3 ? const Color(0xFFCC6A00) : p.secondary),
+                  fontWeight: FontWeight.w700)),
+      ]),
+      trailing: Icon(CupertinoIcons.ellipsis, size: 18, color: p.secondary),
+      onTap: () => _studentActions(s),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final label = widget.batch == null ? 'Queue · Unassigned' : 'Batch ${widget.batch}';
+    return SquareScope(child: Scaffold(
+      backgroundColor: p.bg,
+      appBar: AppBar(
+        backgroundColor: p.bg,
+        elevation: 0,
+        title: Text('$label · Students', style: AppleTheme.headline(context), overflow: TextOverflow.ellipsis),
+      ),
+      body: _loading
+          ? const Center(child: CupertinoActivityIndicator())
+          : _err != null
+              ? Center(child: Text(_err!, style: AppleTheme.footnote(context)))
+              : _students.isEmpty
+                  ? Center(child: Text('No students here.', style: AppleTheme.footnote(context)))
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
+                        itemCount: _students.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (_, i) => AppleCard(
+                          square: true,
+                          padding: EdgeInsets.zero,
+                          child: _studentTile(_students[i] as Map<String, dynamic>),
+                        ),
+                      ),
+                    ),
+    ));
   }
 }
 
