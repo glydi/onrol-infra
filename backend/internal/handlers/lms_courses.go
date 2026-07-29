@@ -527,6 +527,55 @@ func (h *Handlers) CourseBatches(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"label": *label, "batches": out, "settings": settings})
 }
 
+// RenameCourseBatch moves a batch to a new code everywhere in this course: the
+// students in it, its modules and its live classes.
+func (h *Handlers) RenameCourseBatch(c *fiber.Ctx) error {
+	courseID := c.Params("id")
+	if err := h.canManageCourse(c, courseID); err != nil {
+		return err
+	}
+	var req struct {
+		From string `json:"from"`
+		To   string `json:"to"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "bad request")
+	}
+	from := strings.TrimSpace(req.From)
+	to := strings.TrimSpace(req.To)
+	if from == "" || to == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "from and to required")
+	}
+	var label *string
+	if err := h.Pool.QueryRow(c.Context(), `SELECT label FROM courses WHERE id=$1`, courseID).Scan(&label); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "course not found")
+	}
+	tx, err := h.Pool.Begin(c.Context())
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "tx failed")
+	}
+	defer tx.Rollback(c.Context())
+	if label != nil && strings.TrimSpace(*label) != "" {
+		if _, err := tx.Exec(c.Context(),
+			`UPDATE users SET batch=$1 WHERE role='student' AND lower(course_label)=lower($2) AND batch=$3`,
+			to, *label, from); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "student update failed")
+		}
+	}
+	if _, err := tx.Exec(c.Context(),
+		`UPDATE modules SET batch_number=$1 WHERE course_id=$2 AND batch_number=$3`, to, courseID, from); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "module update failed")
+	}
+	if _, err := tx.Exec(c.Context(),
+		`UPDATE class_sessions SET batch_number=$1 WHERE course_id=$2 AND batch_number=$3`, to, courseID, from); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "class update failed")
+	}
+	if err := tx.Commit(c.Context()); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "commit failed")
+	}
+	return c.JSON(fiber.Map{"ok": true, "from": from, "to": to})
+}
+
 // ListMentorQuestions is the "Ask Mentor" queue: every student's PRIVATE mentor
 // thread (module_comments) whose latest message is from the student — i.e. it's
 // awaiting a mentor reply — across courses the caller manages. The mentor replies

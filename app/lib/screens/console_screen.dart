@@ -2182,6 +2182,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   List<dynamic> _sessions = [];
   List<dynamic> _assessments = [];
   List<String> _batchCodes = []; // this course's batch codes, for targeting live classes
+  List<Map<String, dynamic>> _batches = []; // full per-batch data (count + students)
   String _moduleBatch = ''; // selected batch tab in Course Content ('' = All / shared)
   List<Map<String, dynamic>> _zohoAccounts = []; // selectable Zoho accounts for webinars
   bool _loading = true;
@@ -2212,8 +2213,9 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       _assessments = (ApiClient.decode(a)['assessments'] as List?) ?? [];
       final b = await widget.auth.apiGet('/api/v1/manage/courses/${widget.courseId}/batches');
       final bs = (ApiClient.decode(b)['batches'] as List?) ?? [];
-      _batchCodes = bs
-          .map((e) => (e as Map)['batch']?.toString().trim() ?? '')
+      _batches = bs.map((e) => (e as Map).cast<String, dynamic>()).toList();
+      _batchCodes = _batches
+          .map((e) => e['batch']?.toString().trim() ?? '')
           .where((s) => s.isNotEmpty)
           .toList();
       try {
@@ -2248,6 +2250,11 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       // own view; "Add module by code" and new modules target the selected batch.
       _batchTabs(),
       const SizedBox(height: 10),
+      // Selected batch → its details (students, live classes, rename).
+      if (sel.isNotEmpty) ...[
+        _batchDetailCard(sel, visible.length),
+        const SizedBox(height: 10),
+      ],
       // Pull a stored module into this batch by its code.
       PrimaryButton(
         label: sel.isEmpty ? 'Add module by code (all batches)' : 'Add module by code → $sel',
@@ -2330,6 +2337,106 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         });
     if (ok == true) {
       _toast('Module added');
+      _load();
+    }
+  }
+
+  // Details panel for the selected batch: summary counts + students, live
+  // classes, and rename/manage.
+  Widget _batchDetailCard(String batch, int moduleCount) {
+    final p = Palette.of(context);
+    final info = _batches.firstWhere(
+        (b) => (b['batch']?.toString() ?? '') == batch,
+        orElse: () => <String, dynamic>{});
+    final students = ((info['students'] as List?) ?? const []);
+    final classes = _sessions.where((s) => ((s as Map)['batch']?.toString() ?? '').trim() == batch).length;
+    return AppleCard(square: true, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Icon(CupertinoIcons.square_grid_2x2_fill, size: 18, color: p.accent),
+        const SizedBox(width: 8),
+        Expanded(child: Text('Batch $batch', style: AppleTheme.headline(context))),
+        HoverTap(onTap: () => _renameBatch(batch), child: Icon(CupertinoIcons.pencil, size: 18, color: p.secondary)),
+      ]),
+      const SizedBox(height: 8),
+      // Summary line.
+      Text('${students.length} students · $moduleCount modules · $classes live classes',
+          style: AppleTheme.footnote(context)),
+      const SizedBox(height: 10),
+      Row(children: [
+        _smallButton('Students', CupertinoIcons.person_2_fill, () => _showBatchStudents(batch, students)),
+        const SizedBox(width: 8),
+        _smallButton('Live classes', CupertinoIcons.videocam_fill, () => _showBatchClasses(batch)),
+      ]),
+    ]));
+  }
+
+  void _showBatchStudents(String batch, List students) {
+    showFormSheet(context, square: true, big: true, title: 'Batch $batch · ${students.length} students', builder: (_) => [
+      if (students.isEmpty)
+        _label(context, 'No students in this batch yet. Assign students to “$batch” from the Students page.')
+      else
+        ...students.map((s) {
+          final m = s as Map;
+          final days = m['days_left'];
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(children: [
+              const Icon(CupertinoIcons.person_crop_circle, size: 20),
+              const SizedBox(width: 10),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(m['name']?.toString() ?? 'Student', style: AppleTheme.body(context)),
+                Text('${m['login_id'] ?? ''}${(m['email']?.toString().isNotEmpty ?? false) ? ' · ${m['email']}' : ''}', style: AppleTheme.footnote(context)),
+              ])),
+              if (days != null)
+                Text(((days as num) <= 0) ? 'expired' : '$days d left', style: AppleTheme.footnote(context)),
+            ]),
+          );
+        }),
+    ], onSubmit: () async => null);
+  }
+
+  void _showBatchClasses(String batch) {
+    final classes = _sessions.where((s) => ((s as Map)['batch']?.toString() ?? '').trim() == batch).toList();
+    showFormSheet(context, square: true, big: true, title: 'Batch $batch · live classes', builder: (_) => [
+      if (classes.isEmpty)
+        _label(context, 'No live classes for this batch yet. Add one from the Live Classes section and pick batch “$batch”.')
+      else
+        ...classes.map((s) {
+          final m = s as Map<String, dynamic>;
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(children: [
+              const Icon(CupertinoIcons.videocam_fill, size: 18, color: AppleColors.red),
+              const SizedBox(width: 10),
+              Expanded(child: Text(m['title']?.toString() ?? 'Live class', style: AppleTheme.body(context))),
+              Text(_fmtTime(m['starts_at']?.toString()), style: AppleTheme.footnote(context)),
+            ]),
+          );
+        }),
+    ], onSubmit: () async => null);
+  }
+
+  // Rename a batch code across this course's students, modules and live classes.
+  Future<void> _renameBatch(String batch) async {
+    final to = TextEditingController(text: batch);
+    final ok = await showFormSheet(context, square: true, title: 'Rename batch “$batch”', builder: (_) => [
+      _label(context, 'Renames this batch everywhere in this course — its students, modules and live classes move to the new code.'),
+      const SizedBox(height: 8),
+      sheetField(to, 'New batch code', CupertinoIcons.number),
+    ], onSubmit: () async {
+      final v = to.text.trim();
+      if (v.isEmpty) return 'Enter a new code';
+      if (v == batch) return null;
+      try {
+        await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/batches/rename', {'from': batch, 'to': v});
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) {
+      if (_moduleBatch == batch) _moduleBatch = to.text.trim();
+      _toast('Batch renamed');
       _load();
     }
   }

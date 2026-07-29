@@ -153,6 +153,7 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Delete("/manage/calendar/:id", auth, mgr, h.DeleteCalendarEvent)
 	api.Get("/manage/courses/:id/students", auth, inst, h.ListCourseStudents)
 	api.Get("/manage/courses/:id/batches", auth, inst, h.CourseBatches)
+	api.Post("/manage/courses/:id/batches/rename", auth, inst, h.RenameCourseBatch)
 	api.Get("/manage/courses/:id/certificates", auth, inst, h.ListCourseCertificates)
 	api.Post("/manage/courses/:id/certificates", auth, inst, h.IssueCertificates)
 	api.Delete("/manage/courses/:id/certificates/:userId", auth, inst, h.RevokeCertificate)
