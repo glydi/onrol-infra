@@ -142,6 +142,54 @@ func (h *Handlers) DeleteStoreLesson(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"ok": true})
 }
 
+// SaveModuleToStore copies an existing COURSE module (and its lessons) INTO the
+// module store under a new code, so it can be reused across courses/batches.
+func (h *Handlers) SaveModuleToStore(c *fiber.Ctx) error {
+	moduleID := c.Params("id")
+	var courseID, title string
+	if err := h.Pool.QueryRow(c.Context(), `SELECT course_id::text, title FROM modules WHERE id=$1`, moduleID).Scan(&courseID, &title); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "module not found")
+	}
+	if err := h.canManageCourse(c, courseID); err != nil {
+		return err
+	}
+	var req struct {
+		Code string `json:"code"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "bad request")
+	}
+	code := strings.ToUpper(strings.TrimSpace(req.Code))
+	if code == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "code required")
+	}
+	tx, err := h.Pool.Begin(c.Context())
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "tx failed")
+	}
+	defer tx.Rollback(c.Context())
+	var storeID string
+	if err := tx.QueryRow(c.Context(),
+		`INSERT INTO module_store (code, title, created_by) VALUES ($1,$2,$3) RETURNING id`,
+		code, title, callerID(c)).Scan(&storeID); err != nil {
+		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
+			return fiber.NewError(fiber.StatusConflict, "that module code already exists")
+		}
+		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
+	}
+	if _, err := tx.Exec(c.Context(),
+		`INSERT INTO module_store_lessons (store_module_id, title, type, body, video_id, day_number, downloadable, position)
+		 SELECT $1, title, type, COALESCE(body,''), video_id, day_number, COALESCE(downloadable,true), position
+		   FROM lessons WHERE module_id=$2`,
+		storeID, moduleID); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "lesson copy failed")
+	}
+	if err := tx.Commit(c.Context()); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "commit failed")
+	}
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": storeID, "code": code, "title": title})
+}
+
 // AddModuleFromStore copies a store module (by code) into a course as a NEW
 // module, optionally scoped to one batch. The copy is independent — later edits
 // to the store module don't affect it.

@@ -3615,6 +3615,25 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     }
   }
 
+  // Promote a course module into the reusable Module Store under a new code.
+  Future<void> _saveModuleToStore(String moduleId, String moduleTitle) async {
+    final code = TextEditingController();
+    final ok = await showFormSheet(context, square: true, title: 'Save “$moduleTitle” to store', builder: (_) => [
+      _label(context, 'Copies this module and its lessons into the Module Store, so you can add it to any course/batch later by its code.'),
+      const SizedBox(height: 8),
+      sheetField(code, 'Module code (e.g. AI-01)', CupertinoIcons.number),
+    ], onSubmit: () async {
+      if (code.text.trim().isEmpty) return 'Enter a code';
+      try {
+        await widget.auth.apiPost('/api/v1/manage/modules/$moduleId/to-store', {'code': code.text.trim()});
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) _toast('Saved to Module Store');
+  }
+
   // A small coloured pill used on module cards (batch code / store code).
   Widget _moduleTag(String label, Color color) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
@@ -3656,6 +3675,12 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
             const SizedBox(width: 6),
             _smallButton('Quiz', CupertinoIcons.doc_text_fill, () => _addAssignment(moduleId: mid, moduleTitle: mtitle)),
             const SizedBox(width: 6),
+            // Save this module (+ lessons) into the reusable Module Store.
+            HoverTap(
+              onTap: () => _saveModuleToStore(mid, mtitle),
+              child: Icon(CupertinoIcons.tray_arrow_down, size: 18, color: Palette.of(context).secondary),
+            ),
+            const SizedBox(width: 10),
             GestureDetector(
               onTap: () => _confirmDelete(isSub ? 'Delete this sub-module and its lessons?' : 'Delete this module and its lessons?', () =>
                   widget.auth.apiDelete('/api/v1/manage/modules/$mid')),
