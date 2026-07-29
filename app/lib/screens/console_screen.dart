@@ -243,6 +243,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       const NavDest(CupertinoIcons.square_list_fill, 'Courses', section: 'Learning'),
       if (_isAdmin) const NavDest(CupertinoIcons.dot_radiowaves_left_right, 'Live Host', section: 'Learning'),
       if (_isAdmin) const NavDest(CupertinoIcons.film, 'Video Store', section: 'Learning'),
+      if (_isAdmin) const NavDest(CupertinoIcons.square_stack_3d_up_fill, 'Module Store', section: 'Learning'),
       if (_isAdmin) const NavDest(CupertinoIcons.compass_fill, 'Explore Courses', section: 'Learning'),
       if (_isAdmin) const NavDest(CupertinoIcons.person_badge_plus, 'Instructors', section: 'People'),
       if (_isAdmin) const NavDest(CupertinoIcons.person_2_fill, 'Students', section: 'People'),
@@ -255,6 +256,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       _consolePage(),
       if (_isAdmin) LiveHostPortalScreen(auth: widget.auth, embedded: true),
       if (_isAdmin) VideoStoreScreen(auth: widget.auth),
+      // Same index as its NavDest above — dests and pages must stay aligned.
+      if (_isAdmin) ModuleStoreScreen(auth: widget.auth),
       if (_isAdmin) ExploreCoursesScreen(auth: widget.auth, embedded: true),
       if (_isAdmin) _instructorsPage(),
       if (_isAdmin) _studentsPage(),
