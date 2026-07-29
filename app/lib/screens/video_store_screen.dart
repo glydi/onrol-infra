@@ -304,12 +304,17 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
                   if (!_r2)
                     AppleCard(square: true, child: Text('Video storage (R2) is not configured on the server.', style: AppleTheme.footnote(context)))
                   else ...[
-                    PrimaryButton(
-                      label: _uploading ? 'Uploading… ${(_progress * 100).toStringAsFixed(0)}%' : 'Upload video',
-                      icon: CupertinoIcons.cloud_upload,
-                      square: true,
-                      busy: _uploading,
-                      onPressed: _uploading ? null : _upload,
+                    // Compact and quiet: a full-width CTA that scale-popped on
+                    // hover/press dominated a page that's really a file list.
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: SmallActionButton(
+                        label: _uploading
+                            ? 'Uploading… ${(_progress * 100).toStringAsFixed(0)}%'
+                            : 'Upload video',
+                        icon: CupertinoIcons.cloud_upload,
+                        onPressed: _uploading ? null : _upload,
+                      ),
                     ),
                     if (_uploading) _uploadPanel(),
                   ],
@@ -465,23 +470,8 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
     if (v == 'delete') _deleteFolder(f);
   }
 
-  Widget _folderActionBtn(IconData icon, String label, VoidCallback onTap, {Color? color}) {
-    final p = Palette.of(context);
-    final c = color ?? p.accent;
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(color: c.withOpacity(0.10), border: Border.all(color: c.withOpacity(0.4))),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 15, color: c),
-          const SizedBox(width: 5),
-          Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: c)),
-        ]),
-      ),
-    );
-  }
+  Widget _folderActionBtn(IconData icon, String label, VoidCallback onTap, {Color? color}) =>
+      _FolderActionBtn(icon: icon, label: label, onTap: onTap, color: color ?? Palette.of(context).accent);
 
   Future<void> _renameFolder(Map<String, dynamic> f) async {
     final name = TextEditingController(text: f['name']?.toString() ?? '');
@@ -764,5 +754,58 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
       _toast('Re-processing…');
       _load();
     } catch (_) { _toast('Could not re-process'); }
+  }
+}
+
+/// Folder action (Rename / Delete / New folder). Stateful purely so it can
+/// highlight under the cursor — it deepens its tint and firms its border,
+/// matching the compact buttons elsewhere in the admin.
+class _FolderActionBtn extends StatefulWidget {
+  const _FolderActionBtn({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    required this.color,
+  });
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color color;
+
+  @override
+  State<_FolderActionBtn> createState() => _FolderActionBtnState();
+}
+
+class _FolderActionBtnState extends State<_FolderActionBtn> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.color;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: c.withValues(alpha: _hover ? 0.22 : 0.10),
+            borderRadius: BorderRadius.circular(kRadiusField),
+            border: Border.all(color: c.withValues(alpha: _hover ? 1 : 0.4)),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(widget.icon, size: 15, color: c),
+            const SizedBox(width: 5),
+            Text(widget.label,
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: c)),
+          ]),
+        ),
+      ),
+    );
   }
 }
