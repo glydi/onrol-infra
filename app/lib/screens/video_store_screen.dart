@@ -313,6 +313,7 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
                             ? 'Uploading… ${(_progress * 100).toStringAsFixed(0)}%'
                             : 'Upload video',
                         icon: CupertinoIcons.cloud_upload,
+                        filled: true, // the one primary action on this page
                         onPressed: _uploading ? null : _upload,
                       ),
                     ),
@@ -413,15 +414,18 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
   // Square folder card for the landing folders view.
   Widget _videoFolderCard(String label, String value, int count, Map<String, dynamic>? folder) {
     final p = Palette.of(context);
-    return GestureDetector(
+    // The tap has to live on AppleCard itself — wrapped in a GestureDetector the
+    // card sees no onTap, counts as non-interactive, and never highlights.
+    return AppleCard(
+      square: true,
       onTap: () => setState(() => _folder = value),
-      child: AppleCard(square: true, child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         Icon(folder != null ? CupertinoIcons.folder_fill : CupertinoIcons.tray_fill, size: 42, color: p.accent),
         const SizedBox(height: 10),
         Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: AppleTheme.headline(context)),
         const SizedBox(height: 4),
         Text('$count video${count == 1 ? '' : 's'}', style: AppleTheme.footnote(context)),
-      ])),
+      ]),
     );
   }
 

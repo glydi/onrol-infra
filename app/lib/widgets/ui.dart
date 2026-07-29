@@ -78,10 +78,19 @@ class _FadeInUpState extends State<FadeInUp> with SingleTickerProviderStateMixin
 /// it highlights on hover instead of scaling. Use where a full-width
 /// [PrimaryButton] would shout (e.g. "Create batch" beside a list).
 class SmallActionButton extends StatefulWidget {
-  const SmallActionButton({super.key, required this.label, required this.icon, required this.onPressed});
+  const SmallActionButton({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    this.filled = false,
+  });
   final String label;
   final IconData icon;
   final VoidCallback? onPressed;
+  /// Solid dark fill instead of the accent tint — for the one primary action
+  /// on a page that should read as the obvious thing to press.
+  final bool filled;
 
   @override
   State<SmallActionButton> createState() => _SmallActionButtonState();
@@ -94,6 +103,17 @@ class _SmallActionButtonState extends State<SmallActionButton> {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final on = widget.onPressed != null;
+    final hot = _hover && on;
+    // Solid variant: a deep ink slab that stays dark in either theme, so the
+    // primary action reads the same way light or dark.
+    const darkFill = Color(0xFF1A2C3A);
+    const darkHover = Color(0xFF27404F);
+    final Color bg = widget.filled
+        ? (on ? (hot ? darkHover : darkFill) : p.secondary.withValues(alpha: 0.35))
+        : p.accent.withValues(alpha: hot ? 0.20 : 0.10);
+    final Color fg = widget.filled
+        ? Colors.white
+        : (on ? p.accent : p.secondary);
     return MouseRegion(
       cursor: on ? SystemMouseCursors.click : SystemMouseCursors.basic,
       onEnter: (_) => setState(() => _hover = true),
@@ -106,18 +126,19 @@ class _SmallActionButtonState extends State<SmallActionButton> {
           curve: Curves.easeOut,
           padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
           decoration: BoxDecoration(
-            // Hover deepens the tint and firms the outline — no scale "pop".
-            color: p.accent.withValues(alpha: _hover && on ? 0.20 : 0.10),
+            // Hover shifts the fill — no scale "pop".
+            color: bg,
             borderRadius: adminRadius(p, kRadiusField),
-            border: Border.all(color: _hover && on ? p.accent : Colors.transparent),
+            border: Border.all(
+                color: widget.filled
+                    ? Colors.transparent
+                    : (hot ? p.accent : Colors.transparent)),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(widget.icon, size: 17, color: on ? p.accent : p.secondary),
+            Icon(widget.icon, size: 17, color: fg),
             const SizedBox(width: 7),
             Text(widget.label,
-                style: TextStyle(
-                    color: on ? p.accent : p.secondary,
-                    fontSize: 14, fontWeight: FontWeight.w700)),
+                style: TextStyle(color: fg, fontSize: 14, fontWeight: FontWeight.w700)),
           ]),
         ),
       ),
