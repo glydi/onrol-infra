@@ -1073,9 +1073,15 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     );
   }
 
+  // Just a gutter. AppShell already caps the content column (1180) and centres
+  // it, so this must NOT try to centre as well — the old formula did, using the
+  // full window width while the sidebar ate 272px of it, and the result got
+  // *narrower* as the screen grew (1920px window → 572px of content).
   double _hPad(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
-    return (w > 820 ? ((w > 1320 ? w - 272 : w) - 1040) / 2 : 18.0).clamp(18, 420);
+    if (w < 600) return 16;
+    if (w < 1000) return 24;
+    return 32;
   }
 
   Widget _actionGrid(List<Widget> actions) {
