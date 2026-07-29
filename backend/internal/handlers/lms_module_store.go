@@ -36,10 +36,10 @@ func (h *Handlers) CreateStoreModule(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "code": code, "title": title})
 }
 
-// ListStoreModules lists every store module with its lesson count.
+// ListStoreModules lists every store module with its lesson count + folder.
 func (h *Handlers) ListStoreModules(c *fiber.Ctx) error {
 	rows, err := h.Pool.Query(c.Context(),
-		`SELECT ms.id, ms.code, ms.title,
+		`SELECT ms.id, ms.code, ms.title, COALESCE(ms.folder_id::text,''),
 		        (SELECT count(*) FROM module_store_lessons l WHERE l.store_module_id=ms.id) AS lessons
 		   FROM module_store ms ORDER BY ms.code`)
 	if err != nil {
@@ -48,14 +48,96 @@ func (h *Handlers) ListStoreModules(c *fiber.Ctx) error {
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var id, code, title string
+		var id, code, title, folderID string
 		var lessons int
-		if err := rows.Scan(&id, &code, &title, &lessons); err != nil {
+		if err := rows.Scan(&id, &code, &title, &folderID, &lessons); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
-		out = append(out, fiber.Map{"id": id, "code": code, "title": title, "lessons": lessons})
+		out = append(out, fiber.Map{"id": id, "code": code, "title": title, "folder_id": folderID, "lessons": lessons})
 	}
 	return c.JSON(fiber.Map{"modules": out})
+}
+
+// ---- Module-store folders --------------------------------------------------
+
+func (h *Handlers) ListModuleFolders(c *fiber.Ctx) error {
+	rows, err := h.Pool.Query(c.Context(),
+		`SELECT f.id, f.name, (SELECT count(*) FROM module_store m WHERE m.folder_id=f.id) AS modules
+		   FROM module_folders f ORDER BY lower(f.name)`)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
+	}
+	defer rows.Close()
+	out := []fiber.Map{}
+	for rows.Next() {
+		var id, name string
+		var count int
+		if err := rows.Scan(&id, &name, &count); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
+		}
+		out = append(out, fiber.Map{"id": id, "name": name, "modules": count})
+	}
+	return c.JSON(fiber.Map{"folders": out})
+}
+
+func (h *Handlers) CreateModuleFolder(c *fiber.Ctx) error {
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Name) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "name required")
+	}
+	var id string
+	if err := h.Pool.QueryRow(c.Context(), `INSERT INTO module_folders (name) VALUES ($1) RETURNING id`, strings.TrimSpace(req.Name)).Scan(&id); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
+	}
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "name": strings.TrimSpace(req.Name)})
+}
+
+func (h *Handlers) RenameModuleFolder(c *fiber.Ctx) error {
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Name) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "name required")
+	}
+	ct, err := h.Pool.Exec(c.Context(), `UPDATE module_folders SET name=$2 WHERE id=$1`, c.Params("id"), strings.TrimSpace(req.Name))
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "rename failed")
+	}
+	if ct.RowsAffected() == 0 {
+		return fiber.NewError(fiber.StatusNotFound, "not found")
+	}
+	return c.JSON(fiber.Map{"ok": true})
+}
+
+func (h *Handlers) DeleteModuleFolder(c *fiber.Ctx) error {
+	if _, err := h.Pool.Exec(c.Context(), `DELETE FROM module_folders WHERE id=$1`, c.Params("id")); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "delete failed")
+	}
+	return c.JSON(fiber.Map{"ok": true})
+}
+
+// MoveStoreModule moves a store module into a folder ("" = unfile it).
+func (h *Handlers) MoveStoreModule(c *fiber.Ctx) error {
+	var req struct {
+		FolderID string `json:"folder_id"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "bad request")
+	}
+	var folder any
+	if f := strings.TrimSpace(req.FolderID); f != "" {
+		folder = f
+	}
+	ct, err := h.Pool.Exec(c.Context(), `UPDATE module_store SET folder_id=$2 WHERE id=$1`, c.Params("id"), folder)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "move failed")
+	}
+	if ct.RowsAffected() == 0 {
+		return fiber.NewError(fiber.StatusNotFound, "not found")
+	}
+	return c.JSON(fiber.Map{"ok": true})
 }
 
 // GetStoreModule returns a store module with its lessons (for editing/preview).

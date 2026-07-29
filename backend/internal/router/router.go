@@ -111,6 +111,12 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Post("/manage/module-store/:id/lessons", auth, inst, h.AddStoreLesson)
 	api.Delete("/manage/module-store-lessons/:id", auth, inst, h.DeleteStoreLesson)
 	api.Post("/manage/module-store-lessons/:id/move", auth, inst, h.MoveStoreLesson)
+	// Module-store folders.
+	api.Get("/manage/module-folders", auth, inst, h.ListModuleFolders)
+	api.Post("/manage/module-folders", auth, inst, h.CreateModuleFolder)
+	api.Patch("/manage/module-folders/:id", auth, inst, h.RenameModuleFolder)
+	api.Delete("/manage/module-folders/:id", auth, inst, h.DeleteModuleFolder)
+	api.Post("/manage/module-store/:id/folder", auth, inst, h.MoveStoreModule)
 	api.Post("/manage/courses/:id/modules/from-store", auth, inst, h.AddModuleFromStore)
 	api.Post("/manage/modules/:id/to-store", auth, inst, h.SaveModuleToStore) // promote a course module into the store
 	api.Patch("/manage/modules/:id", auth, inst, h.UpdateModule)

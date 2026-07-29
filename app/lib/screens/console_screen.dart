@@ -7389,6 +7389,8 @@ class ModuleStoreScreen extends StatefulWidget {
 
 class _ModuleStoreScreenState extends State<ModuleStoreScreen> {
   List<Map<String, dynamic>> _modules = [];
+  List<Map<String, dynamic>> _folders = [];
+  String _folder = ''; // '' = All, '__none__' = Unfiled, else a folder id
   bool _loading = true;
 
   @override
@@ -7403,6 +7405,12 @@ class _ModuleStoreScreenState extends State<ModuleStoreScreen> {
       _modules = ((ApiClient.decode(r)['modules'] as List?) ?? [])
           .map((e) => (e as Map).cast<String, dynamic>())
           .toList();
+      try {
+        final fr = await widget.auth.apiGet('/api/v1/manage/module-folders');
+        _folders = ((ApiClient.decode(fr)['folders'] as List?) ?? [])
+            .map((e) => (e as Map).cast<String, dynamic>())
+            .toList();
+      } catch (_) {}
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
   }
@@ -7460,16 +7468,153 @@ class _ModuleStoreScreenState extends State<ModuleStoreScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
                 children: [
-                  Text('Build a module once, then add it to any course/batch by its code.', style: AppleTheme.footnote(context)),
+                  Text('Build a module once, then add it to any course/batch by its code. Organise them into folders.', style: AppleTheme.footnote(context)),
                   const SizedBox(height: 12),
-                  if (_modules.isEmpty)
-                    AppleCard(square: true, child: Text('No stored modules yet. Tap ＋ to create one.', style: AppleTheme.footnote(context)))
-                  else
-                    ..._modules.map(_row),
+                  _folderBar(),
+                  if (_folder.isNotEmpty && _folder != '__none__') ...[
+                    const SizedBox(height: 8),
+                    Builder(builder: (_) {
+                      final f = _folders.firstWhere((e) => e['id'].toString() == _folder, orElse: () => <String, dynamic>{});
+                      if (f.isEmpty) return const SizedBox.shrink();
+                      return Row(children: [
+                        _folderBtn(CupertinoIcons.pencil, 'Rename folder', () => _renameFolder(f)),
+                        const SizedBox(width: 8),
+                        _folderBtn(CupertinoIcons.trash, 'Delete folder', () => _deleteFolder(f), color: AppleColors.red),
+                      ]);
+                    }),
+                  ],
+                  const SizedBox(height: 12),
+                  Builder(builder: (_) {
+                    final mods = _modules.where((m) {
+                      final fid = (m['folder_id']?.toString() ?? '');
+                      if (_folder.isEmpty) return true;
+                      if (_folder == '__none__') return fid.isEmpty;
+                      return fid == _folder;
+                    }).toList();
+                    if (mods.isEmpty) {
+                      return AppleCard(square: true, child: Text(_modules.isEmpty ? 'No stored modules yet. Tap ＋ to create one.' : 'No modules in this folder.', style: AppleTheme.footnote(context)));
+                    }
+                    return Column(children: mods.map(_row).toList());
+                  }),
                 ],
               ),
             ),
     )));
+  }
+
+  Widget _folderBar() {
+    final p = Palette.of(context);
+    final unfiled = _modules.where((m) => (m['folder_id']?.toString() ?? '').isEmpty).length;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(children: [
+        _folderChip('All', '', _modules.length, null),
+        const SizedBox(width: 6),
+        _folderChip('Unfiled', '__none__', unfiled, null),
+        for (final f in _folders) ...[
+          const SizedBox(width: 6),
+          _folderChip(f['name']?.toString() ?? 'Folder', f['id'].toString(), (f['modules'] as num?)?.toInt() ?? 0, f),
+        ],
+        const SizedBox(width: 6),
+        GestureDetector(
+          onTap: _newFolder,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(CupertinoIcons.folder_badge_plus, size: 15, color: p.accent),
+              const SizedBox(width: 5),
+              Text('New folder', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: p.accent)),
+            ]),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _folderChip(String label, String value, int count, Map<String, dynamic>? folder) {
+    final p = Palette.of(context);
+    final on = _folder == value;
+    return GestureDetector(
+      onTap: () => setState(() => _folder = value),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(color: on ? p.accent : p.card2, border: Border.all(color: on ? p.accent : p.separator)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (folder != null) Padding(padding: const EdgeInsets.only(right: 5), child: Icon(CupertinoIcons.folder_fill, size: 14, color: on ? Colors.white : p.secondary)),
+          Text('$label · $count', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: on ? Colors.white : p.label)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _folderBtn(IconData icon, String label, VoidCallback onTap, {Color? color}) {
+    final c = color ?? Palette.of(context).accent;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(color: c.withOpacity(0.10), border: Border.all(color: c.withOpacity(0.4))),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 15, color: c),
+          const SizedBox(width: 5),
+          Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: c)),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _newFolder() async {
+    final name = TextEditingController();
+    final ok = await showFormSheet(context, square: true, title: 'New folder', builder: (_) => [
+      sheetField(name, 'Folder name', CupertinoIcons.folder),
+    ], onSubmit: () async {
+      if (name.text.trim().isEmpty) return 'Name required';
+      try { await widget.auth.apiPost('/api/v1/manage/module-folders', {'name': name.text.trim()}); return null; }
+      on ApiException catch (e) { return e.message; }
+    });
+    if (ok == true) { _toast('Folder created'); _load(); }
+  }
+
+  Future<void> _renameFolder(Map<String, dynamic> f) async {
+    final name = TextEditingController(text: f['name']?.toString() ?? '');
+    final ok = await showFormSheet(context, square: true, title: 'Rename folder', builder: (_) => [
+      sheetField(name, 'Folder name', CupertinoIcons.folder),
+    ], onSubmit: () async {
+      if (name.text.trim().isEmpty) return 'Name required';
+      try { await widget.auth.apiPatch('/api/v1/manage/module-folders/${f['id']}', {'name': name.text.trim()}); return null; }
+      on ApiException catch (e) { return e.message; }
+    });
+    if (ok == true) { _toast('Renamed'); _load(); }
+  }
+
+  Future<void> _deleteFolder(Map<String, dynamic> f) async {
+    final yes = await showSquareConfirm(context,
+        title: 'Delete folder',
+        message: 'Delete “${f['name']}”? Its modules aren’t deleted — they move to Unfiled.',
+        confirmLabel: 'Delete', destructive: true);
+    if (!yes) return;
+    try {
+      await widget.auth.apiDelete('/api/v1/manage/module-folders/${f['id']}');
+      if (_folder == f['id'].toString()) _folder = '';
+      _toast('Folder deleted'); _load();
+    } catch (_) { _toast('Could not delete'); }
+  }
+
+  Future<void> _moveToFolder(Map<String, dynamic> m) async {
+    final items = <SquareMenuItem>[
+      const SquareMenuItem('Unfiled (no folder)', value: '', icon: CupertinoIcons.tray),
+      for (final f in _folders) SquareMenuItem(f['name']?.toString() ?? 'Folder', value: f['id'].toString(), icon: CupertinoIcons.folder_fill),
+    ];
+    final v = await showSquareMenu(context, title: 'Move “${m['code']}” to folder', items: items);
+    if (v == null) return;
+    try {
+      await widget.auth.apiPost('/api/v1/manage/module-store/${m['id']}/folder', {'folder_id': v});
+      _toast('Moved'); _load();
+    } catch (_) { _toast('Could not move'); }
   }
 
   Widget _row(Map<String, dynamic> m) {
@@ -7491,6 +7636,8 @@ class _ModuleStoreScreenState extends State<ModuleStoreScreen> {
             Text(m['title']?.toString() ?? 'Module', style: AppleTheme.headline(context)),
             Text('${m['lessons'] ?? 0} lessons', style: AppleTheme.footnote(context)),
           ])),
+          HoverTap(onTap: () => _moveToFolder(m), child: Icon(CupertinoIcons.folder, size: 18, color: p.secondary)),
+          const SizedBox(width: 12),
           HoverTap(onTap: () => _delete(m), child: const Icon(CupertinoIcons.trash, size: 18, color: AppleColors.red)),
         ])),
       ),
