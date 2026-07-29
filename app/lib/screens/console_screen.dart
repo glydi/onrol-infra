@@ -2755,7 +2755,18 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
 
   // Open the live host console: the admin sees all student chats (private to
   // them) and can broadcast to everyone.
-  void _openHost(Map<String, dynamic> s) {
+  Future<void> _openHost(Map<String, dynamic> s) async {
+    // For a Zoho webinar, register the host too and embed the webinar in their
+    // room — so the admin watches the same stream as students while answering.
+    String externalUrl = '';
+    final wid = s['webinar_id']?.toString() ?? '';
+    if (wid.isNotEmpty) {
+      try {
+        final m = ApiClient.decode(await widget.auth.apiPost('/api/v1/live/$wid/join', {}));
+        externalUrl = m['url']?.toString() ?? '';
+      } catch (_) {}
+    }
+    if (!mounted) return;
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => LiveSessionScreen(
         auth: widget.auth,
@@ -2763,6 +2774,8 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         watermark: widget.auth.user?.email ?? 'host',
         title: s['title']?.toString() ?? 'Live Class',
         isHost: true,
+        externalUrl: externalUrl,
+        youtubeId: s['youtube_id']?.toString() ?? '',
       ),
     ));
   }

@@ -1564,7 +1564,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     // see the host status panel (lobby / preparing / ended / queue summary).
     if (widget.isHost &&
         !(_status == 'live' &&
-            (_playlistUrl != null || widget.youtubeId.isNotEmpty)))
+            (_playlistUrl != null || widget.youtubeId.isNotEmpty || widget.externalUrl.isNotEmpty)))
       return _hostPanel();
     // YouTube-Live: clean autoplaying embed once live — no logo, no join click.
     // The host watches the same stage (with the control panel below it).
