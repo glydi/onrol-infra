@@ -56,6 +56,25 @@ class _AskMentorQueueScreenState extends State<AskMentorQueueScreen> {
 
   void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
 
+  // Dismiss a question from the queue without replying. A later student message
+  // re-surfaces the thread.
+  Future<void> _ignore(Map<String, dynamic> q) async {
+    final yes = await showSquareConfirm(context,
+        title: 'Ignore question',
+        message: 'Remove this from the queue without replying? If the student writes again, it comes back.',
+        confirmLabel: 'Ignore');
+    if (!yes) return;
+    try {
+      await widget.auth.apiPost('/api/v1/manage/mentor-questions/${q['id']}/ignore', {});
+      _questions.removeWhere((x) => x['id'] == q['id']);
+      _waiting = _questions.where((x) => x['answered'] != true).length;
+      if (mounted) setState(() {});
+      _toast('Ignored');
+    } catch (_) {
+      _toast('Could not ignore');
+    }
+  }
+
   Future<void> _answer(Map<String, dynamic> q) async {
     final ctl = TextEditingController();
     final ok = await showFormSheet(
@@ -158,10 +177,22 @@ class _AskMentorQueueScreenState extends State<AskMentorQueueScreen> {
         const SizedBox(height: 8),
         Text(q['body']?.toString() ?? '', style: AppleTheme.body(context)),
         const SizedBox(height: 12),
-        Align(
-          alignment: Alignment.centerRight,
-          child: PrimaryButton(label: 'Reply', icon: CupertinoIcons.reply_thick_solid, square: true, onPressed: () => _answer(q)),
-        ),
+        Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+          GestureDetector(
+            onTap: () => _ignore(q),
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(CupertinoIcons.xmark_circle, size: 16, color: p.secondary),
+                const SizedBox(width: 6),
+                Text('Ignore', style: TextStyle(color: p.secondary, fontSize: 13.5, fontWeight: FontWeight.w700)),
+              ]),
+            ),
+          ),
+          const SizedBox(width: 8),
+          PrimaryButton(label: 'Reply', icon: CupertinoIcons.reply_thick_solid, square: true, onPressed: () => _answer(q)),
+        ]),
       ]),
     );
   }

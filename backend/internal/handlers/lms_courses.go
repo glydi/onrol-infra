@@ -584,7 +584,7 @@ func (h *Handlers) ListMentorQuestions(c *fiber.Ctx) error {
 	q := `
 		WITH latest AS (
 			SELECT mc.id, mc.module_id, mc.course_id, mc.thread_user_id, mc.user_id,
-			       mc.body, mc.is_doubt, mc.created_at,
+			       mc.body, mc.is_doubt, mc.created_at, COALESCE(mc.ignored,false) AS ignored,
 			       row_number() OVER (
 			         PARTITION BY COALESCE(mc.module_id::text, 'g:'||COALESCE(mc.course_id::text,'')), mc.thread_user_id
 			         ORDER BY mc.created_at DESC) AS rn
@@ -598,7 +598,7 @@ func (h *Handlers) ListMentorQuestions(c *fiber.Ctx) error {
 		LEFT JOIN modules m ON m.id = l.module_id
 		JOIN courses eff ON eff.id = COALESCE(m.course_id, l.course_id)
 		JOIN users su ON su.id = l.thread_user_id
-		WHERE l.rn = 1 AND l.user_id = l.thread_user_id`
+		WHERE l.rn = 1 AND l.user_id = l.thread_user_id AND NOT l.ignored`
 	args := []any{}
 	if !(callerRole(c) == "manager" || callerRole(c) == "superadmin") {
 		q += ` AND eff.owner_id = $1`
@@ -625,6 +625,30 @@ func (h *Handlers) ListMentorQuestions(c *fiber.Ctx) error {
 		})
 	}
 	return c.JSON(fiber.Map{"questions": out, "waiting": len(out)})
+}
+
+// IgnoreMentorQuestion dismisses an Ask-Mentor thread from the queue by flagging
+// the student's latest message (the queue row id) as ignored. A later student
+// message re-surfaces the thread.
+func (h *Handlers) IgnoreMentorQuestion(c *fiber.Ctx) error {
+	id := c.Params("id")
+	// Scope: managers ignore any; instructors only in courses they own.
+	tag, err := h.Pool.Exec(c.Context(), `
+		UPDATE module_comments SET ignored = true
+		WHERE id = $1
+		  AND ($2 OR EXISTS (
+		    SELECT 1 FROM courses eff
+		    LEFT JOIN modules m ON m.id = module_comments.module_id
+		    WHERE eff.id = COALESCE(m.course_id, module_comments.course_id)
+		      AND eff.owner_id = $3))`,
+		id, callerRole(c) == "manager" || callerRole(c) == "superadmin", callerID(c))
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "ignore failed")
+	}
+	if tag.RowsAffected() == 0 {
+		return fiber.NewError(fiber.StatusForbidden, "not allowed")
+	}
+	return c.JSON(fiber.Map{"ok": true})
 }
 
 // ListEnrollmentRequests returns pending self-enroll requests for courses the
