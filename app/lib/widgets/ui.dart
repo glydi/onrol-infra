@@ -145,9 +145,9 @@ class _AppleCardState extends State<AppleCard> {
       padding: widget.padding,
       decoration: BoxDecoration(
         color: p.card,
-        // square:true forces sharp corners; otherwise the admin skin rounds and
-        // student surfaces stay squared (adminRadius).
-        borderRadius: widget.square ? BorderRadius.zero : adminRadius(p, kRadiusCard),
+        // `square: true` selects the ADMIN styling — it no longer means radius
+        // 0. Admin boxes are rounded; student surfaces stay squared.
+        borderRadius: adminRadius(p, kRadiusCard),
         // Admin cards float on the tinted ground: a soft ambient shadow rather
         // than a hard outline. The border only shows to signal hover.
         border: Border.all(
