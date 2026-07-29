@@ -23,6 +23,57 @@ const double kRadiusPill = 999; // fully rounded (progress bars, banner buttons)
 BorderRadius adminRadius(Palette p, double r) =>
     p.admin ? BorderRadius.circular(r) : BorderRadius.zero;
 
+/// Entrance animation for admin content: a short fade with a small rise.
+/// [index] staggers items in a list so a grid resolves in sequence rather than
+/// all at once. Honours the OS "reduce motion" setting — when that's on, or
+/// when [enabled] is false, the child renders immediately with no animation.
+class FadeInUp extends StatefulWidget {
+  const FadeInUp({super.key, required this.child, this.index = 0, this.enabled = true});
+  final Widget child;
+  final int index;
+  final bool enabled;
+
+  @override
+  State<FadeInUp> createState() => _FadeInUpState();
+}
+
+class _FadeInUpState extends State<FadeInUp> with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 320));
+  late final Animation<double> _fade =
+      CurvedAnimation(parent: _c, curve: Curves.easeOut);
+  late final Animation<Offset> _slide = Tween<Offset>(
+    begin: const Offset(0, 0.06), // ~6% of its own height, not a big swoop
+    end: Offset.zero,
+  ).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    // Reduce-motion (or disabled): jump straight to the resolved state.
+    if (!widget.enabled || MediaQuery.maybeOf(context)?.disableAnimations == true) {
+      _c.value = 1;
+      return;
+    }
+    // Stagger, capped so a long list never crawls in.
+    final delay = Duration(milliseconds: (widget.index * 45).clamp(0, 360));
+    Future<void>.delayed(delay, () { if (mounted) _c.forward(); });
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      FadeTransition(opacity: _fade, child: SlideTransition(position: _slide, child: widget.child));
+}
+
 /// A frosted, translucent top bar (iOS large-title style).
 class GlassHeader extends StatelessWidget implements PreferredSizeWidget {
   const GlassHeader({super.key, required this.title, this.trailing, this.leading});

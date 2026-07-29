@@ -1123,7 +1123,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
             if (_courses.isEmpty)
               AppleCard(square: true, child: Text('No courses yet.', style: AppleTheme.footnote(context)))
             else
-              ..._courses.map((c) => _courseRow(c as Map<String, dynamic>)),
+              for (var i = 0; i < _courses.length; i++)
+                FadeInUp(index: i, child: _courseRow(_courses[i] as Map<String, dynamic>)),
           ],
         ],
       ),
@@ -1138,7 +1139,9 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       final cols = w >= 1000 ? 4 : (w >= 700 ? 3 : (w >= 440 ? 2 : 1));
       final tileW = cols == 1 ? w : (w - gap * (cols - 1)) / cols;
       return Wrap(spacing: gap, runSpacing: gap, children: [
-        for (final t in tiles) SizedBox(width: tileW, child: t),
+        // Staggered so the row resolves left-to-right instead of popping.
+        for (var i = 0; i < tiles.length; i++)
+          SizedBox(width: tileW, child: FadeInUp(index: i, child: tiles[i])),
       ]);
     });
   }
@@ -5311,8 +5314,11 @@ class _CourseBatchesScreenState extends State<CourseBatchesScreen> {
         spacing: gap,
         runSpacing: gap,
         children: [
-          for (final b in _batches)
-            SizedBox(width: cardW, child: _batchCard(b as Map<String, dynamic>)),
+          for (var i = 0; i < _batches.length; i++)
+            SizedBox(
+              width: cardW,
+              child: FadeInUp(index: i, child: _batchCard(_batches[i] as Map<String, dynamic>)),
+            ),
         ],
       );
     });
