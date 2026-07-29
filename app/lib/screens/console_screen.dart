@@ -98,8 +98,10 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   int _videoCount = 0;
   int _videoBytes = 0;
   int _videoProcessing = 0;
-  // Daily student interaction counts for the Home chart.
+  // Daily student interaction counts for the Home chart, plus its filters.
   List<dynamic> _activity = [];
+  String _actBatch = ''; // '' = all batches
+  int _actDays = 14;
 
   @override
   void initState() {
@@ -140,17 +142,26 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
               0, (s, v) => s + (((v as Map)['size_bytes'] as num?)?.toInt() ?? 0));
           _videoProcessing = vids.where((v) => (v as Map)['status'] == 'processing').length;
         } catch (_) {}
-        // Student interactions per day for the Home chart. Best-effort: an
-        // older API without this route must not break the console.
-        try {
-          final ar = await widget.auth.apiGet('/api/v1/manage/activity?days=14');
-          _activity = (ApiClient.decode(ar)['days'] as List?) ?? _activity;
-        } catch (_) {}
+        await _loadActivity();
       }
     } catch (_) {
       if (quiet) return; // leave existing data untouched on a background refresh
     }
     if (mounted) setState(() => _loading = false);
+  }
+
+  /// Refetch just the activity series — filters change often, and re-running
+  /// the whole console load for a chip tap would be wasteful.
+  /// Best-effort: an older API without this route leaves the chart empty
+  /// rather than breaking the console.
+  Future<void> _loadActivity() async {
+    try {
+      final q = StringBuffer('/api/v1/manage/activity?days=$_actDays');
+      if (_actBatch.isNotEmpty) q.write('&batch=${Uri.encodeQueryComponent(_actBatch)}');
+      final ar = await widget.auth.apiGet(q.toString());
+      final days = (ApiClient.decode(ar)['days'] as List?) ?? const [];
+      if (mounted) setState(() => _activity = days);
+    } catch (_) {}
   }
 
   Future<void> _decideRequest(String id, String action) async {
@@ -1278,7 +1289,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
               const SizedBox(height: 22),
             ],
             if (_isAdmin) ...[
-              const SectionHeader('Student activity · last 14 days'),
+              SectionHeader('Student activity · last $_actDays days'),
               _activityChart(),
               const SizedBox(height: 22),
             ],
@@ -1311,9 +1322,40 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       return s.length >= 10 ? s.substring(5) : s; // MM-DD
     }
 
+    // Batch codes that actually hold students — filtering to an empty batch
+    // would just show a flat zero line.
+    final batches = _people
+        .map((u) => (u['batch']?.toString().trim() ?? ''))
+        .where((b) => b.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+
     return AppleCard(
       square: true,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Filters: range, then batch.
+        Wrap(spacing: 6, runSpacing: 6, children: [
+          for (final d in const [7, 14, 30])
+            _filterChip('${d}d', _actDays == d, () {
+              if (_actDays == d) return;
+              setState(() => _actDays = d);
+              _loadActivity();
+            }),
+          const SizedBox(width: 10),
+          _filterChip('All batches', _actBatch.isEmpty, () {
+            if (_actBatch.isEmpty) return;
+            setState(() => _actBatch = '');
+            _loadActivity();
+          }),
+          for (final b in batches)
+            _filterChip(b, _actBatch == b, () {
+              if (_actBatch == b) return;
+              setState(() => _actBatch = b);
+              _loadActivity();
+            }),
+        ]),
+        const SizedBox(height: 12),
         Row(children: [
           _legendDot(p.accent, 'Lessons'),
           const SizedBox(width: 14),
@@ -1344,6 +1386,29 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           Text(dayLabel(_activity.length - 1), style: AppleTheme.footnote(context)),
         ]),
       ]),
+    );
+  }
+
+  /// Selectable filter chip for the activity chart.
+  Widget _filterChip(String label, bool on, VoidCallback onTap) {
+    final p = Palette.of(context);
+    return HoverTap(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+        decoration: BoxDecoration(
+          color: on ? p.accent : p.card2,
+          borderRadius: BorderRadius.circular(kRadiusChip),
+          border: Border.all(color: on ? p.accent : p.separator),
+        ),
+        child: Text(label,
+            style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: on ? Colors.white : p.secondary)),
+      ),
     );
   }
 
