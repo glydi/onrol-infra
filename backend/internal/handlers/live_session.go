@@ -31,9 +31,11 @@ const liveEndGraceSecs = 25
 // grant, so /state never 403s a host that the video gates would let in.
 func (h *Handlers) liveStaff(c *fiber.Ctx, courseID string) bool {
 	switch callerRole(c) {
-	case "superadmin", "manager", "instructor", "live_host":
+	case "superadmin", "manager", "live_host":
 		return true
 	}
+	// An instructor is staff only for the course(s) they're assigned to (own /
+	// manage) — not every course.
 	return h.canManageCourse(c, courseID) == nil
 }
 
@@ -43,12 +45,14 @@ func (h *Handlers) liveAccess(c *fiber.Ctx, sessionID string) (chatOK, qaOK, isS
 	// batch, so a data or query hiccup never blocks a host from the questions
 	// students asked. Toggles are read best-effort (default on for staff).
 	switch callerRole(c) {
-	case "superadmin", "manager", "instructor", "live_host":
+	case "superadmin", "manager", "live_host":
 		chatOK, qaOK = true, true
 		_ = h.Pool.QueryRow(c.Context(),
 			`SELECT chat_enabled, qa_enabled FROM class_sessions WHERE id=$1`, sessionID).Scan(&chatOK, &qaOK)
 		return chatOK, qaOK, true, nil
 	}
+	// Instructors fall through to the course-scoped check below, so they're staff
+	// only for their assigned course's sessions (owner match in liveStaff).
 
 	var courseID string
 	var enrolled bool
@@ -1058,6 +1062,9 @@ func (h *Handlers) LiveQuestionPost(c *fiber.Ctx) error {
 // every type that plays inside our live room — recorded-as-live, Zoho webinar,
 // YouTube-live and live-HLS — so the host can open any of them and answer Q&A.
 func (h *Handlers) ListLiveHostSessions(c *fiber.Ctx) error {
+	// Managers/superadmins see every live class; an instructor sees only the ones
+	// in courses they're assigned to (own).
+	privileged := callerRole(c) == "manager" || callerRole(c) == "superadmin"
 	rows, err := h.Pool.Query(c.Context(), `
 		SELECT cs.id, cs.title, c.title, cs.starts_at,
 		       CASE WHEN cs.media_asset_id IS NOT NULL
@@ -1073,7 +1080,8 @@ func (h *Handlers) ListLiveHostSessions(c *fiber.Ctx) error {
 		       OR COALESCE(cs.youtube_id,'') <> ''
 		       OR COALESCE(cs.live_hls_url,'') <> '')
 		  AND cs.starts_at >= now() - interval '2 days'
-		ORDER BY cs.starts_at`)
+		  AND ($1 OR c.owner_id = $2)
+		ORDER BY cs.starts_at`, privileged, callerID(c))
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
 	}
