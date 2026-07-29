@@ -2182,6 +2182,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   List<dynamic> _sessions = [];
   List<dynamic> _assessments = [];
   List<String> _batchCodes = []; // this course's batch codes, for targeting live classes
+  String _moduleBatch = ''; // selected batch tab in Course Content ('' = All / shared)
   List<Map<String, dynamic>> _zohoAccounts = []; // selectable Zoho accounts for webinars
   bool _loading = true;
   // Bumped after every reload so pushed section screens (Course Content, Live
@@ -2235,12 +2236,97 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
 
   List<Widget> _modulesSection() {
     final modules = (_course?['modules'] as List?) ?? [];
+    final sel = _moduleBatch; // '' = All (shared modules only)
+    bool visibleFor(Map<String, dynamic> m) {
+      final b = (m['batch']?.toString() ?? '').trim();
+      if (sel.isEmpty) return b.isEmpty; // All tab → shared (batch-less) modules
+      return b.isEmpty || b == sel; // a batch tab → shared + that batch's modules
+    }
+    final visible = modules.where((m) => visibleFor(m as Map<String, dynamic>)).toList();
     return [
-      if (modules.isEmpty)
-        AppleCard(square: true, child: Text('No modules yet. Add one, then add lessons inside it.', style: AppleTheme.footnote(context)))
+      // Batch tabs — All + each of this course's batch codes. Each batch gets its
+      // own view; "Add module by code" and new modules target the selected batch.
+      _batchTabs(),
+      const SizedBox(height: 10),
+      // Pull a stored module into this batch by its code.
+      PrimaryButton(
+        label: sel.isEmpty ? 'Add module by code (all batches)' : 'Add module by code → $sel',
+        icon: CupertinoIcons.tray_arrow_down_fill, square: true,
+        onPressed: () => _addModuleFromStore(sel),
+      ),
+      const SizedBox(height: 6),
+      HoverTap(
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ModuleStoreScreen(auth: widget.auth))),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(CupertinoIcons.square_stack_3d_up_fill, size: 15, color: Palette.of(context).accent),
+          const SizedBox(width: 6),
+          Text('Open Module Store', style: AppleTheme.footnote(context).copyWith(color: Palette.of(context).accent, fontWeight: FontWeight.w700)),
+        ]),
+      ),
+      const SizedBox(height: 12),
+      if (visible.isEmpty)
+        AppleCard(square: true, child: Text(
+          sel.isEmpty
+              ? 'No shared modules. Add one (＋ above), or pick a batch tab to build that batch’s content.'
+              : 'No modules for “$sel” yet. Add one with ＋, or pull a stored module in by its code.',
+          style: AppleTheme.footnote(context)))
       else
-        ...modules.map((m) => _moduleCard(m as Map<String, dynamic>)),
+        ...visible.map((m) => _moduleCard(m as Map<String, dynamic>)),
     ];
+  }
+
+  // Horizontal batch tabs: All + each batch code.
+  Widget _batchTabs() {
+    final tabs = ['', ..._batchCodes];
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(children: [
+        for (final t in tabs) ...[
+          _batchTabChip(t.isEmpty ? 'All' : t, _moduleBatch == t, () => setState(() => _moduleBatch = t)),
+          const SizedBox(width: 6),
+        ],
+      ]),
+    );
+  }
+
+  Widget _batchTabChip(String label, bool on, VoidCallback onTap) {
+    final p = Palette.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(color: on ? p.accent : p.card2, border: Border.all(color: on ? p.accent : p.separator)),
+        child: Text(label, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: on ? Colors.white : p.label)),
+      ),
+    );
+  }
+
+  // Add a stored module into this course/batch by its code.
+  Future<void> _addModuleFromStore(String batch) async {
+    final code = TextEditingController();
+    final ok = await showFormSheet(context, square: true,
+        title: batch.isEmpty ? 'Add module by code' : 'Add module by code → $batch',
+        builder: (_) => [
+          _label(context, batch.isEmpty
+              ? 'Pulls a stored module (with its lessons) into this course for all batches.'
+              : 'Pulls a stored module (with its lessons) into batch “$batch”. It’s an independent copy — later store edits won’t change it.'),
+          const SizedBox(height: 8),
+          sheetField(code, 'Module code (e.g. AI-01)', CupertinoIcons.number),
+        ], onSubmit: () async {
+          if (code.text.trim().isEmpty) return 'Enter a module code';
+          try {
+            await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/modules/from-store',
+                {'code': code.text.trim(), 'batch_number': batch});
+            return null;
+          } on ApiException catch (e) {
+            return e.message;
+          }
+        });
+    if (ok == true) {
+      _toast('Module added');
+      _load();
+    }
   }
 
   List<Widget> _liveClassesSection() {
@@ -6696,5 +6782,240 @@ class _SubmissionsScreenState extends State<_SubmissionsScreen> {
         ]),
       ]),
     );
+  }
+}
+
+/// Admin "Module Store" — a global library of reusable modules. Build a module
+/// (with lessons) once under a code, then add it to any course/batch by that
+/// code (an independent copy is made at add time).
+class ModuleStoreScreen extends StatefulWidget {
+  const ModuleStoreScreen({super.key, required this.auth});
+  final AuthService auth;
+
+  @override
+  State<ModuleStoreScreen> createState() => _ModuleStoreScreenState();
+}
+
+class _ModuleStoreScreenState extends State<ModuleStoreScreen> {
+  List<Map<String, dynamic>> _modules = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final r = await widget.auth.apiGet('/api/v1/manage/module-store');
+      _modules = ((ApiClient.decode(r)['modules'] as List?) ?? [])
+          .map((e) => (e as Map).cast<String, dynamic>())
+          .toList();
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
+
+  Future<void> _create() async {
+    final code = TextEditingController();
+    final title = TextEditingController();
+    final ok = await showFormSheet(context, square: true, title: 'New store module', builder: (_) => [
+      _label(context, 'A reusable module. Give it a short code you’ll type when adding it to a course/batch.'),
+      const SizedBox(height: 8),
+      sheetField(code, 'Code (e.g. AI-01)', CupertinoIcons.number),
+      const SizedBox(height: 8),
+      sheetField(title, 'Title', CupertinoIcons.textformat),
+    ], onSubmit: () async {
+      if (code.text.trim().isEmpty || title.text.trim().isEmpty) return 'Code and title required';
+      try {
+        await widget.auth.apiPost('/api/v1/manage/module-store', {'code': code.text.trim(), 'title': title.text.trim()});
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) { _toast('Module created'); _load(); }
+  }
+
+  Future<void> _delete(Map<String, dynamic> m) async {
+    final yes = await showSquareConfirm(context,
+        title: 'Delete store module',
+        message: 'Delete “${m['code']} · ${m['title']}” from the store? Copies already added to courses are NOT affected.',
+        confirmLabel: 'Delete', destructive: true);
+    if (!yes) return;
+    try {
+      await widget.auth.apiDelete('/api/v1/manage/module-store/${m['id']}');
+      _toast('Deleted'); _load();
+    } catch (_) { _toast('Could not delete'); }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return AdminSkin(child: SquareScope(child: Scaffold(
+      backgroundColor: p.bg,
+      appBar: AppBar(
+        backgroundColor: p.bg,
+        title: Text('Module Store', style: AppleTheme.headline(context)),
+        actions: [IconButton(onPressed: _create, icon: Icon(CupertinoIcons.add, color: p.accent))],
+      ),
+      body: _loading
+          ? const Center(child: CupertinoActivityIndicator())
+          : RefreshIndicator(
+              color: p.accent,
+              onRefresh: _load,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
+                children: [
+                  Text('Build a module once, then add it to any course/batch by its code.', style: AppleTheme.footnote(context)),
+                  const SizedBox(height: 12),
+                  if (_modules.isEmpty)
+                    AppleCard(square: true, child: Text('No stored modules yet. Tap ＋ to create one.', style: AppleTheme.footnote(context)))
+                  else
+                    ..._modules.map(_row),
+                ],
+              ),
+            ),
+    )));
+  }
+
+  Widget _row(Map<String, dynamic> m) {
+    final p = Palette.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: GestureDetector(
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => StoreModuleDetailScreen(auth: widget.auth, moduleId: m['id'].toString(), code: m['code']?.toString() ?? '', title: m['title']?.toString() ?? ''),
+        )).then((_) => _load()),
+        child: AppleCard(square: true, child: Row(children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(color: p.accent.withOpacity(0.12)),
+            child: Text(m['code']?.toString() ?? '', style: TextStyle(color: p.accent, fontWeight: FontWeight.w800, fontSize: 12.5)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(m['title']?.toString() ?? 'Module', style: AppleTheme.headline(context)),
+            Text('${m['lessons'] ?? 0} lessons', style: AppleTheme.footnote(context)),
+          ])),
+          HoverTap(onTap: () => _delete(m), child: const Icon(CupertinoIcons.trash, size: 18, color: AppleColors.red)),
+        ])),
+      ),
+    );
+  }
+}
+
+/// Lessons of one store module — add/remove Text / Link / File lessons.
+class StoreModuleDetailScreen extends StatefulWidget {
+  const StoreModuleDetailScreen({super.key, required this.auth, required this.moduleId, required this.code, required this.title});
+  final AuthService auth;
+  final String moduleId, code, title;
+
+  @override
+  State<StoreModuleDetailScreen> createState() => _StoreModuleDetailScreenState();
+}
+
+class _StoreModuleDetailScreenState extends State<StoreModuleDetailScreen> {
+  List<Map<String, dynamic>> _lessons = [];
+  bool _loading = true;
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    try {
+      final r = await widget.auth.apiGet('/api/v1/manage/module-store/${widget.moduleId}');
+      _lessons = ((ApiClient.decode(r)['lessons'] as List?) ?? [])
+          .map((e) => (e as Map).cast<String, dynamic>())
+          .toList();
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
+
+  Future<void> _addLesson() async {
+    final title = TextEditingController();
+    final body = TextEditingController();
+    final day = TextEditingController();
+    int type = 0; // 0=text, 1=link, 2=file
+    const types = ['text', 'link', 'file'];
+    final ok = await showFormSheet(context, square: true, big: true, title: 'Add lesson to ${widget.code}', builder: (setS) => [
+      AppleSegmented(square: true, labels: const ['Text', 'Link', 'Document'], selected: type, onChanged: (i) => setS(() => type = i)),
+      const SizedBox(height: 10),
+      sheetField(title, 'Lesson title', CupertinoIcons.textformat),
+      const SizedBox(height: 10),
+      if (type == 0)
+        sheetField(body, 'Content — supports Markdown', CupertinoIcons.text_alignleft, minLines: 6, maxLines: 16)
+      else
+        sheetField(body, type == 1 ? 'Link URL (https://…)' : 'Document URL (PDF, Doc…)', CupertinoIcons.link),
+      const SizedBox(height: 10),
+      sheetField(day, 'Day number (optional)', CupertinoIcons.calendar, keyboard: TextInputType.number),
+    ], onSubmit: () async {
+      if (title.text.trim().isEmpty) return 'Title required';
+      if (type != 0 && !body.text.trim().startsWith('http')) return 'Enter a valid URL';
+      try {
+        await widget.auth.apiPost('/api/v1/manage/module-store/${widget.moduleId}/lessons', {
+          'title': title.text.trim(),
+          'type': types[type],
+          'body': body.text.trim(),
+          'day_number': int.tryParse(day.text.trim()),
+        });
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) { _toast('Lesson added'); _load(); }
+  }
+
+  Future<void> _deleteLesson(Map<String, dynamic> l) async {
+    try {
+      await widget.auth.apiDelete('/api/v1/manage/module-store-lessons/${l['id']}');
+      _toast('Removed'); _load();
+    } catch (_) { _toast('Could not remove'); }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return AdminSkin(child: SquareScope(child: Scaffold(
+      backgroundColor: p.bg,
+      appBar: AppBar(
+        backgroundColor: p.bg,
+        title: Text('${widget.code} · ${widget.title}', style: AppleTheme.headline(context)),
+        actions: [IconButton(onPressed: _addLesson, icon: Icon(CupertinoIcons.add, color: p.accent))],
+      ),
+      body: _loading
+          ? const Center(child: CupertinoActivityIndicator())
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
+              children: [
+                Text('Lessons here are copied into a course when you add this module by its code. Add video lessons in the course after copying (they use the Video Store).', style: AppleTheme.footnote(context)),
+                const SizedBox(height: 12),
+                if (_lessons.isEmpty)
+                  AppleCard(square: true, child: Text('No lessons yet. Tap ＋ to add one.', style: AppleTheme.footnote(context)))
+                else
+                  ..._lessons.map((l) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: AppleCard(square: true, child: Row(children: [
+                          Icon(switch (l['type']?.toString()) {
+                            'link' => CupertinoIcons.link,
+                            'file' => CupertinoIcons.doc_richtext,
+                            'video' => CupertinoIcons.play_rectangle_fill,
+                            _ => CupertinoIcons.doc_text_fill,
+                          }, size: 18, color: p.accent),
+                          const SizedBox(width: 10),
+                          Expanded(child: Text(l['title']?.toString() ?? 'Lesson', style: AppleTheme.body(context))),
+                          if ((l['day_number']) != null)
+                            Padding(padding: const EdgeInsets.only(right: 8), child: Text('Day ${l['day_number']}', style: AppleTheme.footnote(context))),
+                          HoverTap(onTap: () => _deleteLesson(l), child: const Icon(CupertinoIcons.trash, size: 17, color: AppleColors.red)),
+                        ])),
+                      )),
+              ],
+            ),
+    )));
   }
 }
