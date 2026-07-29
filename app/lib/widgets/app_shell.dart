@@ -51,11 +51,14 @@ class _AppShellState extends State<AppShell> {
 
       if (wide) {
         return Scaffold(
+          // The ground shows in the gap around the floating sidebar.
+          backgroundColor: p.bg,
           body: Row(children: [
             _Sidebar(
               auth: widget.auth,
               dests: widget.destinations,
               index: _i,
+              floating: true,
               onSelect: (i) => setState(() => _i = i),
               onSignOut: widget.onSignOut,
             ),
@@ -112,9 +115,19 @@ class _AppShellState extends State<AppShell> {
 }
 
 class _Sidebar extends StatelessWidget {
-  const _Sidebar({required this.auth, required this.dests, required this.index, required this.onSelect, required this.onSignOut});
+  const _Sidebar({
+    required this.auth,
+    required this.dests,
+    required this.index,
+    required this.onSelect,
+    required this.onSignOut,
+    this.floating = false,
+  });
   final AuthService auth;
   final List<NavDest> dests;
+  /// Detached panel with a margin, rounded corners and a shadow (wide layout).
+  /// False inside the mobile Drawer, which is already its own panel.
+  final bool floating;
   final int index;
   final ValueChanged<int> onSelect;
   final VoidCallback onSignOut;
@@ -126,11 +139,26 @@ class _Sidebar extends StatelessWidget {
     final sideBg = admin ? const Color(0xFF111418) : p.bg;
     final sideBorder = admin ? const Color(0xFF252B33) : p.separator;
     final sideMuted = admin ? const Color(0xFF7D8794) : p.secondary;
+    final float = floating && admin;
     return Container(
       width: admin ? 272 : 256,
+      // Floating: sits inset from the edges so the ground shows all around it.
+      margin: float ? const EdgeInsets.fromLTRB(14, 14, 0, 14) : EdgeInsets.zero,
       decoration: BoxDecoration(
         color: sideBg,
-        border: Border(right: BorderSide(color: sideBorder)),
+        borderRadius: float ? BorderRadius.circular(kRadiusSheet) : null,
+        // A floating panel is read by its shadow, not a divider line.
+        border: float ? null : Border(right: BorderSide(color: sideBorder)),
+        boxShadow: float
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: p.dark ? 0.45 : 0.10),
+                  blurRadius: 28,
+                  offset: const Offset(0, 10),
+                  spreadRadius: -10,
+                ),
+              ]
+            : null,
       ),
       padding: EdgeInsets.fromLTRB(14, MediaQuery.of(context).padding.top + 18, 14, 18),
       child: Column(
