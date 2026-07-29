@@ -160,7 +160,7 @@ class _Sidebar extends StatelessWidget {
               ]
             : null,
       ),
-      padding: EdgeInsets.fromLTRB(14, MediaQuery.of(context).padding.top + 18, 14, 18),
+      padding: EdgeInsets.fromLTRB(12, MediaQuery.of(context).padding.top + 14, 12, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -182,14 +182,13 @@ class _Sidebar extends StatelessWidget {
               ]),
             ),
           ]),
-          const SizedBox(height: 22),
-          // The destinations scroll when they can't all fit. With a dozen of
-          // them plus a pinned footer (theme + account), a fixed Column
-          // overflows on a short viewport — and floating costs another 28px of
-          // height. Expanded also replaces the old Spacer.
+          const SizedBox(height: 14),
+          // The tiles are sized so the whole list clears a laptop viewport
+          // without scrolling. The scroll view stays purely as a safety net for
+          // very short windows — it should never actually engage.
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 8),
+              physics: const ClampingScrollPhysics(),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: _navItems(context),
@@ -233,8 +232,10 @@ class _Sidebar extends StatelessWidget {
       final section = dests[i].section;
       if (section.isNotEmpty && section != lastSection) {
         out.add(Padding(
-          padding: EdgeInsets.only(top: out.isEmpty ? 0 : 18, bottom: 7, left: 6),
-          child: Text(section.toUpperCase(), style: AppleTheme.footnote(context).copyWith(color: sideMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.9)),
+          // Tight: the whole list has to clear a laptop viewport without
+          // scrolling, and section headers are pure signposting.
+          padding: EdgeInsets.only(top: out.isEmpty ? 0 : 9, bottom: 3, left: 6),
+          child: Text(section.toUpperCase(), style: AppleTheme.footnote(context).copyWith(color: sideMuted, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.9)),
         ));
         lastSection = section;
       }
@@ -271,7 +272,7 @@ class _NavTileState extends State<_NavTile> {
     final sideInk = admin ? const Color(0xFFC7CFDA) : p.label;
     final sideMuted = admin ? const Color(0xFF7D8794) : p.secondary;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: 2),
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hover = true),
@@ -282,7 +283,7 @@ class _NavTileState extends State<_NavTile> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           curve: Curves.easeOut,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
             // Selected keeps the solid fill; hover is a soft accent wash.
             color: on
@@ -291,11 +292,11 @@ class _NavTileState extends State<_NavTile> {
             borderRadius: adminRadius(p, kRadiusButton),
           ),
           child: Row(children: [
-            Icon(d.icon, size: 20,
+            Icon(d.icon, size: 17,
                 color: on ? Colors.white : (_hover ? p.accent : sideMuted)),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(d.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.body(context).copyWith(fontSize: 14.5, fontWeight: on ? FontWeight.w700 : FontWeight.w600, color: on ? Colors.white : (_hover ? p.accent : sideInk))),
+              child: Text(d.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.body(context).copyWith(fontSize: 13.5, fontWeight: on ? FontWeight.w700 : FontWeight.w600, color: on ? Colors.white : (_hover ? p.accent : sideInk))),
             ),
             if (d.badge > 0)
               Container(
