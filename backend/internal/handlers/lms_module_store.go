@@ -375,7 +375,8 @@ func (h *Handlers) AddModuleFromStore(c *fiber.Ctx) error {
 	}
 	var req struct {
 		Code        string `json:"code"`
-		BatchNumber string `json:"batch_number"` // "" = all batches
+		BatchNumber string `json:"batch_number"`     // "" = all batches
+		Parent      string `json:"parent_module_id"` // set to add it as a sub-module
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "bad request")
@@ -395,6 +396,16 @@ func (h *Handlers) AddModuleFromStore(c *fiber.Ctx) error {
 	if b := strings.TrimSpace(req.BatchNumber); b != "" {
 		batch = b
 	}
+	var parent any
+	if p := strings.TrimSpace(req.Parent); p != "" {
+		// The parent must be a top-level module in this course.
+		var pc string
+		var pp *string
+		if err := h.Pool.QueryRow(c.Context(), `SELECT course_id::text, parent_module_id::text FROM modules WHERE id=$1`, p).Scan(&pc, &pp); err != nil || pc != courseID || pp != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "invalid parent module")
+		}
+		parent = p
+	}
 
 	tx, err := h.Pool.Begin(c.Context())
 	if err != nil {
@@ -404,10 +415,10 @@ func (h *Handlers) AddModuleFromStore(c *fiber.Ctx) error {
 
 	var newModID string
 	if err := tx.QueryRow(c.Context(),
-		`INSERT INTO modules (course_id, title, position, batch_number, store_code)
-		 VALUES ($1,$2,COALESCE((SELECT max(position)+1 FROM modules WHERE course_id=$1),0),$3,$4)
+		`INSERT INTO modules (course_id, title, position, batch_number, store_code, parent_module_id)
+		 VALUES ($1,$2,COALESCE((SELECT max(position)+1 FROM modules WHERE course_id=$1),0),$3,$4,$5)
 		 RETURNING id`,
-		courseID, title, batch, code).Scan(&newModID); err != nil {
+		courseID, title, batch, code, parent).Scan(&newModID); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "module create failed")
 	}
 	// Copy every store lesson into the new module.

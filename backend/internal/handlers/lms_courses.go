@@ -294,6 +294,7 @@ func (h *Handlers) AddModule(c *fiber.Ctx) error {
 		Position    int    `json:"position"`
 		Parent      string `json:"parent_module_id"` // set to nest as a sub-module
 		BatchNumber string `json:"batch_number"`     // "" = all batches
+		Code        string `json:"code"`             // module code (links to the store for sync)
 	}
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Title) == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "title required")
@@ -301,6 +302,10 @@ func (h *Handlers) AddModule(c *fiber.Ctx) error {
 	var batch any
 	if b := strings.TrimSpace(req.BatchNumber); b != "" {
 		batch = b
+	}
+	var code any
+	if cc := strings.ToUpper(strings.TrimSpace(req.Code)); cc != "" {
+		code = cc
 	}
 	// A sub-module's parent must belong to the same course (and itself be top-level).
 	var parent *string
@@ -315,8 +320,8 @@ func (h *Handlers) AddModule(c *fiber.Ctx) error {
 	}
 	var id string
 	if err := h.Pool.QueryRow(c.Context(),
-		`INSERT INTO modules (course_id, title, position, parent_module_id, batch_number) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-		courseID, req.Title, req.Position, parent, batch).Scan(&id); err != nil {
+		`INSERT INTO modules (course_id, title, position, parent_module_id, batch_number, store_code) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+		courseID, req.Title, req.Position, parent, batch, code).Scan(&id); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": req.Title})

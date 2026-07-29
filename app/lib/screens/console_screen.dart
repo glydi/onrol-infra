@@ -2465,7 +2465,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   }
 
   // Add a stored module into this course/batch by its code.
-  Future<void> _addModuleFromStore(String batch) async {
+  Future<void> _addModuleFromStore(String batch, {String? parentId, String? parentTitle}) async {
     // Load the store modules so the admin can PICK one from a list (and still
     // type a code/ID manually if they prefer).
     List<Map<String, dynamic>> mods = [];
@@ -2478,13 +2478,15 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     if (!mounted) return;
     final code = TextEditingController();
     final ok = await showFormSheet(context, square: true, big: true,
-        title: batch.isEmpty ? 'Add module' : 'Add module → $batch',
+        title: parentId != null ? 'Add sub-module to "${parentTitle ?? 'Module'}"' : (batch.isEmpty ? 'Add module' : 'Add module → $batch'),
         builder: (setS) {
           final p = Palette.of(context);
           return [
-            _label(context, batch.isEmpty
-                ? 'Pick a module from the store (or type its code). It’s copied in for all batches.'
-                : 'Pick a module from the store (or type its code). It’s copied into “$batch” as an independent module.'),
+            _label(context, parentId != null
+                ? 'Pick a module from the store (or type its code) to add as a sub-module.'
+                : batch.isEmpty
+                    ? 'Pick a module from the store (or type its code). It’s copied in for all batches.'
+                    : 'Pick a module from the store (or type its code). It’s copied into “$batch”.'),
             const SizedBox(height: 10),
             if (mods.isEmpty)
               _label(context, 'No modules in the store yet — create one in the Module Store, or type a code below.')
@@ -2523,7 +2525,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
           if (code.text.trim().isEmpty) return 'Select a module or enter a code';
           try {
             await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/modules/from-store',
-                {'code': code.text.trim(), 'batch_number': batch});
+                {'code': code.text.trim(), 'batch_number': batch, if (parentId != null) 'parent_module_id': parentId});
             return null;
           } on ApiException catch (e) {
             return e.message;
@@ -3885,10 +3887,11 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
           // Add a sub-module (top-level modules only — one level of nesting).
           if (!isSub) ...[
             const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: _smallButton('Sub-module', CupertinoIcons.folder_badge_plus, () => _addModule(parentId: mid, parentTitle: mtitle)),
-            ),
+            Row(children: [
+              _smallButton('Sub-module', CupertinoIcons.folder_badge_plus, () => _addModule(parentId: mid, parentTitle: mtitle)),
+              const SizedBox(width: 6),
+              _smallButton('Sub by code', CupertinoIcons.tray_arrow_down_fill, () => _addModuleFromStore(_moduleBatch, parentId: mid, parentTitle: mtitle)),
+            ]),
           ],
         ]),
       ),
@@ -4240,6 +4243,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
 
   Future<void> _addModule({String? parentId, String? parentTitle}) async {
     final title = TextEditingController();
+    final code = TextEditingController();
     final sub = parentId != null;
     // A module belongs to whichever batch is being viewed; '' = shared by all
     // batches (the "All" tab, or a course opened outside a batch).
@@ -4248,11 +4252,16 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         title: sub
             ? 'Add Sub-module to "${parentTitle ?? 'Module'}"'
             : (target.isEmpty ? 'Add Module (all batches)' : 'Add Module → $target'),
-        builder: (_) => [sheetField(title, sub ? 'Sub-module title' : 'Module title', CupertinoIcons.folder)],
+        builder: (_) => [
+          sheetField(title, sub ? 'Sub-module title' : 'Module title', CupertinoIcons.folder),
+          const SizedBox(height: 10),
+          sheetField(code, 'Code (e.g. AI-01) — links to the Module Store for sync', CupertinoIcons.number),
+        ],
         onSubmit: () async {
       if (title.text.trim().isEmpty) return 'Title required';
       await widget.auth.apiPost('/api/v1/manage/courses/${widget.courseId}/modules', {
         'title': title.text.trim(),
+        if (code.text.trim().isNotEmpty) 'code': code.text.trim(),
         if (sub) 'parent_module_id': parentId,
         if (target.isNotEmpty) 'batch_number': target,
       });
