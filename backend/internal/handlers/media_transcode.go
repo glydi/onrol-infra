@@ -197,7 +197,25 @@ func (h *Handlers) transcodeToHLS(assetID, sourceKey string) {
 	}
 	hlsURL := strings.TrimRight(h.Cfg.R2.PublicBase, "/") + "/" + prefix + "index.m3u8"
 	durSecs := int(pr.duration + 0.5) // 0 if the probe couldn't read it; backfilled lazily on first live-playlist parse
-	if _, err := h.Pool.Exec(ctx, `UPDATE media_assets SET status='ready', hls_url=$2, enc_key=$3, duration_seconds=$4 WHERE id=$1`, assetID, hlsURL, encKey, durSecs); err != nil {
+
+	// Grab a poster frame for the grid thumbnail (best-effort — never fail the
+	// transcode over it). A frame a few seconds in avoids black intros.
+	var thumbURL any
+	if h.Cfg.R2.PublicBase != "" {
+		poster := filepath.Join(tmp, "poster.jpg")
+		ss := "3"
+		if pr.duration > 0 && pr.duration < 4 {
+			ss = "0"
+		}
+		if err := niceFfmpeg("-y", "-ss", ss, "-i", input, "-vframes", "1", "-vf", "scale=640:-2", "-q:v", "5", poster).Run(); err == nil {
+			posterKey := "videos/" + assetID + "/poster.jpg"
+			if _, err := cl.FPutObject(ctx, h.Cfg.R2.Bucket, posterKey, poster, minio.PutObjectOptions{ContentType: "image/jpeg"}); err == nil {
+				thumbURL = strings.TrimRight(h.Cfg.R2.PublicBase, "/") + "/" + posterKey
+			}
+		}
+	}
+
+	if _, err := h.Pool.Exec(ctx, `UPDATE media_assets SET status='ready', hls_url=$2, enc_key=$3, duration_seconds=$4, thumb_url=COALESCE($5,thumb_url) WHERE id=$1`, assetID, hlsURL, encKey, durSecs, thumbURL); err != nil {
 		fail("db update", err)
 		return
 	}

@@ -259,7 +259,7 @@ func (h *Handlers) ListVideos(c *fiber.Ctx) error {
 		`SELECT id, title, status,
 		        CASE WHEN status='ready' AND hls_url<>'' THEN hls_url ELSE url END AS play_url,
 		        size_bytes, created_at, COALESCE(duration_seconds,0), COALESCE(content_type,''),
-		        COALESCE(hls_url,''), COALESCE(object_key,''), (enc_key IS NOT NULL), COALESCE(folder_id::text,'')
+		        COALESCE(hls_url,''), COALESCE(object_key,''), (enc_key IS NOT NULL), COALESCE(folder_id::text,''), COALESCE(thumb_url,'')
 		   FROM media_assets ORDER BY created_at DESC LIMIT 500`)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "list failed")
@@ -267,16 +267,16 @@ func (h *Handlers) ListVideos(c *fiber.Ctx) error {
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var id, title, status, url, ctype, hlsURL, objKey, folderID string
+		var id, title, status, url, ctype, hlsURL, objKey, folderID, thumbURL string
 		var size int64
 		var dur int
 		var encrypted bool
 		var created any
-		if err := rows.Scan(&id, &title, &status, &url, &size, &created, &dur, &ctype, &hlsURL, &objKey, &encrypted, &folderID); err != nil {
+		if err := rows.Scan(&id, &title, &status, &url, &size, &created, &dur, &ctype, &hlsURL, &objKey, &encrypted, &folderID, &thumbURL); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		out = append(out, fiber.Map{"id": id, "title": title, "status": status, "url": url, "size_bytes": size, "created_at": created,
-			"duration_seconds": dur, "content_type": ctype, "hls_url": hlsURL, "object_key": objKey, "encrypted": encrypted, "folder_id": folderID})
+			"duration_seconds": dur, "content_type": ctype, "hls_url": hlsURL, "object_key": objKey, "encrypted": encrypted, "folder_id": folderID, "thumb_url": thumbURL})
 	}
 	return c.JSON(fiber.Map{"videos": out, "r2_enabled": h.Cfg.R2.Enabled()})
 }

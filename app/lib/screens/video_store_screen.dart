@@ -526,13 +526,23 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
         Expanded(
           child: HoverTap(
             onTap: () => _play(url, title),
-            child: Container(
-              decoration: BoxDecoration(color: p.accent.withOpacity(0.12)),
-              alignment: Alignment.center,
-              child: processing
-                  ? const CupertinoActivityIndicator(radius: 12)
-                  : Icon(CupertinoIcons.play_rectangle_fill, size: 44, color: p.accent),
-            ),
+            child: Builder(builder: (_) {
+              final thumb = v['thumb_url']?.toString() ?? '';
+              return Container(
+                decoration: BoxDecoration(color: p.accent.withOpacity(0.12)),
+                alignment: Alignment.center,
+                child: Stack(fit: StackFit.expand, alignment: Alignment.center, children: [
+                  if (thumb.isNotEmpty)
+                    Image.network(thumb, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox())
+                  else if (!processing)
+                    Center(child: Icon(CupertinoIcons.play_rectangle_fill, size: 44, color: p.accent)),
+                  if (processing) const Center(child: CupertinoActivityIndicator(radius: 12)),
+                  // Play affordance over a real thumbnail.
+                  if (thumb.isNotEmpty && !processing)
+                    const Center(child: Icon(CupertinoIcons.play_circle_fill, size: 40, color: Colors.white)),
+                ]),
+              );
+            }),
           ),
         ),
         Padding(
