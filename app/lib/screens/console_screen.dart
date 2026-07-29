@@ -98,6 +98,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   int _videoCount = 0;
   int _videoBytes = 0;
   int _videoProcessing = 0;
+  // Daily student interaction counts for the Home chart.
+  List<dynamic> _activity = [];
 
   @override
   void initState() {
@@ -137,6 +139,12 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           _videoBytes = vids.fold<int>(
               0, (s, v) => s + (((v as Map)['size_bytes'] as num?)?.toInt() ?? 0));
           _videoProcessing = vids.where((v) => (v as Map)['status'] == 'processing').length;
+        } catch (_) {}
+        // Student interactions per day for the Home chart. Best-effort: an
+        // older API without this route must not break the console.
+        try {
+          final ar = await widget.auth.apiGet('/api/v1/manage/activity?days=14');
+          _activity = (ApiClient.decode(ar)['days'] as List?) ?? _activity;
         } catch (_) {}
       }
     } catch (_) {
@@ -1269,6 +1277,11 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
                 ),
               const SizedBox(height: 22),
             ],
+            if (_isAdmin) ...[
+              const SectionHeader('Student activity · last 14 days'),
+              _activityChart(),
+              const SizedBox(height: 22),
+            ],
             // Where the students actually are — the one distribution that
             // tells you if a cohort is lopsided.
             const SectionHeader('Students per course'),
@@ -1278,6 +1291,68 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       ),
     );
   }
+
+  /// Daily student interactions — lessons completed, work submitted, questions
+  /// asked — as three lines over a shared day axis.
+  Widget _activityChart() {
+    final p = Palette.of(context);
+    if (_activity.isEmpty) {
+      return AppleCard(square: true,
+          child: Text('No activity recorded yet.', style: AppleTheme.footnote(context)));
+    }
+    final lessons = _activity.map((d) => (d['lessons'] as num?)?.toInt() ?? 0).toList();
+    final subs = _activity.map((d) => (d['submissions'] as num?)?.toInt() ?? 0).toList();
+    final qs = _activity.map((d) => (d['questions'] as num?)?.toInt() ?? 0).toList();
+    final peak = [
+      ...lessons, ...subs, ...qs,
+    ].fold<int>(0, (m, v) => v > m ? v : m);
+    String dayLabel(int i) {
+      final s = _activity[i]['date']?.toString() ?? '';
+      return s.length >= 10 ? s.substring(5) : s; // MM-DD
+    }
+
+    return AppleCard(
+      square: true,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          _legendDot(p.accent, 'Lessons'),
+          const SizedBox(width: 14),
+          _legendDot(AdminColors.chipTealFg, 'Submissions'),
+          const SizedBox(width: 14),
+          _legendDot(AdminColors.chipPurpleFg, 'Questions'),
+          const Spacer(),
+          Text(peak == 0 ? 'no events' : 'peak $peak/day',
+              style: AppleTheme.footnote(context)),
+        ]),
+        const SizedBox(height: 14),
+        SizedBox(
+          height: 168,
+          child: CustomPaint(
+            size: Size.infinite,
+            painter: _ActivityPainter(
+              series: [lessons, subs, qs],
+              colors: [p.accent, AdminColors.chipTealFg, AdminColors.chipPurpleFg],
+              grid: p.separator,
+              peak: peak,
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        // Only the ends are labelled — a tick per day is unreadable at this width.
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text(dayLabel(0), style: AppleTheme.footnote(context)),
+          Text(dayLabel(_activity.length - 1), style: AppleTheme.footnote(context)),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _legendDot(Color c, String label) => Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(width: 9, height: 9,
+            decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3))),
+        const SizedBox(width: 6),
+        Text(label, style: AppleTheme.footnote(context)),
+      ]);
 
   String _fmtBytes(int b) {
     if (b >= 1073741824) return '${(b / 1073741824).toStringAsFixed(1)} GB';
@@ -5909,6 +5984,80 @@ class _BatchStudentsScreenState extends State<BatchStudentsScreen> {
                     ),
     ));
   }
+}
+
+/// Draws the activity series: a faint baseline grid, a soft area fill under the
+/// first series, then a line per series with its last point emphasised.
+class _ActivityPainter extends CustomPainter {
+  _ActivityPainter({
+    required this.series,
+    required this.colors,
+    required this.grid,
+    required this.peak,
+  });
+  final List<List<int>> series;
+  final List<Color> colors;
+  final Color grid;
+  final int peak;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final maxY = (peak == 0 ? 1 : peak).toDouble();
+    final n = series.first.length;
+    if (n < 2) return;
+    final dx = size.width / (n - 1);
+    double yFor(int v) => size.height - (v / maxY) * (size.height - 6) - 3;
+
+    // Four horizontal guides — enough to read level, faint enough to ignore.
+    final gridPaint = Paint()
+      ..color = grid
+      ..strokeWidth = 1;
+    for (var i = 0; i <= 3; i++) {
+      final y = size.height * i / 3;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+
+    for (var s = 0; s < series.length; s++) {
+      final data = series[s];
+      final path = Path();
+      for (var i = 0; i < n; i++) {
+        final o = Offset(i * dx, yFor(data[i]));
+        i == 0 ? path.moveTo(o.dx, o.dy) : path.lineTo(o.dx, o.dy);
+      }
+      // Area fill under the primary series only — three fills would muddy it.
+      if (s == 0) {
+        final fill = Path.from(path)
+          ..lineTo(size.width, size.height)
+          ..lineTo(0, size.height)
+          ..close();
+        canvas.drawPath(
+          fill,
+          Paint()
+            ..shader = LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [colors[s].withValues(alpha: 0.22), colors[s].withValues(alpha: 0.01)],
+            ).createShader(Offset.zero & size),
+        );
+      }
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = colors[s]
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round,
+      );
+      // Emphasise where the series ends — that's "now".
+      final last = Offset((n - 1) * dx, yFor(data[n - 1]));
+      canvas.drawCircle(last, 3.5, Paint()..color = colors[s]);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ActivityPainter old) =>
+      old.series != series || old.peak != peak || old.colors != colors;
 }
 
 /// Bottom sheet showing the original converted-lead record for a student.
