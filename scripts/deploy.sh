@@ -27,6 +27,61 @@ command -v flutter >/dev/null || export PATH="$PATH:$HOME/flutter/bin:/opt/flutt
 
 log() { printf '\n\033[1;36m==>\033[0m \033[1m%s\033[0m\n' "$*"; }
 
+# ---------------------------------------------------------------------------
+# Refuse to ship a tree that's behind origin/main.
+#
+# Deploys upload a locally-built bundle, so whoever deploys LAST wins — a build
+# made before pulling silently reverts everyone else's work on the live site,
+# even though their commits are safely in git. This has bitten us repeatedly.
+# Abort rather than auto-pulling: rebasing someone's working tree from under
+# them is its own surprise.
+# ---------------------------------------------------------------------------
+require_current_tree() {
+  git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1 || return 0   # not a checkout
+  git -C "$ROOT" fetch -q origin main 2>/dev/null || {
+    log "WARNING: could not reach origin — deploying an unverified tree"; return 0; }
+  local behind
+  behind="$(git -C "$ROOT" rev-list --count HEAD..origin/main 2>/dev/null || echo 0)"
+  if [ "${behind:-0}" -gt 0 ]; then
+    printf '\n\033[1;31mABORT:\033[0m your tree is %s commit(s) behind origin/main.\n' "$behind"
+    printf 'Deploying now would revert that work on the live site. Run:\n\n'
+    printf '    git pull --rebase origin main\n\n'
+    printf 'then rebuild and deploy. Set SKIP_FRESH_CHECK=1 to override.\n\n'
+    exit 1
+  fi
+}
+[ "${SKIP_FRESH_CHECK:-0}" = "1" ] || require_current_tree
+
+# Mirror a local directory to the server, replacing its contents.
+#   push_dir <local-dir> <remote-dir>
+# Uses rsync when available; otherwise tar+scp with an atomic swap, so this
+# works from Git Bash on Windows, which has no rsync. The tarball is integrity
+# checked BEFORE anything is swapped — a truncated scp must never be unpacked
+# over the live site.
+push_dir() {
+  local src="$1" dest="$2"
+  if command -v rsync >/dev/null; then
+    rsync -az --delete -e ssh "$src/" "$HOST:$dest/"
+    return
+  fi
+  log "rsync not found — shipping via tar+scp"
+  local tgz="/tmp/onrol-push-$$.tgz"
+  tar czf "$tgz" -C "$src" .
+  scp -o ConnectTimeout=20 "$tgz" "$HOST:/tmp/onrol-push.tgz"
+  rm -f "$tgz"
+  ssh "$HOST" "set -e
+    gzip -t /tmp/onrol-push.tgz
+    rm -rf $dest.new && mkdir -p $dest.new
+    tar xzf /tmp/onrol-push.tgz -C $dest.new
+    [ -n \"\$(ls -A $dest.new)\" ]
+    if [ -d $dest ]; then
+      chown --reference=$dest -R $dest.new 2>/dev/null || true
+      mv $dest $dest.prev-\$(date +%Y%m%d-%H%M%S)
+    fi
+    mv $dest.new $dest
+    rm -f /tmp/onrol-push.tgz"
+}
+
 # Upsert secret env vars (GROQ_API_KEY, etc.) from a local, gitignored file into
 # the server's /opt/onrol/.env so the systemd EnvironmentFile picks them up on
 # restart. The file never enters git (matched by *.env in .gitignore), so the
@@ -100,7 +155,7 @@ self.addEventListener('activate', function (event) {
 SW
   log "Publishing web → $HOST:$WEB_ROOT (with timestamped backup)"
   ssh "$HOST" "cp -a $WEB_ROOT $WEB_ROOT.bak-\$(date +%Y%m%d-%H%M%S) 2>/dev/null || true"
-  rsync -az --delete -e ssh "$ROOT/app/build/web/" "$HOST:$WEB_ROOT/"
+  push_dir "$ROOT/app/build/web" "$WEB_ROOT"
   local L R
   L="$(md5sum "$ROOT/app/build/web/main.dart.js" | awk '{print $1}')"
   R="$(ssh "$HOST" "md5sum $WEB_ROOT/main.dart.js | awk '{print \$1}'")"
@@ -110,7 +165,7 @@ SW
 deploy_landing() {
   log "Publishing landing → $HOST:$LANDING_ROOT"
   ssh "$HOST" "mkdir -p $LANDING_ROOT"
-  rsync -az -e ssh "$ROOT/deploy/landing/" "$HOST:$LANDING_ROOT/"
+  push_dir "$ROOT/deploy/landing" "$LANDING_ROOT"
   local L R
   L="$(md5sum "$ROOT/deploy/landing/index.html" | awk '{print $1}')"
   R="$(ssh "$HOST" "md5sum $LANDING_ROOT/index.html | awk '{print \$1}'")"
