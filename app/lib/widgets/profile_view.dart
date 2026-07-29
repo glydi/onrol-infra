@@ -167,10 +167,8 @@ class _ProfileViewState extends State<ProfileView> {
             ),
           ]),
         ),
-        const SizedBox(height: 18),
-        Text('Appearance', style: AppleTheme.footnote(context)),
-        const SizedBox(height: 8),
-        const ThemeToggle(),
+        // Theme lives in Settings → Appearance; a third copy of the same
+        // control just made it unclear which one was authoritative.
         const SizedBox(height: 18),
         Text('Security', style: AppleTheme.footnote(context)),
         const SizedBox(height: 8),
