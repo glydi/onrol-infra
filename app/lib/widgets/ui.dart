@@ -9,13 +9,13 @@ import '../theme_controller.dart';
 // Corner radii for every box the app draws. Admin/LMS panels used to be hard
 // squared (radius 0); they're rounded now. Keeping the values here means the
 // whole app — cards, buttons, dialogs, sheets, fields — changes in one place.
-const double kRadiusCard = 12;
-const double kRadiusButton = 10;
-const double kRadiusDialog = 14;
-const double kRadiusSheet = 16;
-const double kRadiusField = 10;
-const double kRadiusChip = 8;
-const double kRadiusPill = 999; // fully rounded (progress bars)
+const double kRadiusCard = 20;
+const double kRadiusButton = 12;
+const double kRadiusDialog = 20;
+const double kRadiusSheet = 24;
+const double kRadiusField = 12;
+const double kRadiusChip = 10;
+const double kRadiusPill = 999; // fully rounded (progress bars, banner buttons)
 
 /// A frosted, translucent top bar (iOS large-title style).
 class GlassHeader extends StatelessWidget implements PreferredSizeWidget {
@@ -87,10 +87,18 @@ class _AppleCardState extends State<AppleCard> {
       decoration: BoxDecoration(
         color: p.card,
         borderRadius: BorderRadius.circular(kRadiusCard),
-        border: Border.all(color: hovered ? p.accent : p.separator),
-        boxShadow: hovered
-            ? [BoxShadow(color: Colors.black.withOpacity(p.dark ? 0.32 : 0.08), blurRadius: 12, offset: const Offset(0, 4))]
-            : null,
+        // Admin cards float on the tinted ground: a soft ambient shadow rather
+        // than a hard outline. The border only shows to signal hover.
+        border: Border.all(
+            color: hovered ? p.accent : (p.admin ? Colors.transparent : p.separator)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: p.dark ? 0.34 : 0.05),
+            blurRadius: hovered ? 24 : 16,
+            offset: Offset(0, hovered ? 8 : 5),
+            spreadRadius: -6,
+          ),
+        ],
       ),
       child: widget.child,
     );

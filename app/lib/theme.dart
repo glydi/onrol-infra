@@ -35,21 +35,40 @@ class AppleColors {
 }
 
 /// The LMS admin look: orange-red accent, neutral surfaces, flatter depth.
+/// Admin/LMS palette — a cool blue-grey ground with white cards floating on it.
+/// The accent stays the ONROL orange; swap [accent]/[accentDark] for the teal
+/// pair below if the brand ever moves.
 class AdminColors {
   static const accent = Color(0xFFFF4F2B);
   static const accentDark = Color(0xFFFF6A4D);
-  static const lightBg = Color(0xFFF4F5F7);
-  static const lightCard = Color(0xFFFFFFFF);
-  static const lightCard2 = Color(0xFFF7F8FA);
-  static const lightLabel = Color(0xFF141922);
-  static const lightSecondary = Color(0xFF4A5462);
-  static const lightSeparator = Color(0xFFE4E7EC);
-  static const darkBg = Color(0xFF0C0E11);
-  static const darkCard = Color(0xFF14181D);
-  static const darkCard2 = Color(0xFF1A1F26);
-  static const darkLabel = Color(0xFFE8EDF3);
-  static const darkSecondary = Color(0xFFA7B1BD);
-  static const darkSeparator = Color(0xFF252B33);
+  // Reference teal, kept here so switching is a two-line change:
+  //   static const accent = Color(0xFF0F858C);
+  //   static const accentDark = Color(0xFF2AA7AE);
+
+  static const lightBg = Color(0xFFEEF3F6);        // app ground
+  static const lightCard = Color(0xFFFFFFFF);      // cards float on it
+  static const lightCard2 = Color(0xFFF1F5F9);     // recessed inner boxes
+  static const lightLabel = Color(0xFF1A2C3A);     // deep blue-grey ink
+  static const lightSecondary = Color(0xFF829AB1); // muted blue-grey
+  static const lightSeparator = Color(0xFFE2E8F0);
+
+  static const darkBg = Color(0xFF0E151B);
+  static const darkCard = Color(0xFF16202A);
+  static const darkCard2 = Color(0xFF1C2833);
+  static const darkLabel = Color(0xFFE6EDF3);
+  static const darkSecondary = Color(0xFF8FA3B5);
+  static const darkSeparator = Color(0xFF24313D);
+
+  /// Pastel chip pairs (background, icon) for stat tiles — decorative only,
+  /// never the accent. Mirrors the reference's purple/pink/orange/teal set.
+  static const chipPurpleBg = Color(0xFFE9D5FF);
+  static const chipPurpleFg = Color(0xFF9333EA);
+  static const chipPinkBg = Color(0xFFFCE7F3);
+  static const chipPinkFg = Color(0xFFDB2777);
+  static const chipOrangeBg = Color(0xFFFFEDD5);
+  static const chipOrangeFg = Color(0xFFEA580C);
+  static const chipTealBg = Color(0xFFCCFBF1);
+  static const chipTealFg = Color(0xFF0D9488);
 }
 
 /// Marks a subtree as the LMS admin skin. Student surfaces keep Apple tokens.

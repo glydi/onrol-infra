@@ -1090,14 +1090,21 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           else ...[
             _statGrid([
               _stat('Courses', '${_courses.length}',
-                  '$published published · $drafts draft', CupertinoIcons.square_list_fill),
+                  '$published published · $drafts draft', CupertinoIcons.square_list_fill,
+                  AdminColors.chipPurpleBg, AdminColors.chipPurpleFg),
               if (_isAdmin)
-                _stat('Students', '$students', 'enrolled learners', CupertinoIcons.person_2_fill),
+                _stat('Students', '$students', 'enrolled learners', CupertinoIcons.person_2_fill,
+                    AdminColors.chipTealBg, AdminColors.chipTealFg),
               if (_isAdmin)
-                _stat('Instructors', '$instructors', 'mentors', CupertinoIcons.person_badge_plus),
-              _stat('Requests', '${_requests.length}', 'awaiting a decision', CupertinoIcons.tray_arrow_down_fill),
+                _stat('Instructors', '$instructors', 'mentors', CupertinoIcons.person_badge_plus,
+                    AdminColors.chipPinkBg, AdminColors.chipPinkFg),
+              _stat('Requests', '${_requests.length}', 'awaiting a decision',
+                  CupertinoIcons.tray_arrow_down_fill,
+                  AdminColors.chipOrangeBg, AdminColors.chipOrangeFg),
               if (_isAdmin)
-                _stat('Questions', '$_mentorWaiting', 'awaiting a reply', CupertinoIcons.chat_bubble_2_fill),
+                _stat('Questions', '$_mentorWaiting', 'awaiting a reply',
+                    CupertinoIcons.chat_bubble_2_fill,
+                    AdminColors.chipPurpleBg, AdminColors.chipPurpleFg),
             ]),
             const SizedBox(height: 22),
             // Only surfaces when there's genuinely something to act on.
@@ -1136,22 +1143,26 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     });
   }
 
-  Widget _stat(String label, String value, String sub, IconData icon) {
+  // Icon sits in its own pastel chip above the label, the way the reference
+  // dashboard stacks its mini-cards: chip → caption → big number.
+  Widget _stat(String label, String value, String sub, IconData icon,
+      Color chipBg, Color chipFg) {
     final p = Palette.of(context);
     return AppleCard(
       square: true,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(icon, size: 18, color: p.accent),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(label.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: AppleTheme.footnote(context).copyWith(
-                    fontWeight: FontWeight.w700, letterSpacing: 1.1, color: p.secondary)),
-          ),
-        ]),
-        const SizedBox(height: 8),
-        Text(value, style: AppleTheme.headline(context).copyWith(fontSize: 28, fontWeight: FontWeight.w800)),
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(color: chipBg, borderRadius: BorderRadius.circular(kRadiusChip)),
+          child: Icon(icon, size: 17, color: chipFg),
+        ),
+        const SizedBox(height: 12),
+        Text(label.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: AppleTheme.footnote(context).copyWith(
+                fontWeight: FontWeight.w700, letterSpacing: 1.1, color: p.secondary)),
+        const SizedBox(height: 3),
+        Text(value, style: AppleTheme.headline(context).copyWith(fontSize: 26, fontWeight: FontWeight.w800)),
         const SizedBox(height: 2),
         Text(sub, maxLines: 2, overflow: TextOverflow.ellipsis, style: AppleTheme.footnote(context)),
       ]),
