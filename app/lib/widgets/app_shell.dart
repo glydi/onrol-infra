@@ -214,27 +214,59 @@ class _Sidebar extends StatelessWidget {
     return out;
   }
 
-  Widget _tile(BuildContext context, NavDest d, bool on, VoidCallback onTap) {
+  Widget _tile(BuildContext context, NavDest d, bool on, VoidCallback onTap) =>
+      _NavTile(dest: d, selected: on, onTap: onTap);
+}
+
+/// One sidebar destination. Stateful purely so it can highlight under the
+/// cursor — the selected item keeps its solid accent fill.
+class _NavTile extends StatefulWidget {
+  const _NavTile({required this.dest, required this.selected, required this.onTap});
+  final NavDest dest;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  State<_NavTile> createState() => _NavTileState();
+}
+
+class _NavTileState extends State<_NavTile> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.dest;
+    final on = widget.selected;
     final p = Palette.of(context);
     final admin = p.admin;
     final sideInk = admin ? const Color(0xFFC7CFDA) : p.label;
     final sideMuted = admin ? const Color(0xFF7D8794) : p.secondary;
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
-      child: GestureDetector(
-        onTap: onTap,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+        onTap: widget.onTap,
         behavior: HitTestBehavior.opaque,
-        child: Container(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           decoration: BoxDecoration(
-            color: on ? p.accent : Colors.transparent,
+            // Selected keeps the solid fill; hover is a soft accent wash.
+            color: on
+                ? p.accent
+                : (_hover ? p.accent.withValues(alpha: 0.14) : Colors.transparent),
             borderRadius: adminRadius(p, kRadiusButton),
           ),
           child: Row(children: [
-            Icon(d.icon, size: 20, color: on ? Colors.white : sideMuted),
+            Icon(d.icon, size: 20,
+                color: on ? Colors.white : (_hover ? p.accent : sideMuted)),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(d.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.body(context).copyWith(fontSize: 14.5, fontWeight: on ? FontWeight.w700 : FontWeight.w600, color: on ? Colors.white : sideInk)),
+              child: Text(d.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.body(context).copyWith(fontSize: 14.5, fontWeight: on ? FontWeight.w700 : FontWeight.w600, color: on ? Colors.white : (_hover ? p.accent : sideInk))),
             ),
             if (d.badge > 0)
               Container(
@@ -248,6 +280,7 @@ class _Sidebar extends StatelessWidget {
               ),
           ]),
         ),
+      ),
       ),
     );
   }

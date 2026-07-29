@@ -74,6 +74,57 @@ class _FadeInUpState extends State<FadeInUp> with SingleTickerProviderStateMixin
       FadeTransition(opacity: _fade, child: SlideTransition(position: _slide, child: widget.child));
 }
 
+/// Compact tinted action — sized to its label rather than the full width, and
+/// it highlights on hover instead of scaling. Use where a full-width
+/// [PrimaryButton] would shout (e.g. "Create batch" beside a list).
+class SmallActionButton extends StatefulWidget {
+  const SmallActionButton({super.key, required this.label, required this.icon, required this.onPressed});
+  final String label;
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  State<SmallActionButton> createState() => _SmallActionButtonState();
+}
+
+class _SmallActionButtonState extends State<SmallActionButton> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final on = widget.onPressed != null;
+    return MouseRegion(
+      cursor: on ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onPressed,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+          decoration: BoxDecoration(
+            // Hover deepens the tint and firms the outline — no scale "pop".
+            color: p.accent.withValues(alpha: _hover && on ? 0.20 : 0.10),
+            borderRadius: adminRadius(p, kRadiusField),
+            border: Border.all(color: _hover && on ? p.accent : Colors.transparent),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(widget.icon, size: 17, color: on ? p.accent : p.secondary),
+            const SizedBox(width: 7),
+            Text(widget.label,
+                style: TextStyle(
+                    color: on ? p.accent : p.secondary,
+                    fontSize: 14, fontWeight: FontWeight.w700)),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
 /// A frosted, translucent top bar (iOS large-title style).
 class GlassHeader extends StatelessWidget implements PreferredSizeWidget {
   const GlassHeader({super.key, required this.title, this.trailing, this.leading});
@@ -135,9 +186,9 @@ class _AppleCardState extends State<AppleCard> {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final interactive = widget.onTap != null;
-    // Every box highlights under the cursor, not just tappable ones — the
-    // pointer cursor below is what still distinguishes the two.
-    final hovered = _hover;
+    // Only clickable boxes highlight — a static panel lighting up reads as
+    // interactive when it isn't.
+    final hovered = interactive && _hover;
     final card = AnimatedContainer(
       duration: const Duration(milliseconds: 120),
       curve: Curves.easeOut,
@@ -167,15 +218,12 @@ class _AppleCardState extends State<AppleCard> {
       ),
       child: widget.child,
     );
-    // Non-tappable boxes still track hover (so they highlight); only tappable
-    // ones get the pointer cursor and the tap handler.
+    if (!interactive) return card;
     return MouseRegion(
-      cursor: interactive ? SystemMouseCursors.click : MouseCursor.defer,
+      cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
-      child: interactive
-          ? GestureDetector(onTap: widget.onTap, behavior: HitTestBehavior.opaque, child: card)
-          : card,
+      child: GestureDetector(onTap: widget.onTap, behavior: HitTestBehavior.opaque, child: card),
     );
   }
 }

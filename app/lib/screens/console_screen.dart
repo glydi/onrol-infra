@@ -5297,7 +5297,16 @@ class _CourseBatchesScreenState extends State<CourseBatchesScreen> {
                       ]),
                     ),
                     const SizedBox(height: 10),
-                    PrimaryButton(label: 'Create batch (${_queue.length})', icon: CupertinoIcons.square_stack_3d_up, square: true, onPressed: _createBatch),
+                    // Compact + highlight-on-hover: a full-width CTA that
+                    // scales on press shouted over the batch list.
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: SmallActionButton(
+                        label: 'Create batch (${_queue.length})',
+                        icon: CupertinoIcons.square_stack_3d_up,
+                        onPressed: _createBatch,
+                      ),
+                    ),
                     const SizedBox(height: 18),
                   ],
                   if (_err != null) AppleCard(square: true, child: Text(_err!, style: AppleTheme.footnote(context)))
