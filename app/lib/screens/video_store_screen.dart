@@ -353,7 +353,18 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
                           _folder.isEmpty ? 'No videos yet. Upload one to get started.' : 'No videos in this folder. Upload here or move videos in from another folder.',
                           style: AppleTheme.footnote(context)));
                       }
-                      return Column(children: vids.map((v) => _row(v as Map<String, dynamic>)).toList());
+                      // 1:1 cards, 3 per row on wide screens (2 / 1 when narrow).
+                      final w = MediaQuery.of(context).size.width;
+                      final cols = w >= 760 ? 3 : (w >= 520 ? 2 : 1);
+                      return GridView.count(
+                        crossAxisCount: cols,
+                        childAspectRatio: 1,
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        children: vids.map((v) => _gridCard(v as Map<String, dynamic>)).toList(),
+                      );
                     }),
                   ],
                 ],
@@ -495,6 +506,72 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
       await widget.auth.apiPost('/api/v1/manage/videos/$videoId/folder', {'folder_id': v});
       _toast('Moved'); _load();
     } catch (_) { _toast('Could not move'); }
+  }
+
+  // Square (1:1) video card for the grid.
+  Widget _gridCard(Map<String, dynamic> v) {
+    final p = Palette.of(context);
+    final url = v['url']?.toString() ?? '';
+    final title = v['title']?.toString() ?? 'Video';
+    final status = v['status']?.toString() ?? 'ready';
+    final ready = status == 'ready';
+    final processing = status == 'processing';
+    final statusColor = ready ? AppleColors.green : (processing ? AppleColors.orange : AppleColors.red);
+    final statusText = ready ? 'HLS ready' : (processing ? 'Processing…' : 'Failed');
+    return AppleCard(
+      square: true,
+      padding: EdgeInsets.zero,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // Thumbnail / play area fills the top of the square.
+        Expanded(
+          child: HoverTap(
+            onTap: () => _play(url, title),
+            child: Container(
+              decoration: BoxDecoration(color: p.accent.withOpacity(0.12)),
+              alignment: Alignment.center,
+              child: processing
+                  ? const CupertinoActivityIndicator(radius: 12)
+                  : Icon(CupertinoIcons.play_rectangle_fill, size: 44, color: p.accent),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text(title, style: AppleTheme.body(context).copyWith(fontSize: 13.5, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 3),
+            HoverTap(onTap: () => _showDetails(v), child: Text(_metaLine(v), style: AppleTheme.footnote(context), maxLines: 1, overflow: TextOverflow.ellipsis)),
+            const SizedBox(height: 6),
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(color: statusColor.withOpacity(0.15)),
+                child: Text(statusText, style: TextStyle(color: statusColor, fontSize: 9.5, fontWeight: FontWeight.w700)),
+              ),
+              const Spacer(),
+              if (widget.onPick != null)
+                HoverTap(
+                  onTap: () => widget.onPick!(v['id']?.toString() ?? '', url, title),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(color: p.accent),
+                    child: const Text('Use', style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700)),
+                  ),
+                )
+              else ...[
+                HoverTap(onTap: () { Clipboard.setData(ClipboardData(text: url)); _toast('URL copied'); }, child: Icon(CupertinoIcons.doc_on_doc, size: 16, color: p.secondary)),
+                const SizedBox(width: 10),
+                HoverTap(onTap: () => _moveToFolder(v['id'].toString()), child: Icon(CupertinoIcons.folder, size: 16, color: p.secondary)),
+                const SizedBox(width: 10),
+                HoverTap(onTap: () => _rename(v['id'].toString(), title), child: Icon(CupertinoIcons.pencil, size: 16, color: p.secondary)),
+                const SizedBox(width: 10),
+                HoverTap(onTap: () => _delete(v['id'].toString(), title), child: const Icon(CupertinoIcons.trash, size: 16, color: AppleColors.red)),
+              ],
+            ]),
+          ]),
+        ),
+      ]),
+    );
   }
 
   Widget _row(Map<String, dynamic> v) {
