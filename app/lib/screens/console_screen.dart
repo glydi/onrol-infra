@@ -1446,7 +1446,15 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
               ]),
             )
           else
-            ..._courses.map((c) => _courseRow(c as Map<String, dynamic>)),
+            // Two course cards per row on wide screens, one when narrow.
+            LayoutBuilder(builder: (ctx, cons) {
+              final two = cons.maxWidth >= 640;
+              final w = two ? (cons.maxWidth - 12) / 2 : cons.maxWidth;
+              return Wrap(
+                spacing: 12,
+                children: _courses.map((c) => SizedBox(width: w, child: _courseRow(c as Map<String, dynamic>))).toList(),
+              );
+            }),
         ],
       ),
     );
@@ -7704,7 +7712,10 @@ class _ModuleStoreScreenState extends State<ModuleStoreScreen> {
       appBar: AppBar(
         backgroundColor: p.bg,
         title: Text('Module Store', style: AppleTheme.headline(context)),
-        actions: [IconButton(onPressed: _create, icon: Icon(CupertinoIcons.add, color: p.accent))],
+        actions: [
+          IconButton(tooltip: 'New folder', onPressed: _newFolder, icon: Icon(CupertinoIcons.folder_badge_plus, color: p.accent)),
+          IconButton(tooltip: 'New module', onPressed: _create, icon: Icon(CupertinoIcons.add, color: p.accent)),
+        ],
       ),
       body: _loading
           ? const Center(child: CupertinoActivityIndicator())
@@ -7713,97 +7724,78 @@ class _ModuleStoreScreenState extends State<ModuleStoreScreen> {
               onRefresh: _load,
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
-                children: [
-                  Text('Build a module once, then add it to any course/batch by its code. Organise them into folders.', style: AppleTheme.footnote(context)),
-                  const SizedBox(height: 12),
-                  _folderBar(),
-                  if (_folder.isNotEmpty && _folder != '__none__') ...[
-                    const SizedBox(height: 8),
-                    Builder(builder: (_) {
-                      final f = _folders.firstWhere((e) => e['id'].toString() == _folder, orElse: () => <String, dynamic>{});
-                      if (f.isEmpty) return const SizedBox.shrink();
-                      return Row(children: [
-                        _folderBtn(CupertinoIcons.pencil, 'Rename folder', () => _renameFolder(f)),
-                        const SizedBox(width: 8),
-                        _folderBtn(CupertinoIcons.trash, 'Delete folder', () => _deleteFolder(f), color: AppleColors.red),
-                      ]);
-                    }),
-                  ],
-                  const SizedBox(height: 12),
-                  Builder(builder: (_) {
-                    final mods = _modules.where((m) {
-                      final fid = (m['folder_id']?.toString() ?? '');
-                      if (_folder.isEmpty) return true;
-                      if (_folder == '__none__') return fid.isEmpty;
-                      return fid == _folder;
-                    }).toList();
-                    if (mods.isEmpty) {
-                      return AppleCard(square: true, child: Text(_modules.isEmpty ? 'No stored modules yet. Tap ＋ to create one.' : 'No modules in this folder.', style: AppleTheme.footnote(context)));
-                    }
-                    // 1:1 cards, 4 per row on wide screens.
-                    final w = MediaQuery.of(context).size.width;
-                    final cols = w >= 900 ? 4 : (w >= 640 ? 3 : (w >= 420 ? 2 : 1));
-                    return GridView.count(
-                      crossAxisCount: cols,
-                      childAspectRatio: 1,
-                      crossAxisSpacing: 10,
-                      mainAxisSpacing: 10,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      children: mods.map(_row).toList(),
-                    );
-                  }),
-                ],
+                children: _folder.isEmpty ? _foldersView() : _folderContents(),
               ),
             ),
     )));
   }
 
-  Widget _folderBar() {
-    final p = Palette.of(context);
+  // Landing: folders as 1:1 cards, 4 per row (Unfiled + each folder).
+  List<Widget> _foldersView() {
     final unfiled = _modules.where((m) => (m['folder_id']?.toString() ?? '').isEmpty).length;
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(children: [
-        _folderChip('All', '', _modules.length, null),
-        const SizedBox(width: 6),
-        _folderChip('Unfiled', '__none__', unfiled, null),
-        for (final f in _folders) ...[
-          const SizedBox(width: 6),
-          _folderChip(f['name']?.toString() ?? 'Folder', f['id'].toString(), (f['modules'] as num?)?.toInt() ?? 0, f),
-        ],
-        const SizedBox(width: 6),
-        GestureDetector(
-          onTap: _newFolder,
-          behavior: HitTestBehavior.opaque,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(color: p.card2, border: Border.all(color: p.separator)),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(CupertinoIcons.folder_badge_plus, size: 15, color: p.accent),
-              const SizedBox(width: 5),
-              Text('New folder', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: p.accent)),
-            ]),
-          ),
-        ),
-      ]),
-    );
+    final cards = <Widget>[
+      _folderCard('Unfiled', '__none__', unfiled, null),
+      for (final f in _folders) _folderCard(f['name']?.toString() ?? 'Folder', f['id'].toString(), (f['modules'] as num?)?.toInt() ?? 0, f),
+    ];
+    final w = MediaQuery.of(context).size.width;
+    final cols = w >= 900 ? 4 : (w >= 640 ? 3 : (w >= 420 ? 2 : 1));
+    return [
+      Text('Folders — tap to open. Use ＋ (top right) for a new module, or the folder button for a new folder.', style: AppleTheme.footnote(context)),
+      const SizedBox(height: 12),
+      GridView.count(
+        crossAxisCount: cols, childAspectRatio: 1, crossAxisSpacing: 10, mainAxisSpacing: 10,
+        shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+        children: cards,
+      ),
+    ];
   }
 
-  Widget _folderChip(String label, String value, int count, Map<String, dynamic>? folder) {
+  // Inside a folder: back bar + the modules in it as a 4-per-row 1:1 grid.
+  List<Widget> _folderContents() {
     final p = Palette.of(context);
-    final on = _folder == value;
+    final f = _folders.firstWhere((e) => e['id'].toString() == _folder, orElse: () => <String, dynamic>{});
+    final name = _folder == '__none__' ? 'Unfiled' : (f['name']?.toString() ?? 'Folder');
+    final mods = _modules.where((m) {
+      final fid = (m['folder_id']?.toString() ?? '');
+      return _folder == '__none__' ? fid.isEmpty : fid == _folder;
+    }).toList();
+    final w = MediaQuery.of(context).size.width;
+    final cols = w >= 900 ? 4 : (w >= 640 ? 3 : (w >= 420 ? 2 : 1));
+    return [
+      Row(children: [
+        HoverTap(onTap: () => setState(() => _folder = ''), child: Icon(CupertinoIcons.chevron_back, size: 20, color: p.accent)),
+        const SizedBox(width: 6),
+        Expanded(child: Text(name, style: AppleTheme.title2(context))),
+        if (f.isNotEmpty) ...[
+          _folderBtn(CupertinoIcons.pencil, 'Rename', () => _renameFolder(f)),
+          const SizedBox(width: 8),
+          _folderBtn(CupertinoIcons.trash, 'Delete', () => _deleteFolder(f), color: AppleColors.red),
+        ],
+      ]),
+      const SizedBox(height: 12),
+      if (mods.isEmpty)
+        AppleCard(square: true, child: Text('No modules in this folder yet. Create one with ＋, or move modules here.', style: AppleTheme.footnote(context)))
+      else
+        GridView.count(
+          crossAxisCount: cols, childAspectRatio: 1, crossAxisSpacing: 10, mainAxisSpacing: 10,
+          shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+          children: mods.map(_row).toList(),
+        ),
+    ];
+  }
+
+  // A square folder card for the landing grid.
+  Widget _folderCard(String label, String value, int count, Map<String, dynamic>? folder) {
+    final p = Palette.of(context);
     return GestureDetector(
       onTap: () => setState(() => _folder = value),
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(color: on ? p.accent : p.card2, border: Border.all(color: on ? p.accent : p.separator)),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (folder != null) Padding(padding: const EdgeInsets.only(right: 5), child: Icon(CupertinoIcons.folder_fill, size: 14, color: on ? Colors.white : p.secondary)),
-          Text('$label · $count', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: on ? Colors.white : p.label)),
-        ]),
-      ),
+      child: AppleCard(square: true, child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(folder != null ? CupertinoIcons.folder_fill : CupertinoIcons.tray_fill, size: 42, color: p.accent),
+        const SizedBox(height: 10),
+        Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: AppleTheme.headline(context)),
+        const SizedBox(height: 4),
+        Text('$count module${count == 1 ? '' : 's'}', style: AppleTheme.footnote(context)),
+      ])),
     );
   }
 

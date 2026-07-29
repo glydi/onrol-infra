@@ -60,11 +60,7 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
             .map((e) => (e as Map).cast<String, dynamic>())
             .toList();
       } catch (_) {}
-      // With no "All" chip there must always be a real selection: land on the
-      // first folder, or Unfiled when there are no folders yet.
-      if (_folder.isEmpty) {
-        _folder = _folders.isNotEmpty ? _folders.first['id'].toString() : '__none__';
-      }
+      // Landing shows the folders view (_folder == ''); tapping a folder opens it.
     } catch (_) {
       _err = 'Could not load the video store';
     }
@@ -318,53 +314,58 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
                     if (_uploading) _uploadPanel(),
                   ],
                   const SizedBox(height: 18),
-                  // Folder bar: All / Unfiled / each folder, + New folder.
-                  _folderBar(),
-                  // Visible rename/delete for the selected folder (long-press
-                  // also works, but this is the obvious path).
-                  if (_folder.isNotEmpty && _folder != '__none__') ...[
-                    const SizedBox(height: 8),
-                    Builder(builder: (_) {
-                      final f = _folders.firstWhere((e) => e['id'].toString() == _folder, orElse: () => <String, dynamic>{});
-                      if (f.isEmpty) return const SizedBox.shrink();
-                      final p = Palette.of(context);
-                      return Row(children: [
-                        _folderActionBtn(CupertinoIcons.pencil, 'Rename folder', () => _renameFolder(f)),
-                        const SizedBox(width: 8),
-                        _folderActionBtn(CupertinoIcons.trash, 'Delete folder', () => _deleteFolder(f), color: AppleColors.red),
-                        const Spacer(),
-                        Text('${(f['videos'] as num?)?.toInt() ?? 0} videos', style: AppleTheme.footnote(context).copyWith(color: p.secondary)),
-                      ]);
-                    }),
-                  ],
-                  const SizedBox(height: 12),
                   if (_err != null)
                     AppleCard(square: true, child: Text(_err!, style: AppleTheme.footnote(context)))
                   else ...[
                     Builder(builder: (_) {
+                      // Landing = folders view; drilling in = that folder's videos.
+                      if (_folder.isEmpty) {
+                        final unfiled = _videos.where((v) => ((v as Map)['folder_id']?.toString() ?? '').isEmpty).length;
+                        final cards = <Widget>[
+                          _videoFolderCard('Unfiled', '__none__', unfiled, null),
+                          for (final f in _folders) _videoFolderCard(f['name']?.toString() ?? 'Folder', f['id'].toString(), (f['videos'] as num?)?.toInt() ?? 0, f),
+                        ];
+                        final w = MediaQuery.of(context).size.width;
+                        final cols = w >= 760 ? 4 : (w >= 520 ? 3 : 2);
+                        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                          Row(children: [
+                            Expanded(child: Text('Folders — tap to open.', style: AppleTheme.footnote(context))),
+                            _folderActionBtn(CupertinoIcons.folder_badge_plus, 'New folder', _newFolder),
+                          ]),
+                          const SizedBox(height: 12),
+                          GridView.count(crossAxisCount: cols, childAspectRatio: 1, crossAxisSpacing: 10, mainAxisSpacing: 10, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), children: cards),
+                        ]);
+                      }
+                      // Inside a folder.
+                      final f = _folders.firstWhere((e) => e['id'].toString() == _folder, orElse: () => <String, dynamic>{});
+                      final name = _folder == '__none__' ? 'Unfiled' : (f['name']?.toString() ?? 'Folder');
                       final vids = _videos.where((v) {
                         final fid = (v as Map)['folder_id']?.toString() ?? '';
-                        if (_folder.isEmpty) return true;
-                        if (_folder == '__none__') return fid.isEmpty;
-                        return fid == _folder;
+                        return _folder == '__none__' ? fid.isEmpty : fid == _folder;
                       }).toList();
-                      if (vids.isEmpty) {
-                        return AppleCard(square: true, child: Text(
-                          _folder.isEmpty ? 'No videos yet. Upload one to get started.' : 'No videos in this folder. Upload here or move videos in from another folder.',
-                          style: AppleTheme.footnote(context)));
-                      }
-                      // 1:1 cards, 3 per row on wide screens (2 / 1 when narrow).
                       final w = MediaQuery.of(context).size.width;
                       final cols = w >= 760 ? 3 : (w >= 520 ? 2 : 1);
-                      return GridView.count(
-                        crossAxisCount: cols,
-                        childAspectRatio: 1,
-                        crossAxisSpacing: 10,
-                        mainAxisSpacing: 10,
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        children: vids.map((v) => _gridCard(v as Map<String, dynamic>)).toList(),
-                      );
+                      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        Row(children: [
+                          HoverTap(onTap: () => setState(() => _folder = ''), child: Icon(CupertinoIcons.chevron_back, size: 20, color: p.accent)),
+                          const SizedBox(width: 6),
+                          Expanded(child: Text(name, style: AppleTheme.title2(context))),
+                          if (f.isNotEmpty) ...[
+                            _folderActionBtn(CupertinoIcons.pencil, 'Rename', () => _renameFolder(f)),
+                            const SizedBox(width: 8),
+                            _folderActionBtn(CupertinoIcons.trash, 'Delete', () => _deleteFolder(f), color: AppleColors.red),
+                          ],
+                        ]),
+                        const SizedBox(height: 12),
+                        if (vids.isEmpty)
+                          AppleCard(square: true, child: Text('No videos in this folder. Upload one, or move videos here.', style: AppleTheme.footnote(context)))
+                        else
+                          GridView.count(
+                            crossAxisCount: cols, childAspectRatio: 1, crossAxisSpacing: 10, mainAxisSpacing: 10,
+                            shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+                            children: vids.map((v) => _gridCard(v as Map<String, dynamic>)).toList(),
+                          ),
+                      ]);
                     }),
                   ],
                 ],
@@ -401,6 +402,21 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
           ),
         ),
       ]),
+    );
+  }
+
+  // Square folder card for the landing folders view.
+  Widget _videoFolderCard(String label, String value, int count, Map<String, dynamic>? folder) {
+    final p = Palette.of(context);
+    return GestureDetector(
+      onTap: () => setState(() => _folder = value),
+      child: AppleCard(square: true, child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(folder != null ? CupertinoIcons.folder_fill : CupertinoIcons.tray_fill, size: 42, color: p.accent),
+        const SizedBox(height: 10),
+        Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: AppleTheme.headline(context)),
+        const SizedBox(height: 4),
+        Text('$count video${count == 1 ? '' : 's'}', style: AppleTheme.footnote(context)),
+      ])),
     );
   }
 
