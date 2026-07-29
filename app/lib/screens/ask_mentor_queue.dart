@@ -85,7 +85,7 @@ class _AskMentorQueueScreenState extends State<AskMentorQueueScreen> {
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: Palette.of(context).card2, borderRadius: BorderRadius.zero),
+          decoration: BoxDecoration(color: Palette.of(context).card2, borderRadius: BorderRadius.circular(kRadiusField)),
           child: Text(q['body']?.toString() ?? '', style: AppleTheme.body(context)),
         ),
         const SizedBox(height: 12),
@@ -126,7 +126,7 @@ class _AskMentorQueueScreenState extends State<AskMentorQueueScreen> {
             if (_waiting > 0)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: AppleColors.orange, borderRadius: BorderRadius.zero),
+                decoration: BoxDecoration(color: AppleColors.orange, borderRadius: BorderRadius.circular(kRadiusField)),
                 child: Text('$_waiting waiting', style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w800)),
               ),
             const Spacer(),
@@ -160,7 +160,7 @@ class _AskMentorQueueScreenState extends State<AskMentorQueueScreen> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: p.card,
-        borderRadius: BorderRadius.zero,
+        borderRadius: BorderRadius.circular(kRadiusField),
         border: Border.all(color: AppleColors.orange.withValues(alpha: 0.5), width: 1.4),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -169,7 +169,7 @@ class _AskMentorQueueScreenState extends State<AskMentorQueueScreen> {
           if (isDoubt)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(color: const Color(0xFF2D7DF6).withValues(alpha: 0.16), borderRadius: BorderRadius.zero),
+              decoration: BoxDecoration(color: const Color(0xFF2D7DF6).withValues(alpha: 0.16), borderRadius: BorderRadius.circular(kRadiusField)),
               child: const Text('Doubt', style: TextStyle(color: Color(0xFF2D7DF6), fontSize: 10.5, fontWeight: FontWeight.w800)),
             ),
         ]),

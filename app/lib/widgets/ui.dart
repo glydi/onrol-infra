@@ -135,7 +135,9 @@ class _AppleCardState extends State<AppleCard> {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final interactive = widget.onTap != null;
-    final hovered = interactive && _hover;
+    // Every box highlights under the cursor, not just tappable ones — the
+    // pointer cursor below is what still distinguishes the two.
+    final hovered = _hover;
     final card = AnimatedContainer(
       duration: const Duration(milliseconds: 120),
       curve: Curves.easeOut,
@@ -165,12 +167,15 @@ class _AppleCardState extends State<AppleCard> {
       ),
       child: widget.child,
     );
-    if (!interactive) return card;
+    // Non-tappable boxes still track hover (so they highlight); only tappable
+    // ones get the pointer cursor and the tap handler.
     return MouseRegion(
-      cursor: SystemMouseCursors.click,
+      cursor: interactive ? SystemMouseCursors.click : MouseCursor.defer,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(onTap: widget.onTap, behavior: HitTestBehavior.opaque, child: card),
+      child: interactive
+          ? GestureDetector(onTap: widget.onTap, behavior: HitTestBehavior.opaque, child: card)
+          : card,
     );
   }
 }

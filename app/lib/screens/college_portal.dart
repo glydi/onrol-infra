@@ -109,7 +109,7 @@ class _CollegesTabState extends State<_CollegesTab> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _add,
         backgroundColor: Palette.of(context).accent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(kRadiusField)),
         icon: const Icon(CupertinoIcons.add, color: Colors.white),
         label: const Text('Add College', style: TextStyle(color: Colors.white)),
       ),
@@ -122,7 +122,7 @@ class _CollegesTabState extends State<_CollegesTab> {
         const SizedBox(height: 16),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-          decoration: BoxDecoration(color: Palette.of(context).card2, borderRadius: BorderRadius.zero),
+          decoration: BoxDecoration(color: Palette.of(context).card2, borderRadius: BorderRadius.circular(kRadiusField)),
           child: Row(children: [
             Icon(CupertinoIcons.search, size: 18, color: Palette.of(context).secondary),
             const SizedBox(width: 8),
@@ -146,13 +146,13 @@ class _CollegesTabState extends State<_CollegesTab> {
         onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => CollegeDetailScreen(auth: widget.auth, college: col))).then((_) => _load()),
         behavior: HitTestBehavior.opaque,
         child: AppleCard(child: Row(children: [
-          Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: mc.withOpacity(0.14), borderRadius: BorderRadius.zero), child: Icon(CupertinoIcons.building_2_fill, color: mc, size: 20)),
+          Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: mc.withOpacity(0.14), borderRadius: BorderRadius.circular(kRadiusField)), child: Icon(CupertinoIcons.building_2_fill, color: mc, size: 20)),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(col['name']?.toString() ?? 'College', style: AppleTheme.headline(context)),
             Text(sub, style: AppleTheme.footnote(context)),
           ])),
-          Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: mc.withOpacity(0.14), borderRadius: BorderRadius.zero), child: Text(mou == 'none' ? 'no MOU' : mou, style: TextStyle(fontSize: 11, color: mc, fontWeight: FontWeight.w700))),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: mc.withOpacity(0.14), borderRadius: BorderRadius.circular(kRadiusField)), child: Text(mou == 'none' ? 'no MOU' : mou, style: TextStyle(fontSize: 11, color: mc, fontWeight: FontWeight.w700))),
         ])),
       ),
     );
@@ -221,7 +221,7 @@ class _CollegeDetailScreenState extends State<CollegeDetailScreen> {
       context: context, backgroundColor: Colors.transparent,
       builder: (ctx) {
         final p = Palette.of(ctx);
-        return Container(margin: const EdgeInsets.all(10), decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.zero),
+        return Container(margin: const EdgeInsets.all(10), decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(kRadiusField)),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const SizedBox(height: 12), Text('MOU status', style: AppleTheme.headline(ctx)), const SizedBox(height: 8),
             for (final s in opts) ListTile(leading: Icon(CupertinoIcons.circle, color: _mouColor(s)), title: Text(s, style: AppleTheme.body(ctx)), onTap: () => Navigator.pop(ctx, s)),
@@ -245,7 +245,7 @@ class _CollegeDetailScreenState extends State<CollegeDetailScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _addCohort,
         backgroundColor: Palette.of(context).accent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(kRadiusField)),
         icon: const Icon(CupertinoIcons.add, color: Colors.white),
         label: const Text('Add Cohort', style: TextStyle(color: Colors.white)),
       ),
@@ -253,7 +253,7 @@ class _CollegeDetailScreenState extends State<CollegeDetailScreen> {
         AppleCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(child: Text(_c['name']?.toString() ?? '', style: AppleTheme.title2(context))),
-            GestureDetector(onTap: _setMou, child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: mc.withOpacity(0.14), borderRadius: BorderRadius.zero),
+            GestureDetector(onTap: _setMou, child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: mc.withOpacity(0.14), borderRadius: BorderRadius.circular(kRadiusField)),
               child: Row(mainAxisSize: MainAxisSize.min, children: [Text(mou == 'none' ? 'no MOU' : mou, style: TextStyle(fontSize: 12, color: mc, fontWeight: FontWeight.w700)), const SizedBox(width: 4), Icon(CupertinoIcons.chevron_down, size: 12, color: mc)]))),
           ]),
           const SizedBox(height: 8),
@@ -287,7 +287,7 @@ class _CollegeDetailScreenState extends State<CollegeDetailScreen> {
           Text('$placed/$students placed', style: AppleTheme.footnote(context)),
         ]),
         const SizedBox(height: 8),
-        ClipRRect(borderRadius: BorderRadius.zero, child: LinearProgressIndicator(value: pct.clamp(0, 1), minHeight: 6, backgroundColor: Palette.of(context).card2, color: AppleColors.green)),
+        ClipRRect(borderRadius: BorderRadius.circular(kRadiusField), child: LinearProgressIndicator(value: pct.clamp(0, 1), minHeight: 6, backgroundColor: Palette.of(context).card2, color: AppleColors.green)),
       ])),
     ));
   }

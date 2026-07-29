@@ -420,7 +420,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           onTap: rows.isEmpty ? () {} : () => _exportStudents(rows),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(color: rows.isEmpty ? p.secondary.withOpacity(0.15) : p.accent, borderRadius: BorderRadius.zero),
+            decoration: BoxDecoration(color: rows.isEmpty ? p.secondary.withOpacity(0.15) : p.accent, borderRadius: BorderRadius.circular(kRadiusField)),
             child: Row(mainAxisSize: MainAxisSize.min, children: const [
               Icon(CupertinoIcons.arrow_down_doc, size: 16, color: Colors.white),
               SizedBox(width: 6),
@@ -663,7 +663,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
                       onTap: () => _setBatch(u['id'].toString(), u['full_name']?.toString() ?? 'Student', _batchOf(u)),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(color: Palette.of(context).accent.withOpacity(0.12), borderRadius: BorderRadius.zero),
+                        decoration: BoxDecoration(color: Palette.of(context).accent.withOpacity(0.12), borderRadius: BorderRadius.circular(kRadiusField)),
                         child: Text(
                           _batchOf(u) ?? 'Set batch',
                           style: TextStyle(color: Palette.of(context).accent, fontSize: 12, fontWeight: FontWeight.w600),
@@ -1033,7 +1033,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: p.accent,
-          borderRadius: BorderRadius.zero,
+          borderRadius: BorderRadius.circular(kRadiusField),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           const Icon(CupertinoIcons.add, color: Colors.white, size: 18),
@@ -1247,7 +1247,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         child: Row(children: [
           Container(
             width: 44, height: 44,
-            decoration: BoxDecoration(color: AppleColors.blue.withOpacity(0.12), borderRadius: BorderRadius.zero),
+            decoration: BoxDecoration(color: AppleColors.blue.withOpacity(0.12), borderRadius: BorderRadius.circular(kRadiusField)),
             child: const Icon(CupertinoIcons.book_fill, color: AppleColors.blue, size: 22),
           ),
           const SizedBox(width: 14),
@@ -1299,7 +1299,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         child: Row(children: [
           Container(
             width: 40, height: 40,
-            decoration: BoxDecoration(color: AppleColors.orange.withOpacity(0.14), borderRadius: BorderRadius.zero),
+            decoration: BoxDecoration(color: AppleColors.orange.withOpacity(0.14), borderRadius: BorderRadius.circular(kRadiusField)),
             child: const Icon(CupertinoIcons.person_badge_plus, color: AppleColors.orange, size: 20),
           ),
           const SizedBox(width: 12),
@@ -1616,7 +1616,7 @@ class _IssueCertificatesState extends State<_IssueCertificates> {
                       onTap: () => _issue({'user_ids': _selected.toList()}, '${_selected.length} selected'),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(color: p.accent, borderRadius: BorderRadius.zero),
+                        decoration: BoxDecoration(color: p.accent, borderRadius: BorderRadius.circular(kRadiusField)),
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
                           const Icon(CupertinoIcons.rosette, size: 15, color: Colors.white),
                           const SizedBox(width: 6),
@@ -1820,7 +1820,8 @@ class _QuizBuilderState extends State<_QuizBuilder> {
                 return Dialog(
                   backgroundColor: dp.card,
                   insetPadding: const EdgeInsets.symmetric(horizontal: 36, vertical: 24),
-                  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                  shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(kRadiusDialog))),
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 380),
                     child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -2041,7 +2042,7 @@ class _QuizBuilderState extends State<_QuizBuilder> {
                           onTap: _load,
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(color: Palette.of(context).accent.withOpacity(0.12), borderRadius: BorderRadius.zero),
+                            decoration: BoxDecoration(color: Palette.of(context).accent.withOpacity(0.12), borderRadius: BorderRadius.circular(kRadiusField)),
                             child: Row(mainAxisSize: MainAxisSize.min, children: [
                               Icon(CupertinoIcons.refresh, size: 15, color: Palette.of(context).accent),
                               const SizedBox(width: 4),
@@ -2152,7 +2153,7 @@ class _CourseImagePicker extends StatelessWidget {
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (pic != null) ...[
-        ClipRRect(borderRadius: BorderRadius.zero, child: pic),
+        ClipRRect(borderRadius: BorderRadius.circular(kRadiusField), child: pic),
         const SizedBox(height: 8),
       ],
       Row(children: [
@@ -2165,7 +2166,7 @@ class _CourseImagePicker extends StatelessWidget {
             onTap: onClear,
             child: Container(
               padding: const EdgeInsets.all(13),
-              decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.zero),
+              decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(kRadiusField)),
               child: const Icon(CupertinoIcons.trash, size: 18, color: AppleColors.red),
             ),
           ),
@@ -2178,7 +2179,7 @@ class _CourseImagePicker extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         style: TextStyle(color: p.label, fontSize: 14),
         onChanged: (_) => onUrlChanged?.call(),
-        decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.zero),
+        decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(kRadiusField)),
       ),
     ]);
   }
@@ -2222,7 +2223,7 @@ class _DateTimeRow extends StatelessWidget {
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-        decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.zero),
+        decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(kRadiusField)),
         child: Row(children: [
           Icon(CupertinoIcons.calendar, size: 19, color: p.secondary),
           const SizedBox(width: 12),
@@ -2250,7 +2251,7 @@ class _InstructorDropdown extends StatelessWidget {
       onTap: () => _pick(context),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-        decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.zero),
+        decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(kRadiusField)),
         child: Row(children: [
           Icon(CupertinoIcons.person_crop_circle, size: 19, color: p.secondary),
           const SizedBox(width: 12),
@@ -2268,7 +2269,7 @@ class _InstructorDropdown extends StatelessWidget {
       backgroundColor: Colors.transparent,
       builder: (_) => Container(
         margin: const EdgeInsets.all(10),
-        decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.zero),
+        decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(kRadiusField)),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Padding(padding: const EdgeInsets.all(16), child: Text('Assign Instructor', style: AppleTheme.headline(context))),
           ...instructors.map((i) {
@@ -2736,7 +2737,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
         child: Row(children: [
           Container(
             width: 40, height: 40, alignment: Alignment.center,
-            decoration: BoxDecoration(color: p.accent.withOpacity(0.12), borderRadius: BorderRadius.zero),
+            decoration: BoxDecoration(color: p.accent.withOpacity(0.12), borderRadius: BorderRadius.circular(kRadiusField)),
             child: Icon(icon, color: p.accent, size: 20),
           ),
           const SizedBox(width: 12),
@@ -2902,7 +2903,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
           child: Row(children: [
             Container(
               width: 40, height: 40,
-              decoration: BoxDecoration(color: AppleColors.red.withOpacity(0.12), borderRadius: BorderRadius.zero),
+              decoration: BoxDecoration(color: AppleColors.red.withOpacity(0.12), borderRadius: BorderRadius.circular(kRadiusField)),
               child: Icon(simulated ? CupertinoIcons.play_rectangle_fill : CupertinoIcons.videocam_fill, color: AppleColors.red, size: 20),
             ),
             const SizedBox(width: 12),
@@ -3290,7 +3291,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
           child: Row(children: [
             Container(
               width: 40, height: 40,
-              decoration: BoxDecoration(color: (isQuiz ? AppleColors.purple : AppleColors.blue).withOpacity(0.12), borderRadius: BorderRadius.zero),
+              decoration: BoxDecoration(color: (isQuiz ? AppleColors.purple : AppleColors.blue).withOpacity(0.12), borderRadius: BorderRadius.circular(kRadiusField)),
               child: Icon(isQuiz ? CupertinoIcons.question_square_fill : CupertinoIcons.doc_text_fill, color: isQuiz ? AppleColors.purple : AppleColors.blue, size: 20),
             ),
             const SizedBox(width: 12),
@@ -3605,7 +3606,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
           const SizedBox(width: 8),
           GestureDetector(
             onTap: onClear,
-            child: Container(padding: const EdgeInsets.all(13), decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.zero), child: const Icon(CupertinoIcons.trash, size: 18, color: AppleColors.red)),
+            child: Container(padding: const EdgeInsets.all(13), decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(kRadiusField)), child: const Icon(CupertinoIcons.trash, size: 18, color: AppleColors.red)),
           ),
         ],
       ]),
@@ -3641,7 +3642,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.zero),
+        decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(kRadiusField)),
         child: Row(children: [
           Icon(CupertinoIcons.square_grid_2x2, size: 19, color: p.secondary),
           const SizedBox(width: 12),
@@ -4227,7 +4228,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-        decoration: BoxDecoration(color: p.accent.withOpacity(0.12), borderRadius: BorderRadius.zero),
+        decoration: BoxDecoration(color: p.accent.withOpacity(0.12), borderRadius: BorderRadius.circular(kRadiusField)),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, size: 18, color: p.accent),
           const SizedBox(width: 6),
@@ -4678,7 +4679,7 @@ class _DeviceSheetState extends State<_DeviceSheet> {
       child: Container(
         margin: const EdgeInsets.all(10),
         padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.zero),
+        decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(kRadiusField)),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Center(child: Text('Devices', style: AppleTheme.title2(context))),
           const SizedBox(height: 2),
@@ -4697,7 +4698,7 @@ class _DeviceSheetState extends State<_DeviceSheet> {
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.zero),
+                  decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(kRadiusField)),
                   child: Row(children: [
                     Icon(_platformIcon(m['platform']?.toString()), size: 22, color: p.secondary),
                     const SizedBox(width: 12),
@@ -4768,7 +4769,7 @@ class _DeviceSheetState extends State<_DeviceSheet> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         margin: const EdgeInsets.all(10),
-        decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.zero),
+        decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(kRadiusField)),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Padding(padding: const EdgeInsets.all(16), child: Text('Assign ${widget.name} to…', style: AppleTheme.headline(context))),
           ...courses.map((c) {
@@ -5702,7 +5703,7 @@ class _LeadDetailSheet extends StatelessWidget {
         margin: const EdgeInsets.all(10),
         padding: const EdgeInsets.all(20),
         constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
-        decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.zero),
+        decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(kRadiusField)),
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
         ),
@@ -6583,7 +6584,7 @@ class _StudyHubEditorScreenState extends State<StudyHubEditorScreen> {
     final p = Palette.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.zero),
+      decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(kRadiusField)),
       child: TextField(
         controller: c,
         minLines: lines,
@@ -6872,7 +6873,7 @@ class _StudyHubEditorScreenState extends State<StudyHubEditorScreen> {
       onTap: () => _form(kind),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(color: p.accent.withOpacity(0.12), borderRadius: BorderRadius.zero),
+        decoration: BoxDecoration(color: p.accent.withOpacity(0.12), borderRadius: BorderRadius.circular(kRadiusField)),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(CupertinoIcons.add, size: 15, color: p.accent),
           const SizedBox(width: 4),
@@ -7029,7 +7030,7 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> {
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-        decoration: BoxDecoration(color: p.accent.withOpacity(0.12), borderRadius: BorderRadius.zero),
+        decoration: BoxDecoration(color: p.accent.withOpacity(0.12), borderRadius: BorderRadius.circular(kRadiusField)),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, size: 18, color: p.accent),
           const SizedBox(width: 6),
@@ -7100,7 +7101,7 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> {
           Row(children: [
             Container(
               width: 38, height: 38, alignment: Alignment.center,
-              decoration: BoxDecoration(color: p.accent.withOpacity(0.12), borderRadius: BorderRadius.zero),
+              decoration: BoxDecoration(color: p.accent.withOpacity(0.12), borderRadius: BorderRadius.circular(kRadiusField)),
               child: Text(icon.isNotEmpty ? icon : (s['name']?.toString().isNotEmpty == true ? s['name'].toString()[0].toUpperCase() : '#'),
                   style: AppleTheme.headline(context).copyWith(color: p.accent)),
             ),

@@ -141,7 +141,7 @@ class _Sidebar extends StatelessWidget {
               width: 38, height: 38,
               decoration: BoxDecoration(
                 color: admin ? p.accent : null,
-                borderRadius: BorderRadius.zero,
+                borderRadius: adminRadius(p, kRadiusButton),
                 gradient: admin ? null : const LinearGradient(colors: [AppleColors.blue, AppleColors.purple], begin: Alignment.topLeft, end: Alignment.bottomRight),
               ),
               child: const Icon(CupertinoIcons.book_fill, color: Colors.white, size: 20),
@@ -164,7 +164,7 @@ class _Sidebar extends StatelessWidget {
             decoration: BoxDecoration(
               color: admin ? const Color(0xFF161A20) : Colors.transparent,
               border: admin ? Border.all(color: const Color(0xFF252B33)) : null,
-              borderRadius: BorderRadius.zero,
+              borderRadius: adminRadius(p, kRadiusField),
             ),
             child: const ThemeToggle(),
           ),
@@ -174,7 +174,7 @@ class _Sidebar extends StatelessWidget {
             decoration: BoxDecoration(
               color: admin ? const Color(0xFF161A20) : p.card,
               border: Border.all(color: admin ? const Color(0xFF252B33) : p.separator),
-              borderRadius: BorderRadius.zero,
+              borderRadius: adminRadius(p, kRadiusField),
               boxShadow: admin ? null : p.clay,
             ),
             child: Row(children: [
@@ -228,7 +228,7 @@ class _Sidebar extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           decoration: BoxDecoration(
             color: on ? p.accent : Colors.transparent,
-            borderRadius: BorderRadius.zero,
+            borderRadius: adminRadius(p, kRadiusButton),
           ),
           child: Row(children: [
             Icon(d.icon, size: 20, color: on ? Colors.white : sideMuted),

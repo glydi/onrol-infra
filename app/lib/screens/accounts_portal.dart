@@ -127,7 +127,7 @@ Widget _expenseCard(BuildContext context, Map<String, dynamic> e, {Widget? trail
         ])),
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
           Text(_money(total), style: AppleTheme.headline(context)),
-          Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: c.withOpacity(0.14), borderRadius: BorderRadius.zero), child: Text(status, style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w700))),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: c.withOpacity(0.14), borderRadius: BorderRadius.circular(kRadiusField)), child: Text(status, style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w700))),
         ]),
         if (trailing != null) ...[const SizedBox(width: 8), trailing],
       ])),
@@ -138,7 +138,7 @@ Widget _expenseCard(BuildContext context, Map<String, dynamic> e, {Widget? trail
 Widget _accFab(VoidCallback onTap, String label) => Builder(builder: (context) => FloatingActionButton.extended(
       onPressed: onTap,
       backgroundColor: Palette.of(context).accent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(kRadiusField)),
       icon: const Icon(CupertinoIcons.add, color: Colors.white),
       label: Text(label, style: const TextStyle(color: Colors.white)),
     ));
@@ -328,7 +328,7 @@ class _AdminExpensesState extends State<_AdminExpenses> {
         final p = Palette.of(ctx);
         return Container(
           margin: const EdgeInsets.all(10),
-          decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.zero),
+          decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(kRadiusField)),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const SizedBox(height: 12),
             Text('Set status', style: AppleTheme.headline(ctx)),

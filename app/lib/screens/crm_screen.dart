@@ -76,7 +76,7 @@ class _CrmScreenState extends State<CrmScreen> {
         child: Container(
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(color: on ? p.accent : p.card2, borderRadius: BorderRadius.zero),
+          decoration: BoxDecoration(color: on ? p.accent : p.card2, borderRadius: BorderRadius.circular(kRadiusField)),
           child: Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: on ? Colors.white : p.label)),
         ),
       ),
@@ -204,7 +204,7 @@ class _LeadsTabState extends State<_LeadsTab> {
 
   Widget _searchBar() => Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-        decoration: BoxDecoration(color: Palette.of(context).card2, borderRadius: BorderRadius.zero),
+        decoration: BoxDecoration(color: Palette.of(context).card2, borderRadius: BorderRadius.circular(kRadiusField)),
         child: Row(children: [
           Icon(CupertinoIcons.search, size: 18, color: Palette.of(context).secondary),
           const SizedBox(width: 8),
@@ -224,7 +224,7 @@ class _LeadsTabState extends State<_LeadsTab> {
           onTap: () { setState(() => _filter = value); _load(); },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-            decoration: BoxDecoration(color: on ? p.accent : p.card2, borderRadius: BorderRadius.zero),
+            decoration: BoxDecoration(color: on ? p.accent : p.card2, borderRadius: BorderRadius.circular(kRadiusField)),
             child: Text('$label${count > 0 ? '  $count' : ''}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: on ? Colors.white : p.label)),
           ),
         ),
@@ -255,7 +255,7 @@ class _LeadsTabState extends State<_LeadsTab> {
               if (contact.isNotEmpty) Text(contact, style: AppleTheme.footnote(context), maxLines: 1, overflow: TextOverflow.ellipsis),
             ])),
             const SizedBox(width: 8),
-            Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: sc.withOpacity(0.14), borderRadius: BorderRadius.zero),
+            Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: sc.withOpacity(0.14), borderRadius: BorderRadius.circular(kRadiusField)),
                 child: Text(status, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: sc))),
           ]),
         ),
@@ -542,7 +542,7 @@ class _AccountsTabState extends State<_AccountsTab> {
         behavior: HitTestBehavior.opaque,
         child: AppleCard(
           child: Row(children: [
-            Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: hc.withOpacity(0.14), borderRadius: BorderRadius.zero), child: Icon(CupertinoIcons.building_2_fill, color: hc, size: 20)),
+            Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: hc.withOpacity(0.14), borderRadius: BorderRadius.circular(kRadiusField)), child: Icon(CupertinoIcons.building_2_fill, color: hc, size: 20)),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(a['name']?.toString() ?? 'Account', style: AppleTheme.headline(context)),
@@ -675,7 +675,7 @@ class _BroadcastsTabState extends State<_BroadcastsTab> {
       child: AppleCard(
         child: Row(children: [
           Container(width: 40, height: 40, alignment: Alignment.center,
-              decoration: BoxDecoration(color: (channel == 'email' ? AppleColors.blue : AppleColors.green).withOpacity(0.14), borderRadius: BorderRadius.zero),
+              decoration: BoxDecoration(color: (channel == 'email' ? AppleColors.blue : AppleColors.green).withOpacity(0.14), borderRadius: BorderRadius.circular(kRadiusField)),
               child: Icon(channel == 'email' ? CupertinoIcons.mail_solid : CupertinoIcons.chat_bubble_fill, color: channel == 'email' ? AppleColors.blue : AppleColors.green, size: 20)),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -686,7 +686,7 @@ class _BroadcastsTabState extends State<_BroadcastsTab> {
           if (!sent)
             GestureDetector(
               onTap: () => _send(b),
-              child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: Palette.of(context).accent, borderRadius: BorderRadius.zero),
+              child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: Palette.of(context).accent, borderRadius: BorderRadius.circular(kRadiusField)),
                   child: const Text('Send', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600))),
             )
           else
@@ -820,7 +820,7 @@ class _InvoicesTabState extends State<_InvoicesTab> {
             ])),
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
               Text(_money((inv['total'] as num?) ?? 0, inv['currency']?.toString() ?? 'INR'), style: AppleTheme.headline(context)),
-              Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: c.withOpacity(0.14), borderRadius: BorderRadius.zero),
+              Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: c.withOpacity(0.14), borderRadius: BorderRadius.circular(kRadiusField)),
                   child: Text(status, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: c))),
             ]),
           ]),
@@ -860,7 +860,7 @@ class _InvoicesTabState extends State<_InvoicesTab> {
         return Container(
           margin: const EdgeInsets.all(10),
           padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.zero),
+          decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(kRadiusField)),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text('Invoice #${inv['number']}', style: AppleTheme.title2(ctx)),
             Text('${_money((inv['total'] as num?) ?? 0)} · ${inv['status']}', style: AppleTheme.subhead(ctx)),
@@ -999,7 +999,7 @@ class _FormsTabState extends State<_FormsTab> {
         behavior: HitTestBehavior.opaque,
         child: AppleCard(
           child: Row(children: [
-            Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: AppleColors.blue.withOpacity(0.14), borderRadius: BorderRadius.zero), child: const Icon(CupertinoIcons.doc_text_fill, color: AppleColors.blue, size: 20)),
+            Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: AppleColors.blue.withOpacity(0.14), borderRadius: BorderRadius.circular(kRadiusField)), child: const Icon(CupertinoIcons.doc_text_fill, color: AppleColors.blue, size: 20)),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(f['name']?.toString() ?? 'Form', style: AppleTheme.headline(context)),
@@ -1049,7 +1049,7 @@ class _FormsTabState extends State<_FormsTab> {
           margin: const EdgeInsets.all(10),
           padding: const EdgeInsets.all(20),
           constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.7),
-          decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.zero),
+          decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(kRadiusField)),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text(f['name']?.toString() ?? 'Form', style: AppleTheme.title2(ctx)),
             Text('Public URL: /f/${f['slug']}', style: AppleTheme.footnote(ctx)),
@@ -1089,7 +1089,7 @@ Widget _fab(VoidCallback onTap) => Positioned(
       child: Builder(builder: (context) => FloatingActionButton(
             onPressed: onTap,
             backgroundColor: Palette.of(context).accent,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(kRadiusField)),
             child: const Icon(CupertinoIcons.add, color: Colors.white),
           )),
     );
@@ -1142,7 +1142,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
         final p = Palette.of(ctx);
         return Container(
           margin: const EdgeInsets.all(10),
-          decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.zero),
+          decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(kRadiusField)),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const SizedBox(height: 12),
             Text('Move to…', style: AppleTheme.headline(ctx)),
@@ -1310,7 +1310,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
                         onTap: _changeStatus,
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(color: sc.withOpacity(0.14), borderRadius: BorderRadius.zero),
+                          decoration: BoxDecoration(color: sc.withOpacity(0.14), borderRadius: BorderRadius.circular(kRadiusField)),
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
                             Text(status, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: sc)),
                             const SizedBox(width: 4),
@@ -1347,7 +1347,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(color: Palette.of(context).accent.withOpacity(0.12), borderRadius: BorderRadius.zero),
+          decoration: BoxDecoration(color: Palette.of(context).accent.withOpacity(0.12), borderRadius: BorderRadius.circular(kRadiusField)),
           child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(CupertinoIcons.add, size: 14, color: Palette.of(context).accent), const SizedBox(width: 4), Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Palette.of(context).accent))]),
         ),
       );
@@ -1504,7 +1504,7 @@ class _AutomationTabState extends State<_AutomationTab> {
       const SizedBox(height: 6),
       Wrap(spacing: 6, runSpacing: 6, children: [for (var i = 0; i < _leadStatuses.length; i++) GestureDetector(
         onTap: () => setS(() => trig = i),
-        child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: trig == i ? Palette.of(context).accent : Palette.of(context).card2, borderRadius: BorderRadius.zero),
+        child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: trig == i ? Palette.of(context).accent : Palette.of(context).card2, borderRadius: BorderRadius.circular(kRadiusField)),
           child: Text(_leadStatuses[i], style: TextStyle(fontSize: 12, color: trig == i ? Colors.white : Palette.of(context).label))))]),
       const SizedBox(height: 10),
       AppleSegmented(labels: const ['Create task', 'Log note'], selected: action, onChanged: (i) => setS(() => action = i)),
@@ -1625,7 +1625,7 @@ class _ReviewsTabState extends State<_ReviewsTab> {
       if ((r['body']?.toString() ?? '').isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(r['body'].toString(), style: AppleTheme.footnote(context))),
       const SizedBox(height: 8),
       Row(children: [
-        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: c.withOpacity(0.14), borderRadius: BorderRadius.zero), child: Text(status, style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w700))),
+        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: c.withOpacity(0.14), borderRadius: BorderRadius.circular(kRadiusField)), child: Text(status, style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w700))),
         const Spacer(),
         for (final s in const ['approved', 'hidden']) Padding(padding: const EdgeInsets.only(left: 8), child: GestureDetector(
           onTap: () async { await widget.auth.apiPost('/api/v1/manage/crm/reviews/${r['id']}/status', {'status': s}); _load(); },
@@ -1802,7 +1802,7 @@ class _TicketsTabState extends State<_TicketsTab> {
     return Padding(padding: const EdgeInsets.only(bottom: 12), child: AppleCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         Expanded(child: Text(t['subject']?.toString() ?? 'Ticket', style: AppleTheme.headline(context))),
-        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: c.withOpacity(0.14), borderRadius: BorderRadius.zero), child: Text(status, style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w700))),
+        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: c.withOpacity(0.14), borderRadius: BorderRadius.circular(kRadiusField)), child: Text(status, style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w700))),
       ]),
       if ((t['body']?.toString() ?? '').isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(t['body'].toString(), style: AppleTheme.footnote(context))),
       const SizedBox(height: 8),
@@ -1863,7 +1863,7 @@ class _AffiliatesTabState extends State<_AffiliatesTab> {
         const SizedBox(height: 12),
         if (_items.isEmpty) AppleCard(child: Text('No affiliates yet.', style: AppleTheme.footnote(context)))
         else ..._items.map((a) => Padding(padding: const EdgeInsets.only(bottom: 12), child: AppleCard(child: Row(children: [
-          Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: AppleColors.purple.withOpacity(0.14), borderRadius: BorderRadius.zero), child: const Icon(CupertinoIcons.person_2_fill, color: AppleColors.purple, size: 18)),
+          Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: AppleColors.purple.withOpacity(0.14), borderRadius: BorderRadius.circular(kRadiusField)), child: const Icon(CupertinoIcons.person_2_fill, color: AppleColors.purple, size: 18)),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(a['name']?.toString() ?? 'Affiliate', style: AppleTheme.headline(context)),
@@ -1993,7 +1993,7 @@ class _FunnelTabState extends State<_FunnelTab> {
         return Padding(padding: const EdgeInsets.only(bottom: 12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [Expanded(child: Text(m['stage']?.toString() ?? '', style: AppleTheme.body(context))), Text('$count', style: AppleTheme.headline(context))]),
           const SizedBox(height: 6),
-          ClipRRect(borderRadius: BorderRadius.zero, child: LinearProgressIndicator(value: frac, minHeight: 10, backgroundColor: Palette.of(context).card2, color: _statusColor(m['stage']?.toString() ?? ''))),
+          ClipRRect(borderRadius: BorderRadius.circular(kRadiusField), child: LinearProgressIndicator(value: frac, minHeight: 10, backgroundColor: Palette.of(context).card2, color: _statusColor(m['stage']?.toString() ?? ''))),
         ]));
       }),
     ]));
@@ -2043,7 +2043,7 @@ class _MyDayTabState extends State<_MyDayTab> {
             Text(m['title']?.toString() ?? 'Task', style: AppleTheme.body(context)),
             Text('${m['lead']} · ${_fmtD(m['due_at'])}', style: AppleTheme.footnote(context)),
           ])),
-          Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: bc(b).withOpacity(0.14), borderRadius: BorderRadius.zero), child: Text(b, style: TextStyle(fontSize: 11, color: bc(b), fontWeight: FontWeight.w700))),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: bc(b).withOpacity(0.14), borderRadius: BorderRadius.circular(kRadiusField)), child: Text(b, style: TextStyle(fontSize: 11, color: bc(b), fontWeight: FontWeight.w700))),
         ])));
       }),
     ]));
@@ -2085,7 +2085,7 @@ class _IntegrationsTabState extends State<_IntegrationsTab> {
         return Padding(padding: const EdgeInsets.only(bottom: 12), child: AppleCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(child: Text(m['name']?.toString() ?? '', style: AppleTheme.headline(context))),
-            Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3), decoration: BoxDecoration(color: c.withOpacity(0.14), borderRadius: BorderRadius.zero), child: Text(live ? 'LIVE' : 'DEMO', style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w800))),
+            Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3), decoration: BoxDecoration(color: c.withOpacity(0.14), borderRadius: BorderRadius.circular(kRadiusField)), child: Text(live ? 'LIVE' : 'DEMO', style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w800))),
           ]),
           const SizedBox(height: 4),
           Text(m['description']?.toString() ?? '', style: AppleTheme.footnote(context)),
