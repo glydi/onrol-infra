@@ -2241,7 +2241,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     final sel = _moduleBatch; // '' = All (shared modules only)
     bool visibleFor(Map<String, dynamic> m) {
       final b = (m['batch']?.toString() ?? '').trim();
-      if (sel.isEmpty) return b.isEmpty; // All tab → shared (batch-less) modules
+      if (sel.isEmpty) return true; // All tab → EVERY module (shared + all batches)
       return b.isEmpty || b == sel; // a batch tab → shared + that batch's modules
     }
     final visible = modules.where((m) => visibleFor(m as Map<String, dynamic>)).toList();
@@ -3549,6 +3549,13 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     }
   }
 
+  // A small coloured pill used on module cards (batch code / store code).
+  Widget _moduleTag(String label, Color color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(color: color.withOpacity(0.14), border: Border.all(color: color.withOpacity(0.4))),
+        child: Text(label, style: TextStyle(color: color, fontSize: 10.5, fontWeight: FontWeight.w800)),
+      );
+
   Widget _moduleCard(Map<String, dynamic> m, {bool isSub = false}) {
     final lessons = (m['lessons'] as List?) ?? [];
     final subs = (m['submodules'] as List?) ?? [];
@@ -3565,6 +3572,16 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
               child: Row(children: [
                 if (isSub) Padding(padding: const EdgeInsets.only(right: 6), child: Icon(Icons.subdirectory_arrow_right, size: 16, color: Palette.of(context).secondary)),
                 Flexible(child: Text(mtitle, style: isSub ? AppleTheme.body(context).copyWith(fontWeight: FontWeight.w700) : AppleTheme.headline(context))),
+                // Which batch this module belongs to (blue) + its store code
+                // (accent), so on the "All" tab you can tell them apart.
+                if ((m['batch']?.toString() ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(width: 6),
+                  _moduleTag(m['batch'].toString(), AppleColors.blue),
+                ],
+                if ((m['store_code']?.toString() ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(width: 4),
+                  _moduleTag(m['store_code'].toString(), Palette.of(context).accent),
+                ],
                 const SizedBox(width: 6),
                 Icon(CupertinoIcons.pencil, size: 15, color: Palette.of(context).secondary),
               ]),
