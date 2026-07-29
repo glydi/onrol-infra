@@ -155,6 +155,17 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   /// Best-effort: an older API without this route leaves the chart empty
   /// rather than breaking the console.
   Future<void> _loadActivity() async {
+    // With no "All" chip the graph always shows one batch — land on the first
+    // one that has students rather than an unfiltered total.
+    if (_actBatch.isEmpty) {
+      final codes = _people
+          .map((u) => (u['batch']?.toString().trim() ?? ''))
+          .where((b) => b.isNotEmpty)
+          .toSet()
+          .toList()
+        ..sort();
+      if (codes.isNotEmpty) _actBatch = codes.first;
+    }
     try {
       final q = StringBuffer('/api/v1/manage/activity?days=$_actDays');
       if (_actBatch.isNotEmpty) q.write('&batch=${Uri.encodeQueryComponent(_actBatch)}');
@@ -1343,11 +1354,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
               _loadActivity();
             }),
           const SizedBox(width: 10),
-          _filterChip('All batches', _actBatch.isEmpty, () {
-            if (_actBatch.isEmpty) return;
-            setState(() => _actBatch = '');
-            _loadActivity();
-          }),
+          // No "All" — the graph is read one batch at a time.
           for (final b in batches)
             _filterChip(b, _actBatch == b, () {
               if (_actBatch == b) return;
