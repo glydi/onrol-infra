@@ -94,6 +94,10 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
 
   Timer? _refreshTimer;
   int _mentorWaiting = 0; // unanswered student questions across managed courses
+  // Video store usage, for the Home overview.
+  int _videoCount = 0;
+  int _videoBytes = 0;
+  int _videoProcessing = 0;
 
   @override
   void initState() {
@@ -123,6 +127,16 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         try {
           final mq = await widget.auth.apiGet('/api/v1/manage/mentor-questions');
           _mentorWaiting = (ApiClient.decode(mq)['waiting'] as num?)?.toInt() ?? _mentorWaiting;
+        } catch (_) {}
+        // Video store usage for the Home overview. Best-effort: a failure here
+        // must not blank the rest of the console.
+        try {
+          final vr = await widget.auth.apiGet('/api/v1/manage/videos');
+          final vids = (ApiClient.decode(vr)['videos'] as List?) ?? const [];
+          _videoCount = vids.length;
+          _videoBytes = vids.fold<int>(
+              0, (s, v) => s + (((v as Map)['size_bytes'] as num?)?.toInt() ?? 0));
+          _videoProcessing = vids.where((v) => (v as Map)['status'] == 'processing').length;
         } catch (_) {}
       }
     } catch (_) {
@@ -1194,6 +1208,13 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     final instructors = _people.where((u) => u['role'] == 'instructor').length;
     final published = _courses.where((c) => (c as Map)['status'] == 'published').length;
     final drafts = _courses.length - published;
+    // Distinct non-empty batch codes across all students — no extra request,
+    // and it counts batches that actually have people in them.
+    final batches = _people
+        .map((u) => (u['batch']?.toString().trim() ?? ''))
+        .where((b) => b.isNotEmpty)
+        .toSet()
+        .length;
     return RefreshIndicator(
       color: p.accent,
       onRefresh: _load,
@@ -1216,6 +1237,17 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
               if (_isAdmin)
                 _stat('Instructors', '$instructors', 'mentors', CupertinoIcons.person_badge_plus,
                     AdminColors.chipPinkBg, AdminColors.chipPinkFg),
+              if (_isAdmin)
+                _stat('Batches', '$batches', 'running across courses',
+                    CupertinoIcons.square_grid_2x2_fill,
+                    AdminColors.chipTealBg, AdminColors.chipTealFg),
+              if (_isAdmin)
+                _stat('Video store', '$_videoCount',
+                    _videoProcessing > 0
+                        ? '${_fmtBytes(_videoBytes)} · $_videoProcessing processing'
+                        : '${_fmtBytes(_videoBytes)} stored',
+                    CupertinoIcons.film_fill,
+                    AdminColors.chipPinkBg, AdminColors.chipPinkFg),
               _stat('Requests', '${_requests.length}', 'awaiting a decision',
                   CupertinoIcons.tray_arrow_down_fill,
                   AdminColors.chipOrangeBg, AdminColors.chipOrangeFg),
@@ -1237,15 +1269,86 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
                 ),
               const SizedBox(height: 22),
             ],
-            const SectionHeader('Your Courses'),
-            if (_courses.isEmpty)
-              AppleCard(square: true, child: Text('No courses yet.', style: AppleTheme.footnote(context)))
-            else
-              for (var i = 0; i < _courses.length; i++)
-                FadeInUp(index: i, child: _courseRow(_courses[i] as Map<String, dynamic>)),
+            // Where the students actually are — the one distribution that
+            // tells you if a cohort is lopsided.
+            const SectionHeader('Students per course'),
+            _barChart(_studentsByCourse()),
           ],
         ],
       ),
+    );
+  }
+
+  String _fmtBytes(int b) {
+    if (b >= 1073741824) return '${(b / 1073741824).toStringAsFixed(1)} GB';
+    if (b >= 1048576) return '${(b / 1048576).toStringAsFixed(0)} MB';
+    if (b >= 1024) return '${(b / 1024).toStringAsFixed(0)} KB';
+    return '$b B';
+  }
+
+  /// Student headcount per course label, biggest first.
+  List<MapEntry<String, int>> _studentsByCourse() {
+    final by = <String, int>{};
+    for (final u in _people) {
+      if (u['role'] != 'student') continue;
+      final label = (u['course_label']?.toString().trim() ?? '');
+      final name = label.isEmpty ? 'No course' : _courseDisplayName(label);
+      by[name] = (by[name] ?? 0) + 1;
+    }
+    final out = by.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    return out;
+  }
+
+  /// Hand-rolled horizontal bars — the app has no chart package, and a bar per
+  /// row is the honest shape for a handful of categories anyway.
+  Widget _barChart(List<MapEntry<String, int>> data) {
+    final p = Palette.of(context);
+    if (data.isEmpty) {
+      return AppleCard(square: true,
+          child: Text('No students yet.', style: AppleTheme.footnote(context)));
+    }
+    final max = data.first.value.clamp(1, 1 << 30);
+    return AppleCard(
+      square: true,
+      child: Column(children: [
+        for (var i = 0; i < data.length; i++) ...[
+          if (i > 0) const SizedBox(height: 12),
+          Row(children: [
+            SizedBox(
+              width: 128,
+              child: Text(data[i].key, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: AppleTheme.body(context).copyWith(fontSize: 13.5)),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: LayoutBuilder(builder: (_, c) {
+                final w = (c.maxWidth * data[i].value / max).clamp(6.0, c.maxWidth);
+                return Stack(children: [
+                  Container(height: 20,
+                      decoration: BoxDecoration(color: p.card2,
+                          borderRadius: BorderRadius.circular(kRadiusChip))),
+                  AnimatedContainer(
+                    duration: Duration(milliseconds: 420 + i * 60),
+                    curve: Curves.easeOutCubic,
+                    height: 20, width: w,
+                    decoration: BoxDecoration(
+                        color: p.accent.withValues(alpha: 0.85),
+                        borderRadius: BorderRadius.circular(kRadiusChip)),
+                  ),
+                ]);
+              }),
+            ),
+            const SizedBox(width: 10),
+            SizedBox(
+              width: 34,
+              child: Text('${data[i].value}', textAlign: TextAlign.right,
+                  style: AppleTheme.body(context).copyWith(
+                      fontWeight: FontWeight.w800,
+                      fontFeatures: const [FontFeature.tabularFigures()])),
+            ),
+          ]),
+        ],
+      ]),
     );
   }
 
