@@ -854,13 +854,16 @@ Future<bool?> showFormSheet(
 // Canonical batch code, e.g. "AIG 01 07 26 AA" — course short form (upper) +
 // batch number + start month + start year (numeric parts zero-padded to 2
 // digits) + a two-letter code (upper). Returns '' if any part is blank.
-/// A batch code is "<COURSE> <LETTER>" — e.g. "AIG A", "AIA B". Returns '' when
-/// either half is missing, which callers treat as "not a valid code yet".
-String buildBatchCode(String course, String code) {
+String buildBatchCode(String course, String batch, String month, String year, String code) {
   final c = course.trim().toUpperCase();
+  String pad(String s) {
+    final n = s.trim();
+    return n.isEmpty ? '' : n.padLeft(2, '0');
+  }
+  final b = pad(batch), m = pad(month), y = pad(year);
   final s = code.trim().toUpperCase();
-  if (c.isEmpty || s.isEmpty) return '';
-  return '$c $s';
+  if (c.isEmpty || b.isEmpty || m.isEmpty || y.isEmpty || s.isEmpty) return '';
+  return '$c $b $m $y $s';
 }
 
 /// Five-field batch-code input (course short form · batch no. · start month ·
@@ -876,25 +879,28 @@ class BatchCodeField extends StatefulWidget {
 }
 
 class BatchCodeFieldState extends State<BatchCodeField> {
-  late final TextEditingController _course, _code;
+  late final TextEditingController _course, _batch, _month, _year, _code;
 
   @override
   void initState() {
     super.initState();
-    // Legacy 5-part codes ("AIG 01 07 26 A") collapse to their first and last
-    // groups, so editing an old batch keeps its course and letter.
-    final parts = (widget.initial ?? '').trim().split(RegExp(r'\s+'))
-      ..removeWhere((e) => e.isEmpty);
-    _course = TextEditingController(
-        text: (parts.isNotEmpty ? parts.first : 'AIG').toUpperCase());
-    _code = TextEditingController(
-        text: (parts.length > 1 ? parts.last : '').toUpperCase());
+    final raw = (widget.initial ?? '').trim();
+    final parts = raw.isEmpty ? <String>[] : raw.split(RegExp(r'\s+'));
+    // Accept a legacy 4-part code (no trailing letters) as well as the 5-part one.
+    final ok = parts.length >= 4;
+    String at(int i) => ok && i < parts.length ? parts[i] : '';
+    _course = TextEditingController(text: (ok ? at(0) : 'aig').toUpperCase()); // default course code
+    _batch = TextEditingController(text: at(1));
+    _month = TextEditingController(text: at(2));
+    _year = TextEditingController(text: at(3));
+    _code = TextEditingController(text: at(4).toUpperCase());
   }
 
   @override
   void dispose() {
-    _course.dispose();
-    _code.dispose();
+    for (final c in [_course, _batch, _month, _year, _code]) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -911,14 +917,18 @@ class BatchCodeFieldState extends State<BatchCodeField> {
       }
     }
     setState(() {}); // refresh the live preview
-    widget.onChanged(buildBatchCode(_course.text, _code.text));
+    widget.onChanged(buildBatchCode(_course.text, _batch.text, _month.text, _year.text, _code.text));
   }
 
-  // Live "AIG A" preview — * for the letter until it's filled.
+  // Live "AIG ** ** ** **" preview — ** for any group not yet filled.
   String _preview() {
+    String g(TextEditingController ctl) {
+      final n = ctl.text.trim();
+      return n.isEmpty ? '**' : n.padLeft(2, '0');
+    }
     final c = _course.text.trim().toUpperCase();
     final s = _code.text.trim().toUpperCase();
-    return '${c.isEmpty ? 'AIG' : c} ${s.isEmpty ? '*' : s}';
+    return '${c.isEmpty ? 'AIG' : c} ${g(_batch)} ${g(_month)} ${g(_year)} ${s.isEmpty ? '**' : s}';
   }
 
   Widget _cell(TextEditingController c, String label, String hint, {int flex = 1, bool digits = false}) {
@@ -951,7 +961,13 @@ class BatchCodeFieldState extends State<BatchCodeField> {
       Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
         _cell(_course, 'Course', 'AIG', flex: 3),
         const SizedBox(width: 8),
-        _cell(_code, 'Batch', 'A', flex: 2),
+        _cell(_batch, 'Batch', '**', digits: true),
+        const SizedBox(width: 8),
+        _cell(_month, 'Month', '**', digits: true),
+        const SizedBox(width: 8),
+        _cell(_year, 'Year', '**', digits: true),
+        const SizedBox(width: 8),
+        _cell(_code, 'Code', 'AA', flex: 2),
       ]),
       const SizedBox(height: 8),
       Text(_preview(), style: AppleTheme.body(context).copyWith(fontWeight: FontWeight.w700, letterSpacing: 1.5, color: p.accent)),

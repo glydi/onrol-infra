@@ -100,7 +100,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   int _videoProcessing = 0;
   // Daily student interaction counts for the Home chart, plus its filters.
   List<dynamic> _activity = [];
-  String _actBatch = ''; // '' = all batches
+  String _actBatch = '';  // batch code the graph is showing
+  String _actCourse = ''; // course_label the graph is showing
   int _actDays = 14;
 
   @override
@@ -150,25 +151,54 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     if (mounted) setState(() => _loading = false);
   }
 
+  /// Course labels that actually have students — filtering to an empty course
+  /// would only ever draw a flat zero line.
+  List<String> _actCourses() {
+    final s = _people
+        .where((u) => u['role'] == 'student')
+        .map((u) => (u['course_label']?.toString().trim() ?? ''))
+        .where((c) => c.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    return s;
+  }
+
+  /// Batch codes within one course, for the same reason.
+  List<String> _actBatches(String courseLabel) {
+    final s = _people
+        .where((u) =>
+            u['role'] == 'student' &&
+            (courseLabel.isEmpty ||
+                (u['course_label']?.toString().trim().toLowerCase() ?? '') ==
+                    courseLabel.toLowerCase()))
+        .map((u) => (u['batch']?.toString().trim() ?? ''))
+        .where((b) => b.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    return s;
+  }
+
   /// Refetch just the activity series — filters change often, and re-running
   /// the whole console load for a chip tap would be wasteful.
   /// Best-effort: an older API without this route leaves the chart empty
   /// rather than breaking the console.
   Future<void> _loadActivity() async {
-    // With no "All" chip the graph always shows one batch — land on the first
-    // one that has students rather than an unfiltered total.
-    if (_actBatch.isEmpty) {
-      final codes = _people
-          .map((u) => (u['batch']?.toString().trim() ?? ''))
-          .where((b) => b.isNotEmpty)
-          .toSet()
-          .toList()
-        ..sort();
-      if (codes.isNotEmpty) _actBatch = codes.first;
+    // No "All" chips: the graph always shows one course and one batch. Land on
+    // the first course that has students, then its first batch.
+    if (_actCourse.isEmpty) {
+      final labels = _actCourses();
+      if (labels.isNotEmpty) _actCourse = labels.first;
+    }
+    if (_actBatch.isEmpty || !_actBatches(_actCourse).contains(_actBatch)) {
+      final codes = _actBatches(_actCourse);
+      _actBatch = codes.isEmpty ? '' : codes.first;
     }
     try {
       final q = StringBuffer('/api/v1/manage/activity?days=$_actDays');
       if (_actBatch.isNotEmpty) q.write('&batch=${Uri.encodeQueryComponent(_actBatch)}');
+      if (_actCourse.isNotEmpty) q.write('&course=${Uri.encodeQueryComponent(_actCourse)}');
       final ar = await widget.auth.apiGet(q.toString());
       final days = (ApiClient.decode(ar)['days'] as List?) ?? const [];
       if (mounted) setState(() => _activity = days);
@@ -1333,28 +1363,30 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       return s.length >= 10 ? s.substring(5) : s; // MM-DD
     }
 
-    // Batch codes that actually hold students — filtering to an empty batch
-    // would just show a flat zero line.
-    final batches = _people
-        .map((u) => (u['batch']?.toString().trim() ?? ''))
-        .where((b) => b.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
+    final courses = _actCourses();
+    final batches = _actBatches(_actCourse);
 
     return AppleCard(
       square: true,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Filters: range, then batch.
-        Wrap(spacing: 6, runSpacing: 6, children: [
+        // Range · course · batch, each its own group with a divider between.
+        Wrap(spacing: 5, runSpacing: 5, crossAxisAlignment: WrapCrossAlignment.center, children: [
           for (final d in const [7, 14, 30])
             _filterChip('${d}d', _actDays == d, () {
               if (_actDays == d) return;
               setState(() => _actDays = d);
               _loadActivity();
             }),
-          const SizedBox(width: 10),
-          // No "All" — the graph is read one batch at a time.
+          _chipDivider(),
+          for (final c in courses)
+            _filterChip(_courseDisplayName(c), _actCourse == c, () {
+              if (_actCourse == c) return;
+              // Switching course invalidates the batch — _loadActivity picks
+              // the first batch of the new course.
+              setState(() { _actCourse = c; _actBatch = ''; });
+              _loadActivity();
+            }),
+          if (batches.isNotEmpty) _chipDivider(),
           for (final b in batches)
             _filterChip(b, _actBatch == b, () {
               if (_actBatch == b) return;
@@ -1396,7 +1428,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     );
   }
 
-  /// Selectable filter chip for the activity chart.
+  /// Small selectable filter chip for the activity chart. Deliberately compact —
+  /// there are three groups of these and they sit above the chart, not in it.
   Widget _filterChip(String label, bool on, VoidCallback onTap) {
     final p = Palette.of(context);
     return HoverTap(
@@ -1404,20 +1437,30 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
         curve: Curves.easeOut,
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        constraints: const BoxConstraints(maxWidth: 150),
         decoration: BoxDecoration(
           color: on ? p.accent : p.card2,
           borderRadius: BorderRadius.circular(kRadiusChip),
           border: Border.all(color: on ? p.accent : p.separator),
         ),
         child: Text(label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
-                fontSize: 12.5,
+                fontSize: 11.5,
                 fontWeight: FontWeight.w700,
                 color: on ? Colors.white : p.secondary)),
       ),
     );
   }
+
+  /// Thin rule separating the filter groups.
+  Widget _chipDivider() => Container(
+        width: 1, height: 16,
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        color: Palette.of(context).separator,
+      );
 
   Widget _legendDot(Color c, String label) => Row(mainAxisSize: MainAxisSize.min, children: [
         Container(width: 9, height: 9,
