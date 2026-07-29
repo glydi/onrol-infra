@@ -3849,13 +3849,11 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
             const SizedBox(width: 6),
             _smallButton('Quiz', CupertinoIcons.doc_text_fill, () => _addAssignment(moduleId: mid, moduleTitle: mtitle)),
             const SizedBox(width: 6),
-            // Manual reorder of this module within the batch.
-            if (!isSub) ...[
-              HoverTap(onTap: () => _moveModule(mid, 'up'), child: Icon(CupertinoIcons.chevron_up, size: 16, color: Palette.of(context).secondary)),
-              const SizedBox(width: 8),
-              HoverTap(onTap: () => _moveModule(mid, 'down'), child: Icon(CupertinoIcons.chevron_down, size: 16, color: Palette.of(context).secondary)),
-              const SizedBox(width: 10),
-            ],
+            // Manual reorder of this module/submodule among its siblings.
+            HoverTap(onTap: () => _moveModule(mid, 'up'), child: Icon(CupertinoIcons.chevron_up, size: 16, color: Palette.of(context).secondary)),
+            const SizedBox(width: 8),
+            HoverTap(onTap: () => _moveModule(mid, 'down'), child: Icon(CupertinoIcons.chevron_down, size: 16, color: Palette.of(context).secondary)),
+            const SizedBox(width: 10),
             // Save this module (+ lessons) into the reusable Module Store.
             HoverTap(
               onTap: () => _saveModuleToStore(mid, mtitle),
