@@ -173,9 +173,18 @@ server {
     index index.html;
     client_max_body_size 25m;
 
+    # Compress the Flutter bundle (main.dart.js is multi-MB) — big first-load win.
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 6;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/json application/javascript application/wasm image/svg+xml text/xml application/xml text/javascript;
+
     location /api/      { proxy_pass http://127.0.0.1:8080; proxy_set_header Host \$host; proxy_set_header X-Real-IP \$remote_addr; proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto \$scheme; }
     location = /healthz { proxy_pass http://127.0.0.1:8080; }
-    location /          { try_files \$uri \$uri/ /index.html; }
+    # Cache but always revalidate (ETag): unchanged files return a tiny 304 instead
+    # of re-sending megabytes, and a deploy is still picked up on the next load.
+    location /          { try_files \$uri \$uri/ /index.html; add_header Cache-Control "no-cache" always; }
 }
 NGINX
 }
