@@ -251,7 +251,9 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       if (_isAdmin) const NavDest(CupertinoIcons.person_2_fill, 'Students', section: 'People'),
       if (_isAdmin) const NavDest(CupertinoIcons.calendar, 'Calendar', section: 'Engagement'),
       if (_isAdmin) NavDest(CupertinoIcons.chat_bubble_2_fill, 'Ask Mentor', section: 'Engagement', badge: _mentorWaiting),
-      if (_isAdmin) const NavDest(CupertinoIcons.gear_alt_fill, 'Admin Settings', section: 'Account'),
+      // Everyone gets Settings — it carries the theme choice, not just the
+      // admin-account management inside it.
+      const NavDest(CupertinoIcons.gear_alt_fill, 'Settings', section: 'Account'),
       const NavDest(CupertinoIcons.person_fill, 'Profile', section: 'Account'),
     ];
     final pages = <Widget>[
@@ -266,7 +268,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       if (_isAdmin) _studentsPage(),
       if (_isAdmin) AdminCalendarScreen(auth: widget.auth),
       if (_isAdmin) AskMentorQueueScreen(auth: widget.auth),
-      if (_isAdmin) _adminSettingsPage(),
+      _settingsPage(),
       _profilePage(),
     ];
     // The whole admin console renders with squared corners.
@@ -486,22 +488,46 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     ]);
   }
 
-  Widget _adminSettingsPage() {
+  Widget _settingsPage() {
+    final p = Palette.of(context);
     final hp = _hPad(context);
     final admins = _people.where((u) => u['role'] == 'manager' || u['role'] == 'superadmin').toList();
     return RefreshIndicator(
-      color: Palette.of(context).accent,
+      color: p.accent,
       onRefresh: _load,
       child: ListView(
         padding: EdgeInsets.fromLTRB(hp, 18, hp, 40),
         children: [
           Row(children: [
-            Expanded(child: Text('Admin Settings', style: AppleTheme.largeTitle(context))),
-            HoverTap(onTap: _load, child: Icon(CupertinoIcons.arrow_clockwise, color: Palette.of(context).accent, size: 24)),
+            Expanded(child: Text('Settings', style: AppleTheme.largeTitle(context))),
+            HoverTap(onTap: _load, child: Icon(CupertinoIcons.arrow_clockwise, color: p.accent, size: 24)),
           ]),
-          Text('Manage admin accounts and access', style: AppleTheme.subhead(context)),
+          Text('Appearance and access', style: AppleTheme.subhead(context)),
           const SizedBox(height: 16),
-          _peopleGroup('Admin accounts [ ${admins.length} ]', admins, manage: true),
+
+          const SectionHeader('Appearance'),
+          AppleCard(
+            square: true,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Icon(CupertinoIcons.circle_lefthalf_fill, size: 20, color: p.accent),
+                const SizedBox(width: 10),
+                Expanded(child: Text('Theme', style: AppleTheme.headline(context))),
+              ]),
+              const SizedBox(height: 4),
+              Text('Choose light or dark, or follow your device.',
+                  style: AppleTheme.footnote(context)),
+              const SizedBox(height: 12),
+              // Shared control — writes through setTheme(), which persists the
+              // choice and reapplies it across the app.
+              const ThemeToggle(),
+            ]),
+          ),
+
+          if (_isAdmin) ...[
+            const SizedBox(height: 22),
+            _peopleGroup('Admin accounts [ ${admins.length} ]', admins, manage: true),
+          ],
         ],
       ),
     );
