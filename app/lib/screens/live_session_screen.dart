@@ -1563,8 +1563,8 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     // The host watches the live video too (when it's playing); otherwise they
     // see the host status panel (lobby / preparing / ended / queue summary).
     if (widget.isHost &&
-        !(_status == 'live' &&
-            (_playlistUrl != null || widget.youtubeId.isNotEmpty || widget.externalUrl.isNotEmpty)))
+        !((_status == 'live' && (_playlistUrl != null || widget.youtubeId.isNotEmpty)) ||
+            (widget.externalUrl.isNotEmpty && _status != 'ended')))
       return _hostPanel();
     // YouTube-Live: clean autoplaying embed once live — no logo, no join click.
     // The host watches the same stage (with the control panel below it).
@@ -1575,12 +1575,14 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     // the surrounding live-room UI (Q&A/chat/watermark) stays identical. Zoho's
     // own "Join Now" is auto-pressed on mobile (injected JS) / clicked by the
     // student on web — we don't add our own join button.
-    if (_status == 'live' && widget.externalUrl.isNotEmpty) {
+    if (widget.externalUrl.isNotEmpty && _status != 'ended' && (_status == 'live' || widget.isHost)) {
       return AspectRatio(
         aspectRatio: 16 / 9,
         child: Stack(fit: StackFit.expand, children: [
+          // Host gets the "bare" embed (Zoho's own controls, for present/record);
+          // students get the shielded embed.
           WatermarkOverlay(
-              label: widget.watermark, child: liveEmbed(widget.externalUrl)),
+              label: widget.watermark, child: liveEmbed(widget.externalUrl, bare: widget.isHost)),
           // Host room controls mirrored over the Zoho embed.
           if (_blank)
             Container(

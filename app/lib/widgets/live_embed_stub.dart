@@ -42,7 +42,7 @@ const _autoJoinJs = r'''
 /// VIDEO source inside our own live room on mobile, so the surrounding UI (Q&A,
 /// chat, watermark, header) stays the app's own. On web an <iframe> is used
 /// instead (see live_embed_web.dart).
-Widget liveEmbed(String url) => InAppWebView(
+Widget liveEmbed(String url, {bool bare = false}) => InAppWebView(
       initialUrlRequest: URLRequest(url: WebUri(url)),
       initialSettings: InAppWebViewSettings(
         mediaPlaybackRequiresUserGesture: false,
@@ -59,11 +59,13 @@ Widget liveEmbed(String url) => InAppWebView(
         return false;
       },
       shouldOverrideUrlLoading: (_, __) async => NavigationActionPolicy.ALLOW,
-      // Once the page settles: hide controls (block pointer input) and auto-join.
-      // CSS rules also apply to controls the SPA mounts later; the auto-join loop
-      // keeps trying as the join button appears. Both re-run on every navigation.
+      // Once the page settles: students get controls hidden (pointer input
+      // blocked) + auto-join; the host (bare) keeps Zoho's controls so they can
+      // present/record, and isn't auto-joined as an attendee.
       onLoadStop: (controller, _) async {
-        await controller.injectCSSCode(source: _hideZohoControlsCss);
-        await controller.evaluateJavascript(source: _autoJoinJs);
+        if (!bare) {
+          await controller.injectCSSCode(source: _hideZohoControlsCss);
+          await controller.evaluateJavascript(source: _autoJoinJs);
+        }
       },
     );

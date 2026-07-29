@@ -2699,16 +2699,21 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                 Text(subtitle, style: AppleTheme.footnote(context)),
               ]),
             ),
-            // Host & record — opens the instructor's Zoho host link (external only).
-            if (!simulated && hostUrl.isNotEmpty) ...[
-              _smallButton('Host & record', CupertinoIcons.videocam_circle_fill, () => _openLink(hostUrl)),
+            // Zoho webinar → ONE button: opens the room with the Zoho host view
+            // on the left and the answer queue on the right (host + record +
+            // answer together). Other external links keep the separate open-link.
+            if ((s['webinar_id']?.toString() ?? '').trim().isNotEmpty) ...[
+              _answerButton(s, label: 'Host & Answer'),
+              const SizedBox(width: 6),
+            ] else ...[
+              if (!simulated && hostUrl.isNotEmpty) ...[
+                _smallButton('Host & record', CupertinoIcons.videocam_circle_fill, () => _openLink(hostUrl)),
+                const SizedBox(width: 6),
+              ],
+              // Answer — opens the in-app host room; red badge = waiting questions.
+              _answerButton(s),
               const SizedBox(width: 6),
             ],
-            // Answer — opens the in-app host room where the admin sees each
-            // student's question and replies. A red badge shows how many student
-            // questions are still waiting for an answer.
-            _answerButton(s),
-            const SizedBox(width: 6),
             _smallButton('Log', CupertinoIcons.doc_text_search, () => _openLog(s)),
             const SizedBox(width: 6),
             _smallButton('Edit', CupertinoIcons.pencil, () => _editSession(s)),
@@ -2733,9 +2738,9 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
 
   // The "Answer" button with a red count badge when student questions are
   // waiting to be answered for this session.
-  Widget _answerButton(Map<String, dynamic> s) {
+  Widget _answerButton(Map<String, dynamic> s, {String label = 'Answer'}) {
     final waiting = (s['waiting'] as num?)?.toInt() ?? 0;
-    final btn = _smallButton('Answer', CupertinoIcons.chat_bubble_2_fill, () => _openHost(s));
+    final btn = _smallButton(label, CupertinoIcons.chat_bubble_2_fill, () => _openHost(s));
     if (waiting <= 0) return btn;
     return Stack(clipBehavior: Clip.none, children: [
       btn,
@@ -2756,11 +2761,12 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   // Open the live host console: the admin sees all student chats (private to
   // them) and can broadcast to everyone.
   Future<void> _openHost(Map<String, dynamic> s) async {
-    // For a Zoho webinar, register the host too and embed the webinar in their
-    // room — so the admin watches the same stream as students while answering.
-    String externalUrl = '';
+    // For a Zoho webinar, embed the webinar on the LEFT while the admin answers
+    // on the RIGHT. Prefer the host/start link (so the instructor presents +
+    // records with Zoho's own controls); fall back to registering as attendee.
+    String externalUrl = (s['host_url']?.toString() ?? '').trim();
     final wid = s['webinar_id']?.toString() ?? '';
-    if (wid.isNotEmpty) {
+    if (externalUrl.isEmpty && wid.isNotEmpty) {
       try {
         final m = ApiClient.decode(await widget.auth.apiPost('/api/v1/live/$wid/join', {}));
         externalUrl = m['url']?.toString() ?? '';

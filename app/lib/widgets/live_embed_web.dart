@@ -37,8 +37,10 @@ var _pressInjected = false;
 /// bars (we can't hide them inside a cross-origin frame, but we can cover them
 /// from our side), while the centre — the video and "Join Now" — stays visible
 /// and tappable so the student can still join (we can't click it for them).
-Widget liveEmbed(String url) {
-  final viewType = 'live-embed-${url.hashCode}';
+Widget liveEmbed(String url, {bool bare = false}) {
+  // bare = the host's presenter view: no touch shield / control cover, so the
+  // instructor can use Zoho's own host controls (start, record, share, …).
+  final viewType = 'live-embed-${bare ? 'host-' : ''}${url.hashCode}';
   try {
     ui_web.platformViewRegistry.registerViewFactory(viewType, (int id) {
       final container = html.DivElement()
@@ -78,8 +80,12 @@ Widget liveEmbed(String url) {
         ..style.background = '#000';
 
       container.append(f);
-      container.append(top);
-      container.append(bottom);
+      if (!bare) {
+        // Students: shield the top controls and cover the bottom bar. The host
+        // (bare) needs Zoho's controls, so we add neither.
+        container.append(top);
+        container.append(bottom);
+      }
       return container;
     });
   } catch (_) {}
