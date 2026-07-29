@@ -33,13 +33,20 @@ func (h *Handlers) UpdateModule(c *fiber.Ctx) error {
 	var req struct {
 		Title    *string `json:"title"`
 		Position *int    `json:"position"`
+		Code     *string `json:"code"` // module/sub-module code (store_code); "" clears the link
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
 	}
+	var code *string
+	if req.Code != nil {
+		v := strings.ToUpper(strings.TrimSpace(*req.Code)) // "" clears
+		code = &v
+	}
 	if _, err := h.Pool.Exec(c.Context(),
-		`UPDATE modules SET title=COALESCE($2, title), position=COALESCE($3, position) WHERE id=$1`,
-		id, trimmedPtr(req.Title), req.Position); err != nil {
+		`UPDATE modules SET title=COALESCE($2, title), position=COALESCE($3, position),
+		   store_code = CASE WHEN $4::text IS NULL THEN store_code WHEN $4 = '' THEN NULL ELSE $4 END WHERE id=$1`,
+		id, trimmedPtr(req.Title), req.Position, code); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "update failed")
 	}
 	return c.JSON(fiber.Map{"id": id, "updated": true})

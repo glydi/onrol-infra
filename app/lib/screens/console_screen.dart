@@ -4442,13 +4442,19 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
 
   // Rename a module.
   Future<void> _editModule(Map<String, dynamic> m) async {
+    final isSub = (m['parent_module_id']?.toString() ?? '').isNotEmpty;
     final title = TextEditingController(text: m['title']?.toString() ?? '');
-    final ok = await showFormSheet(context, square: true, title: 'Edit Module',
-        builder: (_) => [sheetField(title, 'Module title', CupertinoIcons.folder)],
+    final code = TextEditingController(text: m['store_code']?.toString() ?? '');
+    final ok = await showFormSheet(context, square: true, title: isSub ? 'Edit Sub-module' : 'Edit Module',
+        builder: (_) => [
+          sheetField(title, isSub ? 'Sub-module title' : 'Module title', CupertinoIcons.folder),
+          const SizedBox(height: 10),
+          sheetField(code, 'Code (links to the Module Store; blank = unlink)', CupertinoIcons.number),
+        ],
         onSubmit: () async {
       if (title.text.trim().isEmpty) return 'Title required';
       try {
-        await widget.auth.apiPatch('/api/v1/manage/modules/${m['id']}', {'title': title.text.trim()});
+        await widget.auth.apiPatch('/api/v1/manage/modules/${m['id']}', {'title': title.text.trim(), 'code': code.text.trim()});
         return null;
       } on ApiException catch (e) {
         return e.message;
@@ -7545,7 +7551,18 @@ class _ModuleStoreScreenState extends State<ModuleStoreScreen> {
                     if (mods.isEmpty) {
                       return AppleCard(square: true, child: Text(_modules.isEmpty ? 'No stored modules yet. Tap ＋ to create one.' : 'No modules in this folder.', style: AppleTheme.footnote(context)));
                     }
-                    return Column(children: mods.map(_row).toList());
+                    // 1:1 cards, 4 per row on wide screens.
+                    final w = MediaQuery.of(context).size.width;
+                    final cols = w >= 900 ? 4 : (w >= 640 ? 3 : (w >= 420 ? 2 : 1));
+                    return GridView.count(
+                      crossAxisCount: cols,
+                      childAspectRatio: 1,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 10,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      children: mods.map(_row).toList(),
+                    );
                   }),
                 ],
               ),
@@ -7668,30 +7685,30 @@ class _ModuleStoreScreenState extends State<ModuleStoreScreen> {
     } catch (_) { _toast('Could not move'); }
   }
 
+  // Square (1:1) store-module card for the grid.
   Widget _row(Map<String, dynamic> m) {
     final p = Palette.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: GestureDetector(
-        onTap: () => Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => StoreModuleDetailScreen(auth: widget.auth, moduleId: m['id'].toString(), code: m['code']?.toString() ?? '', title: m['title']?.toString() ?? ''),
-        )).then((_) => _load()),
-        child: AppleCard(square: true, child: Row(children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(color: p.accent.withOpacity(0.12)),
-            child: Text(m['code']?.toString() ?? '', style: TextStyle(color: p.accent, fontWeight: FontWeight.w800, fontSize: 12.5)),
-          ),
-          const SizedBox(width: 10),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(m['title']?.toString() ?? 'Module', style: AppleTheme.headline(context)),
-            Text('${m['lessons'] ?? 0} lessons', style: AppleTheme.footnote(context)),
-          ])),
-          HoverTap(onTap: () => _moveToFolder(m), child: Icon(CupertinoIcons.folder, size: 18, color: p.secondary)),
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => StoreModuleDetailScreen(auth: widget.auth, moduleId: m['id'].toString(), code: m['code']?.toString() ?? '', title: m['title']?.toString() ?? ''),
+      )).then((_) => _load()),
+      child: AppleCard(square: true, padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(color: p.accent.withOpacity(0.14)),
+          child: Text(m['code']?.toString() ?? '', style: TextStyle(color: p.accent, fontWeight: FontWeight.w800, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+        const SizedBox(height: 10),
+        Expanded(child: Text(m['title']?.toString() ?? 'Module', style: AppleTheme.headline(context), maxLines: 3, overflow: TextOverflow.ellipsis)),
+        const SizedBox(height: 6),
+        Row(children: [
+          Text('${m['lessons'] ?? 0} lessons', style: AppleTheme.footnote(context)),
+          const Spacer(),
+          HoverTap(onTap: () => _moveToFolder(m), child: Icon(CupertinoIcons.folder, size: 17, color: p.secondary)),
           const SizedBox(width: 12),
-          HoverTap(onTap: () => _delete(m), child: const Icon(CupertinoIcons.trash, size: 18, color: AppleColors.red)),
-        ])),
-      ),
+          HoverTap(onTap: () => _delete(m), child: const Icon(CupertinoIcons.trash, size: 17, color: AppleColors.red)),
+        ]),
+      ])),
     );
   }
 }
