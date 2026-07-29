@@ -35,6 +35,8 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
   int _upPart = 0, _upTotalParts = 0;
   int _upDone = 0, _upTotal = 0;
   List<dynamic> _videos = [];
+  List<Map<String, dynamic>> _folders = [];
+  String _folder = ''; // '' = All, '__none__' = Unfiled, else a folder id
   String? _err;
 
   static const _chunkSize = 16 * 1024 * 1024; // 16 MB pieces — fewer round-trips = faster
@@ -52,6 +54,12 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
       final d = ApiClient.decode(r);
       _videos = (d['videos'] as List?) ?? [];
       _r2 = d['r2_enabled'] != false;
+      try {
+        final fr = await widget.auth.apiGet('/api/v1/manage/video-folders');
+        _folders = ((ApiClient.decode(fr)['folders'] as List?) ?? [])
+            .map((e) => (e as Map).cast<String, dynamic>())
+            .toList();
+      } catch (_) {}
     } catch (_) {
       _err = 'Could not load the video store';
     }
@@ -301,16 +309,140 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
                     if (_uploading) _uploadPanel(),
                   ],
                   const SizedBox(height: 18),
+                  // Folder bar: All / Unfiled / each folder, + New folder.
+                  _folderBar(),
+                  const SizedBox(height: 12),
                   if (_err != null)
                     AppleCard(square: true, child: Text(_err!, style: AppleTheme.footnote(context)))
-                  else if (_videos.isEmpty)
-                    AppleCard(square: true, child: Text('No videos yet. Upload one to get started.', style: AppleTheme.footnote(context)))
-                  else
-                    ..._videos.map((v) => _row(v as Map<String, dynamic>)),
+                  else ...[
+                    Builder(builder: (_) {
+                      final vids = _videos.where((v) {
+                        final fid = (v as Map)['folder_id']?.toString() ?? '';
+                        if (_folder.isEmpty) return true;
+                        if (_folder == '__none__') return fid.isEmpty;
+                        return fid == _folder;
+                      }).toList();
+                      if (vids.isEmpty) {
+                        return AppleCard(square: true, child: Text(
+                          _folder.isEmpty ? 'No videos yet. Upload one to get started.' : 'No videos in this folder. Upload here or move videos in from another folder.',
+                          style: AppleTheme.footnote(context)));
+                      }
+                      return Column(children: vids.map((v) => _row(v as Map<String, dynamic>)).toList());
+                    }),
+                  ],
                 ],
               ),
             ),
     ));
+  }
+
+  // Folder chips (All / Unfiled / each folder) with a New-folder button. Long-
+  // press a folder chip to rename or delete it.
+  Widget _folderBar() {
+    final unfiled = _videos.where((v) => ((v as Map)['folder_id']?.toString() ?? '').isEmpty).length;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(children: [
+        _folderChip('All', '', _videos.length, null),
+        const SizedBox(width: 6),
+        _folderChip('Unfiled', '__none__', unfiled, null),
+        for (final f in _folders) ...[
+          const SizedBox(width: 6),
+          _folderChip(f['name']?.toString() ?? 'Folder', f['id'].toString(), (f['videos'] as num?)?.toInt() ?? 0, f),
+        ],
+        const SizedBox(width: 6),
+        GestureDetector(
+          onTap: _newFolder,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(color: Palette.of(context).card2, border: Border.all(color: Palette.of(context).separator)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(CupertinoIcons.folder_badge_plus, size: 15, color: Palette.of(context).accent),
+              const SizedBox(width: 5),
+              Text('New folder', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Palette.of(context).accent)),
+            ]),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _folderChip(String label, String value, int count, Map<String, dynamic>? folder) {
+    final p = Palette.of(context);
+    final on = _folder == value;
+    return GestureDetector(
+      onTap: () => setState(() => _folder = value),
+      onLongPress: folder == null ? null : () => _folderMenu(folder),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(color: on ? p.accent : p.card2, border: Border.all(color: on ? p.accent : p.separator)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (folder != null) Padding(padding: const EdgeInsets.only(right: 5), child: Icon(CupertinoIcons.folder_fill, size: 14, color: on ? Colors.white : p.secondary)),
+          Text('$label · $count', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: on ? Colors.white : p.label)),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _newFolder() async {
+    final name = TextEditingController();
+    final ok = await showFormSheet(context, square: true, title: 'New folder', builder: (_) => [
+      sheetField(name, 'Folder name', CupertinoIcons.folder),
+    ], onSubmit: () async {
+      if (name.text.trim().isEmpty) return 'Name required';
+      try {
+        await widget.auth.apiPost('/api/v1/manage/video-folders', {'name': name.text.trim()});
+        return null;
+      } on ApiException catch (e) {
+        return e.message;
+      }
+    });
+    if (ok == true) { _toast('Folder created'); _load(); }
+  }
+
+  Future<void> _folderMenu(Map<String, dynamic> f) async {
+    final v = await showSquareMenu(context, title: f['name']?.toString() ?? 'Folder', items: const [
+      SquareMenuItem('Rename', value: 'rename', icon: CupertinoIcons.pencil),
+      SquareMenuItem('Delete folder', value: 'delete', icon: CupertinoIcons.trash),
+    ]);
+    if (v == 'rename') {
+      final name = TextEditingController(text: f['name']?.toString() ?? '');
+      final ok = await showFormSheet(context, square: true, title: 'Rename folder', builder: (_) => [
+        sheetField(name, 'Folder name', CupertinoIcons.folder),
+      ], onSubmit: () async {
+        if (name.text.trim().isEmpty) return 'Name required';
+        try { await widget.auth.apiPatch('/api/v1/manage/video-folders/${f['id']}', {'name': name.text.trim()}); return null; }
+        on ApiException catch (e) { return e.message; }
+      });
+      if (ok == true) { _toast('Renamed'); _load(); }
+    } else if (v == 'delete') {
+      final yes = await showSquareConfirm(context,
+          title: 'Delete folder',
+          message: 'Delete “${f['name']}”? Its videos aren’t deleted — they move to Unfiled.',
+          confirmLabel: 'Delete', destructive: true);
+      if (!yes) return;
+      try {
+        await widget.auth.apiDelete('/api/v1/manage/video-folders/${f['id']}');
+        if (_folder == f['id'].toString()) _folder = '';
+        _toast('Folder deleted'); _load();
+      } catch (_) { _toast('Could not delete'); }
+    }
+  }
+
+  // Move a video into a folder (or Unfiled).
+  Future<void> _moveToFolder(String videoId) async {
+    final items = <SquareMenuItem>[
+      const SquareMenuItem('Unfiled (no folder)', value: '', icon: CupertinoIcons.tray),
+      for (final f in _folders) SquareMenuItem(f['name']?.toString() ?? 'Folder', value: f['id'].toString(), icon: CupertinoIcons.folder_fill),
+    ];
+    final v = await showSquareMenu(context, title: 'Move to folder', items: items);
+    if (v == null) return;
+    try {
+      await widget.auth.apiPost('/api/v1/manage/videos/$videoId/folder', {'folder_id': v});
+      _toast('Moved'); _load();
+    } catch (_) { _toast('Could not move'); }
   }
 
   Widget _row(Map<String, dynamic> v) {
@@ -380,6 +512,11 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
             HoverTap(
               onTap: () { if (!processing) _retranscode(v['id'].toString()); },
               child: Icon(CupertinoIcons.arrow_2_circlepath, size: 20, color: processing ? p.separator : p.secondary),
+            ),
+            const SizedBox(width: 14),
+            HoverTap(
+              onTap: () => _moveToFolder(v['id'].toString()),
+              child: Icon(CupertinoIcons.folder, size: 20, color: p.secondary),
             ),
             const SizedBox(width: 14),
             HoverTap(
