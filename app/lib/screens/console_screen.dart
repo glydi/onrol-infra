@@ -2699,18 +2699,14 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                 Text(subtitle, style: AppleTheme.footnote(context)),
               ]),
             ),
-            // Zoho webinar → ONE button: opens the room with the Zoho host view
-            // on the left and the answer queue on the right (host + record +
-            // answer together). Other external links keep the separate open-link.
-            if ((s['webinar_id']?.toString() ?? '').trim().isNotEmpty) ...[
+            // Any session with a host link (Zoho webinar or a pasted external
+            // host URL) → ONE "Host & Answer" button: the room embeds the host
+            // view on the LEFT and the answer queue on the RIGHT. Otherwise just
+            // the Answer button.
+            if ((s['webinar_id']?.toString() ?? '').trim().isNotEmpty || (!simulated && hostUrl.isNotEmpty)) ...[
               _answerButton(s, label: 'Host & Answer'),
               const SizedBox(width: 6),
             ] else ...[
-              if (!simulated && hostUrl.isNotEmpty) ...[
-                _smallButton('Host & record', CupertinoIcons.videocam_circle_fill, () => _openLink(hostUrl)),
-                const SizedBox(width: 6),
-              ],
-              // Answer — opens the in-app host room; red badge = waiting questions.
               _answerButton(s),
               const SizedBox(width: 6),
             ],
