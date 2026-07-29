@@ -149,7 +149,15 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
           ]),
           Text('Schedule events for students, batches or roles', style: AppleTheme.subhead(context)),
           const SizedBox(height: 16),
-          PrimaryButton(label: 'Add Event', icon: CupertinoIcons.add, square: true, onPressed: () => _addOrEdit(day: _selected)),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SmallActionButton(
+              label: 'Add Event',
+              icon: CupertinoIcons.add,
+              filled: true,
+              onPressed: () => _addOrEdit(day: _selected),
+            ),
+          ),
           const SizedBox(height: 18),
           // Month navigator.
           Row(children: [
@@ -236,25 +244,17 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
             final isToday = d.year == now.year && d.month == now.month && d.day == now.day;
             final isSel = d == _selected;
             final n = (_byDay[_dk(d)] ?? const []).length;
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
+            return _DayCell(
+              day: d.day,
+              selected: isSel,
+              today: isToday,
+              accent: p.accent,
+              hoverFill: p.accent.withValues(alpha: 0.10),
               onTap: () => setState(() => _selected = d),
-              child: Container(
-                height: 46,
-                margin: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                  color: isSel ? p.accent : (isToday ? p.accent.withOpacity(0.12) : Colors.transparent),
-                  border: isToday && !isSel ? Border.all(color: p.accent.withOpacity(0.6)) : null,
-                ),
-                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Text('${d.day}', style: AppleTheme.body(context).copyWith(color: isSel ? Colors.white : null, fontWeight: isSel || isToday ? FontWeight.w700 : FontWeight.w500)),
-                  const SizedBox(height: 3),
-                  SizedBox(height: 5, child: n == 0 ? null : Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
-                    for (final m in (_byDay[_dk(d)] ?? const []).take(3))
-                      Container(width: 5, height: 5, margin: const EdgeInsets.symmetric(horizontal: 1), decoration: BoxDecoration(color: isSel ? Colors.white : _styleFor(m).color, shape: BoxShape.circle)),
-                  ])),
-                ]),
-              ),
+              dots: [
+                for (final m in (_byDay[_dk(d)] ?? const []).take(3)) _styleFor(m).color,
+              ],
+              more: n > 3,
             );
           })),
       ]));
@@ -281,7 +281,7 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
         square: true,
         onTap: isEvent ? () => _addOrEdit(ev: e) : null,
         child: Row(children: [
-          Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: st.color.withOpacity(0.12)), child: Icon(st.icon, color: st.color, size: 20)),
+          Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: st.color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(kRadiusChip)), child: Icon(st.icon, color: st.color, size: 20)),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(e['title']?.toString() ?? st.label, style: AppleTheme.headline(context), maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -463,5 +463,99 @@ class _AdminCalendarScreenState extends State<AdminCalendarScreen> {
     final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
     final ampm = d.hour < 12 ? 'AM' : 'PM';
     return '$h:${d.minute.toString().padLeft(2, '0')} $ampm';
+  }
+}
+
+/// One day in the month grid. Stateful so it can highlight under the cursor —
+/// a calendar you click into should react before you click.
+class _DayCell extends StatefulWidget {
+  const _DayCell({
+    required this.day,
+    required this.selected,
+    required this.today,
+    required this.accent,
+    required this.hoverFill,
+    required this.onTap,
+    required this.dots,
+    required this.more,
+  });
+  final int day;
+  final bool selected;
+  final bool today;
+  final Color accent;
+  final Color hoverFill;
+  final VoidCallback onTap;
+  final List<Color> dots;
+  final bool more;
+
+  @override
+  State<_DayCell> createState() => _DayCellState();
+}
+
+class _DayCellState extends State<_DayCell> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final sel = widget.selected;
+    final today = widget.today;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 130),
+          curve: Curves.easeOut,
+          height: 48,
+          margin: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            color: sel
+                ? widget.accent
+                : (_hover ? widget.hoverFill : Colors.transparent),
+            borderRadius: BorderRadius.circular(kRadiusField),
+            // Today keeps a ring so it stays findable even when another day is
+            // selected.
+            border: today && !sel
+                ? Border.all(color: widget.accent.withValues(alpha: 0.7), width: 1.5)
+                : null,
+            boxShadow: sel
+                ? [BoxShadow(color: widget.accent.withValues(alpha: 0.35),
+                    blurRadius: 12, offset: const Offset(0, 4), spreadRadius: -4)]
+                : null,
+          ),
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Text('${widget.day}',
+                style: AppleTheme.body(context).copyWith(
+                    color: sel ? Colors.white : null,
+                    fontWeight: sel || today ? FontWeight.w800 : FontWeight.w500)),
+            const SizedBox(height: 3),
+            SizedBox(
+              height: 5,
+              child: widget.dots.isEmpty
+                  ? null
+                  : Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
+                      for (final c in widget.dots)
+                        Container(width: 5, height: 5,
+                            margin: const EdgeInsets.symmetric(horizontal: 1),
+                            decoration: BoxDecoration(
+                                color: sel ? Colors.white : c, shape: BoxShape.circle)),
+                      if (widget.more)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 2),
+                          child: Text('+',
+                              style: TextStyle(
+                                  fontSize: 9, height: 1,
+                                  fontWeight: FontWeight.w900,
+                                  color: sel ? Colors.white : widget.accent)),
+                        ),
+                    ]),
+            ),
+          ]),
+        ),
+      ),
+    );
   }
 }

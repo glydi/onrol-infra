@@ -5986,6 +5986,58 @@ class _BatchStudentsScreenState extends State<BatchStudentsScreen> {
   }
 }
 
+/// Module-store folder action (Rename / Delete / New folder). Stateful purely
+/// so it can highlight under the cursor.
+class _StoreFolderBtn extends StatefulWidget {
+  const _StoreFolderBtn({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    required this.color,
+  });
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color color;
+
+  @override
+  State<_StoreFolderBtn> createState() => _StoreFolderBtnState();
+}
+
+class _StoreFolderBtnState extends State<_StoreFolderBtn> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.color;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: c.withValues(alpha: _hover ? 0.22 : 0.10),
+            borderRadius: BorderRadius.circular(kRadiusField),
+            border: Border.all(color: c.withValues(alpha: _hover ? 1 : 0.4)),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(widget.icon, size: 15, color: c),
+            const SizedBox(width: 5),
+            Text(widget.label,
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: c)),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
 /// Draws the activity series: a faint baseline grid, a soft area fill under the
 /// first series, then a line per series with its last point emphasised.
 class _ActivityPainter extends CustomPainter {
@@ -7936,34 +7988,27 @@ class _ModuleStoreScreenState extends State<ModuleStoreScreen> {
   // A square folder card for the landing grid.
   Widget _folderCard(String label, String value, int count, Map<String, dynamic>? folder) {
     final p = Palette.of(context);
-    return GestureDetector(
+    // Tap belongs on AppleCard: wrapped in a GestureDetector the card sees no
+    // onTap, counts as non-interactive, and never highlights on hover.
+    return AppleCard(
+      square: true,
       onTap: () => setState(() => _folder = value),
-      child: AppleCard(square: true, child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         Icon(folder != null ? CupertinoIcons.folder_fill : CupertinoIcons.tray_fill, size: 42, color: p.accent),
         const SizedBox(height: 10),
         Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: AppleTheme.headline(context)),
         const SizedBox(height: 4),
         Text('$count module${count == 1 ? '' : 's'}', style: AppleTheme.footnote(context)),
-      ])),
+      ]),
     );
   }
 
-  Widget _folderBtn(IconData icon, String label, VoidCallback onTap, {Color? color}) {
-    final c = color ?? Palette.of(context).accent;
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(color: c.withOpacity(0.10), border: Border.all(color: c.withOpacity(0.4))),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 15, color: c),
-          const SizedBox(width: 5),
-          Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: c)),
-        ]),
-      ),
-    );
-  }
+  // Rename / Delete / New folder — highlight under the cursor, same as the
+  // video store's equivalents.
+  Widget _folderBtn(IconData icon, String label, VoidCallback onTap, {Color? color}) =>
+      _StoreFolderBtn(
+          icon: icon, label: label, onTap: onTap,
+          color: color ?? Palette.of(context).accent);
 
   Future<void> _newFolder() async {
     final name = TextEditingController();
@@ -8018,11 +8063,15 @@ class _ModuleStoreScreenState extends State<ModuleStoreScreen> {
   // Square (1:1) store-module card for the grid.
   Widget _row(Map<String, dynamic> m) {
     final p = Palette.of(context);
-    return GestureDetector(
+    // Same as the folder cards: the tap has to be on AppleCard for the module
+    // card to highlight on hover.
+    return AppleCard(
+      square: true,
+      padding: const EdgeInsets.all(12),
       onTap: () => Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => StoreModuleDetailScreen(auth: widget.auth, moduleId: m['id'].toString(), code: m['code']?.toString() ?? '', title: m['title']?.toString() ?? ''),
       )).then((_) => _load()),
-      child: AppleCard(square: true, padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(color: p.accent.withOpacity(0.14)),
@@ -8038,7 +8087,7 @@ class _ModuleStoreScreenState extends State<ModuleStoreScreen> {
           const SizedBox(width: 12),
           HoverTap(onTap: () => _delete(m), child: const Icon(CupertinoIcons.trash, size: 17, color: AppleColors.red)),
         ]),
-      ])),
+      ]),
     );
   }
 }
