@@ -3770,6 +3770,14 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     }
   }
 
+  // Manual reorder of a module within its batch (up/down; backend no-ops at edge).
+  Future<void> _moveModule(String moduleId, String dir) async {
+    try {
+      await widget.auth.apiPost('/api/v1/manage/modules/$moduleId/move', {'dir': dir});
+      await _load();
+    } catch (_) {}
+  }
+
   // Promote a course module into the reusable Module Store under a new code.
   Future<void> _saveModuleToStore(String moduleId, String moduleTitle) async {
     final code = TextEditingController();
@@ -3830,6 +3838,13 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
             const SizedBox(width: 6),
             _smallButton('Quiz', CupertinoIcons.doc_text_fill, () => _addAssignment(moduleId: mid, moduleTitle: mtitle)),
             const SizedBox(width: 6),
+            // Manual reorder of this module within the batch.
+            if (!isSub) ...[
+              HoverTap(onTap: () => _moveModule(mid, 'up'), child: Icon(CupertinoIcons.chevron_up, size: 16, color: Palette.of(context).secondary)),
+              const SizedBox(width: 8),
+              HoverTap(onTap: () => _moveModule(mid, 'down'), child: Icon(CupertinoIcons.chevron_down, size: 16, color: Palette.of(context).secondary)),
+              const SizedBox(width: 10),
+            ],
             // Save this module (+ lessons) into the reusable Module Store.
             HoverTap(
               onTap: () => _saveModuleToStore(mid, mtitle),
@@ -3869,41 +3884,11 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
 
   // Group a module's lessons by day (null day → trailing "Unscheduled"). Each day
   // shows its custom name (dayLabels[day]) if set, else "Day N", and is editable.
+  // Flat, manually-ordered lesson list (no day grouping). Each lesson has up/down
+  // reorder arrows that persist its position.
   List<Widget> _lessonsByDay(String moduleId, Map<String, dynamic> dayLabels, List lessons) {
-    final groups = <int?, List<Map<String, dynamic>>>{};
-    for (final l in lessons) {
-      final ll = l as Map<String, dynamic>;
-      groups.putIfAbsent((ll['day_number'] as num?)?.toInt(), () => []).add(ll);
-    }
-    final keys = groups.keys.toList()
-      ..sort((a, b) {
-        if (a == null) return 1;
-        if (b == null) return -1;
-        return a.compareTo(b);
-      });
-    final out = <Widget>[];
-    for (final k in keys) {
-      final ls = groups[k]!;
-      final custom = k == null ? '' : (dayLabels[k.toString()]?.toString() ?? '');
-      out.add(_DayFolder(
-        label: k == null ? 'Unscheduled' : (custom.isNotEmpty ? custom : 'Day $k'),
-        count: ls.length,
-        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (k != null) ...[
-            GestureDetector(
-              onTap: () => _editDayName(moduleId, k, custom),
-              child: Icon(CupertinoIcons.pencil, size: 15, color: Palette.of(context).secondary),
-            ),
-            const SizedBox(width: 10),
-          ],
-          _dayScheduleControl(ls),
-          const SizedBox(width: 8),
-          _dayVisibleToggle(ls),
-        ]),
-        children: [for (var i = 0; i < ls.length; i++) _lessonRow(ls[i], ls, i)],
-      ));
-    }
-    return out;
+    final ls = lessons.map((e) => e as Map<String, dynamic>).toList();
+    return [for (var i = 0; i < ls.length; i++) _lessonRow(ls[i], ls, i)];
   }
 
   // Rename a "Day N" group (blank clears the custom name).

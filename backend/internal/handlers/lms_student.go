@@ -250,7 +250,7 @@ func (h *Handlers) CourseContent(c *fiber.Ctx) error {
 		  -- A module with no batch is shown to everyone; a batch-scoped module only
 		  -- to students in that batch.
 		  AND (m.batch_number IS NULL OR m.batch_number = (SELECT batch FROM users WHERE id=$2))
-		ORDER BY m.position, l.day_number NULLS LAST, l.position`, courseID, callerID(c))
+		ORDER BY m.position, l.position`, courseID, callerID(c))
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "content failed")
 	}

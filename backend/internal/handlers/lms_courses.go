@@ -712,6 +712,88 @@ func (h *Handlers) DecideEnrollmentRequest(c *fiber.Ctx) error {
 }
 
 // DeleteModule removes a module (and its lessons) from a course the caller manages.
+// MoveModule swaps a module's position with its neighbour within the same
+// course + batch + parent (manual ordering, up/down).
+func (h *Handlers) MoveModule(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var courseID, batch, parent string
+	var pos int
+	if err := h.Pool.QueryRow(c.Context(),
+		`SELECT course_id::text, COALESCE(batch_number,''), COALESCE(parent_module_id::text,''), position FROM modules WHERE id=$1`, id).
+		Scan(&courseID, &batch, &parent, &pos); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "module not found")
+	}
+	if err := h.canManageCourse(c, courseID); err != nil {
+		return err
+	}
+	var req struct {
+		Dir string `json:"dir"`
+	}
+	_ = c.BodyParser(&req)
+	op, order := "<", "DESC"
+	if req.Dir == "down" {
+		op, order = ">", "ASC"
+	}
+	var nid string
+	var npos int
+	err := h.Pool.QueryRow(c.Context(),
+		`SELECT id::text, position FROM modules
+		 WHERE course_id=$1 AND COALESCE(batch_number,'')=$2 AND COALESCE(parent_module_id::text,'')=$3
+		   AND position `+op+` $4 ORDER BY position `+order+` LIMIT 1`,
+		courseID, batch, parent, pos).Scan(&nid, &npos)
+	if err != nil {
+		return c.JSON(fiber.Map{"ok": true})
+	}
+	tx, _ := h.Pool.Begin(c.Context())
+	defer tx.Rollback(c.Context())
+	_, _ = tx.Exec(c.Context(), `UPDATE modules SET position=$2 WHERE id=$1`, id, npos)
+	_, _ = tx.Exec(c.Context(), `UPDATE modules SET position=$2 WHERE id=$1`, nid, pos)
+	if err := tx.Commit(c.Context()); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "commit failed")
+	}
+	return c.JSON(fiber.Map{"ok": true})
+}
+
+// MoveLesson swaps a lesson's position with its neighbour within the same module
+// (manual ordering, up/down).
+func (h *Handlers) MoveLesson(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var moduleID, courseID string
+	var pos int
+	if err := h.Pool.QueryRow(c.Context(),
+		`SELECT l.module_id::text, m.course_id::text, l.position
+		   FROM lessons l JOIN modules m ON m.id=l.module_id WHERE l.id=$1`, id).Scan(&moduleID, &courseID, &pos); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "lesson not found")
+	}
+	if err := h.canManageCourse(c, courseID); err != nil {
+		return err
+	}
+	var req struct {
+		Dir string `json:"dir"`
+	}
+	_ = c.BodyParser(&req)
+	op, order := "<", "DESC"
+	if req.Dir == "down" {
+		op, order = ">", "ASC"
+	}
+	var nid string
+	var npos int
+	err := h.Pool.QueryRow(c.Context(),
+		`SELECT id::text, position FROM lessons WHERE module_id=$1 AND position `+op+` $2 ORDER BY position `+order+` LIMIT 1`,
+		moduleID, pos).Scan(&nid, &npos)
+	if err != nil {
+		return c.JSON(fiber.Map{"ok": true})
+	}
+	tx, _ := h.Pool.Begin(c.Context())
+	defer tx.Rollback(c.Context())
+	_, _ = tx.Exec(c.Context(), `UPDATE lessons SET position=$2 WHERE id=$1`, id, npos)
+	_, _ = tx.Exec(c.Context(), `UPDATE lessons SET position=$2 WHERE id=$1`, nid, pos)
+	if err := tx.Commit(c.Context()); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "commit failed")
+	}
+	return c.JSON(fiber.Map{"ok": true})
+}
+
 func (h *Handlers) DeleteModule(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var courseID string
@@ -781,7 +863,7 @@ func (h *Handlers) GetManagedCourse(c *fiber.Ctx) error {
 		       l.id, l.title, l.type, l.day_number, l.is_published,
 		       COALESCE(l.publish_at::text,''), COALESCE(l.body,''), COALESCE(l.downloadable, true)
 		FROM modules m LEFT JOIN lessons l ON l.module_id=m.id
-		WHERE m.course_id=$1 ORDER BY m.position, l.day_number NULLS LAST, l.position`, id)
+		WHERE m.course_id=$1 ORDER BY m.position, l.position`, id)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "load failed")
 	}

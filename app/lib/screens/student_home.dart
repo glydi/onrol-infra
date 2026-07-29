@@ -1083,53 +1083,17 @@ class _StudentHomeState extends State<StudentHome> {
     );
   }
 
-  // Group a module's lessons by day (Day 1, Day 2, … then "Unscheduled"). Any
-  // [assessments] are grouped by the same day and shown inside that day's box.
+  // Flat, manually-ordered material list (no day grouping) — lessons in their
+  // set order, then the module's quizzes/assignments. The reader's Next/Prev
+  // pages through this same order.
   List<Widget> _lessonsByDay(List lessons, VoidCallback rebuild, {List assessments = const [], Map<String, dynamic> dayLabels = const {}}) {
-    final groups = <int?, List<Map<String, dynamic>>>{};
-    for (final l in lessons) {
-      final ll = l as Map<String, dynamic>;
-      groups.putIfAbsent((ll['day_number'] as num?)?.toInt(), () => []).add(ll);
-    }
-    // Group each quiz/assignment strictly under the day number it was given, so
-    // it lands on exactly that day (a Day-N folder appears even if that day has
-    // no lessons). Day-less ones go under "Unscheduled".
-    final aGroups = <int?, List<Map<String, dynamic>>>{};
-    for (final a in assessments) {
-      final am = a as Map<String, dynamic>;
-      aGroups.putIfAbsent((am['day_number'] as num?)?.toInt(), () => []).add(am);
-    }
-    final keys = <int?>{...groups.keys, ...aGroups.keys}.toList()
-      ..sort((a, b) {
-        if (a == null) return 1;
-        if (b == null) return -1;
-        return a.compareTo(b);
-      });
-    // Full material order (Day 1, 2, … then Unscheduled) — each day's lessons
-    // THEN its quizzes/assignments — so the reader's Next pages through every
-    // item, assessments included, in the same order they appear in the list.
-    final ordered = <Map<String, dynamic>>[
-      for (final k in keys) ...[
-        ...(groups[k] ?? const []),
-        ...(aGroups[k] ?? const []),
-      ]
+    final ls = lessons.map((e) => (e as Map).cast<String, dynamic>()).toList();
+    final asmts = assessments.map((e) => (e as Map).cast<String, dynamic>()).toList();
+    final ordered = <Map<String, dynamic>>[...ls, ...asmts];
+    return [
+      ...ls.map((ll) => _lessonRow(ll, rebuild, siblings: ordered)),
+      ...asmts.map((m) => _assessmentTile(m, siblings: ordered)),
     ];
-    final out = <Widget>[];
-    for (final k in keys) {
-      final ls = groups[k] ?? const [];
-      final asmts = aGroups[k] ?? const [];
-      final children = <Widget>[
-        ...ls.map((ll) => _lessonRow(ll, rebuild, siblings: ordered)),
-        ...asmts.map((m) => _assessmentTile(m, siblings: ordered)),
-      ];
-      final custom = k == null ? '' : (dayLabels[k.toString()]?.toString() ?? '');
-      out.add(_DayFolder(
-        label: k == null ? 'Unscheduled' : (custom.isNotEmpty ? custom : 'Day $k'),
-        count: children.length,
-        children: children,
-      ));
-    }
-    return out;
   }
 
   // Private mentor channel: the student sees only their own messages + the
