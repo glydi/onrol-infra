@@ -203,18 +203,21 @@ class _AppleCardState extends State<AppleCard> {
         // than a hard outline. The border only shows to signal hover.
         border: Border.all(
             color: hovered ? p.accent : (p.admin ? Colors.transparent : p.separator)),
-        // Admin cards always carry the soft ambient shadow; student cards keep
-        // the original behaviour of lifting only on hover.
-        boxShadow: (p.admin || hovered)
-            ? [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: p.dark ? 0.34 : 0.05),
-                  blurRadius: hovered ? 24 : 16,
-                  offset: Offset(0, hovered ? 8 : 5),
-                  spreadRadius: -6,
-                ),
-              ]
-            : null,
+        // Admin cards use the neumorphic "clay" dual shadow (soft light highlight
+        // top-left + dark drop bottom-right) so they read as extruded surfaces.
+        // Student cards keep the original lift-on-hover behaviour.
+        boxShadow: p.admin
+            ? p.clay
+            : (hovered
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
+                      spreadRadius: -6,
+                    ),
+                  ]
+                : null),
       ),
       child: widget.child,
     );
@@ -308,11 +311,17 @@ class _PrimaryButtonState extends State<PrimaryButton> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-            // Compact, Coursera-style: small radius, no heavy glow.
+            // Admin (neumorphic): a soft raised accent button — coloured drop
+            // shadow + light top-left highlight, sinking slightly on press.
             borderRadius: adminRadius(p, kRadiusButton),
-            boxShadow: (!widget.square && enabled)
-                ? [BoxShadow(color: p.accent.withOpacity(0.20), offset: const Offset(0, 3), blurRadius: 8, spreadRadius: -2)]
-                : null,
+            boxShadow: !enabled
+                ? null
+                : widget.square
+                    ? [
+                        BoxShadow(color: p.accent.withOpacity(0.32), offset: Offset(0, _scale < 1 ? 2 : 6), blurRadius: _scale < 1 ? 6 : 14, spreadRadius: -3),
+                        BoxShadow(color: Colors.white.withOpacity(p.dark ? 0.05 : 0.35), offset: const Offset(-3, -3), blurRadius: 8, spreadRadius: -6),
+                      ]
+                    : [BoxShadow(color: p.accent.withOpacity(0.20), offset: const Offset(0, 3), blurRadius: 8, spreadRadius: -2)],
           ),
           child: widget.busy
               ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
