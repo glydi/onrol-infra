@@ -13,6 +13,7 @@ import '../services/auth_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../theme.dart';
+import '../theme_controller.dart';
 import '../widgets/app_shell.dart';
 import '../widgets/download_stub.dart' if (dart.library.html) '../widgets/download_web.dart';
 import '../widgets/markdown_view.dart';
@@ -488,6 +489,64 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     ]);
   }
 
+  /// One selectable theme option, previewing itself: a miniature of the app in
+  /// that theme (ground, card, a line of text) above its name.
+  Widget _themeCard(String label, ThemeMode mode, ThemeMode current,
+      Color ground, Color card, Color ink) {
+    final p = Palette.of(context);
+    final on = mode == current;
+    return HoverTap(
+      onTap: () => setTheme(mode),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: on ? p.accent.withValues(alpha: 0.08) : p.card2,
+          borderRadius: BorderRadius.circular(kRadiusField),
+          border: Border.all(color: on ? p.accent : p.separator, width: on ? 2 : 1),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // The miniature.
+          Container(
+            height: 54,
+            decoration: BoxDecoration(color: ground, borderRadius: BorderRadius.circular(8)),
+            padding: const EdgeInsets.all(7),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Container(
+                height: 22,
+                decoration: BoxDecoration(color: card, borderRadius: BorderRadius.circular(5)),
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(height: 4, width: 34,
+                      decoration: BoxDecoration(color: ink, borderRadius: BorderRadius.circular(2))),
+                ),
+              ),
+              const SizedBox(height: 5),
+              Container(height: 4, width: 26,
+                  decoration: BoxDecoration(color: ink.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(2))),
+            ]),
+          ),
+          const SizedBox(height: 9),
+          Row(children: [
+            Expanded(
+              child: Text(label,
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: AppleTheme.body(context).copyWith(
+                      fontSize: 13.5,
+                      fontWeight: on ? FontWeight.w800 : FontWeight.w600,
+                      color: on ? p.accent : null)),
+            ),
+            Icon(on ? CupertinoIcons.checkmark_alt_circle_fill : CupertinoIcons.circle,
+                size: 17, color: on ? p.accent : p.secondary),
+          ]),
+        ]),
+      ),
+    );
+  }
+
   Widget _settingsPage() {
     final p = Palette.of(context);
     final hp = _hPad(context);
@@ -510,17 +569,44 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
             square: true,
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                Icon(CupertinoIcons.circle_lefthalf_fill, size: 20, color: p.accent),
-                const SizedBox(width: 10),
-                Expanded(child: Text('Theme', style: AppleTheme.headline(context))),
+                Container(
+                  width: 36, height: 36,
+                  decoration: BoxDecoration(
+                      color: AdminColors.chipPurpleBg,
+                      borderRadius: BorderRadius.circular(kRadiusChip)),
+                  child: const Icon(CupertinoIcons.circle_lefthalf_fill,
+                      size: 18, color: AdminColors.chipPurpleFg),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Theme', style: AppleTheme.headline(context)),
+                    Text('Pick a look, or follow your device.',
+                        style: AppleTheme.footnote(context)),
+                  ]),
+                ),
               ]),
-              const SizedBox(height: 4),
-              Text('Choose light or dark, or follow your device.',
-                  style: AppleTheme.footnote(context)),
-              const SizedBox(height: 12),
-              // Shared control — writes through setTheme(), which persists the
-              // choice and reapplies it across the app.
-              const ThemeToggle(),
+              const SizedBox(height: 14),
+              // Each option previews itself, so you can see the result before
+              // committing to a reload.
+              ValueListenableBuilder<ThemeMode>(
+                valueListenable: themeNotifier,
+                builder: (_, mode, __) => LayoutBuilder(builder: (_, c) {
+                  const gap = 10.0;
+                  final w = (c.maxWidth - gap * 2) / 3;
+                  return Wrap(spacing: gap, runSpacing: gap, children: [
+                    SizedBox(width: w < 96 ? c.maxWidth : w,
+                        child: _themeCard('Light', ThemeMode.light, mode,
+                            const Color(0xFFEEF3F6), const Color(0xFFFFFFFF), const Color(0xFF1A2C3A))),
+                    SizedBox(width: w < 96 ? c.maxWidth : w,
+                        child: _themeCard('Dark', ThemeMode.dark, mode,
+                            const Color(0xFF0E151B), const Color(0xFF16202A), const Color(0xFFE6EDF3))),
+                    SizedBox(width: w < 96 ? c.maxWidth : w,
+                        child: _themeCard('System', ThemeMode.system, mode,
+                            const Color(0xFFEEF3F6), const Color(0xFF16202A), const Color(0xFF829AB1))),
+                  ]);
+                }),
+              ),
             ]),
           ),
 

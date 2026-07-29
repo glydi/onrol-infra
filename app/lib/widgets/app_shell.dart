@@ -196,18 +196,8 @@ class _Sidebar extends StatelessWidget {
               ),
             ),
           ),
-          Text('Appearance', style: AppleTheme.footnote(context).copyWith(color: sideMuted)),
-          const SizedBox(height: 8),
-          Container(
-            padding: admin ? const EdgeInsets.all(4) : EdgeInsets.zero,
-            decoration: BoxDecoration(
-              color: admin ? const Color(0xFF161A20) : Colors.transparent,
-              border: admin ? Border.all(color: const Color(0xFF252B33)) : null,
-              borderRadius: adminRadius(p, kRadiusField),
-            ),
-            child: const ThemeToggle(),
-          ),
-          const SizedBox(height: 16),
+          // Theme lives in Settings → Appearance; duplicating it here made the
+          // sidebar taller for no gain.
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
