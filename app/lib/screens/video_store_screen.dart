@@ -311,6 +311,23 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
                   const SizedBox(height: 18),
                   // Folder bar: All / Unfiled / each folder, + New folder.
                   _folderBar(),
+                  // Visible rename/delete for the selected folder (long-press
+                  // also works, but this is the obvious path).
+                  if (_folder.isNotEmpty && _folder != '__none__') ...[
+                    const SizedBox(height: 8),
+                    Builder(builder: (_) {
+                      final f = _folders.firstWhere((e) => e['id'].toString() == _folder, orElse: () => <String, dynamic>{});
+                      if (f.isEmpty) return const SizedBox.shrink();
+                      final p = Palette.of(context);
+                      return Row(children: [
+                        _folderActionBtn(CupertinoIcons.pencil, 'Rename folder', () => _renameFolder(f)),
+                        const SizedBox(width: 8),
+                        _folderActionBtn(CupertinoIcons.trash, 'Delete folder', () => _deleteFolder(f), color: AppleColors.red),
+                        const Spacer(),
+                        Text('${(f['videos'] as num?)?.toInt() ?? 0} videos', style: AppleTheme.footnote(context).copyWith(color: p.secondary)),
+                      ]);
+                    }),
+                  ],
                   const SizedBox(height: 12),
                   if (_err != null)
                     AppleCard(square: true, child: Text(_err!, style: AppleTheme.footnote(context)))
@@ -402,33 +419,58 @@ class _VideoStoreScreenState extends State<VideoStoreScreen> {
     if (ok == true) { _toast('Folder created'); _load(); }
   }
 
+  // Long-press menu on a folder chip → rename or delete (same as the visible
+  // buttons shown when the folder is open).
   Future<void> _folderMenu(Map<String, dynamic> f) async {
     final v = await showSquareMenu(context, title: f['name']?.toString() ?? 'Folder', items: const [
       SquareMenuItem('Rename', value: 'rename', icon: CupertinoIcons.pencil),
       SquareMenuItem('Delete folder', value: 'delete', icon: CupertinoIcons.trash),
     ]);
-    if (v == 'rename') {
-      final name = TextEditingController(text: f['name']?.toString() ?? '');
-      final ok = await showFormSheet(context, square: true, title: 'Rename folder', builder: (_) => [
-        sheetField(name, 'Folder name', CupertinoIcons.folder),
-      ], onSubmit: () async {
-        if (name.text.trim().isEmpty) return 'Name required';
-        try { await widget.auth.apiPatch('/api/v1/manage/video-folders/${f['id']}', {'name': name.text.trim()}); return null; }
-        on ApiException catch (e) { return e.message; }
-      });
-      if (ok == true) { _toast('Renamed'); _load(); }
-    } else if (v == 'delete') {
-      final yes = await showSquareConfirm(context,
-          title: 'Delete folder',
-          message: 'Delete “${f['name']}”? Its videos aren’t deleted — they move to Unfiled.',
-          confirmLabel: 'Delete', destructive: true);
-      if (!yes) return;
-      try {
-        await widget.auth.apiDelete('/api/v1/manage/video-folders/${f['id']}');
-        if (_folder == f['id'].toString()) _folder = '';
-        _toast('Folder deleted'); _load();
-      } catch (_) { _toast('Could not delete'); }
-    }
+    if (v == 'rename') _renameFolder(f);
+    if (v == 'delete') _deleteFolder(f);
+  }
+
+  Widget _folderActionBtn(IconData icon, String label, VoidCallback onTap, {Color? color}) {
+    final p = Palette.of(context);
+    final c = color ?? p.accent;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(color: c.withOpacity(0.10), border: Border.all(color: c.withOpacity(0.4))),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 15, color: c),
+          const SizedBox(width: 5),
+          Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: c)),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _renameFolder(Map<String, dynamic> f) async {
+    final name = TextEditingController(text: f['name']?.toString() ?? '');
+    final ok = await showFormSheet(context, square: true, title: 'Rename folder', builder: (_) => [
+      sheetField(name, 'Folder name', CupertinoIcons.folder),
+    ], onSubmit: () async {
+      if (name.text.trim().isEmpty) return 'Name required';
+      try { await widget.auth.apiPatch('/api/v1/manage/video-folders/${f['id']}', {'name': name.text.trim()}); return null; }
+      on ApiException catch (e) { return e.message; }
+    });
+    if (ok == true) { _toast('Renamed'); _load(); }
+  }
+
+  Future<void> _deleteFolder(Map<String, dynamic> f) async {
+    final yes = await showSquareConfirm(context,
+        title: 'Delete folder',
+        message: 'Delete “${f['name']}”? Its videos aren’t deleted — they move to Unfiled.',
+        confirmLabel: 'Delete', destructive: true);
+    if (!yes) return;
+    try {
+      await widget.auth.apiDelete('/api/v1/manage/video-folders/${f['id']}');
+      if (_folder == f['id'].toString()) _folder = '';
+      _toast('Folder deleted'); _load();
+    } catch (_) { _toast('Could not delete'); }
   }
 
   // Move a video into a folder (or Unfiled).
