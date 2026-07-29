@@ -183,8 +183,19 @@ class _Sidebar extends StatelessWidget {
             ),
           ]),
           const SizedBox(height: 22),
-          ..._navItems(context),
-          const Spacer(),
+          // The destinations scroll when they can't all fit. With a dozen of
+          // them plus a pinned footer (theme + account), a fixed Column
+          // overflows on a short viewport — and floating costs another 28px of
+          // height. Expanded also replaces the old Spacer.
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: _navItems(context),
+              ),
+            ),
+          ),
           Text('Appearance', style: AppleTheme.footnote(context).copyWith(color: sideMuted)),
           const SizedBox(height: 8),
           Container(
