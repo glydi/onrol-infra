@@ -246,7 +246,11 @@ func (h *Handlers) CourseContent(c *fiber.Ctx) error {
 		       COALESCE(l.downloadable, true),
 		       EXISTS(SELECT 1 FROM lesson_progress lp WHERE lp.user_id=$2 AND lp.lesson_id=l.id)
 		FROM modules m LEFT JOIN lessons l ON l.module_id=m.id AND l.is_published AND (l.publish_at IS NULL OR l.publish_at <= now())
-		WHERE m.course_id=$1 ORDER BY m.position, l.day_number NULLS LAST, l.position`, courseID, callerID(c))
+		WHERE m.course_id=$1
+		  -- A module with no batch is shown to everyone; a batch-scoped module only
+		  -- to students in that batch.
+		  AND (m.batch_number IS NULL OR m.batch_number = (SELECT batch FROM users WHERE id=$2))
+		ORDER BY m.position, l.day_number NULLS LAST, l.position`, courseID, callerID(c))
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "content failed")
 	}

@@ -699,7 +699,8 @@ func (h *Handlers) GetManagedCourse(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, "course not found")
 	}
 	rows, err := h.Pool.Query(c.Context(), `
-		SELECT m.id, m.title, m.parent_module_id::text, l.id, l.title, l.type, l.day_number, l.is_published,
+		SELECT m.id, m.title, m.parent_module_id::text, COALESCE(m.batch_number,''), COALESCE(m.store_code,''),
+		       l.id, l.title, l.type, l.day_number, l.is_published,
 		       COALESCE(l.publish_at::text,''), COALESCE(l.body,''), COALESCE(l.downloadable, true)
 		FROM modules m LEFT JOIN lessons l ON l.module_id=m.id
 		WHERE m.course_id=$1 ORDER BY m.position, l.day_number NULLS LAST, l.position`, id)
@@ -711,17 +712,17 @@ func (h *Handlers) GetManagedCourse(c *fiber.Ctx) error {
 	parent := map[string]*string{}
 	order := []string{}
 	for rows.Next() {
-		var mid, mtitle string
+		var mid, mtitle, mbatch, mstore string
 		var mparent, lid, ltitle, ltype *string
 		var day *int
 		var lpub *bool
 		var lpubAt, lbody string
 		var ldl bool
-		if err := rows.Scan(&mid, &mtitle, &mparent, &lid, &ltitle, &ltype, &day, &lpub, &lpubAt, &lbody, &ldl); err != nil {
+		if err := rows.Scan(&mid, &mtitle, &mparent, &mbatch, &mstore, &lid, &ltitle, &ltype, &day, &lpub, &lpubAt, &lbody, &ldl); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
 		if _, ok := mods[mid]; !ok {
-			mods[mid] = fiber.Map{"id": mid, "title": mtitle, "parent_module_id": derefStr(mparent), "lessons": []fiber.Map{}, "submodules": []fiber.Map{}, "day_labels": map[string]string{}}
+			mods[mid] = fiber.Map{"id": mid, "title": mtitle, "parent_module_id": derefStr(mparent), "batch": mbatch, "store_code": mstore, "lessons": []fiber.Map{}, "submodules": []fiber.Map{}, "day_labels": map[string]string{}}
 			parent[mid] = mparent
 			order = append(order, mid)
 		}
