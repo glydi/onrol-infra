@@ -45,12 +45,18 @@ class AdminColors {
   //   static const accent = Color(0xFF0F858C);
   //   static const accentDark = Color(0xFF2AA7AE);
 
-  static const lightBg = Color(0xFFEEF3F6);        // app ground
+  // Glassmorphism light theme: near-white gray ground, pure-white floating cards.
+  static const lightBg = Color(0xFFF5F6F8);        // app ground (never pure white)
   static const lightCard = Color(0xFFFFFFFF);      // cards float on it
-  static const lightCard2 = Color(0xFFF1F5F9);     // recessed inner boxes
-  static const lightLabel = Color(0xFF1A2C3A);     // deep blue-grey ink
-  static const lightSecondary = Color(0xFF829AB1); // muted blue-grey
-  static const lightSeparator = Color(0xFFE2E8F0);
+  static const lightCard2 = Color(0xFFF2F3F5);     // recessed inner boxes
+  static const lightLabel = Color(0xFF1A1A1A);     // primary ink
+  static const lightSecondary = Color(0xFF6D6D6D); // secondary text
+  static const lightMuted = Color(0xFF9A9A9A);     // muted text
+  static const lightSeparator = Color(0xFFECECEC);
+
+  // Signature accents: neon lime (highlights, progress, selected) + soft lavender.
+  static const lime = Color(0xFFC8FF32);
+  static const lavender = Color(0xFFB9B7FF);
 
   static const darkBg = Color(0xFF0E151B);
   static const darkCard = Color(0xFF16202A);
@@ -120,6 +126,15 @@ class Palette {
               BoxShadow(color: AppleColors.clayShadow.withOpacity(0.75), offset: const Offset(0, 14), blurRadius: 30, spreadRadius: -6),
               BoxShadow(color: AppleColors.clayHighlight.withOpacity(0.9), offset: const Offset(-8, -8), blurRadius: 18, spreadRadius: -10),
             ]);
+
+  /// Soft glassmorphism ambient shadow: a single wide, low-opacity diffuse
+  /// drop — surfaces float on the ground with no hard edge or highlight.
+  List<BoxShadow> get soft => dark
+      ? [BoxShadow(color: Colors.black.withOpacity(0.40), offset: const Offset(0, 16), blurRadius: 40, spreadRadius: -18)]
+      : [
+          BoxShadow(color: Colors.black.withOpacity(0.06), offset: const Offset(0, 18), blurRadius: 45, spreadRadius: -14),
+          BoxShadow(color: Colors.black.withOpacity(0.04), offset: const Offset(0, 4), blurRadius: 12, spreadRadius: -6),
+        ];
 
   static Palette of(BuildContext c) => Palette(c);
 }

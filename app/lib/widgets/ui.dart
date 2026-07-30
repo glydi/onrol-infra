@@ -9,12 +9,12 @@ import '../theme_controller.dart';
 // Corner radii for the boxes the ADMIN/LMS skin draws — cards, buttons,
 // dialogs, sheets, fields. Values live here so the whole admin surface changes
 // in one place. Student surfaces stay squared; see [adminRadius].
-const double kRadiusCard = 20;
-const double kRadiusButton = 12;
-const double kRadiusDialog = 20;
-const double kRadiusSheet = 24;
-const double kRadiusField = 12;
-const double kRadiusChip = 10;
+const double kRadiusCard = 24;
+const double kRadiusButton = 18;
+const double kRadiusDialog = 28;
+const double kRadiusSheet = 28;
+const double kRadiusField = 18;
+const double kRadiusChip = 12;
 const double kRadiusPill = 999; // fully rounded (progress bars, banner buttons)
 
 /// Rounded corners belong to the **admin/LMS skin only**. Student surfaces keep
@@ -224,11 +224,11 @@ class _AppleCardState extends State<AppleCard> {
         // than a hard outline. The border only shows to signal hover.
         border: Border.all(
             color: hovered ? p.accent : (p.admin ? Colors.transparent : p.separator)),
-        // Admin cards use the neumorphic "clay" dual shadow (soft light highlight
-        // top-left + dark drop bottom-right) so they read as extruded surfaces.
+        // Admin cards float on the near-white ground with a soft ambient
+        // glassmorphism shadow — no hard edges, just a gentle diffuse lift.
         // Student cards keep the original lift-on-hover behaviour.
         boxShadow: p.admin
-            ? p.clay
+            ? p.soft
             : (hovered
                 ? [
                     BoxShadow(
@@ -444,8 +444,12 @@ class _PrimaryButtonState extends State<PrimaryButton> {
           height: widget.square ? 52 : 50,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            // Admin (square): flat solid fill — sharp & standard. Else: gradient CTA.
-            color: widget.square ? (enabled ? p.accent : p.secondary.withOpacity(0.35)) : null,
+            // Admin (square): solid BLACK primary — the glassmorphism spec keeps
+            // the neon lime for highlights, so the main CTA is black/white.
+            // Else (student): gradient accent CTA.
+            color: widget.square
+                ? (enabled ? const Color(0xFF1A1A1A) : p.secondary.withOpacity(0.35))
+                : null,
             gradient: widget.square
                 ? null
                 : LinearGradient(
@@ -455,15 +459,13 @@ class _PrimaryButtonState extends State<PrimaryButton> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-            // Admin (neumorphic): a soft raised accent button — coloured drop
-            // shadow + light top-left highlight, sinking slightly on press.
+            // Admin: a soft ambient drop shadow so the black pill floats.
             borderRadius: adminRadius(p, kRadiusButton),
             boxShadow: !enabled
                 ? null
                 : widget.square
                     ? [
-                        BoxShadow(color: p.accent.withOpacity(0.32), offset: Offset(0, _scale < 1 ? 2 : 6), blurRadius: _scale < 1 ? 6 : 14, spreadRadius: -3),
-                        BoxShadow(color: Colors.white.withOpacity(p.dark ? 0.05 : 0.35), offset: const Offset(-3, -3), blurRadius: 8, spreadRadius: -6),
+                        BoxShadow(color: Colors.black.withOpacity(0.22), offset: Offset(0, _scale < 1 ? 2 : 8), blurRadius: _scale < 1 ? 8 : 20, spreadRadius: -6),
                       ]
                     : [BoxShadow(color: p.accent.withOpacity(0.20), offset: const Offset(0, 3), blurRadius: 8, spreadRadius: -2)],
           ),

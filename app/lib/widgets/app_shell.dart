@@ -86,7 +86,7 @@ class _AppShellState extends State<AppShell> {
 
       return Scaffold(
         drawer: Drawer(
-          backgroundColor: admin ? AdminColors.sideBg : p.bg,
+          backgroundColor: admin ? Colors.white : p.bg,
           child: _Sidebar(
             auth: widget.auth,
             dests: widget.destinations,
@@ -136,9 +136,9 @@ class _Sidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final admin = p.admin;
-    final sideBg = admin ? AdminColors.sideBg : p.bg;
-    final sideBorder = admin ? AdminColors.sideBorder : p.separator;
-    final sideMuted = admin ? AdminColors.sideMuted : p.secondary;
+    final sideBg = admin ? (p.dark ? AdminColors.darkCard : Colors.white) : p.bg;
+    final sideBorder = admin ? p.separator : p.separator;
+    final sideMuted = admin ? (p.dark ? const Color(0xFF7D8794) : AdminColors.lightMuted) : p.secondary;
     final float = floating && admin;
     return Container(
       width: admin ? 272 : 256,
@@ -171,16 +171,16 @@ class _Sidebar extends StatelessWidget {
             Container(
               width: 38, height: 38,
               decoration: BoxDecoration(
-                color: admin ? p.accent : null,
+                color: admin ? (p.dark ? Colors.white : const Color(0xFF1A1A1A)) : null,
                 borderRadius: adminRadius(p, kRadiusButton),
                 gradient: admin ? null : const LinearGradient(colors: [AppleColors.blue, AppleColors.purple], begin: Alignment.topLeft, end: Alignment.bottomRight),
               ),
-              child: const Icon(CupertinoIcons.book_fill, color: Colors.white, size: 20),
+              child: Icon(CupertinoIcons.book_fill, color: admin && !p.dark ? Colors.white : (admin ? const Color(0xFF1A1A1A) : Colors.white), size: 20),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('ONROL', maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.title2(context).copyWith(color: admin ? AdminColors.sideInk : p.accent, fontWeight: FontWeight.w800)),
+                Text('ONROL', maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.title2(context).copyWith(color: admin ? (p.dark ? Colors.white : const Color(0xFF1A1A1A)) : p.accent, fontWeight: FontWeight.w800)),
                 if (admin) Text('LMS ADMIN', maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.footnote(context).copyWith(color: sideMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.1)),
               ]),
             ),
@@ -203,8 +203,8 @@ class _Sidebar extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: admin ? AdminColors.sideCard : p.card,
-              border: Border.all(color: admin ? AdminColors.sideCardBorder : p.separator),
+              color: admin ? (p.dark ? const Color(0xFF161A20) : AdminColors.lightCard2) : p.card,
+              border: Border.all(color: admin ? p.separator : p.separator),
               borderRadius: adminRadius(p, kRadiusField),
               boxShadow: admin ? null : p.clay,
             ),
@@ -213,7 +213,7 @@ class _Sidebar extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(auth.user?.fullName ?? 'User', style: AppleTheme.body(context).copyWith(fontSize: 14, fontWeight: FontWeight.w600, color: admin ? AdminColors.sideInk : null), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(auth.user?.fullName ?? 'User', style: AppleTheme.body(context).copyWith(fontSize: 14, fontWeight: FontWeight.w600, color: admin ? (p.dark ? Colors.white : const Color(0xFF1A1A1A)) : null), maxLines: 1, overflow: TextOverflow.ellipsis),
                   Text((auth.user?.role ?? '').toUpperCase(), style: AppleTheme.footnote(context).copyWith(fontSize: 10, color: admin ? sideMuted : null)),
                 ]),
               ),
@@ -272,8 +272,11 @@ class _NavTileState extends State<_NavTile> {
     final on = widget.selected;
     final p = Palette.of(context);
     final admin = p.admin;
-    final sideInk = admin ? AdminColors.sideInk : p.label;
-    final sideMuted = admin ? AdminColors.sideMuted : p.secondary;
+    final sideInk = admin ? (p.dark ? const Color(0xFFC7CFDA) : AdminColors.lightLabel) : p.label;
+    final sideMuted = admin ? (p.dark ? const Color(0xFF7D8794) : AdminColors.lightMuted) : p.secondary;
+    // Selected nav uses the signature lime with dark ink on top (glassmorphism).
+    final selBg = admin ? AdminColors.lime : p.accent;
+    final selInk = admin ? const Color(0xFF1A1A1A) : Colors.white;
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: MouseRegion(
@@ -288,28 +291,28 @@ class _NavTileState extends State<_NavTile> {
           curve: Curves.easeOut,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            // Selected keeps the solid fill; hover is a soft accent wash.
+            // Selected keeps the solid lime fill; hover is a soft neutral wash.
             color: on
-                ? p.accent
-                : (_hover ? p.accent.withValues(alpha: 0.14) : Colors.transparent),
+                ? selBg
+                : (_hover ? (admin ? Colors.black.withValues(alpha: 0.05) : p.accent.withValues(alpha: 0.14)) : Colors.transparent),
             borderRadius: adminRadius(p, kRadiusButton),
           ),
           child: Row(children: [
             Icon(d.icon, size: 17,
-                color: on ? Colors.white : (_hover ? p.accent : sideMuted)),
+                color: on ? selInk : (_hover ? (admin ? sideInk : p.accent) : sideMuted)),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(d.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.body(context).copyWith(fontSize: 13.5, fontWeight: on ? FontWeight.w700 : FontWeight.w600, color: on ? Colors.white : (_hover ? p.accent : sideInk))),
+              child: Text(d.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.body(context).copyWith(fontSize: 13.5, fontWeight: on ? FontWeight.w700 : FontWeight.w600, color: on ? selInk : (_hover ? (admin ? sideInk : p.accent) : sideInk))),
             ),
             if (d.badge > 0)
               Container(
                 margin: const EdgeInsets.only(left: 6),
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 constraints: const BoxConstraints(minWidth: 18),
-                decoration: BoxDecoration(color: on ? Colors.white : AppleColors.red, borderRadius: BorderRadius.circular(9)),
+                decoration: BoxDecoration(color: on ? const Color(0xFF1A1A1A) : AppleColors.red, borderRadius: BorderRadius.circular(9)),
                 child: Text(d.badge > 99 ? '99+' : '${d.badge}',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: on ? p.accent : Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
+                    style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
               ),
           ]),
         ),
