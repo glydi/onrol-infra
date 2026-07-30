@@ -147,8 +147,11 @@ class _Sidebar extends StatelessWidget {
       decoration: BoxDecoration(
         color: sideBg,
         borderRadius: float ? BorderRadius.circular(kRadiusSheet) : null,
-        // A floating panel is read by its shadow, not a divider line.
-        border: float ? null : Border(right: BorderSide(color: sideBorder)),
+        // Admin carries a hard outline all the way round, floating or not — on a
+        // light panel a shadow alone doesn't separate it from a light ground.
+        border: admin
+            ? Border.all(color: sideBorder, width: 1.4)
+            : (float ? null : Border(right: BorderSide(color: sideBorder))),
         boxShadow: float
             ? [
                 BoxShadow(
@@ -177,7 +180,7 @@ class _Sidebar extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('ONROL', maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.title2(context).copyWith(color: admin ? Colors.white : p.accent, fontWeight: FontWeight.w800)),
+                Text('ONROL', maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.title2(context).copyWith(color: admin ? AdminColors.sideInk : p.accent, fontWeight: FontWeight.w800)),
                 if (admin) Text('LMS ADMIN', maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.footnote(context).copyWith(color: sideMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.1)),
               ]),
             ),
@@ -201,7 +204,7 @@ class _Sidebar extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: admin ? AdminColors.sideCard : p.card,
-              border: Border.all(color: admin ? AdminColors.sideBorder : p.separator),
+              border: Border.all(color: admin ? AdminColors.sideCardBorder : p.separator),
               borderRadius: adminRadius(p, kRadiusField),
               boxShadow: admin ? null : p.clay,
             ),
@@ -210,7 +213,7 @@ class _Sidebar extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(auth.user?.fullName ?? 'User', style: AppleTheme.body(context).copyWith(fontSize: 14, fontWeight: FontWeight.w600, color: admin ? Colors.white : null), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(auth.user?.fullName ?? 'User', style: AppleTheme.body(context).copyWith(fontSize: 14, fontWeight: FontWeight.w600, color: admin ? AdminColors.sideInk : null), maxLines: 1, overflow: TextOverflow.ellipsis),
                   Text((auth.user?.role ?? '').toUpperCase(), style: AppleTheme.footnote(context).copyWith(fontSize: 10, color: admin ? sideMuted : null)),
                 ]),
               ),
