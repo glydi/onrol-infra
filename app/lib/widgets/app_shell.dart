@@ -168,15 +168,20 @@ class _Sidebar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(children: [
-            Container(
-              width: 38, height: 38,
-              decoration: BoxDecoration(
-                color: admin ? (p.dark ? Colors.white : const Color(0xFF1A1A1A)) : null,
-                borderRadius: adminRadius(p, kRadiusButton),
-                gradient: admin ? null : const LinearGradient(colors: [AppleColors.blue, AppleColors.purple], begin: Alignment.topLeft, end: Alignment.bottomRight),
+            // Admin flies the ONROL mark; the student shell keeps its gradient
+            // book tile. The mark needs no plate behind it — it carries its own
+            // shape, and a filled square would box it in.
+            if (admin)
+              const OnrolMark(size: 38)
+            else
+              Container(
+                width: 38, height: 38,
+                decoration: BoxDecoration(
+                  borderRadius: adminRadius(p, kRadiusButton),
+                  gradient: const LinearGradient(colors: [AppleColors.blue, AppleColors.purple], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                ),
+                child: const Icon(CupertinoIcons.book_fill, color: Colors.white, size: 20),
               ),
-              child: Icon(CupertinoIcons.book_fill, color: admin && !p.dark ? Colors.white : (admin ? const Color(0xFF1A1A1A) : Colors.white), size: 20),
-            ),
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

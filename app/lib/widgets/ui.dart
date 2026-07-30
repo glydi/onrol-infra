@@ -23,6 +23,67 @@ const double kRadiusPill = 999; // fully rounded (progress bars, banner buttons)
 BorderRadius adminRadius(Palette p, double r) =>
     p.admin ? BorderRadius.circular(r) : BorderRadius.zero;
 
+/// The ONROL mark: a 5×5 checkerboard of glossy orange tiles.
+///
+/// Drawn rather than shipped as a bitmap so it stays sharp at any size and on
+/// any pixel ratio, and so the brand orange comes from one place. The pattern is
+/// every cell where `(row + column)` is odd — which lands the twelve tiles in a
+/// diamond and leaves the four corners empty.
+class OnrolMark extends StatelessWidget {
+  const OnrolMark({super.key, this.size = 38});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) =>
+      SizedBox(width: size, height: size, child: CustomPaint(painter: _OnrolMarkPainter()));
+}
+
+class _OnrolMarkPainter extends CustomPainter {
+  // Lit top edge → saturated body → deeper foot, which is what reads as glass.
+  static const _top = Color(0xFFFFA24D);
+  static const _mid = Color(0xFFFF6A10);
+  static const _foot = Color(0xFFD94E00);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const n = 5;
+    final cell = size.width / n;
+    final inset = cell * 0.07; // gap between tiles
+    final r = Radius.circular(cell * 0.2);
+
+    for (var row = 0; row < n; row++) {
+      for (var col = 0; col < n; col++) {
+        if ((row + col) % 2 == 0) continue; // corners and centre gaps stay empty
+        final tile = RRect.fromRectAndRadius(
+          Rect.fromLTWH(col * cell + inset, row * cell + inset,
+              cell - inset * 2, cell - inset * 2),
+          r,
+        );
+        canvas.drawRRect(
+          tile,
+          Paint()
+            ..shader = const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [_top, _mid, _foot],
+              stops: [0.0, 0.55, 1.0],
+            ).createShader(tile.outerRect),
+        );
+        // Specular strip across the upper third — the bevel in the original.
+        final gloss = RRect.fromRectAndRadius(
+          Rect.fromLTWH(tile.left + tile.width * 0.16, tile.top + tile.height * 0.12,
+              tile.width * 0.68, tile.height * 0.26),
+          Radius.circular(cell * 0.1),
+        );
+        canvas.drawRRect(gloss, Paint()..color = Colors.white.withValues(alpha: 0.28));
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_OnrolMarkPainter oldDelegate) => false;
+}
+
 /// Entrance animation for admin content: a short fade with a small rise.
 /// [index] staggers items in a list so a grid resolves in sequence rather than
 /// all at once. Honours the OS "reduce motion" setting — when that's on, or
