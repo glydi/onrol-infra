@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/cupertino.dart' hide Text;
@@ -1453,6 +1454,28 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     }
   }
 
+  /// What the y axis counts, for the caption above it. [unit] is the bucket
+  /// ('day' or 'wk') so the reader knows each point is a period, not a running
+  /// total — "lessons / day" answers a question a bare "12" doesn't.
+  String _actYCaption(String unit) {
+    switch (_actMetric) {
+      case _ActMetric.engagement:
+        return 'events / $unit';
+      case _ActMetric.lessons:
+        return 'lessons / $unit';
+      case _ActMetric.submissions:
+        return 'submissions / $unit';
+      case _ActMetric.questions:
+        return 'questions / $unit';
+      case _ActMetric.activeLearners:
+        return 'learners / $unit';
+      case _ActMetric.attendance:
+        return 'joins / $unit';
+      case _ActMetric.score:
+        return 'avg score'; // already an average, so "per day" would mislead
+    }
+  }
+
   /// Student usage and performance over time. The metric dropdown swaps which
   /// series are plotted; range, grouping, course and batch reshape the query.
   Widget _activityChart() {
@@ -1465,11 +1488,6 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     final peak = series
         .expand((s) => s.values)
         .fold<double>(0, (m, v) => v > m ? v : m);
-    String bucketLabel(int i) {
-      final s = _activity[i]['date']?.toString() ?? '';
-      return s.length >= 10 ? s.substring(5) : s; // MM-DD
-    }
-
     final courses = _actCourses();
     final batches = _actBatches(_actCourse);
     final unit = _actGran == 'week' ? 'wk' : 'day';
@@ -1576,7 +1594,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         ]),
         const SizedBox(height: 14),
         SizedBox(
-          height: 168,
+          // Taller than before: the axes now need gutters of their own.
+          height: 200,
           child: CustomPaint(
             size: Size.infinite,
             painter: _ActivityPainter(
@@ -1584,15 +1603,14 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
               colors: [for (final s in series) s.color],
               grid: p.separator,
               peak: peak,
+              labels: [
+                for (final d in _activity) (d['date']?.toString() ?? ''),
+              ],
+              ink: p.secondary,
+              yCaption: _actYCaption(unit),
             ),
           ),
         ),
-        const SizedBox(height: 6),
-        // Only the ends are labelled — a tick per bucket is unreadable here.
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(bucketLabel(0), style: AppleTheme.footnote(context)),
-          Text(bucketLabel(_activity.length - 1), style: AppleTheme.footnote(context)),
-        ]),
         // Window summary — the totals a line chart can't state precisely.
         const SizedBox(height: 12),
         Wrap(spacing: 16, runSpacing: 6, children: [
@@ -6407,42 +6425,99 @@ class _ActivityPainter extends CustomPainter {
     required this.colors,
     required this.grid,
     required this.peak,
+    required this.labels,
+    required this.ink,
+    required this.yCaption,
   });
   final List<List<double>> series;
   final List<Color> colors;
   final Color grid;
   final double peak;
+  /// One bucket date per point (ISO), used for the x-axis ticks.
+  final List<String> labels;
+  final Color ink;
+  /// What the y numbers count ("lessons", "learners", "score"…). Without it the
+  /// axis is a column of bare numbers.
+  final String yCaption;
+
+  static const _leftPad = 38.0;   // room for y labels
+  static const _bottomPad = 30.0; // room for x labels + caption
+  static const _topPad = 10.0;    // so the peak marker isn't clipped
+
+  /// Round the axis top up to 1/2/5×10ⁿ so the gridline labels are readable
+  /// numbers (0, 5, 10, 15) rather than thirds of the raw peak (0, 2.3, 4.7).
+  static double _niceMax(double v) {
+    if (v <= 0) return 3;
+    if (v <= 3) return 3; // keeps small integer counts on whole-number ticks
+    final mag = math.pow(10, (math.log(v) / math.ln10).floor()).toDouble();
+    for (final step in const [1.0, 2.0, 2.5, 5.0, 10.0]) {
+      final cand = step * mag;
+      if (cand >= v) return cand;
+    }
+    return 10 * mag;
+  }
+
+  void _text(Canvas c, String s, Offset at,
+      {bool right = false, bool center = false, double size = 9.5}) {
+    final tp = TextPainter(
+      text: TextSpan(
+          text: s,
+          style: TextStyle(color: ink, fontSize: size, fontWeight: FontWeight.w600)),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    var dx = at.dx;
+    if (right) dx -= tp.width;
+    if (center) dx -= tp.width / 2;
+    tp.paint(c, Offset(dx, at.dy));
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
     if (series.isEmpty) return;
-    final maxY = peak == 0 ? 1.0 : peak;
     final n = series.first.length;
     if (n < 2) return;
-    final dx = size.width / (n - 1);
-    double yFor(double v) => size.height - (v / maxY) * (size.height - 6) - 3;
 
-    // Four horizontal guides — enough to read level, faint enough to ignore.
+    // Plot area, inset from the widget so the axes have somewhere to live.
+    final plot = Rect.fromLTRB(
+        _leftPad, _topPad, size.width, size.height - _bottomPad);
+    if (plot.width <= 0 || plot.height <= 0) return;
+
+    final maxY = _niceMax(peak);
+    final dx = plot.width / (n - 1);
+    double yFor(double v) => plot.bottom - (v / maxY) * plot.height;
+    double xFor(int i) => plot.left + i * dx;
+
+    // Four guides, each labelled with its value — the point of the whole
+    // exercise: a line you can read a number off, not just a shape.
     final gridPaint = Paint()
       ..color = grid
       ..strokeWidth = 1;
-    for (var i = 0; i <= 3; i++) {
-      final y = size.height * i / 3;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    const ticks = 4;
+    for (var i = 0; i < ticks; i++) {
+      final frac = i / (ticks - 1);
+      final v = maxY * (1 - frac);
+      final y = plot.top + plot.height * frac;
+      canvas.drawLine(Offset(plot.left, y), Offset(plot.right, y), gridPaint);
+      final txt = v >= 10 ? v.toStringAsFixed(0) : _trim(v);
+      _text(canvas, txt, Offset(plot.left - 6, y - 6), right: true);
+    }
+    // Caption above the top tick, so the numbers have a subject.
+    if (yCaption.isNotEmpty) {
+      _text(canvas, yCaption.toUpperCase(), const Offset(0, 0), size: 8.5);
     }
 
     for (var s = 0; s < series.length; s++) {
       final data = series[s];
       final path = Path();
       for (var i = 0; i < n; i++) {
-        final o = Offset(i * dx, yFor(data[i]));
+        final o = Offset(xFor(i), yFor(data[i]));
         i == 0 ? path.moveTo(o.dx, o.dy) : path.lineTo(o.dx, o.dy);
       }
       // Area fill under the primary series only — three fills would muddy it.
       if (s == 0) {
         final fill = Path.from(path)
-          ..lineTo(size.width, size.height)
-          ..lineTo(0, size.height)
+          ..lineTo(plot.right, plot.bottom)
+          ..lineTo(plot.left, plot.bottom)
           ..close();
         canvas.drawPath(
           fill,
@@ -6451,7 +6526,7 @@ class _ActivityPainter extends CustomPainter {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [colors[s].withValues(alpha: 0.22), colors[s].withValues(alpha: 0.01)],
-            ).createShader(Offset.zero & size),
+            ).createShader(plot),
         );
       }
       canvas.drawPath(
@@ -6463,15 +6538,52 @@ class _ActivityPainter extends CustomPainter {
           ..strokeCap = StrokeCap.round
           ..strokeJoin = StrokeJoin.round,
       );
-      // Emphasise where the series ends — that's "now".
-      final last = Offset((n - 1) * dx, yFor(data[n - 1]));
+      // Emphasise where the series ends — that's "now" — and print its value,
+      // which is the number people actually came to read.
+      final last = Offset(xFor(n - 1), yFor(data[n - 1]));
       canvas.drawCircle(last, 3.5, Paint()..color = colors[s]);
+      if (s == 0) {
+        _text(canvas, _trim(data[n - 1]), Offset(last.dx - 2, last.dy - 15),
+            right: true, size: 10);
+      }
+    }
+
+    // X ticks: about five across, so the axis carries dates through the middle
+    // instead of only at the ends. Ends are aligned inward to stay in bounds.
+    final step = (n / 5).ceil().clamp(1, n);
+    for (var i = 0; i < n; i += step) {
+      _tickAt(canvas, i, n, xFor, plot);
+    }
+    if ((n - 1) % step != 0) _tickAt(canvas, n - 1, n, xFor, plot);
+  }
+
+  void _tickAt(Canvas canvas, int i, int n, double Function(int) xFor, Rect plot) {
+    final label = _short(labels.length > i ? labels[i] : '');
+    if (label.isEmpty) return;
+    final y = plot.bottom + 7;
+    if (i == 0) {
+      _text(canvas, label, Offset(plot.left, y));
+    } else if (i == n - 1) {
+      _text(canvas, label, Offset(plot.right, y), right: true);
+    } else {
+      _text(canvas, label, Offset(xFor(i), y), center: true);
     }
   }
 
+  /// ISO date → "MM-DD"; the year is the same for every point on screen.
+  static String _short(String iso) =>
+      iso.length >= 10 ? iso.substring(5) : iso;
+
+  static String _trim(double v) =>
+      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+
   @override
   bool shouldRepaint(_ActivityPainter old) =>
-      old.series != series || old.peak != peak || old.colors != colors;
+      old.series != series ||
+      old.peak != peak ||
+      old.colors != colors ||
+      old.labels != labels ||
+      old.yCaption != yCaption;
 }
 
 /// Bottom sheet showing the original converted-lead record for a student.
