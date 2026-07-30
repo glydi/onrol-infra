@@ -47,7 +47,7 @@ class Text extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => w.Text(
-        data.toUpperCase(),
+        data,
         style: style,
         strutStyle: strutStyle,
         textAlign: textAlign,
