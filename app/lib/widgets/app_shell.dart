@@ -240,8 +240,8 @@ class _Sidebar extends StatelessWidget {
       final section = dests[i].section;
       if (section.isNotEmpty && section != lastSection) {
         out.add(Padding(
-          padding: EdgeInsets.only(top: out.isEmpty ? 2 : 16, bottom: 6, left: 10),
-          child: Text(section.toUpperCase(), style: AppleTheme.footnote(context).copyWith(color: sideMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.0)),
+          padding: EdgeInsets.only(top: out.isEmpty ? 2 : 11, bottom: 4, left: 10),
+          child: Text(section.toUpperCase(), style: AppleTheme.footnote(context).copyWith(color: sideMuted, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 1.0)),
         ));
         lastSection = section;
       }
@@ -298,7 +298,7 @@ class _NavTileState extends State<_NavTile> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           curve: Curves.easeOut,
-          padding: const EdgeInsets.only(right: 12, top: 8, bottom: 8),
+          padding: const EdgeInsets.only(right: 12, top: 7, bottom: 7),
           decoration: BoxDecoration(
             // Minimal: selected gets a faint tonal wash (Material state layer);
             // hover a lighter one. The left bar carries the "active" signal.

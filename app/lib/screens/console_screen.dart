@@ -387,7 +387,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       color: Palette.of(context).accent,
       onRefresh: _load,
       child: ListView(
-      padding: EdgeInsets.fromLTRB(hp, 26, hp, 48),
+      padding: EdgeInsets.fromLTRB(hp, 20, hp, 44),
       children: [
         Row(children: [
           Expanded(child: Text('Instructors', style: AppleTheme.largeTitle(context))),
@@ -417,7 +417,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       color: Palette.of(context).accent,
       onRefresh: _load,
       child: ListView(
-      padding: EdgeInsets.fromLTRB(hp, 26, hp, 48),
+      padding: EdgeInsets.fromLTRB(hp, 20, hp, 44),
       children: [
         Row(children: [
           Expanded(child: Text('Students', style: AppleTheme.largeTitle(context))),
@@ -650,7 +650,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       color: p.accent,
       onRefresh: _load,
       child: ListView(
-        padding: EdgeInsets.fromLTRB(hp, 26, hp, 48),
+        padding: EdgeInsets.fromLTRB(hp, 20, hp, 44),
         children: [
           Row(children: [
             Expanded(child: Text('Settings', style: AppleTheme.largeTitle(context))),
@@ -1324,7 +1324,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       color: p.accent,
       onRefresh: _load,
       child: ListView(
-        padding: EdgeInsets.fromLTRB(hp, 26, hp, 48),
+        padding: EdgeInsets.fromLTRB(hp, 20, hp, 44),
         children: [
           Text('Overview', style: AppleTheme.largeTitle(context)),
           Text('Everything across your courses at a glance', style: AppleTheme.subhead(context)),
@@ -1757,13 +1757,13 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           decoration: BoxDecoration(color: chipBg, borderRadius: BorderRadius.circular(kRadiusChip)),
           child: Icon(icon, size: 17, color: chipFg),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         Text(label.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis,
             style: AppleTheme.footnote(context).copyWith(
                 fontWeight: FontWeight.w700, letterSpacing: 1.1, color: p.secondary)),
-        const SizedBox(height: 6),
-        Text(value, style: AppleTheme.headline(context).copyWith(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
-        const SizedBox(height: 4),
+        const SizedBox(height: 5),
+        Text(value, style: AppleTheme.headline(context).copyWith(fontSize: 27, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+        const SizedBox(height: 3),
         Text(sub, maxLines: 2, overflow: TextOverflow.ellipsis, style: AppleTheme.footnote(context)),
       ]),
     );
@@ -1777,7 +1777,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       color: p.accent,
       onRefresh: _load,
       child: ListView(
-        padding: EdgeInsets.fromLTRB(hp, 26, hp, 48),
+        padding: EdgeInsets.fromLTRB(hp, 20, hp, 44),
         children: [
           LayoutBuilder(builder: (context, c) {
             final compact = c.maxWidth < 430;

@@ -251,7 +251,7 @@ class GlassHeader extends StatelessWidget implements PreferredSizeWidget {
 
 /// White (or elevated) rounded card — the iOS grouped-content surface.
 class AppleCard extends StatefulWidget {
-  const AppleCard({super.key, required this.child, this.padding = const EdgeInsets.all(20), this.onTap, this.square = false});
+  const AppleCard({super.key, required this.child, this.padding = const EdgeInsets.all(16), this.onTap, this.square = false});
   final Widget child;
   final EdgeInsets padding;
   final VoidCallback? onTap;
@@ -816,7 +816,7 @@ class SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 20, 4, 14),
+      padding: const EdgeInsets.fromLTRB(4, 12, 4, 10),
       child: Row(
         children: [
           Text(title, style: AppleTheme.title2(context)),
