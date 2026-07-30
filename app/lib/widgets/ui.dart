@@ -285,6 +285,129 @@ class _HoverTapState extends State<HoverTap> {
   }
 }
 
+/// One choice in a [FilterDropdown].
+class FilterOption<T> {
+  const FilterOption(this.value, this.label, {this.hint});
+  final T value;
+  final String label;
+
+  /// Optional second line in the menu — room to say what a metric measures
+  /// without lengthening the button itself.
+  final String? hint;
+}
+
+/// Compact labelled dropdown for dashboard filters.
+///
+/// Generic over the value type so one widget serves a day range (`int`), a
+/// course or batch code (`String`) and a metric enum alike — adding a filter is
+/// a list of options, not another bespoke control. Renders as `LABEL  value ⌄`
+/// so a row of them reads as a sentence about what the chart is showing.
+class FilterDropdown<T> extends StatefulWidget {
+  const FilterDropdown({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+    this.icon,
+    this.maxWidth = 190,
+  });
+  final String label;
+  final T value;
+  final List<FilterOption<T>> options;
+  final ValueChanged<T> onChanged;
+  final IconData? icon;
+  final double maxWidth;
+
+  @override
+  State<FilterDropdown<T>> createState() => _FilterDropdownState<T>();
+}
+
+class _FilterDropdownState<T> extends State<FilterDropdown<T>> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    if (widget.options.isEmpty) return const SizedBox.shrink();
+    // A value that no longer exists (e.g. the selected batch after switching
+    // course) falls back to the first option rather than rendering blank.
+    final sel = widget.options.firstWhere((o) => o.value == widget.value,
+        orElse: () => widget.options.first);
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: PopupMenuButton<T>(
+        tooltip: '',
+        position: PopupMenuPosition.under,
+        color: p.card,
+        elevation: 8,
+        shape: RoundedRectangleBorder(borderRadius: adminRadius(p, kRadiusField)),
+        onSelected: widget.onChanged,
+        itemBuilder: (_) => [
+          for (final o in widget.options)
+            PopupMenuItem<T>(
+              value: o.value,
+              height: o.hint == null ? 38 : 50,
+              child: Row(children: [
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(o.label,
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight:
+                                  o.value == sel.value ? FontWeight.w700 : FontWeight.w500,
+                              color: o.value == sel.value ? p.accent : p.label)),
+                      if (o.hint != null)
+                        Text(o.hint!,
+                            style: TextStyle(fontSize: 10.5, color: p.secondary)),
+                    ],
+                  ),
+                ),
+                if (o.value == sel.value)
+                  Icon(CupertinoIcons.checkmark_alt, size: 14, color: p.accent),
+              ]),
+            ),
+        ],
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+          constraints: BoxConstraints(maxWidth: widget.maxWidth),
+          decoration: BoxDecoration(
+            color: _hover ? p.separator.withValues(alpha: 0.55) : p.card2,
+            borderRadius: BorderRadius.circular(kRadiusChip),
+            border: Border.all(color: _hover ? p.accent : p.separator),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            if (widget.icon != null) ...[
+              Icon(widget.icon, size: 13, color: p.secondary),
+              const SizedBox(width: 5),
+            ],
+            Text('${widget.label} ',
+                style: TextStyle(
+                    fontSize: 10.5, fontWeight: FontWeight.w600, color: p.secondary)),
+            Flexible(
+              child: Text(sel.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 11.5, fontWeight: FontWeight.w700, color: p.label)),
+            ),
+            const SizedBox(width: 3),
+            Icon(CupertinoIcons.chevron_down, size: 11, color: p.secondary),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
 /// Full-width filled blue CTA with a press-scale animation.
 class PrimaryButton extends StatefulWidget {
   const PrimaryButton({super.key, required this.label, required this.onPressed, this.busy = false, this.icon, this.square = false});

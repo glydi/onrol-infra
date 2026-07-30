@@ -100,9 +100,12 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   int _videoProcessing = 0;
   // Daily student interaction counts for the Home chart, plus its filters.
   List<dynamic> _activity = [];
+  Map<String, dynamic> _activityTotals = {}; // window summary beside the chart
   String _actBatch = '';  // batch code the graph is showing
   String _actCourse = ''; // course_label the graph is showing
   int _actDays = 14;
+  String _actGran = 'day';        // 'day' | 'week' bucket width
+  _ActMetric _actMetric = _ActMetric.engagement;
 
   @override
   void initState() {
@@ -197,11 +200,13 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     }
     try {
       final q = StringBuffer('/api/v1/manage/activity?days=$_actDays');
+      q.write('&granularity=$_actGran');
       if (_actBatch.isNotEmpty) q.write('&batch=${Uri.encodeQueryComponent(_actBatch)}');
       if (_actCourse.isNotEmpty) q.write('&course=${Uri.encodeQueryComponent(_actCourse)}');
       final ar = await widget.auth.apiGet(q.toString());
-      final days = (ApiClient.decode(ar)['days'] as List?) ?? const [];
-      if (mounted) setState(() => _activity = days);
+      final body = ApiClient.decode(ar);
+      final days = (body['days'] as List?) ?? const [];
+      if (mounted) setState(() { _activity = days; _activityTotals = body; });
     } catch (_) {}
   }
 
@@ -1330,7 +1335,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
               const SizedBox(height: 22),
             ],
             if (_isAdmin) ...[
-              SectionHeader('Student activity · last $_actDays days'),
+              const SectionHeader('Learner usage & performance'),
               _activityChart(),
               const SizedBox(height: 22),
             ],
@@ -1344,65 +1349,156 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     );
   }
 
-  /// Daily student interactions — lessons completed, work submitted, questions
-  /// asked — as three lines over a shared day axis.
-  Widget _activityChart() {
+  /// Which series the chart draws. Every metric is served by the same response,
+  /// so switching costs no request — the filter only changes what's plotted.
+  List<_ActSeries> _actSeries() {
     final p = Palette.of(context);
+    List<double> col(String key) =>
+        _activity.map((d) => ((d[key] as num?)?.toDouble() ?? 0)).toList();
+    switch (_actMetric) {
+      case _ActMetric.engagement:
+        return [
+          _ActSeries('Lessons', col('lessons'), p.accent),
+          _ActSeries('Submissions', col('submissions'), AdminColors.chipTealFg),
+          _ActSeries('Questions', col('questions'), AdminColors.chipPurpleFg),
+        ];
+      case _ActMetric.lessons:
+        return [_ActSeries('Lessons completed', col('lessons'), p.accent)];
+      case _ActMetric.submissions:
+        return [_ActSeries('Submissions', col('submissions'), AdminColors.chipTealFg)];
+      case _ActMetric.questions:
+        return [_ActSeries('Questions asked', col('questions'), AdminColors.chipPurpleFg)];
+      case _ActMetric.activeLearners:
+        return [_ActSeries('Active learners', col('active'), p.accent)];
+      case _ActMetric.attendance:
+        return [
+          _ActSeries('Present', col('present'), AdminColors.chipTealFg),
+          _ActSeries('Absent', col('absent'), AppleColors.red),
+        ];
+      case _ActMetric.score:
+        return [_ActSeries('Avg score', col('avg_score'), p.accent)];
+    }
+  }
+
+  /// Student usage and performance over time. The metric dropdown swaps which
+  /// series are plotted; range, grouping, course and batch reshape the query.
+  Widget _activityChart() {
     if (_activity.isEmpty) {
       return AppleCard(square: true,
           child: Text('No activity recorded yet.', style: AppleTheme.footnote(context)));
     }
-    final lessons = _activity.map((d) => (d['lessons'] as num?)?.toInt() ?? 0).toList();
-    final subs = _activity.map((d) => (d['submissions'] as num?)?.toInt() ?? 0).toList();
-    final qs = _activity.map((d) => (d['questions'] as num?)?.toInt() ?? 0).toList();
-    final peak = [
-      ...lessons, ...subs, ...qs,
-    ].fold<int>(0, (m, v) => v > m ? v : m);
-    String dayLabel(int i) {
+    final p = Palette.of(context);
+    final series = _actSeries();
+    final peak = series
+        .expand((s) => s.values)
+        .fold<double>(0, (m, v) => v > m ? v : m);
+    String bucketLabel(int i) {
       final s = _activity[i]['date']?.toString() ?? '';
       return s.length >= 10 ? s.substring(5) : s; // MM-DD
     }
 
     final courses = _actCourses();
     final batches = _actBatches(_actCourse);
+    final unit = _actGran == 'week' ? 'wk' : 'day';
 
     return AppleCard(
       square: true,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Range · course · batch, each its own group with a divider between.
-        Wrap(spacing: 5, runSpacing: 5, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          for (final d in const [7, 14, 30])
-            _filterChip('${d}d', _actDays == d, () {
+        // One dropdown per axis of the question: what, over how long, grouped
+        // how, for whom. Wrap so a narrow console stacks them instead of
+        // clipping.
+        Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          FilterDropdown<_ActMetric>(
+            label: 'METRIC',
+            icon: CupertinoIcons.chart_bar_alt_fill,
+            value: _actMetric,
+            options: const [
+              FilterOption(_ActMetric.engagement, 'Engagement',
+                  hint: 'Lessons, submissions and questions together'),
+              FilterOption(_ActMetric.lessons, 'Lessons completed',
+                  hint: 'Course progress'),
+              FilterOption(_ActMetric.submissions, 'Submissions',
+                  hint: 'Assignments and quizzes handed in'),
+              FilterOption(_ActMetric.questions, 'Questions asked',
+                  hint: 'Doubts raised on modules'),
+              FilterOption(_ActMetric.activeLearners, 'Active learners',
+                  hint: 'Distinct students doing anything'),
+              FilterOption(_ActMetric.attendance, 'Attendance',
+                  hint: 'Present vs absent in live classes'),
+              FilterOption(_ActMetric.score, 'Average score',
+                  hint: 'Mean grade on graded submissions'),
+            ],
+            onChanged: (m) => setState(() => _actMetric = m), // no refetch needed
+          ),
+          FilterDropdown<int>(
+            label: 'RANGE',
+            icon: CupertinoIcons.calendar,
+            value: _actDays,
+            options: const [
+              FilterOption(7, 'Last 7 days'),
+              FilterOption(14, 'Last 14 days'),
+              FilterOption(30, 'Last 30 days'),
+              FilterOption(90, 'Last 90 days'),
+              FilterOption(180, 'Last 6 months'),
+            ],
+            onChanged: (d) {
               if (_actDays == d) return;
               setState(() => _actDays = d);
               _loadActivity();
-            }),
-          _chipDivider(),
-          for (final c in courses)
-            _filterChip(_courseDisplayName(c), _actCourse == c, () {
-              if (_actCourse == c) return;
-              // Switching course invalidates the batch — _loadActivity picks
-              // the first batch of the new course.
-              setState(() { _actCourse = c; _actBatch = ''; });
+            },
+          ),
+          FilterDropdown<String>(
+            label: 'BY',
+            icon: CupertinoIcons.rectangle_grid_1x2,
+            value: _actGran,
+            options: const [
+              FilterOption('day', 'Day'),
+              FilterOption('week', 'Week', hint: 'Smooths weekend dips'),
+            ],
+            onChanged: (g) {
+              if (_actGran == g) return;
+              setState(() => _actGran = g);
               _loadActivity();
-            }),
-          if (batches.isNotEmpty) _chipDivider(),
-          for (final b in batches)
-            _filterChip(b, _actBatch == b, () {
-              if (_actBatch == b) return;
-              setState(() => _actBatch = b);
-              _loadActivity();
-            }),
+            },
+          ),
+          if (courses.isNotEmpty)
+            FilterDropdown<String>(
+              label: 'COURSE',
+              icon: CupertinoIcons.book,
+              value: _actCourse,
+              options: [
+                for (final c in courses) FilterOption(c, _courseDisplayName(c)),
+              ],
+              onChanged: (c) {
+                if (_actCourse == c) return;
+                // Switching course invalidates the batch — _loadActivity picks
+                // the first batch of the new course.
+                setState(() { _actCourse = c; _actBatch = ''; });
+                _loadActivity();
+              },
+            ),
+          if (batches.isNotEmpty)
+            FilterDropdown<String>(
+              label: 'BATCH',
+              icon: CupertinoIcons.square_stack_3d_up,
+              value: _actBatch,
+              options: [for (final b in batches) FilterOption(b, b)],
+              onChanged: (b) {
+                if (_actBatch == b) return;
+                setState(() => _actBatch = b);
+                _loadActivity();
+              },
+            ),
         ]),
         const SizedBox(height: 12),
+        // Legend follows the metric, so it never names a line that isn't drawn.
         Row(children: [
-          _legendDot(p.accent, 'Lessons'),
-          const SizedBox(width: 14),
-          _legendDot(AdminColors.chipTealFg, 'Submissions'),
-          const SizedBox(width: 14),
-          _legendDot(AdminColors.chipPurpleFg, 'Questions'),
+          for (final s in series) ...[
+            _legendDot(s.color, s.label),
+            const SizedBox(width: 14),
+          ],
           const Spacer(),
-          Text(peak == 0 ? 'no events' : 'peak $peak/day',
+          Text(peak == 0 ? 'no events' : 'peak ${_fmtNum(peak)}/$unit',
               style: AppleTheme.footnote(context)),
         ]),
         const SizedBox(height: 14),
@@ -1411,56 +1507,48 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           child: CustomPaint(
             size: Size.infinite,
             painter: _ActivityPainter(
-              series: [lessons, subs, qs],
-              colors: [p.accent, AdminColors.chipTealFg, AdminColors.chipPurpleFg],
+              series: [for (final s in series) s.values],
+              colors: [for (final s in series) s.color],
               grid: p.separator,
               peak: peak,
             ),
           ),
         ),
         const SizedBox(height: 6),
-        // Only the ends are labelled — a tick per day is unreadable at this width.
+        // Only the ends are labelled — a tick per bucket is unreadable here.
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(dayLabel(0), style: AppleTheme.footnote(context)),
-          Text(dayLabel(_activity.length - 1), style: AppleTheme.footnote(context)),
+          Text(bucketLabel(0), style: AppleTheme.footnote(context)),
+          Text(bucketLabel(_activity.length - 1), style: AppleTheme.footnote(context)),
+        ]),
+        // Window summary — the totals a line chart can't state precisely.
+        const SizedBox(height: 12),
+        Wrap(spacing: 16, runSpacing: 6, children: [
+          _actTotal('Lessons', _activityTotals['total_lessons']),
+          _actTotal('Submissions', _activityTotals['total_submissions']),
+          _actTotal('Questions', _activityTotals['total_questions']),
+          _actTotal('Attendance', _activityTotals['attendance_rate'], suffix: '%'),
+          _actTotal('Avg score', _activityTotals['avg_score']),
         ]),
       ]),
     );
   }
 
-  /// Small selectable filter chip for the activity chart. Deliberately compact —
-  /// there are three groups of these and they sit above the chart, not in it.
-  Widget _filterChip(String label, bool on, VoidCallback onTap) {
-    final p = Palette.of(context);
-    return HoverTap(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        curve: Curves.easeOut,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        constraints: const BoxConstraints(maxWidth: 150),
-        decoration: BoxDecoration(
-          color: on ? p.accent : p.card2,
-          borderRadius: BorderRadius.circular(kRadiusChip),
-          border: Border.all(color: on ? p.accent : p.separator),
-        ),
-        child: Text(label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w700,
-                color: on ? Colors.white : p.secondary)),
-      ),
-    );
+  /// `label value` pair under the chart. Hidden when the metric has no data at
+  /// all, so an ungraded cohort doesn't show a meaningless "Avg score 0".
+  Widget _actTotal(String label, dynamic raw, {String suffix = ''}) {
+    final v = (raw as num?)?.toDouble() ?? 0;
+    if (v == 0) return const SizedBox.shrink();
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Text('$label ', style: AppleTheme.footnote(context)),
+      Text('${_fmtNum(v)}$suffix',
+          style: AppleTheme.footnote(context)
+              .copyWith(fontWeight: FontWeight.w800, color: Palette.of(context).label)),
+    ]);
   }
 
-  /// Thin rule separating the filter groups.
-  Widget _chipDivider() => Container(
-        width: 1, height: 16,
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        color: Palette.of(context).separator,
-      );
+  /// Drop the decimal on whole numbers — "12" reads better than "12.0".
+  String _fmtNum(double v) =>
+      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
 
   Widget _legendDot(Color c, String label) => Row(mainAxisSize: MainAxisSize.min, children: [
         Container(width: 9, height: 9,
@@ -6155,6 +6243,26 @@ class _StoreFolderBtnState extends State<_StoreFolderBtn> {
 
 /// Draws the activity series: a faint baseline grid, a soft area fill under the
 /// first series, then a line per series with its last point emphasised.
+/// What the activity chart is measuring. Each maps to one or more series in the
+/// single activity response — see [_ConsoleScreenState._actSeries].
+enum _ActMetric {
+  engagement,
+  lessons,
+  submissions,
+  questions,
+  activeLearners,
+  attendance,
+  score,
+}
+
+/// One plotted line: its legend name, its values, its colour.
+class _ActSeries {
+  const _ActSeries(this.label, this.values, this.color);
+  final String label;
+  final List<double> values;
+  final Color color;
+}
+
 class _ActivityPainter extends CustomPainter {
   _ActivityPainter({
     required this.series,
@@ -6162,18 +6270,19 @@ class _ActivityPainter extends CustomPainter {
     required this.grid,
     required this.peak,
   });
-  final List<List<int>> series;
+  final List<List<double>> series;
   final List<Color> colors;
   final Color grid;
-  final int peak;
+  final double peak;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final maxY = (peak == 0 ? 1 : peak).toDouble();
+    if (series.isEmpty) return;
+    final maxY = peak == 0 ? 1.0 : peak;
     final n = series.first.length;
     if (n < 2) return;
     final dx = size.width / (n - 1);
-    double yFor(int v) => size.height - (v / maxY) * (size.height - 6) - 3;
+    double yFor(double v) => size.height - (v / maxY) * (size.height - 6) - 3;
 
     // Four horizontal guides — enough to read level, faint enough to ignore.
     final gridPaint = Paint()
