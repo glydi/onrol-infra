@@ -117,6 +117,31 @@ func (h *Handlers) StudentActivity(c *fiber.Ctx) error {
 		})
 	}
 
+	// Distinct learners over the WHOLE window, plus the cohort they're drawn
+	// from. Can't be derived from the per-bucket rows above — summing daily
+	// actives counts the same student once per day they showed up. Paired with
+	// [enrolled] so the caller can show participation as a share, not a count.
+	var activeWindow, enrolled int
+	_ = h.Pool.QueryRow(c.Context(), `
+		WITH raw AS (
+		  SELECT lp.user_id, lp.completed_at::date AS day FROM lesson_progress lp
+		  UNION ALL SELECT s.user_id, s.submitted_at::date FROM submissions s
+		  UNION ALL SELECT m.user_id, m.created_at::date FROM module_comments m
+		   WHERE m.user_id IS NOT NULL
+		  UNION ALL SELECT sa.user_id, sa.marked_at::date FROM session_attendance sa
+		)
+		SELECT
+		  (SELECT count(DISTINCT raw.user_id)
+		     FROM raw JOIN users u ON u.id = raw.user_id
+		    WHERE raw.day > current_date - $1::int
+		      AND ($2::text = '' OR u.batch = $2::text)
+		      AND ($3::text = '' OR lower(u.course_label) = lower($3::text))),
+		  (SELECT count(*) FROM users u
+		    WHERE u.role = 'student' AND u.is_active
+		      AND ($2::text = '' OR u.batch = $2::text)
+		      AND ($3::text = '' OR lower(u.course_label) = lower($3::text)))`,
+		days, batch, course).Scan(&activeWindow, &enrolled)
+
 	avgScore := 0.0
 	if scoreBuckets > 0 {
 		avgScore = scoreSum / float64(scoreBuckets)
@@ -130,6 +155,8 @@ func (h *Handlers) StudentActivity(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"days":              out,
 		"granularity":       bucket,
+		"active_learners":   activeWindow,
+		"enrolled":          enrolled,
 		"total_lessons":     totLessons,
 		"total_submissions": totSubs,
 		"total_questions":   totQs,

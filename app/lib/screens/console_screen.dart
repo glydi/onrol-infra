@@ -101,6 +101,10 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   // Daily student interaction counts for the Home chart, plus its filters.
   List<dynamic> _activity = [];
   Map<String, dynamic> _activityTotals = {}; // window summary beside the chart
+  // Unfiltered 7-day rollup for the Overview tiles. Kept separate from
+  // _activityTotals, which follows the graph's course/batch filters — reusing it
+  // would label a single batch's numbers as if they were the whole school's.
+  Map<String, dynamic> _pulse = {};
   String _actBatch = '';  // batch code the graph is showing
   String _actCourse = ''; // course_label the graph is showing
   int _actDays = 14;
@@ -145,6 +149,11 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           _videoBytes = vids.fold<int>(
               0, (s, v) => s + (((v as Map)['size_bytes'] as num?)?.toInt() ?? 0));
           _videoProcessing = vids.where((v) => (v as Map)['status'] == 'processing').length;
+        } catch (_) {}
+        // School-wide 7-day pulse for the stat tiles — deliberately unfiltered.
+        try {
+          final pr = await widget.auth.apiGet('/api/v1/manage/activity?days=7');
+          _pulse = Map<String, dynamic>.from(ApiClient.decode(pr) as Map);
         } catch (_) {}
         await _loadActivity();
       }
@@ -1280,6 +1289,27 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         .where((b) => b.isNotEmpty)
         .toSet()
         .length;
+    // Roster health, all from the users list already in hand — no extra request.
+    bool isStudent(dynamic u) => u['role'] == 'student';
+    final unassigned = _people
+        .where((u) => isStudent(u) && (u['batch']?.toString().trim() ?? '').isEmpty)
+        .length;
+    final suspended =
+        _people.where((u) => isStudent(u) && u['is_active'] == false).length;
+    final now = DateTime.now();
+    final joined30 = _people.where((u) {
+      if (!isStudent(u)) return false;
+      final t = DateTime.tryParse(u['created_at']?.toString() ?? '');
+      return t != null && now.difference(t).inDays <= 30;
+    }).length;
+    // School-wide 7-day engagement. active_learners is distinct over the whole
+    // window, so it can be read against the roster as a participation share.
+    final active7 = (_pulse['active_learners'] as num?)?.toInt() ?? 0;
+    final roster = (_pulse['enrolled'] as num?)?.toInt() ?? 0;
+    final lessons7 = (_pulse['total_lessons'] as num?)?.toInt() ?? 0;
+    final subs7 = (_pulse['total_submissions'] as num?)?.toInt() ?? 0;
+    final avgScore7 = (_pulse['avg_score'] as num?)?.toDouble() ?? 0;
+    final idle7 = roster - active7;
     return RefreshIndicator(
       color: p.accent,
       onRefresh: _load,
@@ -1320,6 +1350,40 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
                 _stat('Questions', '$_mentorWaiting', 'awaiting a reply',
                     CupertinoIcons.chat_bubble_2_fill,
                     AdminColors.chipPurpleBg, AdminColors.chipPurpleFg),
+              // Engagement — school-wide, last 7 days.
+              if (_isAdmin && roster > 0)
+                _stat('Active learners', '$active7',
+                    '${(active7 / roster * 100).round()}% of $roster · last 7 days',
+                    CupertinoIcons.bolt_fill,
+                    AdminColors.chipTealBg, AdminColors.chipTealFg),
+              if (_isAdmin && idle7 > 0)
+                _stat('Idle learners', '$idle7', 'no activity in 7 days',
+                    CupertinoIcons.moon_zzz_fill,
+                    AdminColors.chipOrangeBg, AdminColors.chipOrangeFg),
+              if (_isAdmin)
+                _stat('Work done', '$lessons7',
+                    'lessons · $subs7 submissions · 7 days',
+                    CupertinoIcons.checkmark_seal_fill,
+                    AdminColors.chipPurpleBg, AdminColors.chipPurpleFg),
+              // Only meaningful once something has actually been graded.
+              if (_isAdmin && avgScore7 > 0)
+                _stat('Avg score', _fmtNum(avgScore7), 'on graded work · 7 days',
+                    CupertinoIcons.chart_bar_circle_fill,
+                    AdminColors.chipTealBg, AdminColors.chipTealFg),
+              // Roster health — each of these is a to-do, so it appears only
+              // when there's something to fix.
+              if (_isAdmin && unassigned > 0)
+                _stat('Unassigned', '$unassigned', 'students without a batch',
+                    CupertinoIcons.person_crop_circle_badge_exclam,
+                    AdminColors.chipOrangeBg, AdminColors.chipOrangeFg),
+              if (_isAdmin && suspended > 0)
+                _stat('Suspended', '$suspended', 'accounts deactivated',
+                    CupertinoIcons.lock_circle_fill,
+                    AdminColors.chipPinkBg, AdminColors.chipPinkFg),
+              if (_isAdmin)
+                _stat('New students', '$joined30', 'joined in the last 30 days',
+                    CupertinoIcons.person_add_solid,
+                    AdminColors.chipPinkBg, AdminColors.chipPinkFg),
             ]),
             const SizedBox(height: 22),
             // Only surfaces when there's genuinely something to act on.
