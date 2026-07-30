@@ -387,7 +387,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       color: Palette.of(context).accent,
       onRefresh: _load,
       child: ListView(
-      padding: EdgeInsets.fromLTRB(hp, 18, hp, 40),
+      padding: EdgeInsets.fromLTRB(hp, 26, hp, 48),
       children: [
         Row(children: [
           Expanded(child: Text('Instructors', style: AppleTheme.largeTitle(context))),
@@ -417,7 +417,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       color: Palette.of(context).accent,
       onRefresh: _load,
       child: ListView(
-      padding: EdgeInsets.fromLTRB(hp, 18, hp, 40),
+      padding: EdgeInsets.fromLTRB(hp, 26, hp, 48),
       children: [
         Row(children: [
           Expanded(child: Text('Students', style: AppleTheme.largeTitle(context))),
@@ -650,7 +650,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       color: p.accent,
       onRefresh: _load,
       child: ListView(
-        padding: EdgeInsets.fromLTRB(hp, 18, hp, 40),
+        padding: EdgeInsets.fromLTRB(hp, 26, hp, 48),
         children: [
           Row(children: [
             Expanded(child: Text('Settings', style: AppleTheme.largeTitle(context))),
@@ -1267,7 +1267,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
 
   Widget _actionGrid(List<Widget> actions) {
     return LayoutBuilder(builder: (context, c) {
-      const gap = 12.0;
+      const gap = 16.0;
       final cols = c.maxWidth >= 860 ? 3 : (c.maxWidth >= 520 ? 2 : 1);
       final w = (c.maxWidth - gap * (cols - 1)) / cols;
       return Wrap(
@@ -1324,7 +1324,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       color: p.accent,
       onRefresh: _load,
       child: ListView(
-        padding: EdgeInsets.fromLTRB(hp, 18, hp, 40),
+        padding: EdgeInsets.fromLTRB(hp, 26, hp, 48),
         children: [
           Text('Overview', style: AppleTheme.largeTitle(context)),
           Text('Everything across your courses at a glance', style: AppleTheme.subhead(context)),
@@ -1731,7 +1731,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   // Headline numbers side by side, wrapping down to one column on a phone.
   Widget _statGrid(List<Widget> tiles) {
     return LayoutBuilder(builder: (_, c) {
-      const gap = 12.0;
+      const gap = 16.0;
       final w = c.maxWidth;
       final cols = w >= 1000 ? 4 : (w >= 700 ? 3 : (w >= 440 ? 2 : 1));
       final tileW = cols == 1 ? w : (w - gap * (cols - 1)) / cols;
@@ -1757,13 +1757,13 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           decoration: BoxDecoration(color: chipBg, borderRadius: BorderRadius.circular(kRadiusChip)),
           child: Icon(icon, size: 17, color: chipFg),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         Text(label.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis,
             style: AppleTheme.footnote(context).copyWith(
                 fontWeight: FontWeight.w700, letterSpacing: 1.1, color: p.secondary)),
-        const SizedBox(height: 3),
-        Text(value, style: AppleTheme.headline(context).copyWith(fontSize: 26, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 2),
+        const SizedBox(height: 6),
+        Text(value, style: AppleTheme.headline(context).copyWith(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+        const SizedBox(height: 4),
         Text(sub, maxLines: 2, overflow: TextOverflow.ellipsis, style: AppleTheme.footnote(context)),
       ]),
     );
@@ -1777,7 +1777,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       color: p.accent,
       onRefresh: _load,
       child: ListView(
-        padding: EdgeInsets.fromLTRB(hp, 18, hp, 40),
+        padding: EdgeInsets.fromLTRB(hp, 26, hp, 48),
         children: [
           LayoutBuilder(builder: (context, c) {
             final compact = c.maxWidth < 430;

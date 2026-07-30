@@ -240,10 +240,8 @@ class _Sidebar extends StatelessWidget {
       final section = dests[i].section;
       if (section.isNotEmpty && section != lastSection) {
         out.add(Padding(
-          // Tight: the whole list has to clear a laptop viewport without
-          // scrolling, and section headers are pure signposting.
-          padding: EdgeInsets.only(top: out.isEmpty ? 0 : 9, bottom: 3, left: 6),
-          child: Text(section.toUpperCase(), style: AppleTheme.footnote(context).copyWith(color: sideMuted, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.9)),
+          padding: EdgeInsets.only(top: out.isEmpty ? 2 : 16, bottom: 6, left: 10),
+          child: Text(section.toUpperCase(), style: AppleTheme.footnote(context).copyWith(color: sideMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.0)),
         ));
         lastSection = section;
       }
