@@ -3353,6 +3353,52 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
     'Admin-only — you enroll students.',
   ];
 
+  /// Batch settings. The only per-batch field that exists is the code itself —
+  /// there's no batches table; the code is a label carried on students, modules
+  /// and class sessions, which is exactly why renaming goes through
+  /// /batches/rename: it updates all three in ONE transaction. Renaming the
+  /// three by hand is how a batch ends up half-renamed, with students pointing
+  /// at a code none of their classes carry.
+  Future<void> _editBatchSettings() async {
+    final current = widget.batch?.trim() ?? '';
+    final code = TextEditingController(text: current);
+    final ok = await showFormSheet(
+      context,
+      square: true,
+      title: 'Batch Settings',
+      builder: (_) => [
+        sheetField(code, 'Batch code', CupertinoIcons.square_stack_3d_up),
+        const SizedBox(height: 10),
+        Text(
+          'Renaming moves this batch\'s students, modules and live classes to the '
+          'new code together, so nobody loses access. Free-form — "AIG A" and '
+          '"AIG 01 07 26 AA" are both fine.',
+          style: AppleTheme.footnote(context),
+        ),
+      ],
+      onSubmit: () async {
+        final to = code.text.trim();
+        if (to.isEmpty) return 'Batch code is required';
+        if (to == current) return null; // nothing to do
+        try {
+          final r = await widget.auth.apiPost(
+              '/api/v1/manage/courses/${widget.courseId}/batches/rename',
+              {'from': current, 'to': to});
+          ApiClient.decode(r); // throws on non-2xx
+          return null;
+        } catch (_) {
+          return 'Could not rename the batch';
+        }
+      },
+    );
+    // This screen is keyed to the old code, so it can't just refresh — go back
+    // to the batch list, which reloads with the new one.
+    if (ok == true && mounted) {
+      _toast('Batch updated');
+      Navigator.pop(context);
+    }
+  }
+
   Future<void> _setAdmission(String mode) async {
     try {
       await widget.auth.apiPatch('/api/v1/manage/courses/${widget.courseId}', {'enroll_type': mode});
@@ -3415,12 +3461,24 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                   ]),
                 ),
                 const SizedBox(height: 12),
-                PrimaryButton(
-                  label: 'Edit course details',
-                  icon: CupertinoIcons.pencil,
-                  square: true,
-                  onPressed: _editCourseDetails,
-                ),
+                // Compact actions, sized to their labels: a full-width slab read
+                // as the page's main event, which it isn't. Wrap so a narrow
+                // console stacks them.
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  SmallActionButton(
+                    label: 'Edit course details',
+                    icon: CupertinoIcons.pencil,
+                    filled: true,
+                    onPressed: _editCourseDetails,
+                  ),
+                  // Only inside a batch — there's nothing to rename otherwise.
+                  if (_batchLocked)
+                    SmallActionButton(
+                      label: 'Batch settings',
+                      icon: CupertinoIcons.square_stack_3d_up,
+                      onPressed: _editBatchSettings,
+                    ),
+                ]),
                 const SizedBox(height: 14),
                 // Admission control — how students get into this course.
                 AppleCard(square: true, 
