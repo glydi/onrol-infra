@@ -1,14 +1,13 @@
-// Drop-in replacement for the framework `Text` widget that renders its data in
-// UPPERCASE. The student app is uppercase throughout (to match the staff
-// console); only text the user *types* stays true-case — and TextField/
-// TextFormField are untouched by this, so typed input keeps its real case.
+// Drop-in replacement for the framework `Text` widget. It USED to force every
+// string to UPPERCASE app-wide, which made the UI read as shouting. It now
+// renders text in its natural, as-written case. Deliberate small-caps accents
+// (section labels, stat captions, sidebar section headers) still uppercase
+// themselves by calling `.toUpperCase()` on the string explicitly, so those are
+// unaffected.
 //
-// Usage: a file opts in with
-//   import 'package:flutter/material.dart' hide Text;
-//   import 'package:onrol_app/widgets/upper_text.dart';
-// Every existing `Text(...)` / `const Text(...)` call site then renders upper
-// case with no other change. Code/markdown bodies (markdown_view.dart) and
-// SelectableText/RichText deliberately keep their own casing.
+// The widget is kept (rather than reverting call sites to the framework Text)
+// so a single place controls global text casing, and so the many files that
+// `import ... hide Text; import upper_text.dart` keep compiling unchanged.
 import 'package:flutter/widgets.dart' hide Text;
 import 'package:flutter/widgets.dart' as w;
 
