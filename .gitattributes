@@ -1,0 +1,12 @@
+# Flutter regenerates these on every build/analyze on Windows and writes CRLF,
+# so they showed as modified on a clean tree and blocked `git pull --rebase`.
+# Pinning them to LF keeps the working copy stable regardless of platform.
+app/windows/flutter/generated_plugin_registrant.cc text eol=lf
+app/windows/flutter/generated_plugin_registrant.h  text eol=lf
+app/windows/flutter/generated_plugins.cmake        text eol=lf
+app/linux/flutter/generated_plugin_registrant.cc   text eol=lf
+app/linux/flutter/generated_plugin_registrant.h    text eol=lf
+app/linux/flutter/generated_plugins.cmake          text eol=lf
+
+# Shell scripts must keep LF — deploy.sh runs on the Linux VPS.
+*.sh text eol=lf
