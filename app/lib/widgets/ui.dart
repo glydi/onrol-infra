@@ -106,8 +106,8 @@ class _SmallActionButtonState extends State<SmallActionButton> {
     final hot = _hover && on;
     // Solid variant: a deep ink slab that stays dark in either theme, so the
     // primary action reads the same way light or dark.
-    const darkFill = Color(0xFF1A2C3A);
-    const darkHover = Color(0xFF27404F);
+    const darkFill = Color(0xFF1A1A1A);
+    const darkHover = Color(0xFF333333);
     final Color bg = widget.filled
         ? (on ? (hot ? darkHover : darkFill) : p.secondary.withValues(alpha: 0.35))
         : p.accent.withValues(alpha: hot ? 0.20 : 0.10);
@@ -723,8 +723,9 @@ class AppleProgress extends StatelessWidget {
       child: LinearProgressIndicator(
         value: value.clamp(0, 1),
         minHeight: 7,
-        backgroundColor: p.dark ? AppleColors.darkCard2 : const Color(0xFFE5E5EA),
-        valueColor: AlwaysStoppedAnimation(color ?? p.accent),
+        backgroundColor: p.dark ? AppleColors.darkCard2 : const Color(0xFFEDEDED),
+        // Admin progress carries the signature lime highlight by default.
+        valueColor: AlwaysStoppedAnimation(color ?? (p.admin && !p.dark ? AdminColors.lime : p.accent)),
       ),
     );
   }

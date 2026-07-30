@@ -39,11 +39,12 @@ class AppleColors {
 /// The accent stays the ONROL orange; swap [accent]/[accentDark] for the teal
 /// pair below if the brand ever moves.
 class AdminColors {
-  static const accent = Color(0xFFFF4F2B);
-  static const accentDark = Color(0xFFFF6A4D);
-  // Reference teal, kept here so switching is a two-line change:
-  //   static const accent = Color(0xFF0F858C);
-  //   static const accentDark = Color(0xFF2AA7AE);
+  // Glassmorphism scheme: the interactive accent is a near-black INK (icons,
+  // links, small buttons, primary CTAs) — the neon [lime] carries the one hero
+  // highlight (selected nav, progress). On dark surfaces the ink flips to lime,
+  // which is the natural bright accent there.
+  static const accent = Color(0xFF1A1A1A);
+  static const accentDark = Color(0xFFC8FF32);
 
   // Glassmorphism light theme: near-white gray ground, pure-white floating cards.
   static const lightBg = Color(0xFFF5F6F8);        // app ground (never pure white)

@@ -3029,8 +3029,14 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       behavior: HitTestBehavior.opaque,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(color: on ? p.accent : p.card2, border: Border.all(color: on ? p.accent : p.separator)),
-        child: Text(label, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: on ? Colors.white : p.label)),
+        decoration: BoxDecoration(
+          // Selected content tab carries the signature lime (matches the nav);
+          // idle tabs are a soft recessed chip.
+          color: on ? AdminColors.lime : p.card2,
+          borderRadius: adminRadius(p, kRadiusChip),
+          border: Border.all(color: on ? AdminColors.lime : p.separator),
+        ),
+        child: Text(label, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: on ? const Color(0xFF1A1A1A) : p.label)),
       ),
     );
   }
