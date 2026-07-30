@@ -483,10 +483,69 @@ class PrimaryButton extends StatefulWidget {
 class _PrimaryButtonState extends State<PrimaryButton> {
   double _scale = 1;
   bool _hover = false;
+  Widget _content(bool white) => widget.busy
+      ? SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: white ? Colors.white : Colors.black54))
+      : LayoutBuilder(
+          builder: (context, c) {
+            final reserve = widget.icon == null ? 24.0 : 52.0;
+            final labelMax = c.maxWidth.isFinite ? (c.maxWidth - reserve).clamp(24.0, 220.0) : 220.0;
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (widget.icon != null) ...[Icon(widget.icon, color: white ? Colors.white : Colors.black87, size: 20), const SizedBox(width: 8)],
+                  ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: labelMax),
+                    child: Text(widget.label,
+                        maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
+                        style: TextStyle(color: white ? Colors.white : Colors.black87, fontSize: 15, fontWeight: FontWeight.w600, letterSpacing: 0.2)),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final enabled = widget.onPressed != null && !widget.busy;
+
+    // Admin: Material filled button — solid black fill, ink ripple + a small
+    // resting elevation that lifts on hover. Replaces the old press-scale.
+    if (widget.square) {
+      final fill = enabled ? const Color(0xFF1A1A1A) : p.secondary.withOpacity(0.30);
+      final radius = adminRadius(p, kRadiusButton);
+      return MouseRegion(
+        cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+          decoration: BoxDecoration(
+            borderRadius: radius,
+            boxShadow: enabled
+                ? [BoxShadow(color: Colors.black.withOpacity(_hover ? 0.28 : 0.18), offset: Offset(0, _hover ? 6 : 3), blurRadius: _hover ? 16 : 8, spreadRadius: -4)]
+                : null,
+          ),
+          child: Material(
+            color: fill,
+            borderRadius: radius,
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: enabled ? widget.onPressed : null,
+              splashColor: Colors.white.withOpacity(0.18),
+              highlightColor: Colors.white.withOpacity(0.06),
+              child: SizedBox(height: 46, child: Center(child: _content(true))),
+            ),
+          ),
+        ),
+      );
+    }
+
     return MouseRegion(
       cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
       onEnter: (_) => setState(() => _hover = true),

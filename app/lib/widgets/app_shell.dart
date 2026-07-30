@@ -282,6 +282,12 @@ class _NavTileState extends State<_NavTile> {
     // Selected nav uses the signature lime with dark ink on top (glassmorphism).
     final selBg = admin ? AdminColors.lime : p.accent;
     final selInk = admin ? const Color(0xFF1A1A1A) : Colors.white;
+    // Material-3 "left-bar indicator": the active item shows a thick rounded
+    // accent bar on its left + bold coloured label; no heavy fill. Hover is a
+    // quiet neutral wash. Student surfaces keep their original accent style.
+    final active = admin ? AdminColors.secondaryAccent : p.accent;
+    final iconColor = on ? active : (_hover ? (admin ? sideInk : p.accent) : sideMuted);
+    final textColor = on ? (admin ? sideInk : selInk) : (_hover ? (admin ? sideInk : p.accent) : sideInk);
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: MouseRegion(
@@ -294,30 +300,46 @@ class _NavTileState extends State<_NavTile> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           curve: Curves.easeOut,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.only(right: 12, top: 8, bottom: 8),
           decoration: BoxDecoration(
-            // Selected keeps the solid lime fill; hover is a soft neutral wash.
-            color: on
-                ? selBg
-                : (_hover ? (admin ? Colors.black.withValues(alpha: 0.05) : p.accent.withValues(alpha: 0.14)) : Colors.transparent),
+            // Minimal: selected gets a faint tonal wash (Material state layer);
+            // hover a lighter one. The left bar carries the "active" signal.
+            color: admin
+                ? (on
+                    ? active.withValues(alpha: 0.08)
+                    : (_hover ? Colors.black.withValues(alpha: 0.04) : Colors.transparent))
+                : (on ? selBg : (_hover ? p.accent.withValues(alpha: 0.14) : Colors.transparent)),
             borderRadius: adminRadius(p, kRadiusButton),
           ),
           child: Row(children: [
-            Icon(d.icon, size: 17,
-                color: on ? selInk : (_hover ? (admin ? sideInk : p.accent) : sideMuted)),
+            // Active indicator bar (admin only). Reserves its width always so
+            // labels never shift when selection moves.
+            if (admin)
+              Container(
+                width: 3.5,
+                height: 20,
+                margin: const EdgeInsets.only(right: 12),
+                decoration: BoxDecoration(
+                  color: on ? active : Colors.transparent,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              )
+            else
+              const SizedBox(width: 12),
+            Icon(d.icon, size: 18, color: iconColor),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(d.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.body(context).copyWith(fontSize: 13.5, fontWeight: on ? FontWeight.w700 : FontWeight.w600, color: on ? selInk : (_hover ? (admin ? sideInk : p.accent) : sideInk))),
+              child: Text(d.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.body(context).copyWith(fontSize: 13.5, fontWeight: on ? FontWeight.w700 : FontWeight.w500, color: textColor)),
             ),
             if (d.badge > 0)
               Container(
                 margin: const EdgeInsets.only(left: 6),
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 constraints: const BoxConstraints(minWidth: 18),
-                decoration: BoxDecoration(color: on ? const Color(0xFF1A1A1A) : AppleColors.red, borderRadius: BorderRadius.circular(9)),
+                decoration: BoxDecoration(color: AppleColors.red, borderRadius: BorderRadius.circular(9)),
                 child: Text(d.badge > 99 ? '99+' : '${d.badge}',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
+                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
               ),
           ]),
         ),
