@@ -59,6 +59,16 @@ class AdminColors {
   static const darkSecondary = Color(0xFF8FA3B5);
   static const darkSeparator = Color(0xFF24313D);
 
+  // The admin left nav. Deliberately one fixed set for both light and dark
+  // themes — the panel reads as a constant frame around content that changes.
+  // Neutral grey rather than near-black; [sideInk]/[sideMuted] are tuned for
+  // contrast against it, so move all four together.
+  static const sideBg = Color(0xFF34383E);      // panel ground
+  static const sideCard = Color(0xFF3E434A);    // raised box within the panel
+  static const sideBorder = Color(0xFF474C54);  // divider when not floating
+  static const sideInk = Color(0xFFD5DBE2);     // nav labels
+  static const sideMuted = Color(0xFF9BA4AF);   // icons, section headers
+
   /// Pastel chip pairs (background, icon) for stat tiles — decorative only,
   /// never the accent. Mirrors the reference's purple/pink/orange/teal set.
   static const chipPurpleBg = Color(0xFFE9D5FF);

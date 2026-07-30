@@ -86,7 +86,7 @@ class _AppShellState extends State<AppShell> {
 
       return Scaffold(
         drawer: Drawer(
-          backgroundColor: admin ? const Color(0xFF111418) : p.bg,
+          backgroundColor: admin ? AdminColors.sideBg : p.bg,
           child: _Sidebar(
             auth: widget.auth,
             dests: widget.destinations,
@@ -136,9 +136,9 @@ class _Sidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final admin = p.admin;
-    final sideBg = admin ? const Color(0xFF111418) : p.bg;
-    final sideBorder = admin ? const Color(0xFF252B33) : p.separator;
-    final sideMuted = admin ? const Color(0xFF7D8794) : p.secondary;
+    final sideBg = admin ? AdminColors.sideBg : p.bg;
+    final sideBorder = admin ? AdminColors.sideBorder : p.separator;
+    final sideMuted = admin ? AdminColors.sideMuted : p.secondary;
     final float = floating && admin;
     return Container(
       width: admin ? 272 : 256,
@@ -200,8 +200,8 @@ class _Sidebar extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: admin ? const Color(0xFF161A20) : p.card,
-              border: Border.all(color: admin ? const Color(0xFF252B33) : p.separator),
+              color: admin ? AdminColors.sideCard : p.card,
+              border: Border.all(color: admin ? AdminColors.sideBorder : p.separator),
               borderRadius: adminRadius(p, kRadiusField),
               boxShadow: admin ? null : p.clay,
             ),
@@ -225,7 +225,7 @@ class _Sidebar extends StatelessWidget {
   List<Widget> _navItems(BuildContext context) {
     final p = Palette.of(context);
     final admin = p.admin;
-    final sideMuted = admin ? const Color(0xFF7D8794) : p.secondary;
+    final sideMuted = admin ? AdminColors.sideMuted : p.secondary;
     final out = <Widget>[];
     String? lastSection;
     for (var i = 0; i < dests.length; i++) {
@@ -269,8 +269,8 @@ class _NavTileState extends State<_NavTile> {
     final on = widget.selected;
     final p = Palette.of(context);
     final admin = p.admin;
-    final sideInk = admin ? const Color(0xFFC7CFDA) : p.label;
-    final sideMuted = admin ? const Color(0xFF7D8794) : p.secondary;
+    final sideInk = admin ? AdminColors.sideInk : p.label;
+    final sideMuted = admin ? AdminColors.sideMuted : p.secondary;
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: MouseRegion(
