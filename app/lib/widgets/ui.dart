@@ -1002,9 +1002,18 @@ class SquareScope extends InheritedWidget {
 Widget sheetField(TextEditingController c, String hint, IconData icon, {TextInputType? keyboard, bool square = false, bool obscure = false, int? minLines, int? maxLines = 1}) {
   return Builder(builder: (context) {
     final p = Palette.of(context);
+    final multiline = (maxLines == null || maxLines > 1);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-      decoration: BoxDecoration(color: p.card2, borderRadius: adminRadius(p, kRadiusField)),
+      // Proper input chrome: a filled field with a defined 1px border and a real
+      // ~48px height (taller for multi-line), so inputs read as inputs.
+      constraints: BoxConstraints(minHeight: multiline ? 96 : 48),
+      alignment: multiline ? Alignment.topLeft : Alignment.centerLeft,
+      padding: EdgeInsets.symmetric(horizontal: 14, vertical: multiline ? 12 : 8),
+      decoration: BoxDecoration(
+        color: p.admin ? p.card2 : p.card2,
+        borderRadius: adminRadius(p, kRadiusField),
+        border: p.admin ? Border.all(color: p.separator) : null,
+      ),
       child: AppleField(controller: c, hint: hint, icon: icon, keyboard: keyboard, obscure: obscure, minLines: minLines, maxLines: maxLines),
     );
   });
