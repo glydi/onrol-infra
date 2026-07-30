@@ -9,12 +9,12 @@ import '../theme_controller.dart';
 // Corner radii for the boxes the ADMIN/LMS skin draws — cards, buttons,
 // dialogs, sheets, fields. Values live here so the whole admin surface changes
 // in one place. Student surfaces stay squared; see [adminRadius].
-const double kRadiusCard = 24;
-const double kRadiusButton = 18;
-const double kRadiusDialog = 28;
-const double kRadiusSheet = 28;
-const double kRadiusField = 18;
-const double kRadiusChip = 12;
+const double kRadiusCard = 12;
+const double kRadiusButton = 9;
+const double kRadiusDialog = 14;
+const double kRadiusSheet = 16;
+const double kRadiusField = 9;
+const double kRadiusChip = 7;
 const double kRadiusPill = 999; // fully rounded (progress bars, banner buttons)
 
 /// Rounded corners belong to the **admin/LMS skin only**. Student surfaces keep
@@ -281,15 +281,13 @@ class _AppleCardState extends State<AppleCard> {
         // `square: true` selects the ADMIN styling — it no longer means radius
         // 0. Admin boxes are rounded; student surfaces stay squared.
         borderRadius: adminRadius(p, kRadiusCard),
-        // Admin cards float on the tinted ground: a soft ambient shadow rather
-        // than a hard outline. The border only shows to signal hover.
+        // Admin cards float on the tinted ground with the one shadow style; no
+        // outline (a hover lift is signalled by a slightly stronger shadow, not
+        // a hard border). Student surfaces keep their separator hairline.
         border: Border.all(
-            color: hovered ? p.accent : (p.admin ? Colors.transparent : p.separator)),
-        // Admin cards float on the near-white ground with a soft ambient
-        // glassmorphism shadow — no hard edges, just a gentle diffuse lift.
-        // Student cards keep the original lift-on-hover behaviour.
+            color: p.admin ? Colors.transparent : (hovered ? p.accent : p.separator)),
         boxShadow: p.admin
-            ? p.soft
+            ? (hovered ? p.softHover : p.soft)
             : (hovered
                 ? [
                     BoxShadow(
