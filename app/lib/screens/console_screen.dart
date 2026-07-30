@@ -1310,6 +1310,9 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     final subs7 = (_pulse['total_submissions'] as num?)?.toInt() ?? 0;
     final avgScore7 = (_pulse['avg_score'] as num?)?.toDouble() ?? 0;
     final idle7 = roster - active7;
+    // Learning hours: all-time total, with the last 7 days as the sub-line.
+    final totalHours = (_pulse['total_hours'] as num?)?.toDouble() ?? 0;
+    final weekHours = (_pulse['window_hours'] as num?)?.toDouble() ?? 0;
     return RefreshIndicator(
       color: p.accent,
       onRefresh: _load,
@@ -1350,6 +1353,13 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
                 _stat('Questions', '$_mentorWaiting', 'awaiting a reply',
                     CupertinoIcons.chat_bubble_2_fill,
                     AdminColors.chipPurpleBg, AdminColors.chipPurpleFg),
+              // Total time learners have spent watching — live classes plus
+              // recorded lessons, all time, with this week underneath.
+              if (_isAdmin && totalHours > 0)
+                _stat('Learning hours', '${_fmtNum(totalHours)} h',
+                    '${_fmtNum(weekHours)} h in the last 7 days',
+                    CupertinoIcons.clock_fill,
+                    AdminColors.chipOrangeBg, AdminColors.chipOrangeFg),
               // Engagement — school-wide, last 7 days.
               if (_isAdmin && roster > 0)
                 _stat('Active learners', '$active7',
@@ -1435,10 +1445,9 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       case _ActMetric.activeLearners:
         return [_ActSeries('Active learners', col('active'), p.accent)];
       case _ActMetric.attendance:
-        return [
-          _ActSeries('Present', col('present'), AdminColors.chipTealFg),
-          _ActSeries('Absent', col('absent'), AppleColors.red),
-        ];
+        // One series, not present/absent: live_attendance records who joined,
+        // and a learner who never showed up simply has no row to count.
+        return [_ActSeries('Class joins', col('attended'), AdminColors.chipTealFg)];
       case _ActMetric.score:
         return [_ActSeries('Avg score', col('avg_score'), p.accent)];
     }
@@ -1487,8 +1496,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
                   hint: 'Doubts raised on modules'),
               FilterOption(_ActMetric.activeLearners, 'Active learners',
                   hint: 'Distinct students doing anything'),
-              FilterOption(_ActMetric.attendance, 'Attendance',
-                  hint: 'Present vs absent in live classes'),
+              FilterOption(_ActMetric.attendance, 'Live attendance',
+                  hint: 'Learners joining live classes'),
               FilterOption(_ActMetric.score, 'Average score',
                   hint: 'Mean grade on graded submissions'),
             ],
@@ -1590,8 +1599,9 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           _actTotal('Lessons', _activityTotals['total_lessons']),
           _actTotal('Submissions', _activityTotals['total_submissions']),
           _actTotal('Questions', _activityTotals['total_questions']),
-          _actTotal('Attendance', _activityTotals['attendance_rate'], suffix: '%'),
+          _actTotal('Attended', _activityTotals['attendance_rate'], suffix: '%'),
           _actTotal('Avg score', _activityTotals['avg_score']),
+          _actTotal('Hours', _activityTotals['window_hours'], suffix: ' h'),
         ]),
       ]),
     );
