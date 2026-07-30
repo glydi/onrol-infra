@@ -329,35 +329,41 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Sidebar information architecture (sections top→bottom). Every NavDest here
+    // must line up index-for-index with `pages` below; the `if (_isAdmin)`
+    // guards are mirrored in both lists so the alignment holds for instructors.
     final dests = <NavDest>[
-      // First entry, so AppShell's initialIndex of 0 lands here by default.
-      const NavDest(CupertinoIcons.house_fill, 'Home', section: 'Learning'),
+      // DASHBOARD — first entry, so AppShell's initialIndex 0 lands here.
+      const NavDest(CupertinoIcons.house_fill, 'Overview', section: 'Dashboard'),
+      // LEARNING
       const NavDest(CupertinoIcons.square_list_fill, 'Courses', section: 'Learning'),
-      if (_isAdmin) const NavDest(CupertinoIcons.dot_radiowaves_left_right, 'Live Host', section: 'Learning'),
-      if (_isAdmin) const NavDest(CupertinoIcons.film, 'Video Store', section: 'Learning'),
-      if (_isAdmin) const NavDest(CupertinoIcons.square_stack_3d_up_fill, 'Module Store', section: 'Learning'),
-      if (_isAdmin) const NavDest(CupertinoIcons.compass_fill, 'Explore Courses', section: 'Learning'),
-      if (_isAdmin) const NavDest(CupertinoIcons.person_badge_plus, 'Instructors', section: 'People'),
-      if (_isAdmin) const NavDest(CupertinoIcons.person_2_fill, 'Students', section: 'People'),
-      if (_isAdmin) const NavDest(CupertinoIcons.calendar, 'Calendar', section: 'Engagement'),
-      if (_isAdmin) NavDest(CupertinoIcons.chat_bubble_2_fill, 'Ask Mentor', section: 'Engagement', badge: _mentorWaiting),
-      // Everyone gets Settings — it carries the theme choice, not just the
-      // admin-account management inside it.
-      const NavDest(CupertinoIcons.gear_alt_fill, 'Settings', section: 'Account'),
+      if (_isAdmin) const NavDest(CupertinoIcons.square_stack_3d_up_fill, 'Curriculum', section: 'Learning'),
+      if (_isAdmin) const NavDest(CupertinoIcons.film, 'Media Library', section: 'Learning'),
+      if (_isAdmin) const NavDest(CupertinoIcons.compass_fill, 'Course Explorer', section: 'Learning'),
+      // LIVE
+      if (_isAdmin) const NavDest(CupertinoIcons.dot_radiowaves_left_right, 'Host Session', section: 'Live'),
+      // USERS
+      if (_isAdmin) const NavDest(CupertinoIcons.person_2_fill, 'Students', section: 'Users'),
+      if (_isAdmin) const NavDest(CupertinoIcons.person_badge_plus, 'Instructors', section: 'Users'),
+      // COMMUNICATION
+      if (_isAdmin) NavDest(CupertinoIcons.chat_bubble_2_fill, 'Ask Mentor', section: 'Communication', badge: _mentorWaiting),
+      if (_isAdmin) const NavDest(CupertinoIcons.calendar, 'Calendar', section: 'Communication'),
+      // SETTINGS — everyone gets it (carries the theme choice).
+      const NavDest(CupertinoIcons.gear_alt_fill, 'General', section: 'Settings'),
+      // ACCOUNT
       const NavDest(CupertinoIcons.person_fill, 'Profile', section: 'Account'),
     ];
     final pages = <Widget>[
       _homePage(),
       _consolePage(),
-      if (_isAdmin) LiveHostPortalScreen(auth: widget.auth, embedded: true),
-      if (_isAdmin) VideoStoreScreen(auth: widget.auth),
-      // Same index as its NavDest above — dests and pages must stay aligned.
       if (_isAdmin) ModuleStoreScreen(auth: widget.auth),
+      if (_isAdmin) VideoStoreScreen(auth: widget.auth),
       if (_isAdmin) ExploreCoursesScreen(auth: widget.auth, embedded: true),
-      if (_isAdmin) _instructorsPage(),
+      if (_isAdmin) LiveHostPortalScreen(auth: widget.auth, embedded: true),
       if (_isAdmin) _studentsPage(),
-      if (_isAdmin) AdminCalendarScreen(auth: widget.auth),
+      if (_isAdmin) _instructorsPage(),
       if (_isAdmin) AskMentorQueueScreen(auth: widget.auth),
+      if (_isAdmin) AdminCalendarScreen(auth: widget.auth),
       _settingsPage(),
       _profilePage(),
     ];
