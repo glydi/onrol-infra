@@ -69,6 +69,8 @@ class _LiveHostPortalScreenState extends State<LiveHostPortalScreen> {
         watermark: widget.auth.user?.email ?? 'host',
         title: s['title']?.toString() ?? 'Live Class',
         isHost: true,
+        externalUrl: (s['host_url']?.toString() ?? '').trim(),
+        youtubeId: s['youtube_id']?.toString() ?? '',
       ),
     ));
   }

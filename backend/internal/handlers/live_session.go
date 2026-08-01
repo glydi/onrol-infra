@@ -1071,6 +1071,7 @@ func (h *Handlers) ListLiveHostSessions(c *fiber.Ctx) error {
 		            THEN cs.starts_at + make_interval(secs => COALESCE(ma.duration_seconds,0))
 		            ELSE cs.ends_at END AS ends_at,
 		       COALESCE(cs.batch_number,''),
+		       COALESCE(cs.youtube_id,''), COALESCE(cs.host_url,''), COALESCE(cs.webinar_id::text,''),
 		       (SELECT count(*) FROM live_questions q WHERE q.session_id=cs.id AND NOT q.answered) AS waiting
 		FROM class_sessions cs
 		JOIN courses c ON c.id = cs.course_id
@@ -1088,13 +1089,14 @@ func (h *Handlers) ListLiveHostSessions(c *fiber.Ctx) error {
 	defer rows.Close()
 	out := []fiber.Map{}
 	for rows.Next() {
-		var id, title, course, batch string
+		var id, title, course, batch, youtubeID, hostURL, webinarID string
 		var startsAt, endsAt any
 		var waiting int
-		if err := rows.Scan(&id, &title, &course, &startsAt, &endsAt, &batch, &waiting); err != nil {
+		if err := rows.Scan(&id, &title, &course, &startsAt, &endsAt, &batch, &youtubeID, &hostURL, &webinarID, &waiting); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "scan failed")
 		}
-		out = append(out, fiber.Map{"id": id, "title": title, "course": course, "starts_at": startsAt, "ends_at": endsAt, "batch": batch, "waiting": waiting})
+		out = append(out, fiber.Map{"id": id, "title": title, "course": course, "starts_at": startsAt, "ends_at": endsAt, "batch": batch,
+			"youtube_id": youtubeID, "host_url": hostURL, "webinar_id": webinarID, "waiting": waiting})
 	}
 	return c.JSON(fiber.Map{"sessions": out})
 }
