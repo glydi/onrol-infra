@@ -3559,11 +3559,13 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                 Text(subtitle, style: AppleTheme.footnote(context)),
               ]),
             ),
-            // Any session with a host link (Zoho webinar or a pasted external
-            // host URL) → ONE "Host & Answer" button: the room embeds the host
-            // view on the LEFT and the answer queue on the RIGHT. Otherwise just
-            // the Answer button.
-            if ((s['webinar_id']?.toString() ?? '').trim().isNotEmpty || (!simulated && hostUrl.isNotEmpty)) ...[
+            // Any in-room streaming session (Zoho webinar, pasted host URL, or a
+            // YouTube live) → ONE "Host & Answer" button: the room fills with the
+            // stream and docks the answer queue on the RIGHT — same tab. Others
+            // just get the Answer button.
+            if ((s['webinar_id']?.toString() ?? '').trim().isNotEmpty
+                || (s['youtube_id']?.toString() ?? '').trim().isNotEmpty
+                || (!simulated && hostUrl.isNotEmpty)) ...[
               _answerButton(s, label: 'Host & Answer'),
               const SizedBox(width: 6),
             ] else ...[
