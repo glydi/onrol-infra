@@ -1418,11 +1418,11 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     // always side-by-side — the panel (the question queue) is the whole point.
     final isLandscape = size.width >= size.height;
     final sideBySide = widget.isHost || size.width >= 720 || isLandscape;
-    // Host watching a YouTube-live: 80% stage / 20% answer panel. Otherwise the
+    // Host watching a YouTube-live: 70% stage / 30% answer panel. Otherwise the
     // usual ~380px side panel.
     final ytHost = widget.isHost && widget.youtubeId.isNotEmpty;
     final panelW = ytHost
-        ? (size.width * 0.20).clamp(240.0, 400.0)
+        ? (size.width * 0.30).clamp(300.0, 520.0)
         : (size.width < 900 ? (size.width * 0.36).clamp(260.0, 340.0) : 380.0);
     final showPanel = _qaOn || widget.isHost;
     return Scaffold(

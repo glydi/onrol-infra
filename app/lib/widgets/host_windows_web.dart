@@ -8,7 +8,7 @@ void openStudioAndAnswers(String studioUrl, String answersUrl) {
   final screen = html.window.screen;
   final w = (screen?.width ?? html.window.innerWidth ?? 1440);
   final h = (screen?.height ?? html.window.innerHeight ?? 900);
-  final studioW = (w * 0.8).floor();
+  final studioW = (w * 0.7).floor();
   final answersW = w - studioW;
 
   String feats(int width, int left) =>
