@@ -278,14 +278,15 @@ class _AppleCardState extends State<AppleCard> {
       padding: pad,
       decoration: BoxDecoration(
         // Notion-flat: admin cards are a 1px hairline border, no shadow. A
-        // tappable card hover tints the *background* a subtle warm gray, not the
-        // border (Notion's hover-reveal feel).
-        color: p.admin ? (hovered ? AdminColors.hoverBg : p.card) : p.card,
+        // Admin cards keep the hairline border but now also carry a soft
+        // elevation (Shadows.sm, lifting to md on hover) so they read as raised
+        // surfaces rather than flat outlines.
+        color: p.card,
         borderRadius: adminRadius(p, kRadiusCard),
         border: Border.all(
             color: p.admin ? p.separator : (hovered ? p.accent : p.separator)),
         boxShadow: p.admin
-            ? null
+            ? (hovered ? Shadows.md : Shadows.sm)
             : (hovered
                 ? [
                     BoxShadow(
@@ -531,6 +532,9 @@ class _PrimaryButtonState extends State<PrimaryButton> {
           color: fill,
           borderRadius: radius,
           clipBehavior: Clip.antiAlias,
+          // A subtle resting lift (raises on hover) so the CTA isn't flat.
+          elevation: enabled ? (_hover ? 3 : 1.5) : 0,
+          shadowColor: Colors.black.withOpacity(0.35),
           animationDuration: const Duration(milliseconds: 120),
           child: InkWell(
             onTap: enabled ? widget.onPressed : null,

@@ -118,8 +118,9 @@ class AdminColors {
   static const primarySoft = Color(0xFFEEF6FF);     // --color-primary-soft (tint)
   static const accentDark = Color(0xFF529CE8);      // blue that reads on dark surfaces
 
-  // Surfaces (light-mode only).
-  static const lightBg = Color(0xFFFFFFFF);        // --color-bg
+  // Surfaces (light-mode only). The ground is a faint warm gray (not pure
+  // white) so white cards + their soft shadow read as raised, not flat.
+  static const lightBg = Color(0xFFF7F7F5);        // --color-bg
   static const lightCard = Color(0xFFFFFFFF);      // --color-surface
   static const surfaceMuted = Color(0xFFF8F8F7);   // --color-surface-muted
   static const lightCard2 = Color(0xFFF5F5F3);     // --color-surface-sunk (recessed)
