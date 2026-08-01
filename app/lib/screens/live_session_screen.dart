@@ -10,6 +10,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../config.dart';
+import '../widgets/host_windows_stub.dart'
+    if (dart.library.html) '../widgets/host_windows_web.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/web_download_stub.dart'
@@ -36,7 +38,8 @@ class LiveSessionScreen extends StatefulWidget {
       this.title = 'Live Class',
       this.isHost = false,
       this.externalUrl = '',
-      this.youtubeId = ''});
+      this.youtubeId = '',
+      this.panelOnly = false});
   final AuthService auth;
   final String sessionId;
   final String watermark;
@@ -51,6 +54,10 @@ class LiveSessionScreen extends StatefulWidget {
   // YouTube Live: when set, the stage embeds this YouTube video id as a clean,
   // logo-free, autoplaying player (no join click). Sound via an in-room button.
   final String youtubeId;
+  // Panel-only: render just the tabbed Q&A/answer panel full-screen (no video
+  // stage). Used by the popped-out "answers" window that sits beside YouTube
+  // Studio, so the host answers in a narrow side window.
+  final bool panelOnly;
 
   @override
   State<LiveSessionScreen> createState() => _LiveSessionScreenState();
@@ -561,12 +568,15 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
       _ctlChip(
           'Banner', CupertinoIcons.textformat, _banner.isNotEmpty, _editBanner),
       _ctlChip('Attend', CupertinoIcons.person_2_fill, false, _showAttendance),
-      // YouTube-live only: jump to the YouTube Studio control room in a new tab
-      // (Studio can't be iframe-embedded, so the stage shows the live stream).
+      // YouTube-live only: pop out YouTube Studio (80%, left) + the answer panel
+      // (20%, right) as two side-by-side windows. Studio can't be iframe-embedded,
+      // so this is the "80/20 on one screen" layout.
       if (widget.youtubeId.isNotEmpty)
-        _ctlChip('Studio', CupertinoIcons.slider_horizontal_3, false, () {
-          launchUrl(Uri.parse('https://studio.youtube.com/'),
-              mode: LaunchMode.externalApplication);
+        _ctlChip('Studio + Answers', CupertinoIcons.rectangle_split_3x1, false, () {
+          openStudioAndAnswers(
+            'https://studio.youtube.com/',
+            '${Uri.base.origin}/?answers=${widget.sessionId}',
+          );
         }),
       if (!liveNow)
         _ctlChip(
@@ -1394,6 +1404,13 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Popped-out answer window: just the tabbed Q&A panel, full-screen.
+    if (widget.panelOnly) {
+      return Scaffold(
+        backgroundColor: _bg,
+        body: SafeArea(child: _qaPanel()),
+      );
+    }
     final size = MediaQuery.of(context).size;
     // Desktop-style side panel when there's room OR the device is in landscape;
     // a phone in PORTRAIT stacks the video on top with the panel below, and

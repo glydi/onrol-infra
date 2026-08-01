@@ -9,6 +9,7 @@ import 'screens/accounts_portal.dart';
 import 'screens/ambassador_portal.dart';
 import 'screens/college_portal.dart';
 import 'screens/console_screen.dart';
+import 'screens/live_session_screen.dart';
 import 'screens/franchise_portal.dart';
 import 'screens/crm_portal.dart';
 import 'screens/home_screen.dart';
@@ -91,6 +92,18 @@ class _OnrolAppState extends State<OnrolApp> {
             }
             final hasSession = snap.data == true && _auth.user != null;
             if (!hasSession) return LoginScreen(auth: _auth);
+            // Popped-out answer window (opened beside YouTube Studio): render just
+            // the tabbed Q&A/answer panel for this session, full-screen.
+            final answersId = Uri.base.queryParameters['answers'];
+            if (answersId != null && answersId.isNotEmpty) {
+              return LiveSessionScreen(
+                auth: _auth,
+                sessionId: answersId,
+                watermark: _auth.user?.email ?? 'host',
+                isHost: true,
+                panelOnly: true,
+              );
+            }
             // User-only apps (mobile, or the dedicated student build): always the
             // user home — never the staff console or per-portal screens.
             if (kUserOnlyApp) return HomeScreen(auth: _auth);
