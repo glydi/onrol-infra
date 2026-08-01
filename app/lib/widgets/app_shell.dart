@@ -68,17 +68,17 @@ class _AppShellState extends State<AppShell> {
                 // Google-console style, with a hairline bottom border.
                 if (admin)
                   Container(
-                    height: 64,
-                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    height: 48,
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
                     decoration: BoxDecoration(
-                      color: p.card,
+                      color: p.bg,
                       border: Border(bottom: BorderSide(color: p.separator)),
                     ),
                     child: Row(children: [
                       Expanded(
                         child: Text(widget.destinations[_i].label,
                             maxLines: 1, overflow: TextOverflow.ellipsis,
-                            style: AppleTheme.title2(context).copyWith(fontWeight: FontWeight.w600)),
+                            style: AppleTheme.headline(context).copyWith(fontWeight: FontWeight.w600, color: p.label)),
                       ),
                       if (widget.trailing != null) widget.trailing!,
                     ]),
@@ -155,19 +155,19 @@ class _Sidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final admin = p.admin;
-    final sideBg = admin ? (p.dark ? AdminColors.darkCard : Colors.white) : p.bg;
+    final sideBg = admin ? AdminColors.sidebarBg : p.bg;
     final sideBorder = admin ? p.separator : p.separator;
-    final sideMuted = admin ? (p.dark ? const Color(0xFF7D8794) : AdminColors.lightMuted) : p.secondary;
+    final sideMuted = admin ? AdminColors.lightMuted : p.secondary;
     return Container(
-      width: admin ? 280 : 256,
-      // Docked, flush to the left edge (Google style): full height, a single
-      // right-hand border, no inset / rounding / shadow.
+      width: admin ? 240 : 256,
+      // Docked, flush to the left edge (Notion): warm off-white panel, full
+      // height, a single hairline right border, no inset / rounding / shadow.
       margin: EdgeInsets.zero,
       decoration: BoxDecoration(
         color: sideBg,
         border: Border(right: BorderSide(color: sideBorder)),
       ),
-      padding: EdgeInsets.fromLTRB(12, MediaQuery.of(context).padding.top + 14, 12, 14),
+      padding: EdgeInsets.fromLTRB(8, MediaQuery.of(context).padding.top + 12, 8, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -189,7 +189,7 @@ class _Sidebar extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('ONROL', maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.title2(context).copyWith(color: admin ? (p.dark ? Colors.white : const Color(0xFF1A1A1A)) : p.accent, fontWeight: FontWeight.w800)),
+                Text('ONROL', maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.title2(context).copyWith(color: admin ? AdminColors.lightLabel : p.accent, fontWeight: FontWeight.w700)),
                 if (admin) Text('LMS ADMIN', maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.footnote(context).copyWith(color: sideMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.1)),
               ]),
             ),
@@ -222,7 +222,7 @@ class _Sidebar extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(auth.user?.fullName ?? 'User', style: AppleTheme.body(context).copyWith(fontSize: 14, fontWeight: FontWeight.w600, color: admin ? (p.dark ? Colors.white : const Color(0xFF1A1A1A)) : null), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(auth.user?.fullName ?? 'User', style: AppleTheme.body(context).copyWith(fontSize: 14, fontWeight: FontWeight.w600, color: admin ? AdminColors.lightLabel : null), maxLines: 1, overflow: TextOverflow.ellipsis),
                   Text((auth.user?.role ?? '').toUpperCase(), style: AppleTheme.footnote(context).copyWith(fontSize: 10, color: admin ? sideMuted : null)),
                 ]),
               ),
@@ -279,19 +279,20 @@ class _NavTileState extends State<_NavTile> {
     final on = widget.selected;
     final p = Palette.of(context);
     final admin = p.admin;
-    final sideInk = admin ? (p.dark ? const Color(0xFFC7CFDA) : AdminColors.lightLabel) : p.label;
-    final sideMuted = admin ? (p.dark ? const Color(0xFF7D8794) : AdminColors.lightMuted) : p.secondary;
-    // Selected nav uses the signature lime with dark ink on top (glassmorphism).
+    final sideInk = admin ? AdminColors.lightLabel : p.label;
+    final sideMuted = admin ? AdminColors.lightMuted : p.secondary;
     final selBg = admin ? AdminColors.lime : p.accent;
     final selInk = admin ? const Color(0xFF1A1A1A) : Colors.white;
-    // Material-3 "left-bar indicator": the active item shows a thick rounded
-    // accent bar on its left + bold coloured label; no heavy fill. Hover is a
-    // quiet neutral wash. Student surfaces keep their original accent style.
-    final active = admin ? AdminColors.secondaryAccent : p.accent;
-    final iconColor = on ? active : (_hover ? (admin ? sideInk : p.accent) : sideMuted);
-    final textColor = on ? (admin ? sideInk : selInk) : (_hover ? (admin ? sideInk : p.accent) : sideInk);
+    // Notion nav: selected = a subtle warm-gray fill with darker text (no bar,
+    // no colour); hover = a lighter gray wash. Student surfaces keep the accent.
+    final iconColor = admin
+        ? (on ? sideInk : sideMuted)
+        : (on ? Colors.white : (_hover ? p.accent : sideMuted));
+    final textColor = admin
+        ? (on ? sideInk : p.secondary)
+        : (on ? selInk : (_hover ? p.accent : p.label));
     return Padding(
-      padding: const EdgeInsets.only(bottom: 2),
+      padding: const EdgeInsets.only(bottom: 1),
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hover = true),
@@ -302,36 +303,21 @@ class _NavTileState extends State<_NavTile> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           curve: Curves.easeOut,
-          padding: const EdgeInsets.only(right: 12, top: 10, bottom: 10),
+          padding: const EdgeInsets.only(left: 8, right: 10, top: 7, bottom: 7),
           decoration: BoxDecoration(
-            // Minimal: selected gets a faint tonal wash (Material state layer);
-            // hover a lighter one. The left bar carries the "active" signal.
             color: admin
                 ? (on
-                    ? active.withValues(alpha: 0.08)
-                    : (_hover ? Colors.black.withValues(alpha: 0.04) : Colors.transparent))
+                    ? AdminColors.selectedBg
+                    : (_hover ? AdminColors.hoverBg : Colors.transparent))
                 : (on ? selBg : (_hover ? p.accent.withValues(alpha: 0.14) : Colors.transparent)),
-            borderRadius: adminRadius(p, kRadiusButton),
+            borderRadius: adminRadius(p, kRadiusChip),
           ),
           child: Row(children: [
-            // Active indicator bar (admin only). Reserves its width always so
-            // labels never shift when selection moves.
-            if (admin)
-              Container(
-                width: 3.5,
-                height: 20,
-                margin: const EdgeInsets.only(right: 12),
-                decoration: BoxDecoration(
-                  color: on ? active : Colors.transparent,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              )
-            else
-              const SizedBox(width: 12),
-            Icon(d.icon, size: 20, color: iconColor),
-            const SizedBox(width: 12),
+            if (!admin) const SizedBox(width: 4),
+            Icon(d.icon, size: 18, color: iconColor),
+            const SizedBox(width: 10),
             Expanded(
-              child: Text(d.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.body(context).copyWith(fontSize: 13.5, fontWeight: on ? FontWeight.w700 : FontWeight.w500, color: textColor)),
+              child: Text(d.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.body(context).copyWith(fontSize: 14, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: textColor)),
             ),
             if (d.badge > 0)
               Container(

@@ -3038,15 +3038,14 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          // Selected content tab is the primary blue (matches the nav); idle
-          // tabs are a soft recessed chip.
-          color: on ? p.accent : p.card2,
+          // Notion tab: selected = a subtle warm-gray fill with darker text;
+          // idle = plain, quiet text. No colour.
+          color: on ? AdminColors.selectedBg : Colors.transparent,
           borderRadius: adminRadius(p, kRadiusChip),
-          border: Border.all(color: on ? p.accent : p.separator),
         ),
-        child: Text(label, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: on ? Colors.white : p.label)),
+        child: Text(label, style: TextStyle(fontSize: 13.5, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: on ? p.label : p.secondary)),
       ),
     );
   }

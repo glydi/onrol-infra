@@ -9,12 +9,12 @@ import '../theme_controller.dart';
 // Corner radii for the boxes the ADMIN/LMS skin draws — cards, buttons,
 // dialogs, sheets, fields. Values live here so the whole admin surface changes
 // in one place. Student surfaces stay squared; see [adminRadius].
-const double kRadiusCard = 16;
-const double kRadiusButton = 20;
-const double kRadiusDialog = 20;
-const double kRadiusSheet = 20;
-const double kRadiusField = 12;
-const double kRadiusChip = 12;
+const double kRadiusCard = 6;
+const double kRadiusButton = 5;
+const double kRadiusDialog = 8;
+const double kRadiusSheet = 10;
+const double kRadiusField = 5;
+const double kRadiusChip = 4;
 const double kRadiusPill = 999; // fully rounded (progress bars, banner buttons)
 
 /// Rounded corners belong to the **admin/LMS skin only**. Student surfaces keep
@@ -165,13 +165,14 @@ class _SmallActionButtonState extends State<SmallActionButton> {
     final p = Palette.of(context);
     final on = widget.onPressed != null;
     final hot = _hover && on;
-    // Filled = the primary blue button; tinted = a soft blue chip. One accent.
+    // Filled = the compact blue primary; tinted = a Notion GHOST button
+    // (transparent, warm-gray hover, muted label) — understated by default.
     final Color bg = widget.filled
-        ? (on ? (hot ? Color.alphaBlend(Colors.black.withValues(alpha: 0.14), p.accent) : p.accent) : p.secondary.withValues(alpha: 0.30))
-        : p.accent.withValues(alpha: hot ? 0.20 : 0.10);
+        ? (on ? (hot ? AdminColors.accentHover : p.accent) : p.secondary.withValues(alpha: 0.20))
+        : (hot ? AdminColors.hoverBg : Colors.transparent);
     final Color fg = widget.filled
         ? Colors.white
-        : (on ? p.accent : p.secondary);
+        : (on ? p.label : p.secondary);
     return MouseRegion(
       cursor: on ? SystemMouseCursors.click : SystemMouseCursors.basic,
       onEnter: (_) => setState(() => _hover = true),
@@ -182,21 +183,16 @@ class _SmallActionButtonState extends State<SmallActionButton> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           curve: Curves.easeOut,
-          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
           decoration: BoxDecoration(
-            // Hover shifts the fill — no scale "pop".
             color: bg,
             borderRadius: adminRadius(p, kRadiusField),
-            border: Border.all(
-                color: widget.filled
-                    ? Colors.transparent
-                    : (hot ? p.accent : Colors.transparent)),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(widget.icon, size: 17, color: fg),
-            const SizedBox(width: 7),
+            Icon(widget.icon, size: 16, color: fg),
+            const SizedBox(width: 6),
             Text(widget.label,
-                style: TextStyle(color: fg, fontSize: 14, fontWeight: FontWeight.w700)),
+                style: TextStyle(color: fg, fontSize: 14, fontWeight: FontWeight.w500)),
           ]),
         ),
       ),
@@ -279,12 +275,13 @@ class _AppleCardState extends State<AppleCard> {
       width: double.infinity,
       padding: pad,
       decoration: BoxDecoration(
-        color: p.card,
+        // Notion-flat: admin cards are a 1px hairline border, no shadow. A
+        // tappable card hover tints the *background* a subtle warm gray, not the
+        // border (Notion's hover-reveal feel).
+        color: p.admin ? (hovered ? AdminColors.hoverBg : p.card) : p.card,
         borderRadius: adminRadius(p, kRadiusCard),
-        // Google-flat: admin cards are defined by a 1px border, no shadow. Hover
-        // just tints the border to the primary blue.
         border: Border.all(
-            color: p.admin ? (hovered ? p.accent : p.separator) : (hovered ? p.accent : p.separator)),
+            color: p.admin ? p.separator : (hovered ? p.accent : p.separator)),
         boxShadow: p.admin
             ? null
             : (hovered
@@ -497,12 +494,12 @@ class _PrimaryButtonState extends State<PrimaryButton> {
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  if (widget.icon != null) ...[Icon(widget.icon, color: white ? Colors.white : Colors.black87, size: 20), const SizedBox(width: 8)],
+                  if (widget.icon != null) ...[Icon(widget.icon, color: white ? Colors.white : Colors.black87, size: 17), const SizedBox(width: 7)],
                   ConstrainedBox(
                     constraints: BoxConstraints(maxWidth: labelMax),
                     child: Text(widget.label,
                         maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
-                        style: TextStyle(color: white ? Colors.white : Colors.black87, fontSize: 15, fontWeight: FontWeight.w600, letterSpacing: 0.2)),
+                        style: TextStyle(color: white ? Colors.white : Colors.black87, fontSize: 14, fontWeight: FontWeight.w500, letterSpacing: 0.1)),
                   ),
                 ],
               ),
@@ -518,37 +515,27 @@ class _PrimaryButtonState extends State<PrimaryButton> {
     // Admin: Google-style filled button — blue fill, white text, ink ripple, a
     // faint resting shadow and a subtle 1.02 scale on hover (no vertical lift).
     if (widget.square) {
-      final fill = enabled ? p.accent : p.secondary.withOpacity(0.20);
+      // Notion primary: a compact, flat blue button — no scale, no glow; hover
+      // just darkens the fill. Content-sized unless [fullWidth].
+      final fill = !enabled
+          ? p.secondary.withOpacity(0.18)
+          : (_hover ? AdminColors.accentHover : p.accent);
       final radius = adminRadius(p, kRadiusButton);
       final btn = MouseRegion(
         cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
-        child: AnimatedScale(
-          scale: enabled && _hover ? 1.02 : 1.0,
-          duration: const Duration(milliseconds: 150),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            curve: Curves.easeOut,
-            decoration: BoxDecoration(
-              borderRadius: radius,
-              boxShadow: enabled
-                  ? [BoxShadow(color: p.accent.withOpacity(_hover ? 0.35 : 0.22), offset: const Offset(0, 2), blurRadius: _hover ? 10 : 4, spreadRadius: 0)]
-                  : null,
-            ),
-            child: Material(
-              color: fill,
-              borderRadius: radius,
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: enabled ? widget.onPressed : null,
-                splashColor: Colors.white.withOpacity(0.20),
-                highlightColor: Colors.white.withOpacity(0.08),
-                // Content-sized: the button hugs its label + a comfortable pad,
-                // rather than stretching to a full-width bar.
-                child: SizedBox(height: 44, child: Center(widthFactor: 1, child: _content(true))),
-              ),
-            ),
+        child: Material(
+          color: fill,
+          borderRadius: radius,
+          clipBehavior: Clip.antiAlias,
+          animationDuration: const Duration(milliseconds: 120),
+          child: InkWell(
+            onTap: enabled ? widget.onPressed : null,
+            splashColor: Colors.white.withOpacity(0.16),
+            highlightColor: Colors.white.withOpacity(0.06),
+            // Content-sized: hugs its label + a comfortable pad.
+            child: SizedBox(height: 34, child: Center(widthFactor: 1, child: _content(true))),
           ),
         ),
       );
@@ -852,9 +839,8 @@ class AppleProgress extends StatelessWidget {
       child: LinearProgressIndicator(
         value: value.clamp(0, 1),
         minHeight: 7,
-        backgroundColor: p.dark ? AppleColors.darkCard2 : const Color(0xFFEDEDED),
-        // Admin progress carries the signature lime highlight by default.
-        valueColor: AlwaysStoppedAnimation(color ?? (p.admin && !p.dark ? AdminColors.lime : p.accent)),
+        backgroundColor: p.dark ? AppleColors.darkCard2 : (p.admin ? AdminColors.lightSeparator : const Color(0xFFEDEDED)),
+        valueColor: AlwaysStoppedAnimation(color ?? p.accent),
       ),
     );
   }
@@ -915,14 +901,19 @@ TextStyle GoogleFontsInter(Color color, double size, FontWeight weight) =>
 /// Standard leading icon tile for admin rows and cards: a soft tinted square
 /// with the icon centred. One size ([kIconChip]) everywhere so leading icons
 /// line up across every list and card on the admin side.
-const double kIconChip = 40;
+const double kIconChip = 36;
 Widget iconChip(BuildContext context, IconData icon, Color tint, {double size = kIconChip}) {
   final p = Palette.of(context);
+  // Notion is mostly monochrome: the leading tile is a neutral warm-gray box
+  // with a muted icon, rather than a coloured chip. (`tint` is ignored on the
+  // admin skin; kept in the signature so callers are unchanged.)
+  final chipBg = p.admin ? AdminColors.lightCard2 : tint.withOpacity(0.12);
+  final iconColor = p.admin ? p.secondary : tint;
   return Container(
     width: size,
     height: size,
-    decoration: BoxDecoration(color: tint.withOpacity(0.12), borderRadius: adminRadius(p, kRadiusField)),
-    child: Icon(icon, size: size * 0.5, color: tint),
+    decoration: BoxDecoration(color: chipBg, borderRadius: adminRadius(p, kRadiusField)),
+    child: Icon(icon, size: size * 0.5, color: iconColor),
   );
 }
 
@@ -973,11 +964,13 @@ class AppleSegmented extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
+    final adminSkin = p.admin;
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: p.dark ? AppleColors.darkCard2 : const Color(0xFFE9E9EB),
-        borderRadius: adminRadius(p, kRadiusButton),
+        color: adminSkin ? AdminColors.lightCard2 : (p.dark ? AppleColors.darkCard2 : const Color(0xFFE9E9EB)),
+        borderRadius: adminRadius(p, kRadiusChip),
+        border: adminSkin ? Border.all(color: p.separator) : null,
       ),
       child: Row(
         children: List.generate(labels.length, (i) {
@@ -989,12 +982,15 @@ class AppleSegmented extends StatelessWidget {
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 160),
                 curve: Curves.easeOut,
-                height: 34,
+                height: 32,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
+                  // Notion selected segment = white chip with a hairline border,
+                  // no drop shadow.
                   color: on ? p.card : Colors.transparent,
                   borderRadius: adminRadius(p, kRadiusChip),
-                  boxShadow: on && !p.dark
+                  border: on && adminSkin ? Border.all(color: p.separator) : null,
+                  boxShadow: on && !p.dark && !adminSkin
                       ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 6, offset: const Offset(0, 2))]
                       : null,
                 ),
@@ -1029,11 +1025,11 @@ Widget sheetField(TextEditingController c, String hint, IconData icon, {TextInpu
     final p = Palette.of(context);
     final multiline = (maxLines == null || maxLines > 1);
     return Container(
-      // Google outlined input: white field, 1px border, radius 12, ~44px tall
-      // (taller for multi-line), 16px horizontal padding.
-      constraints: BoxConstraints(minHeight: multiline ? 96 : 44),
+      // Notion input: white field, 1px hairline border, small radius, ~38px
+      // tall (taller for multi-line), 12px horizontal padding.
+      constraints: BoxConstraints(minHeight: multiline ? 90 : 38),
       alignment: multiline ? Alignment.topLeft : Alignment.centerLeft,
-      padding: EdgeInsets.symmetric(horizontal: 16, vertical: multiline ? 12 : 8),
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: multiline ? 10 : 7),
       decoration: BoxDecoration(
         color: p.admin ? p.card : p.card2,
         borderRadius: adminRadius(p, kRadiusField),

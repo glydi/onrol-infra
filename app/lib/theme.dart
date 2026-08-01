@@ -39,27 +39,32 @@ class AppleColors {
 /// The accent stays the ONROL orange; swap [accent]/[accentDark] for the teal
 /// pair below if the brand ever moves.
 class AdminColors {
-  // Google-inspired enterprise scheme: a single blue primary (#1A73E8) for all
-  // interactive emphasis — links, selected nav, primary buttons, focus.
-  static const accent = Color(0xFF1A73E8);
-  static const accentHover = Color(0xFF1765CC);
-  static const accentDark = Color(0xFF8AB4F8);      // blue that reads on dark surfaces
+  // Notion-inspired scheme: warm near-white surfaces, warm dark ink, minimal
+  // colour. The blue is used sparingly (links, selected, the one primary CTA).
+  static const accent = Color(0xFF2383E2);          // Notion blue
+  static const accentHover = Color(0xFF1B6FC4);
+  static const accentDark = Color(0xFF529CE8);      // blue that reads on dark surfaces
 
-  // Light theme surfaces.
-  static const lightBg = Color(0xFFF8F9FA);        // app ground
+  // Light theme surfaces (admin is light-mode only).
+  static const lightBg = Color(0xFFFFFFFF);        // page is white
   static const lightCard = Color(0xFFFFFFFF);      // surface
-  static const lightCard2 = Color(0xFFF1F3F4);     // recessed inner boxes
-  static const lightRowAlt = Color(0xFFFAFAFA);    // alternating table row
-  static const lightLabel = Color(0xFF202124);     // primary text
-  static const lightSecondary = Color(0xFF5F6368); // secondary text
-  static const lightMuted = Color(0xFF9AA0A6);     // disabled / muted text
-  static const lightSeparator = Color(0xFFDADCE0); // 1px borders
+  static const lightCard2 = Color(0xFFF7F6F3);     // warm recessed inner boxes
+  static const lightRowAlt = Color(0xFFFBFBFA);    // alternating table row
+  static const lightLabel = Color(0xFF37352F);     // warm near-black text
+  static const lightSecondary = Color(0xFF787774); // secondary text
+  static const lightMuted = Color(0xFF9B9A97);     // disabled / muted text
+  static const lightSeparator = Color(0xFFE9E9E7); // warm hairline borders
+
+  // Sidebar / hover neutrals.
+  static const sidebarBg = Color(0xFFFBFBFA);      // warm off-white nav panel
+  static const hoverBg = Color(0xFFEFEFEE);        // subtle row/nav hover
+  static const selectedBg = Color(0xFFE9E9E7);     // selected nav / tab
 
   // Status colours (communicate state, never decoration).
-  static const secondaryAccent = Color(0xFF1A73E8); // (kept as alias for blue)
-  static const danger = Color(0xFFD93025);
-  static const success = Color(0xFF188038);
-  static const warning = Color(0xFFF9AB00);
+  static const secondaryAccent = accent; // (kept as alias for blue)
+  static const danger = Color(0xFFE03E3E);
+  static const success = Color(0xFF0F7B6C);
+  static const warning = Color(0xFFD9730D);
   // Legacy alias — some call sites still reference `lime`; map it to the blue
   // primary so nothing renders neon while those are migrated.
   static const lime = accent;
@@ -106,8 +111,10 @@ class AdminSkin extends InheritedWidget {
 class Palette {
   Palette(this.context);
   final BuildContext context;
-  bool get dark => Theme.of(context).brightness == Brightness.dark;
   bool get admin => AdminSkin.on(context);
+  // Admin is light-mode only — it never follows a dark OS/app theme, so every
+  // `p.dark ? … : …` in an admin surface resolves to the light token.
+  bool get dark => admin ? false : Theme.of(context).brightness == Brightness.dark;
 
   Color get bg => admin ? (dark ? AdminColors.darkBg : AdminColors.lightBg) : (dark ? AppleColors.darkBg : AppleColors.lightBg);
   Color get card => admin ? (dark ? AdminColors.darkCard : AdminColors.lightCard) : (dark ? AppleColors.darkCard : AppleColors.lightCard);
