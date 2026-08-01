@@ -18,7 +18,13 @@ import 'screens/login_screen.dart';
 import 'theme.dart';
 import 'theme_controller.dart';
 
+// The popped-out answer window is opened at `…/?answers=<sessionId>`. Captured
+// at the very start of main(), before Flutter's router can normalise the URL
+// and drop the query — otherwise the window falls through to the home screen.
+String kBootAnswersId = '';
+
 void main() {
+  kBootAnswersId = Uri.base.queryParameters['answers']?.trim() ?? '';
   WidgetsFlutterBinding.ensureInitialized();
   loadTheme();
   loadAvatar();
@@ -94,11 +100,10 @@ class _OnrolAppState extends State<OnrolApp> {
             if (!hasSession) return LoginScreen(auth: _auth);
             // Popped-out answer window (opened beside YouTube Studio): render just
             // the tabbed Q&A/answer panel for this session, full-screen.
-            final answersId = Uri.base.queryParameters['answers'];
-            if (answersId != null && answersId.isNotEmpty) {
+            if (kBootAnswersId.isNotEmpty) {
               return LiveSessionScreen(
                 auth: _auth,
-                sessionId: answersId,
+                sessionId: kBootAnswersId,
                 watermark: _auth.user?.email ?? 'host',
                 isHost: true,
                 panelOnly: true,
