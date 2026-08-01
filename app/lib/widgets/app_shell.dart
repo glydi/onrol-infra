@@ -64,7 +64,26 @@ class _AppShellState extends State<AppShell> {
             ),
             Expanded(
               child: Column(children: [
-                if (widget.trailing != null)
+                // Admin: a fixed 64px top bar (page title + primary action),
+                // Google-console style, with a hairline bottom border.
+                if (admin)
+                  Container(
+                    height: 64,
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    decoration: BoxDecoration(
+                      color: p.card,
+                      border: Border(bottom: BorderSide(color: p.separator)),
+                    ),
+                    child: Row(children: [
+                      Expanded(
+                        child: Text(widget.destinations[_i].label,
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: AppleTheme.title2(context).copyWith(fontWeight: FontWeight.w600)),
+                      ),
+                      if (widget.trailing != null) widget.trailing!,
+                    ]),
+                  )
+                else if (widget.trailing != null)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(0, 14, 18, 0),
                     child: Align(alignment: Alignment.centerRight, child: widget.trailing!),
@@ -139,29 +158,14 @@ class _Sidebar extends StatelessWidget {
     final sideBg = admin ? (p.dark ? AdminColors.darkCard : Colors.white) : p.bg;
     final sideBorder = admin ? p.separator : p.separator;
     final sideMuted = admin ? (p.dark ? const Color(0xFF7D8794) : AdminColors.lightMuted) : p.secondary;
-    final float = floating && admin;
     return Container(
       width: admin ? 280 : 256,
-      // Floating: sits inset from the edges so the ground shows all around it.
-      margin: float ? const EdgeInsets.fromLTRB(14, 14, 0, 14) : EdgeInsets.zero,
+      // Docked, flush to the left edge (Google style): full height, a single
+      // right-hand border, no inset / rounding / shadow.
+      margin: EdgeInsets.zero,
       decoration: BoxDecoration(
         color: sideBg,
-        borderRadius: float ? BorderRadius.circular(kRadiusSheet) : null,
-        // Admin carries a hard outline all the way round, floating or not — on a
-        // light panel a shadow alone doesn't separate it from a light ground.
-        border: admin
-            ? Border.all(color: sideBorder, width: 1.4)
-            : (float ? null : Border(right: BorderSide(color: sideBorder))),
-        boxShadow: float
-            ? [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: p.dark ? 0.45 : 0.10),
-                  blurRadius: 28,
-                  offset: const Offset(0, 10),
-                  spreadRadius: -10,
-                ),
-              ]
-            : null,
+        border: Border(right: BorderSide(color: sideBorder)),
       ),
       padding: EdgeInsets.fromLTRB(12, MediaQuery.of(context).padding.top + 14, 12, 14),
       child: Column(

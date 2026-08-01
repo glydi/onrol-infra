@@ -16,6 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../theme.dart';
 import '../theme_controller.dart';
 import '../widgets/app_shell.dart';
+import '../widgets/image_library.dart';
 import '../widgets/download_stub.dart' if (dart.library.html) '../widgets/download_web.dart';
 import '../widgets/markdown_view.dart';
 import '../widgets/profile_view.dart';
@@ -1928,35 +1929,9 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     );
   }
 
-  // Pick a cover image and return it as a downscaled JPEG data URI (≤ ~900 KB),
-  // or null if cancelled/failed. Same approach as profile avatars.
-  Future<String?> _pickImageDataUri() async {
-    try {
-      // FilePicker (no type filter) opens reliably on web; ImagePicker does not.
-      final res = await FilePicker.platform.pickFiles(withData: true);
-      if (res == null || res.files.isEmpty) return null;
-      final raw = res.files.first.bytes;
-      if (raw == null || raw.isEmpty) return null;
-      final mime = _imageMime((res.files.first.extension ?? '').toLowerCase());
-      if (mime == null) {
-        _toast('Please pick a JPG, PNG or WebP image.');
-        return null;
-      }
-      const maxBytes = 2500000; // ~2.5MB
-      // Send as-is when it fits (the web image codec can throw); only compress
-      // oversized files, and never let that abort the upload.
-      if (raw.lengthInBytes <= maxBytes) {
-        return 'data:$mime;base64,${base64Encode(raw)}';
-      }
-      final compressed = _tryCompress(raw, maxBytes);
-      if (compressed != null) return 'data:image/jpeg;base64,${base64Encode(compressed)}';
-      _toast('Image too large — please pick one under ~2.5 MB.');
-      return null;
-    } catch (_) {
-      _toast('Could not load that image.');
-      return null;
-    }
-  }
+  // Pick an image via the shared image library (pick an existing one or upload
+  // a new one). Returns its public URL, or null if cancelled.
+  Future<String?> _pickImageDataUri() => pickLibraryImage(context, widget.auth);
 
   Future<void> _newCourse() async {
     // Fetch instructors for the assignment dropdown.
@@ -4171,40 +4146,9 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
 
   // The recorded-as-live form fields: a "Choose from Video Store" button (opens
   // the full store) + the current pick + a Q&A toggle + the viewer floor.
-  // Pick a 16:9 banner and return it as a downscaled JPEG data URI (≤~900 KB).
-  Future<String?> _pickBanner() async {
-    try {
-      // FilePicker (no type filter) opens reliably on web; ImagePicker /
-      // FileType.image do not.
-      final res = await FilePicker.platform.pickFiles(withData: true);
-      if (res == null || res.files.isEmpty) return null;
-      final pf = res.files.first;
-      final raw = pf.bytes;
-      if (raw == null || raw.isEmpty) return null;
-      final ext = (pf.extension ?? '').toLowerCase();
-      final mime = _imageMime(ext);
-      if (mime == null) {
-        _toast('Please pick a JPG, PNG or WebP image.');
-        return null;
-      }
-      // Send the original as-is when it already fits — the web image codec is
-      // fragile, so we DON'T decode/re-encode unless the file is genuinely too
-      // big. nginx allows 10MB and a PATCH may carry a start AND an end image.
-      const maxBytes = 2500000; // ~2.5MB per image
-      if (raw.lengthInBytes <= maxBytes) {
-        return 'data:$mime;base64,${base64Encode(raw)}';
-      }
-      // Too big — try to downscale/compress, but wrap it so a web decode failure
-      // doesn't abort the whole upload.
-      final compressed = _tryCompress(raw, maxBytes);
-      if (compressed != null) return 'data:image/jpeg;base64,${base64Encode(compressed)}';
-      _toast('Image too large — please pick one under ~2.5 MB.');
-      return null;
-    } catch (_) {
-      _toast('Could not read that image.');
-      return null;
-    }
-  }
+  // Pick a 16:9 banner from the shared image library (pick existing or upload).
+  // Returns its public URL, or null if cancelled.
+  Future<String?> _pickBanner() => pickLibraryImage(context, widget.auth);
 
   // 16:9 preview of a session banner (data URI or image URL).
   Widget _bannerThumb(String src) {
@@ -6718,49 +6662,8 @@ class _ExploreCoursesScreenState extends State<ExploreCoursesScreen> {
     }
   }
 
-  Future<String?> _pickImage() async {
-    try {
-      // FilePicker (no type filter) opens reliably on web; ImagePicker does not.
-      final res = await FilePicker.platform.pickFiles(withData: true);
-      if (res == null || res.files.isEmpty) return null;
-      final raw = res.files.first.bytes;
-      if (raw == null || raw.isEmpty) return null;
-      final ext = (res.files.first.extension ?? '').toLowerCase();
-      const mimes = {
-        'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
-        'webp': 'image/webp', 'gif': 'image/gif', 'bmp': 'image/bmp',
-        'heic': 'image/heic', 'heif': 'image/heic',
-      };
-      final mime = mimes[ext];
-      if (mime == null) return null;
-      const maxBytes = 2500000; // ~2.5MB
-      // Send as-is when it fits; only decode/compress oversized files, wrapped so
-      // a web codec failure can't abort the upload.
-      if (raw.lengthInBytes <= maxBytes) {
-        return 'data:$mime;base64,${base64Encode(raw)}';
-      }
-      try {
-        final decoded = img.decodeImage(raw);
-        if (decoded != null) {
-          var width = decoded.width > 1000 ? 1000 : decoded.width;
-          var quality = 80;
-          Uint8List out = img.encodeJpg(img.copyResize(decoded, width: width), quality: quality);
-          while (out.lengthInBytes > maxBytes && (width > 480 || quality > 40)) {
-            if (width > 480) {
-              width = (width * 0.8).round();
-            } else {
-              quality -= 10;
-            }
-            out = img.encodeJpg(img.copyResize(decoded, width: width), quality: quality);
-          }
-          if (out.lengthInBytes <= maxBytes) return 'data:image/jpeg;base64,${base64Encode(out)}';
-        }
-      } catch (_) {}
-      return null;
-    } catch (_) {
-      return null;
-    }
-  }
+  // Pick a cover image from the shared image library (pick existing or upload).
+  Future<String?> _pickImage() => pickLibraryImage(context, widget.auth);
 
   // Edit the tile shown in the student Explore catalog (title, description, cover).
   Future<void> _editTile(Map<String, dynamic> c) async {
