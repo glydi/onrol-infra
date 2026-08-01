@@ -1409,7 +1409,9 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                         Expanded(
                             child: Column(children: [
                           _header(),
-                          Expanded(child: Center(child: _stageArea()))
+                          // Fill the stage (the embed spans the whole area) — the
+                          // Q&A/answer panel sits fixed on the right.
+                          Expanded(child: _stageArea())
                         ])),
                         Container(
                             width: panelW,
@@ -1421,7 +1423,8 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                       ])
                 : Column(children: [
                     _header(),
-                    _stageArea(),
+                    // Stacked (portrait): keep the stage a 16:9 box on top.
+                    AspectRatio(aspectRatio: 16 / 9, child: _stageArea()),
                     if (showPanel) Expanded(child: _qaPanel())
                   ]),
       ),
@@ -1630,8 +1633,9 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   // host's room controls (black-out, banner, mute) are mirrored on top — mute is
   // applied to the player itself in _pollState.
   Widget _youtubeStage() {
-    return AspectRatio(
-      aspectRatio: 16 / 9,
+    // Fill the whole stage (no 16:9 letterbox) — the embed spans the entire
+    // area; the answer panel is docked on the right.
+    return SizedBox.expand(
       child: Stack(fit: StackFit.expand, children: [
         WatermarkOverlay(
             label: widget.watermark, child: youtubeEmbed(widget.youtubeId)),
