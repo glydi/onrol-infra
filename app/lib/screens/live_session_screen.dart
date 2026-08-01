@@ -1563,15 +1563,20 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
               errorBuilder: (_, __, ___) => Container(color: Colors.black)));
 
   Widget _stage() {
-    // The host watches the live video too (when it's playing); otherwise they
-    // see the host status panel (lobby / preparing / ended / queue summary).
+    // The host watches the live video too; otherwise they see the host status
+    // panel (lobby / preparing / ended / queue summary). For a YouTube session
+    // the host sees the embed as soon as the room opens (any non-ended status),
+    // not only after the app status flips to "live" — so the stream + answer
+    // panel share the tab immediately.
+    final ytForHost = widget.youtubeId.isNotEmpty && _status != 'ended';
     if (widget.isHost &&
         !((_status == 'live' && (_playlistUrl != null || widget.youtubeId.isNotEmpty)) ||
+            ytForHost ||
             (widget.externalUrl.isNotEmpty && _status != 'ended')))
       return _hostPanel();
-    // YouTube-Live: clean autoplaying embed once live — no logo, no join click.
-    // The host watches the same stage (with the control panel below it).
-    if (_status == 'live' && widget.youtubeId.isNotEmpty) {
+    // YouTube-Live: clean autoplaying embed. The host sees it any-time (preview
+    // / monitor); students see it once the session is live.
+    if (widget.youtubeId.isNotEmpty && (_status == 'live' || (widget.isHost && _status != 'ended'))) {
       return _youtubeStage();
     }
     // Zoho-hosted webinar: embed the provider's video in our stage once live, so
