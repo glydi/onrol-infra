@@ -79,6 +79,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   String _banner = '';
   bool _sendingCtl = false;
   bool _controlsOpen = true; // host controls panel expanded
+  int _hostTab = 0; // right-panel tab: 0 Answers · 1 Chat · 2 Attendance
   int _elapsed = 0; // seconds played (host progress readout)
   int _duration = 0; // total recording length (seconds)
   int _reloadSeq = 0; // bumped when the host seeks → re-init the player
@@ -2099,21 +2100,117 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   Widget _hostQueue() {
     final waiting = _questions.where((q) => q['answered'] != true).length;
     return Column(children: [
-      _panelHeader('Questions',
-          waiting > 0 ? '$waiting waiting to be answered' : 'All caught up'),
+      _panelHeader('Live control',
+          waiting > 0 ? '$waiting question${waiting == 1 ? '' : 's'} waiting' : 'All caught up'),
       _hostControls(),
-      _listenersBar(),
-      // No broadcast echo strip on the host side — the host typed it; showing it
-      // back as a strip over the questions read as a glitchy overlay. Students
-      // still see broadcasts in their own panel (_studentQa).
-      Expanded(
-        child: _questions.isEmpty
+      _hostTabBar(waiting),
+      Expanded(child: _hostTabBody()),
+      // Reactions + broadcast composer belong to the Chat tab.
+      if (_hostTab == 1) ...[
+        _reactionBar(),
+        _composer(_chatCtl, 'Message all viewers…', _sendBroadcast, _sendingMsg),
+      ],
+    ]);
+  }
+
+  // Right-panel tab bar (host): Answers · Chat · Attendance — an underline tab
+  // strip so the host runs everything from the one screen.
+  Widget _hostTabBar(int waiting) {
+    const labels = ['Answers', 'Chat', 'Attendance'];
+    return Container(
+      decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: Color(0xFF222228)))),
+      child: Row(children: [
+        for (var i = 0; i < labels.length; i++)
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() => _hostTab = i),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                decoration: BoxDecoration(
+                    border: Border(
+                        bottom: BorderSide(
+                            color: _hostTab == i ? _orange : Colors.transparent,
+                            width: 2))),
+                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Text(labels[i],
+                      style: GoogleFonts.inter(
+                          color: _hostTab == i ? Colors.white : Colors.white54,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700)),
+                  if (i == 0 && waiting > 0) ...[
+                    const SizedBox(width: 5),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(color: _orange, borderRadius: BorderRadius.circular(8)),
+                      child: Text('$waiting',
+                          style: GoogleFonts.inter(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.w800)),
+                    ),
+                  ],
+                ]),
+              ),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  Widget _hostTabBody() {
+    switch (_hostTab) {
+      case 1:
+        return _messages.isEmpty
+            ? Center(
+                child: Text('No messages yet — broadcast one below.',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.inter(color: Colors.white38, fontSize: 13)))
+            : ListView.builder(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                reverse: true,
+                itemCount: _messages.length,
+                itemBuilder: (_, i) {
+                  final m = _messages[_messages.length - 1 - i];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 9),
+                    child: RichText(
+                        text: TextSpan(children: [
+                      TextSpan(
+                          text:
+                              '${(m['name']?.toString().isNotEmpty ?? false) ? m['name'] : 'Mentor'}  ',
+                          style: GoogleFonts.inter(color: _orange, fontSize: 11.5, fontWeight: FontWeight.w800)),
+                      TextSpan(
+                          text: m['body']?.toString() ?? '',
+                          style: GoogleFonts.inter(color: Colors.white.withOpacity(0.92), fontSize: 12.5, height: 1.3)),
+                    ])),
+                  );
+                },
+              );
+      case 2:
+        return Column(children: [
+          _listenersBar(),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: GestureDetector(
+              onTap: _showAttendance,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(border: Border.all(color: Colors.white24)),
+                child: Text('Open full attendance',
+                    style: GoogleFonts.inter(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ),
+        ]);
+      default:
+        return _questions.isEmpty
             ? Center(
                 child: Text('No questions yet.',
-                    style:
-                        GoogleFonts.inter(color: Colors.white38, fontSize: 13)))
+                    style: GoogleFonts.inter(color: Colors.white38, fontSize: 13)))
             : ListView.builder(
-                padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                 itemCount: _questions.length,
                 itemBuilder: (_, i) {
                   final q = _questions[i];
@@ -2122,86 +2219,52 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.all(11),
                     decoration: BoxDecoration(
-                      color: answered
-                          ? Colors.white.withOpacity(0.03)
-                          : _orange.withOpacity(0.07),
-                      borderRadius: BorderRadius.zero,
-                      border: Border.all(
-                          color: answered
-                              ? Colors.white10
-                              : _orange.withOpacity(0.35)),
+                      color: answered ? Colors.white.withOpacity(0.03) : _orange.withOpacity(0.07),
+                      border: Border.all(color: answered ? Colors.white10 : _orange.withOpacity(0.35)),
                     ),
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(children: [
-                            Expanded(
-                                child: Text(
-                                    q['name']?.toString().isNotEmpty == true
-                                        ? q['name'].toString()
-                                        : 'Student',
-                                    style: GoogleFonts.inter(
-                                        color: const Color(0xFF8AB4F8),
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w700))),
-                            if (answered)
-                              Text('Answered ✓',
-                                  style: GoogleFonts.inter(
-                                      color: const Color(0xFF34C759),
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.w700)),
-                          ]),
-                          const SizedBox(height: 2),
-                          Text(q['body']?.toString() ?? '',
-                              style: GoogleFonts.inter(
-                                  color: Colors.white.withOpacity(0.92),
-                                  fontSize: 13,
-                                  height: 1.25)),
-                          const SizedBox(height: 8),
-                          if (answered)
-                            Text('You: ${q['answer'] ?? ''}',
-                                style: GoogleFonts.inter(
-                                    color: Colors.white54,
-                                    fontSize: 12,
-                                    height: 1.25))
-                          else
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: GestureDetector(
-                                onTap: () => _answer(q),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 14, vertical: 7),
-                                  decoration: BoxDecoration(
-                                      color: _orange,
-                                      borderRadius: BorderRadius.zero),
-                                  child: Text('Answer',
-                                      style: GoogleFonts.inter(
-                                          color: Colors.white,
-                                          fontSize: 12.5,
-                                          fontWeight: FontWeight.w700)),
-                                ),
-                              ),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        Expanded(
+                            child: Text(
+                                q['name']?.toString().isNotEmpty == true ? q['name'].toString() : 'Student',
+                                style: GoogleFonts.inter(color: const Color(0xFF8AB4F8), fontSize: 11.5, fontWeight: FontWeight.w700))),
+                        if (answered)
+                          Text('Answered ✓',
+                              style: GoogleFonts.inter(color: const Color(0xFF34C759), fontSize: 10.5, fontWeight: FontWeight.w700)),
+                      ]),
+                      const SizedBox(height: 2),
+                      Text(q['body']?.toString() ?? '',
+                          style: GoogleFonts.inter(color: Colors.white.withOpacity(0.92), fontSize: 13, height: 1.25)),
+                      const SizedBox(height: 8),
+                      if (answered)
+                        Text('You: ${q['answer'] ?? ''}',
+                            style: GoogleFonts.inter(color: Colors.white54, fontSize: 12, height: 1.25))
+                      else
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: GestureDetector(
+                            onTap: () => _answer(q),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                              decoration: const BoxDecoration(color: _orange),
+                              child: Text('Answer',
+                                  style: GoogleFonts.inter(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
                             ),
-                          if (answered)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 6),
-                              child: GestureDetector(
-                                  onTap: () => _answer(q),
-                                  child: Text('Edit answer',
-                                      style: GoogleFonts.inter(
-                                          color: Colors.white38,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600))),
-                            ),
-                        ]),
+                          ),
+                        ),
+                      if (answered)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: GestureDetector(
+                              onTap: () => _answer(q),
+                              child: Text('Edit answer',
+                                  style: GoogleFonts.inter(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w600))),
+                        ),
+                    ]),
                   );
                 },
-              ),
-      ),
-      _reactionBar(),
-      _composer(_chatCtl, 'Message all viewers…', _sendBroadcast, _sendingMsg),
-    ]);
+              );
+    }
   }
 
   // Emoji reactions row at the bottom of the panel; a tap floats it over the
