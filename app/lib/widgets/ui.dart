@@ -9,12 +9,12 @@ import '../theme_controller.dart';
 // Corner radii for the boxes the ADMIN/LMS skin draws — cards, buttons,
 // dialogs, sheets, fields. Values live here so the whole admin surface changes
 // in one place. Student surfaces stay squared; see [adminRadius].
-const double kRadiusCard = 12;
-const double kRadiusButton = 9;
-const double kRadiusDialog = 14;
-const double kRadiusSheet = 16;
-const double kRadiusField = 9;
-const double kRadiusChip = 7;
+const double kRadiusCard = 16;
+const double kRadiusButton = 20;
+const double kRadiusDialog = 20;
+const double kRadiusSheet = 20;
+const double kRadiusField = 12;
+const double kRadiusChip = 12;
 const double kRadiusPill = 999; // fully rounded (progress bars, banner buttons)
 
 /// Rounded corners belong to the **admin/LMS skin only**. Student surfaces keep
@@ -271,23 +271,25 @@ class _AppleCardState extends State<AppleCard> {
     // Only clickable boxes highlight — a static panel lighting up reads as
     // interactive when it isn't.
     final hovered = interactive && _hover;
+    // Admin cards get 24px padding by default (Google spec); explicit paddings
+    // — including EdgeInsets.zero for list containers — are respected as-is.
+    final pad = (p.admin && widget.padding == const EdgeInsets.all(16))
+        ? const EdgeInsets.all(24)
+        : widget.padding;
     final card = AnimatedContainer(
-      duration: const Duration(milliseconds: 120),
+      duration: const Duration(milliseconds: 150),
       curve: Curves.easeOut,
       width: double.infinity,
-      padding: widget.padding,
+      padding: pad,
       decoration: BoxDecoration(
         color: p.card,
-        // `square: true` selects the ADMIN styling — it no longer means radius
-        // 0. Admin boxes are rounded; student surfaces stay squared.
         borderRadius: adminRadius(p, kRadiusCard),
-        // Admin cards float on the tinted ground with the one shadow style; no
-        // outline (a hover lift is signalled by a slightly stronger shadow, not
-        // a hard border). Student surfaces keep their separator hairline.
+        // Google-flat: admin cards are defined by a 1px border, no shadow. Hover
+        // just tints the border to the primary blue.
         border: Border.all(
-            color: p.admin ? Colors.transparent : (hovered ? p.accent : p.separator)),
+            color: p.admin ? (hovered ? p.accent : p.separator) : (hovered ? p.accent : p.separator)),
         boxShadow: p.admin
-            ? (hovered ? p.softHover : p.soft)
+            ? null
             : (hovered
                 ? [
                     BoxShadow(
@@ -513,33 +515,37 @@ class _PrimaryButtonState extends State<PrimaryButton> {
     final p = Palette.of(context);
     final enabled = widget.onPressed != null && !widget.busy;
 
-    // Admin: Material filled button — solid black fill, ink ripple + a small
-    // resting elevation that lifts on hover. Replaces the old press-scale.
+    // Admin: Google-style filled button — blue fill, white text, ink ripple, a
+    // faint resting shadow and a subtle 1.02 scale on hover (no vertical lift).
     if (widget.square) {
-      final fill = enabled ? const Color(0xFF1A1A1A) : p.secondary.withOpacity(0.30);
+      final fill = enabled ? p.accent : p.secondary.withOpacity(0.20);
       final radius = adminRadius(p, kRadiusButton);
       return MouseRegion(
         cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          curve: Curves.easeOut,
-          decoration: BoxDecoration(
-            borderRadius: radius,
-            boxShadow: enabled
-                ? [BoxShadow(color: Colors.black.withOpacity(_hover ? 0.28 : 0.18), offset: Offset(0, _hover ? 6 : 3), blurRadius: _hover ? 16 : 8, spreadRadius: -4)]
-                : null,
-          ),
-          child: Material(
-            color: fill,
-            borderRadius: radius,
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: enabled ? widget.onPressed : null,
-              splashColor: Colors.white.withOpacity(0.18),
-              highlightColor: Colors.white.withOpacity(0.06),
-              child: SizedBox(height: 46, child: Center(child: _content(true))),
+        child: AnimatedScale(
+          scale: enabled && _hover ? 1.02 : 1.0,
+          duration: const Duration(milliseconds: 150),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOut,
+            decoration: BoxDecoration(
+              borderRadius: radius,
+              boxShadow: enabled
+                  ? [BoxShadow(color: p.accent.withOpacity(_hover ? 0.35 : 0.22), offset: const Offset(0, 2), blurRadius: _hover ? 10 : 4, spreadRadius: 0)]
+                  : null,
+            ),
+            child: Material(
+              color: fill,
+              borderRadius: radius,
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: enabled ? widget.onPressed : null,
+                splashColor: Colors.white.withOpacity(0.20),
+                highlightColor: Colors.white.withOpacity(0.08),
+                child: SizedBox(height: 44, child: Center(child: _content(true))),
+              ),
             ),
           ),
         ),
@@ -1018,13 +1024,13 @@ Widget sheetField(TextEditingController c, String hint, IconData icon, {TextInpu
     final p = Palette.of(context);
     final multiline = (maxLines == null || maxLines > 1);
     return Container(
-      // Proper input chrome: a filled field with a defined 1px border and a real
-      // ~48px height (taller for multi-line), so inputs read as inputs.
-      constraints: BoxConstraints(minHeight: multiline ? 96 : 48),
+      // Google outlined input: white field, 1px border, radius 12, ~44px tall
+      // (taller for multi-line), 16px horizontal padding.
+      constraints: BoxConstraints(minHeight: multiline ? 96 : 44),
       alignment: multiline ? Alignment.topLeft : Alignment.centerLeft,
-      padding: EdgeInsets.symmetric(horizontal: 14, vertical: multiline ? 12 : 8),
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: multiline ? 12 : 8),
       decoration: BoxDecoration(
-        color: p.admin ? p.card2 : p.card2,
+        color: p.admin ? p.card : p.card2,
         borderRadius: adminRadius(p, kRadiusField),
         border: p.admin ? Border.all(color: p.separator) : null,
       ),

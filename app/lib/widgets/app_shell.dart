@@ -75,7 +75,7 @@ class _AppShellState extends State<AppShell> {
                 Expanded(
                   child: Align(
                     alignment: Alignment.topCenter,
-                    child: ConstrainedBox(constraints: BoxConstraints(maxWidth: admin ? 1180 : 920), child: body),
+                    child: ConstrainedBox(constraints: BoxConstraints(maxWidth: admin ? 1280 : 920), child: body),
                   ),
                 ),
               ]),
@@ -141,7 +141,7 @@ class _Sidebar extends StatelessWidget {
     final sideMuted = admin ? (p.dark ? const Color(0xFF7D8794) : AdminColors.lightMuted) : p.secondary;
     final float = floating && admin;
     return Container(
-      width: admin ? 272 : 256,
+      width: admin ? 280 : 256,
       // Floating: sits inset from the edges so the ground shows all around it.
       margin: float ? const EdgeInsets.fromLTRB(14, 14, 0, 14) : EdgeInsets.zero,
       decoration: BoxDecoration(
@@ -298,7 +298,7 @@ class _NavTileState extends State<_NavTile> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           curve: Curves.easeOut,
-          padding: const EdgeInsets.only(right: 12, top: 7, bottom: 7),
+          padding: const EdgeInsets.only(right: 12, top: 10, bottom: 10),
           decoration: BoxDecoration(
             // Minimal: selected gets a faint tonal wash (Material state layer);
             // hover a lighter one. The left bar carries the "active" signal.
@@ -324,7 +324,7 @@ class _NavTileState extends State<_NavTile> {
               )
             else
               const SizedBox(width: 12),
-            Icon(d.icon, size: 18, color: iconColor),
+            Icon(d.icon, size: 20, color: iconColor),
             const SizedBox(width: 12),
             Expanded(
               child: Text(d.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.body(context).copyWith(fontSize: 13.5, fontWeight: on ? FontWeight.w700 : FontWeight.w500, color: textColor)),

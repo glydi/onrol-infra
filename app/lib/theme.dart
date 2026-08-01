@@ -39,29 +39,30 @@ class AppleColors {
 /// The accent stays the ONROL orange; swap [accent]/[accentDark] for the teal
 /// pair below if the brand ever moves.
 class AdminColors {
-  // Glassmorphism scheme: the interactive accent is a near-black INK (icons,
-  // links, small buttons, primary CTAs) — the neon [lime] carries the one hero
-  // highlight (selected nav, progress). On dark surfaces the ink flips to lime,
-  // which is the natural bright accent there.
-  static const accent = Color(0xFF1A1A1A);
-  static const accentDark = Color(0xFFC8FF32);
+  // Google-inspired enterprise scheme: a single blue primary (#1A73E8) for all
+  // interactive emphasis — links, selected nav, primary buttons, focus.
+  static const accent = Color(0xFF1A73E8);
+  static const accentHover = Color(0xFF1765CC);
+  static const accentDark = Color(0xFF8AB4F8);      // blue that reads on dark surfaces
 
-  // Enterprise light theme: near-white gray ground, pure-white cards.
-  static const lightBg = Color(0xFFF5F6F8);        // app ground (never pure white)
-  static const lightCard = Color(0xFFFFFFFF);      // cards float on it
-  static const lightCard2 = Color(0xFFF2F3F5);     // recessed inner boxes
+  // Light theme surfaces.
+  static const lightBg = Color(0xFFF8F9FA);        // app ground
+  static const lightCard = Color(0xFFFFFFFF);      // surface
+  static const lightCard2 = Color(0xFFF1F3F4);     // recessed inner boxes
   static const lightRowAlt = Color(0xFFFAFAFA);    // alternating table row
-  static const lightLabel = Color(0xFF1B1B1B);     // primary text
-  static const lightSecondary = Color(0xFF707070); // secondary text
-  static const lightMuted = Color(0xFFA0A0A0);     // muted text
-  static const lightSeparator = Color(0xFFECECEC);
+  static const lightLabel = Color(0xFF202124);     // primary text
+  static const lightSecondary = Color(0xFF5F6368); // secondary text
+  static const lightMuted = Color(0xFF9AA0A6);     // disabled / muted text
+  static const lightSeparator = Color(0xFFDADCE0); // 1px borders
 
-  // Max three accents + status colours (colour communicates status, not decor).
-  static const lime = Color(0xFFC8FF32);       // primary highlight (selected, progress)
-  static const secondaryAccent = Color(0xFF6B7CFF); // secondary accent
-  static const danger = Color(0xFFFF5C5C);
-  static const success = Color(0xFF32D583);
-  static const warning = Color(0xFFFFB547);
+  // Status colours (communicate state, never decoration).
+  static const secondaryAccent = Color(0xFF1A73E8); // (kept as alias for blue)
+  static const danger = Color(0xFFD93025);
+  static const success = Color(0xFF188038);
+  static const warning = Color(0xFFF9AB00);
+  // Legacy alias — some call sites still reference `lime`; map it to the blue
+  // primary so nothing renders neon while those are migrated.
+  static const lime = accent;
 
   static const darkBg = Color(0xFF0E151B);
   static const darkCard = Color(0xFF16202A);
