@@ -1838,6 +1838,21 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
 
   Widget _profilePage() => ProfileView(auth: widget.auth, onSignOut: _logout);
 
+  // A small, quiet square icon button (overflow menus, inline actions).
+  Widget _ghostIconButton(IconData icon, VoidCallback onTap) {
+    final p = Palette.of(context);
+    return HoverTap(
+      onTap: onTap,
+      child: Container(
+        width: 34,
+        height: 34,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: p.card2, borderRadius: adminRadius(p, kRadiusField)),
+        child: Icon(icon, size: 18, color: p.label),
+      ),
+    );
+  }
+
   Widget _courseRow(Map<String, dynamic> c) {
     final status = c['status']?.toString() ?? 'draft';
     final color = status == 'published' ? AppleColors.green : status == 'archived' ? Palette.of(context).secondary : AppleColors.orange;
@@ -1849,33 +1864,39 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => CourseBatchesScreen(auth: widget.auth, courseId: c['id'].toString(), title: c['title'].toString()),
         )).then((_) => _load()),
-        child: Row(children: [
-          iconChip(context, CupertinoIcons.book_fill, AppleColors.blue),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(c['title']?.toString() ?? 'Course', style: AppleTheme.headline(context)),
-              const SizedBox(height: 2),
-              Text(
-                '${(c['label']?.toString().trim().isNotEmpty ?? false) ? 'ID: ${c['label']} · ' : ''}${c['enroll_type'] ?? ''} enrollment',
-                style: AppleTheme.footnote(context),
-              ),
-            ]),
-          ),
-          // One-tap publish: students only see PUBLISHED courses in the catalog.
-          // (Archived courses can't be published until restored.)
-          Column(mainAxisSize: MainAxisSize.min, children: [
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // Header: icon + title/meta, with the overflow menu pinned top-right.
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            iconChip(context, CupertinoIcons.book_fill, AppleColors.blue),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(c['title']?.toString() ?? 'Course', maxLines: 1, overflow: TextOverflow.ellipsis, style: AppleTheme.headline(context)),
+                const SizedBox(height: 3),
+                Text(
+                  '${(c['label']?.toString().trim().isNotEmpty ?? false) ? 'ID: ${c['label']} · ' : ''}${c['enroll_type'] ?? ''} enrollment',
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: AppleTheme.footnote(context),
+                ),
+              ]),
+            ),
+            const SizedBox(width: 8),
+            _ghostIconButton(CupertinoIcons.ellipsis, () => _courseMenu(c)),
+          ]),
+          const SizedBox(height: 14),
+          Container(height: 1, color: Palette.of(context).separator),
+          const SizedBox(height: 12),
+          // Footer: publish toggle + its state label, inline.
+          Row(children: [
             CupertinoSwitch(
               value: status == 'published',
               activeTrackColor: AppleColors.green,
               onChanged: status == 'archived' ? null : (v) => _togglePublish(c['id'].toString(), v),
             ),
-            Text(status == 'archived' ? 'Archived' : status == 'published' ? 'Visible' : 'Hidden',
-                style: AppleTheme.footnote(context).copyWith(color: status == 'published' ? AppleColors.green : color)),
+            const SizedBox(width: 10),
+            Text(status == 'archived' ? 'Archived' : status == 'published' ? 'Visible in catalog' : 'Hidden from students',
+                style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w600, color: status == 'published' ? AppleColors.green : color)),
           ]),
-          // Archive / delete actions — standard secondary button.
-          const SizedBox(width: 12),
-          SmallActionButton(label: 'Options', icon: CupertinoIcons.ellipsis, onPressed: () => _courseMenu(c)),
         ]),
       ),
     );
