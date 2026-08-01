@@ -79,6 +79,8 @@ func Setup(app *fiber.App, h *handlers.Handlers, jwtm *auth.Manager, pool *pgxpo
 	api.Post("/manage/video-folders", auth, mgr, h.CreateVideoFolder)
 	api.Patch("/manage/video-folders/:id", auth, mgr, h.RenameVideoFolder)
 	api.Delete("/manage/video-folders/:id", auth, mgr, h.DeleteVideoFolder)
+	// Relay (MediaMTX) fetches a session's YouTube stream key — token-gated.
+	api.Get("/internal/live/:id/rtmpkey", h.RelayStreamKey)
 	// ---- Image library (R2-backed) ---------------------------------------
 	api.Get("/manage/images", auth, mgr, h.ListImages)
 	api.Post("/manage/images/upload", auth, mgr, h.UploadImage)

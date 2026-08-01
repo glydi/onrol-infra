@@ -196,6 +196,9 @@ func (h *Handlers) CreateSession(c *fiber.Ctx) error {
 		// YouTube Live: paste the live URL or video id; students watch a clean,
 		// logo-masked autoplaying embed in our live room (no join click).
 		YouTubeURL string `json:"youtube_url"`
+		// In-app broadcasting: the host's YouTube stream key (from Go Live). When
+		// set, the host can broadcast from inside the app (browser → relay → YT).
+		YTStreamKey string `json:"yt_stream_key"`
 		// Live stream (HLS): an external live .m3u8 (Cloudflare Stream / OBS /
 		// Zoho custom-RTMP simulcast). Played directly in our live-room player —
 		// just the video, no buttons.
@@ -281,9 +284,9 @@ func (h *Handlers) CreateSession(c *fiber.Ctx) error {
 	}
 	var id string
 	if err := h.Pool.QueryRow(c.Context(),
-		`INSERT INTO class_sessions (course_id, title, starts_at, ends_at, location, instructor_id, capacity, webinar_id, join_url, host_url, media_asset_id, chat_enabled, qa_enabled, viewer_base, start_image, end_image, batch_number, youtube_id, live_hls_url)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING id`,
-		courseID, req.Title, req.StartsAt, ends, req.Location, callerID(c), req.Capacity, webinar, req.JoinURL, req.HostURL, media, chat, qa, req.ViewerBase, startImg, endImg, batch, ytID, liveHLS).Scan(&id); err != nil {
+		`INSERT INTO class_sessions (course_id, title, starts_at, ends_at, location, instructor_id, capacity, webinar_id, join_url, host_url, media_asset_id, chat_enabled, qa_enabled, viewer_base, start_image, end_image, batch_number, youtube_id, live_hls_url, yt_stream_key)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING id`,
+		courseID, req.Title, req.StartsAt, ends, req.Location, callerID(c), req.Capacity, webinar, req.JoinURL, req.HostURL, media, chat, qa, req.ViewerBase, startImg, endImg, batch, ytID, liveHLS, strings.TrimSpace(req.YTStreamKey)).Scan(&id); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "create failed")
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": id, "title": req.Title})

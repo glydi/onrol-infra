@@ -79,6 +79,7 @@ type Config struct {
 	Port            string
 	DatabaseURL     string
 	JWTSecret       string
+	RelaySecret     string // token the MediaMTX relay uses to fetch a session's YT stream key
 	JWTAccessTTL    time.Duration
 	MaxDevices      int
 	AttestationMode AttestationMode
@@ -135,6 +136,7 @@ func Load() (Config, error) {
 		Port:            getenv("PORT", "8080"),
 		DatabaseURL:     os.Getenv("DATABASE_URL"),
 		JWTSecret:       os.Getenv("JWT_SECRET"),
+		RelaySecret:     os.Getenv("RELAY_SECRET"),
 		JWTAccessTTL:    getdur("JWT_ACCESS_TTL", 24*time.Hour),
 		MaxDevices:      getint("MAX_DEVICES_PER_USER", 2),
 		AttestationMode: AttestationMode(getenv("ATTESTATION_MODE", string(AttestationLog))),
