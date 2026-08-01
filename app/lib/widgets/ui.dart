@@ -165,12 +165,9 @@ class _SmallActionButtonState extends State<SmallActionButton> {
     final p = Palette.of(context);
     final on = widget.onPressed != null;
     final hot = _hover && on;
-    // Solid variant: a deep ink slab that stays dark in either theme, so the
-    // primary action reads the same way light or dark.
-    const darkFill = Color(0xFF1A1A1A);
-    const darkHover = Color(0xFF333333);
+    // Filled = the primary blue button; tinted = a soft blue chip. One accent.
     final Color bg = widget.filled
-        ? (on ? (hot ? darkHover : darkFill) : p.secondary.withValues(alpha: 0.35))
+        ? (on ? (hot ? Color.alphaBlend(Colors.black.withValues(alpha: 0.14), p.accent) : p.accent) : p.secondary.withValues(alpha: 0.30))
         : p.accent.withValues(alpha: hot ? 0.20 : 0.10);
     final Color fg = widget.filled
         ? Colors.white

@@ -289,7 +289,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     if (!mounted) return;
     if (v == 'batches') {
       Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => CourseBatchesScreen(auth: widget.auth, courseId: id, title: title),
+        builder: (_) => AdminSkin(child: CourseBatchesScreen(auth: widget.auth, courseId: id, title: title)),
       ));
     } else if (v == 'publish') {
       _setCourseStatus(id, 'published');
@@ -760,7 +760,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           onTap: () {
             if (course != null) {
               Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => CourseBatchesScreen(auth: widget.auth, courseId: course['id'].toString(), title: course['title']?.toString() ?? displayName),
+                builder: (_) => AdminSkin(child: CourseBatchesScreen(auth: widget.auth, courseId: course['id'].toString(), title: course['title']?.toString() ?? displayName)),
               )).then((_) => _load());
             } else if (c.isEmpty) {
               _toast('These students have no course assigned.');
@@ -1863,7 +1863,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         // A course opens on its batches first — every management area (content,
         // live classes, quizzes…) lives inside a batch.
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => CourseBatchesScreen(auth: widget.auth, courseId: c['id'].toString(), title: c['title'].toString()),
+          builder: (_) => AdminSkin(child: CourseBatchesScreen(auth: widget.auth, courseId: c['id'].toString(), title: c['title'].toString())),
         )).then((_) => _load()),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           // Header: icon + title/meta, with the overflow menu pinned top-right.
@@ -3270,7 +3270,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
   void _openSection(String title, List<Widget> Function() body, {IconData? addIcon, VoidCallback? onAdd}) {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) {
       final p = Palette.of(context);
-      return SquareScope(
+      return AdminSkin(child: SquareScope(
         child: Scaffold(
           backgroundColor: p.bg,
           appBar: AppBar(
@@ -3292,7 +3292,7 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
             ),
           ),
         ),
-      );
+      ));
     }));
   }
 
@@ -3501,9 +3501,9 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                 if (_batchLocked)
                   _hubButton('Students', _batchStudentsLabel, CupertinoIcons.person_2_fill,
                       () => Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => BatchStudentsScreen(
+                            builder: (_) => AdminSkin(child: BatchStudentsScreen(
                                 auth: widget.auth, courseId: widget.courseId,
-                                title: widget.title, batch: widget.batch!.trim()),
+                                title: widget.title, batch: widget.batch!.trim())),
                           )).then((_) => _load())),
                 _hubButton('Course Content', '${modules.length} module${modules.length == 1 ? '' : 's'}', CupertinoIcons.square_stack_3d_up_fill,
                     () => _openSection('Course Content', _modulesSection, addIcon: CupertinoIcons.add, onAdd: _addModule)),
@@ -3512,19 +3512,19 @@ class _CourseEditorScreenState extends State<CourseEditorScreen> {
                 _hubButton('Assignments & Quizzes', '${_assessments.length} total', CupertinoIcons.doc_text_fill,
                     () => _openSection('Assignments & Quizzes', _assignmentsSection, addIcon: CupertinoIcons.doc_text_fill, onAdd: _addAssignment)),
                 _hubButton('Live Attendance', 'Who attends the live classes', CupertinoIcons.chart_bar_alt_fill,
-                    () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => CourseLiveAttendanceScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title)))),
+                    () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => AdminSkin(child: CourseLiveAttendanceScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title))))),
                 _hubButton('Calendar', 'Live classes & deadlines', CupertinoIcons.calendar, _openCalendar),
                 // Already inside a batch → don't offer a way back into the batch
                 // list from here (the back button does that).
                 if (!_batchLocked)
                   _hubButton('Batches & Settings', 'Enrollment batches', CupertinoIcons.square_grid_2x2_fill,
-                      () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => CourseBatchesScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title)))),
+                      () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => AdminSkin(child: CourseBatchesScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title))))),
                 _hubButton('Doubts & Discussion', 'Student questions', CupertinoIcons.chat_bubble_2_fill,
-                    () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DiscussionScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title)))),
+                    () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => AdminSkin(child: DiscussionScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title))))),
                 _hubButton('Study Hub material', 'Reference material', CupertinoIcons.doc_richtext,
-                    () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => StudyHubEditorScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title)))),
+                    () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => AdminSkin(child: StudyHubEditorScreen(auth: widget.auth, courseId: widget.courseId, title: widget.title))))),
                 _hubButton('Issue Certificates', 'Award completion', CupertinoIcons.rosette,
-                    () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => _IssueCertificates(auth: widget.auth, courseId: widget.courseId, title: widget.title)))),
+                    () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => AdminSkin(child: _IssueCertificates(auth: widget.auth, courseId: widget.courseId, title: widget.title))))),
               ],
             ),
     );
@@ -6010,8 +6010,8 @@ class _CourseBatchesScreenState extends State<CourseBatchesScreen> {
             title: 'Manage batch',
             sub: '$head · content, live classes, quizzes',
             onTap: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => SquareScope(child: CourseEditorScreen(
-                  auth: widget.auth, courseId: widget.courseId, title: widget.title, batch: code)),
+              builder: (_) => AdminSkin(child: SquareScope(child: CourseEditorScreen(
+                  auth: widget.auth, courseId: widget.courseId, title: widget.title, batch: code))),
             )).then((_) => _load()),
           ),
         // The queue has no management screen, so its roster is reachable
@@ -6027,9 +6027,9 @@ class _CourseBatchesScreenState extends State<CourseBatchesScreen> {
             onTap: students.isEmpty
                 ? null
                 : () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => BatchStudentsScreen(
+                      builder: (_) => AdminSkin(child: BatchStudentsScreen(
                           auth: widget.auth, courseId: widget.courseId,
-                          title: widget.title, batch: null),
+                          title: widget.title, batch: null)),
                     )).then((_) => _load()),
           ),
       ]),
