@@ -466,13 +466,16 @@ class _FilterDropdownState<T> extends State<FilterDropdown<T>> {
   }
 }
 
-/// Full-width filled blue CTA with a press-scale animation.
+/// Filled blue CTA. On admin it sizes to its content (a real button, not a
+/// full-width bar) unless [fullWidth] is set — pass that for the one place a
+/// stretched button reads right, the modal-sheet Save action.
 class PrimaryButton extends StatefulWidget {
-  const PrimaryButton({super.key, required this.label, required this.onPressed, this.busy = false, this.icon, this.square = false});
+  const PrimaryButton({super.key, required this.label, required this.onPressed, this.busy = false, this.icon, this.square = false, this.fullWidth = false});
   final String label;
   final VoidCallback? onPressed;
   final bool busy;
   final IconData? icon;
+  final bool fullWidth;
   final bool square; // admin panels use squared corners (no round buttons)
 
   @override
@@ -517,7 +520,7 @@ class _PrimaryButtonState extends State<PrimaryButton> {
     if (widget.square) {
       final fill = enabled ? p.accent : p.secondary.withOpacity(0.20);
       final radius = adminRadius(p, kRadiusButton);
-      return MouseRegion(
+      final btn = MouseRegion(
         cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
@@ -541,12 +544,17 @@ class _PrimaryButtonState extends State<PrimaryButton> {
                 onTap: enabled ? widget.onPressed : null,
                 splashColor: Colors.white.withOpacity(0.20),
                 highlightColor: Colors.white.withOpacity(0.08),
-                child: SizedBox(height: 44, child: Center(child: _content(true))),
+                // Content-sized: the button hugs its label + a comfortable pad,
+                // rather than stretching to a full-width bar.
+                child: SizedBox(height: 44, child: Center(widthFactor: 1, child: _content(true))),
               ),
             ),
           ),
         ),
       );
+      // Full-width only where it reads right (sheet Save); otherwise a normal,
+      // left-aligned button that doesn't span the whole content area.
+      return widget.fullWidth ? btn : Align(alignment: Alignment.centerLeft, child: btn);
     }
 
     return MouseRegion(
@@ -1064,6 +1072,7 @@ Future<bool?> showFormSheet(
           label: 'Save',
           busy: busy,
           square: true,
+          fullWidth: true,
           onPressed: () async {
             setS(() { busy = true; err = null; });
             final e = await onSubmit();
