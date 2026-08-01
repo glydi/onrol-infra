@@ -73,9 +73,11 @@ class _OnrolAppState extends State<OnrolApp> {
         navigatorKey: _navKey,
         title: 'ONROL Learn',
         debugShowCheckedModeBanner: false,
+        // Light theme only — the app never follows a dark OS theme. darkTheme is
+        // mapped to the light palette too, so nothing can render dark.
         theme: AppleTheme.light(),
-        darkTheme: AppleTheme.dark(),
-        themeMode: mode,
+        darkTheme: AppleTheme.light(),
+        themeMode: ThemeMode.light,
         // Apply the user's chosen font size app-wide.
         builder: (ctx, child) => MediaQuery(
           data: MediaQuery.of(ctx).copyWith(textScaler: TextScaler.linear(scale)),
