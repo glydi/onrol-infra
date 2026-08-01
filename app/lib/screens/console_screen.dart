@@ -1850,11 +1850,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           builder: (_) => CourseBatchesScreen(auth: widget.auth, courseId: c['id'].toString(), title: c['title'].toString()),
         )).then((_) => _load()),
         child: Row(children: [
-          Container(
-            width: 44, height: 44,
-            decoration: BoxDecoration(color: AppleColors.blue.withOpacity(0.12), borderRadius: BorderRadius.circular(kRadiusField)),
-            child: const Icon(CupertinoIcons.book_fill, color: AppleColors.blue, size: 22),
-          ),
+          iconChip(context, CupertinoIcons.book_fill, AppleColors.blue),
           const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1877,21 +1873,9 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
             Text(status == 'archived' ? 'Archived' : status == 'published' ? 'Visible' : 'Hidden',
                 style: AppleTheme.footnote(context).copyWith(color: status == 'published' ? AppleColors.green : color)),
           ]),
-          // Archive / delete actions — a proper boxed button (easy tap target).
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () => _courseMenu(c),
-            behavior: HitTestBehavior.opaque,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(color: Palette.of(context).card2, border: Border.all(color: Palette.of(context).separator)),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(CupertinoIcons.ellipsis, size: 17, color: Palette.of(context).label),
-                const SizedBox(width: 6),
-                Text('Options', style: AppleTheme.footnote(context).copyWith(fontWeight: FontWeight.w700, color: Palette.of(context).label)),
-              ]),
-            ),
-          ),
+          // Archive / delete actions — standard secondary button.
+          const SizedBox(width: 12),
+          SmallActionButton(label: 'Options', icon: CupertinoIcons.ellipsis, onPressed: () => _courseMenu(c)),
         ]),
       ),
     );
@@ -1902,12 +1886,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       padding: const EdgeInsets.only(bottom: 12),
       child: AppleCard(square: true, 
         child: Row(children: [
-          Container(
-            width: 40, height: 40,
-            decoration: BoxDecoration(color: AppleColors.orange.withOpacity(0.14), borderRadius: BorderRadius.circular(kRadiusField)),
-            child: const Icon(CupertinoIcons.person_badge_plus, color: AppleColors.orange, size: 20),
-          ),
-          const SizedBox(width: 12),
+          iconChip(context, CupertinoIcons.person_badge_plus, AppleColors.orange),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(r['student']?.toString() ?? r['email']?.toString() ?? 'Student', style: AppleTheme.headline(context)),

@@ -901,6 +901,20 @@ class StatTile extends StatelessWidget {
 TextStyle GoogleFontsInter(Color color, double size, FontWeight weight) =>
     TextStyle(color: color, fontSize: size, fontWeight: weight, letterSpacing: -0.3);
 
+/// Standard leading icon tile for admin rows and cards: a soft tinted square
+/// with the icon centred. One size ([kIconChip]) everywhere so leading icons
+/// line up across every list and card on the admin side.
+const double kIconChip = 40;
+Widget iconChip(BuildContext context, IconData icon, Color tint, {double size = kIconChip}) {
+  final p = Palette.of(context);
+  return Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(color: tint.withOpacity(0.12), borderRadius: adminRadius(p, kRadiusField)),
+    child: Icon(icon, size: size * 0.5, color: tint),
+  );
+}
+
 /// Checkerboard matrix layout — features (tiles) and white space alternate like:
 ///   1 0 1 0
 ///   0 1 0 1
