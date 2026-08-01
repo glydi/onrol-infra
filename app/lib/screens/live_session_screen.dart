@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart' hide Config;
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../config.dart';
 import '../services/api_client.dart';
@@ -559,6 +560,13 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
       _ctlChip(
           'Banner', CupertinoIcons.textformat, _banner.isNotEmpty, _editBanner),
       _ctlChip('Attend', CupertinoIcons.person_2_fill, false, _showAttendance),
+      // YouTube-live only: jump to the YouTube Studio control room in a new tab
+      // (Studio can't be iframe-embedded, so the stage shows the live stream).
+      if (widget.youtubeId.isNotEmpty)
+        _ctlChip('Studio', CupertinoIcons.slider_horizontal_3, false, () {
+          launchUrl(Uri.parse('https://studio.youtube.com/'),
+              mode: LaunchMode.externalApplication);
+        }),
       if (!liveNow)
         _ctlChip(
             'Start',
@@ -1392,8 +1400,12 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     // always side-by-side — the panel (the question queue) is the whole point.
     final isLandscape = size.width >= size.height;
     final sideBySide = widget.isHost || size.width >= 720 || isLandscape;
-    final panelW =
-        size.width < 900 ? (size.width * 0.36).clamp(260.0, 340.0) : 380.0;
+    // Host watching a YouTube-live: 80% stage / 20% answer panel. Otherwise the
+    // usual ~380px side panel.
+    final ytHost = widget.isHost && widget.youtubeId.isNotEmpty;
+    final panelW = ytHost
+        ? (size.width * 0.20).clamp(240.0, 400.0)
+        : (size.width < 900 ? (size.width * 0.36).clamp(260.0, 340.0) : 380.0);
     final showPanel = _qaOn || widget.isHost;
     return Scaffold(
       backgroundColor: _bg,
