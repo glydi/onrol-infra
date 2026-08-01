@@ -34,31 +34,106 @@ class AppleColors {
   static const clayHighlightDark = Color(0xFF353A4A);
 }
 
-/// The LMS admin look: orange-red accent, neutral surfaces, flatter depth.
-/// Admin/LMS palette — a cool blue-grey ground with white cards floating on it.
-/// The accent stays the ONROL orange; swap [accent]/[accentDark] for the teal
-/// pair below if the brand ever moves.
+// ============================================================================
+// Design tokens — namespaced PRIMITIVE scales (the Dart mirror of a CSS
+// `--space-*` / `--radius-*` / `--text-*` token architecture). Components
+// compose these rather than hard-coding values, so a redesign is a token
+// change. Calibrated to the Notion admin look.
+// ============================================================================
+
+/// 4px-baseline spacing scale. Use `Space.s4` etc. instead of literal gaps.
+class Space {
+  static const double s0 = 0;
+  static const double s1 = 4;   // hairline
+  static const double s2 = 8;   // tight
+  static const double s3 = 12;  // small gap / list-item gap
+  static const double s4 = 16;  // default / inside-card gap
+  static const double s5 = 20;
+  static const double s6 = 24;  // card padding / section gap
+  static const double s8 = 32;  // major
+  static const double s10 = 40;
+  static const double s12 = 48; // large section
+  static const double s16 = 64; // page spacing
+}
+
+/// Corner-radius scale (xs→full).
+class Radii {
+  static const double xs = 4;
+  static const double sm = 6;
+  static const double md = 8;
+  static const double lg = 12;
+  static const double xl = 16;
+  static const double full = 999;
+}
+
+/// Font-size primitives (compose with [FontWeight] directly).
+class TextSize {
+  static const double xs = 12;
+  static const double sm = 14;
+  static const double md = 16;
+  static const double lg = 18;
+  static const double xl = 22;
+  static const double xxl = 28;
+}
+
+/// Elevation scale. The admin is flat today (`none`); the higher steps exist so
+/// a later decision to elevate e.g. dialogs is a one-token change, not a sweep.
+class Shadows {
+  static const List<BoxShadow> none = [];
+  static final List<BoxShadow> xs = [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 2, offset: const Offset(0, 1))];
+  static final List<BoxShadow> sm = [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 6, offset: const Offset(0, 2))];
+  static final List<BoxShadow> md = [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 24, offset: const Offset(0, 8))];
+}
+
+/// Component-token layer — maps component sizing to the primitive scales in one
+/// place, so redesigning a component is a token edit, not a hunt through code.
+class Tokens {
+  // Layout
+  static const double sidebarWidth = 240;
+  static const double topbarHeight = 48;
+  static const double contentMaxWidth = 1280;
+  static const double contentPadX = Space.s8;   // 32 (wide screens)
+  static const double contentPadY = Space.s5;   // 20
+  // Cards
+  static const double cardPadding = Space.s6;   // 24
+  static const double cardGap = Space.s4;       // 16
+  static const double listItemGap = Space.s3;   // 12
+  // Controls
+  static const double buttonHeight = 34;
+  static const double buttonPadX = 14;
+  static const double inputHeight = 38;
+  static const double inputPadX = Space.s3;      // 12
+  static const double navItemHeight = 34;
+  static const double iconSize = 18;
+  static const double iconButton = 36;
+  static const double avatar = 36;
+}
+
+/// The LMS admin palette — Notion-inspired (warm surfaces, warm dark ink,
+/// minimal colour). Semantic names, refined values. Light-mode only.
 class AdminColors {
-  // Notion-inspired scheme: warm near-white surfaces, warm dark ink, minimal
-  // colour. The blue is used sparingly (links, selected, the one primary CTA).
-  static const accent = Color(0xFF2383E2);          // Notion blue
-  static const accentHover = Color(0xFF1B6FC4);
+  // Brand / primary (used sparingly — links, selected, the one CTA).
+  static const accent = Color(0xFF2383E2);          // --color-primary
+  static const accentHover = Color(0xFF1D73C8);     // --color-primary-hover
+  static const primarySoft = Color(0xFFEEF6FF);     // --color-primary-soft (tint)
   static const accentDark = Color(0xFF529CE8);      // blue that reads on dark surfaces
 
-  // Light theme surfaces (admin is light-mode only).
-  static const lightBg = Color(0xFFFFFFFF);        // page is white
-  static const lightCard = Color(0xFFFFFFFF);      // surface
-  static const lightCard2 = Color(0xFFF7F6F3);     // warm recessed inner boxes
-  static const lightRowAlt = Color(0xFFFBFBFA);    // alternating table row
-  static const lightLabel = Color(0xFF37352F);     // warm near-black text
-  static const lightSecondary = Color(0xFF787774); // secondary text
-  static const lightMuted = Color(0xFF9B9A97);     // disabled / muted text
-  static const lightSeparator = Color(0xFFE9E9E7); // warm hairline borders
+  // Surfaces (light-mode only).
+  static const lightBg = Color(0xFFFFFFFF);        // --color-bg
+  static const lightCard = Color(0xFFFFFFFF);      // --color-surface
+  static const surfaceMuted = Color(0xFFF8F8F7);   // --color-surface-muted
+  static const lightCard2 = Color(0xFFF5F5F3);     // --color-surface-sunk (recessed)
+  static const lightRowAlt = Color(0xFFF8F8F7);    // alternating table row
+  static const lightLabel = Color(0xFF37352F);     // --color-text
+  static const lightSecondary = Color(0xFF6F6E69); // --color-text-secondary
+  static const lightMuted = Color(0xFF9B9A97);     // --color-text-muted
+  static const textDisabled = Color(0xFFB8B7B4);   // --color-text-disabled
+  static const lightSeparator = Color(0xFFE5E5E3); // --color-border
 
-  // Sidebar / hover neutrals.
+  // State neutrals.
   static const sidebarBg = Color(0xFFFBFBFA);      // warm off-white nav panel
-  static const hoverBg = Color(0xFFEFEFEE);        // subtle row/nav hover
-  static const selectedBg = Color(0xFFE9E9E7);     // selected nav / tab
+  static const hoverBg = Color(0xFFEFEFEE);        // --color-hover
+  static const selectedBg = Color(0xFFE8E8E6);     // --color-selected
 
   // Status colours (communicate state, never decoration).
   static const secondaryAccent = accent; // (kept as alias for blue)

@@ -68,7 +68,7 @@ class _AppShellState extends State<AppShell> {
                 // Google-console style, with a hairline bottom border.
                 if (admin)
                   Container(
-                    height: 48,
+                    height: Tokens.topbarHeight,
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     decoration: BoxDecoration(
                       color: p.bg,
@@ -94,7 +94,7 @@ class _AppShellState extends State<AppShell> {
                 Expanded(
                   child: Align(
                     alignment: Alignment.topCenter,
-                    child: ConstrainedBox(constraints: BoxConstraints(maxWidth: admin ? 1280 : 920), child: body),
+                    child: ConstrainedBox(constraints: BoxConstraints(maxWidth: admin ? Tokens.contentMaxWidth : 920), child: body),
                   ),
                 ),
               ]),
@@ -159,7 +159,7 @@ class _Sidebar extends StatelessWidget {
     final sideBorder = admin ? p.separator : p.separator;
     final sideMuted = admin ? AdminColors.lightMuted : p.secondary;
     return Container(
-      width: admin ? 240 : 256,
+      width: admin ? Tokens.sidebarWidth : 256,
       // Docked, flush to the left edge (Notion): warm off-white panel, full
       // height, a single hairline right border, no inset / rounding / shadow.
       margin: EdgeInsets.zero,

@@ -9,13 +9,15 @@ import '../theme_controller.dart';
 // Corner radii for the boxes the ADMIN/LMS skin draws — cards, buttons,
 // dialogs, sheets, fields. Values live here so the whole admin surface changes
 // in one place. Student surfaces stay squared; see [adminRadius].
-const double kRadiusCard = 6;
-const double kRadiusButton = 5;
-const double kRadiusDialog = 8;
-const double kRadiusSheet = 10;
-const double kRadiusField = 5;
-const double kRadiusChip = 4;
-const double kRadiusPill = 999; // fully rounded (progress bars, banner buttons)
+// Radii map onto the shared [Radii] scale: card/button/input → sm, chip → xs,
+// dialog → md, sheet → lg, badges → full.
+const double kRadiusCard = Radii.sm;
+const double kRadiusButton = Radii.sm;
+const double kRadiusDialog = Radii.md;
+const double kRadiusSheet = Radii.lg;
+const double kRadiusField = Radii.sm;
+const double kRadiusChip = Radii.xs;
+const double kRadiusPill = Radii.full; // fully rounded (progress bars, banner buttons)
 
 /// Rounded corners belong to the **admin/LMS skin only**. Student surfaces keep
 /// the squared look they've always had, so shared widgets ask for the radius
@@ -535,7 +537,7 @@ class _PrimaryButtonState extends State<PrimaryButton> {
             splashColor: Colors.white.withOpacity(0.16),
             highlightColor: Colors.white.withOpacity(0.06),
             // Content-sized: hugs its label + a comfortable pad.
-            child: SizedBox(height: 34, child: Center(widthFactor: 1, child: _content(true))),
+            child: SizedBox(height: Tokens.buttonHeight, child: Center(widthFactor: 1, child: _content(true))),
           ),
         ),
       );
@@ -901,7 +903,7 @@ TextStyle GoogleFontsInter(Color color, double size, FontWeight weight) =>
 /// Standard leading icon tile for admin rows and cards: a soft tinted square
 /// with the icon centred. One size ([kIconChip]) everywhere so leading icons
 /// line up across every list and card on the admin side.
-const double kIconChip = 36;
+const double kIconChip = Tokens.iconButton;
 Widget iconChip(BuildContext context, IconData icon, Color tint, {double size = kIconChip}) {
   final p = Palette.of(context);
   // Notion is mostly monochrome: the leading tile is a neutral warm-gray box
@@ -1027,9 +1029,9 @@ Widget sheetField(TextEditingController c, String hint, IconData icon, {TextInpu
     return Container(
       // Notion input: white field, 1px hairline border, small radius, ~38px
       // tall (taller for multi-line), 12px horizontal padding.
-      constraints: BoxConstraints(minHeight: multiline ? 90 : 38),
+      constraints: BoxConstraints(minHeight: multiline ? 90 : Tokens.inputHeight),
       alignment: multiline ? Alignment.topLeft : Alignment.centerLeft,
-      padding: EdgeInsets.symmetric(horizontal: 12, vertical: multiline ? 10 : 7),
+      padding: EdgeInsets.symmetric(horizontal: Tokens.inputPadX, vertical: multiline ? 10 : 7),
       decoration: BoxDecoration(
         color: p.admin ? p.card : p.card2,
         borderRadius: adminRadius(p, kRadiusField),
